@@ -1,4 +1,4 @@
 package it.grypho.scala.leonardo
-package arithmetic
+package expr
 
 case class Number(d: Double) extends Value

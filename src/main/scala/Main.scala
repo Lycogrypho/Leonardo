@@ -14,8 +14,8 @@ object Main extends App
 
   println(parser.parse("1"))
   println(parser.parse("1 + 2"))
-  println(parser.parse("(1 + 2)"))
-  println(parser.parse("3*3"))
+  println(parser.parse("(1 + 9.2)"))
+  println(parser.parse("3*3E-5"))
   println(parser.parse("exp(1)"))
   println(parser.parse("sin(a)"))
   println(parser.parse("tg(x + 2)"))
@@ -24,5 +24,6 @@ object Main extends App
   println(parser.parse("exp(cos(a))"))
   println(parser.parse("3a"))
   println(parser.parse("3sin(a)"))
+  println(parser.parse("derive(cos(3x), x)"))
 
 }

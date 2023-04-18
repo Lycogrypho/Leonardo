@@ -1,5 +1,5 @@
 package it.grypho.scala.leonardo
-package arithmetic
+package expr
 
 trait Value
 {
