@@ -25,5 +25,6 @@ object Main extends App
   println(parser.parse("3a"))
   println(parser.parse("3sin(a)"))
   println(parser.parse("derive(cos(3x), x)"))
-
+  println(parser.parse("-2"))
+  println(parser.parse("+3sin(-a)"))
 }

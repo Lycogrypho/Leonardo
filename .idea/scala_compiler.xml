@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <profile name="sbt 1" modules="Leonardo">
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+      <parameters>
+        <parameter value="-rewrite" />
+        <parameter value="-source:3.0-migration" />
+        <parameter value="-explain" />
+      </parameters>
+    </profile>
+  </component>
+</project>

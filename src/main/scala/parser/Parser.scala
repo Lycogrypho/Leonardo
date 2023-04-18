@@ -14,9 +14,9 @@ import it.grypho.scala.leonardo.expr._
 
 class Parser(env: Environment) extends JavaTokenParsers
 {
-  def expr      : Parser[Any] = term ~ opt("+" ~ term | "-" ~ term) // | function ~ expr ~ ")"
+  def expr      : Parser[Any] = opt("+"|"-") ~ term ~ opt("+" ~ term | "-" ~ term) // | function ~ expr ~ ")"
   def term      : Parser[Any] = factor ~ opt("*" ~ factor | "/" ~ factor| "" ~ factor)
-  def factor    : Parser[Any] = "(" ~ expr ~ ")" | function ~ expr ~ ")" |  derivative | value
+  def factor    : Parser[Any] = "(" ~ expr ~ ")" | function ~ expr ~ ")" | derivative | value
   def function  : Parser[Any] = "exp(" | "log(" | "sin(" | "cos(" | "tg("
   def derivative: Parser[Any] = "derive(" ~ expr ~ "," ~ variable ~ ")"
   def value     : Parser[Any] = number | variable
