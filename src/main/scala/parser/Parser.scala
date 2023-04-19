@@ -16,9 +16,9 @@ class Parser(env: Environment) extends JavaTokenParsers
 {
   def expr      : Parser[Any] = opt("+"|"-") ~ term ~ opt("+" ~ term | "-" ~ term) // | function ~ expr ~ ")"
   def term      : Parser[Any] = factor ~ opt("*" ~ factor | "/" ~ factor| "" ~ factor)
-  def factor    : Parser[Any] = "(" ~ expr ~ ")" | function ~ expr ~ ")" | derivative | value
-  def function  : Parser[Any] = "exp(" | "log(" | "sin(" | "cos(" | "tg("
-  def derivative: Parser[Any] = "derive(" ~ expr ~ "," ~ variable ~ ")"
+  def factor    : Parser[Any] = function | functional | value | "(" ~ expr ~ ")"
+  def function  : Parser[Any] = ("exp" | "log" | "sin" | "cos" | "tg" ) ~ "(" ~ expr ~ ")"
+  def functional: Parser[Any] = "derive(" ~ expr ~ "," ~ variable ~ ")" | "integral(" ~ expr ~ "," ~ variable ~ ")"
   def value     : Parser[Any] = number | variable
   def number    : Parser[Any] = floatingPointNumber | decimalNumber | wholeNumber
   def variable  :Parser[Any] = "a" | "x" //"""[a-zA-Z]""".r

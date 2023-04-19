@@ -18,15 +18,16 @@ class ParserTest extends AnyFlatSpec with BeforeAndAfter
     ("exp(1)",             """((None~(((exp(~((None~(1~None))~None))~))~None))~None)"""),
     ("sin(a)",             """((None~(((sin(~((None~(a~None))~None))~))~None))~None)"""),
     ("tg(x + 2)",          """((None~(((tg(~((None~(x~None))~Some((+~(2~None)))))~))~None))~None)"""),
-    ("tg(x + log(2))",     """((None~(((tg(~((None~(x~None))~Some((+~(((log(~((None~(2~None))~None))~))~None)))))~))~None))~None)"""),
-    ("1* exp(x)",          """((None~(1~Some((*~((exp(~((None~(x~None))~None))~))))))~None)"""),
-    ("exp(cos(a))",        """((None~(((exp(~((None~(((cos(~((None~(a~None))~None))~))~None))~None))~))~None))~None)"""),
+    ("tg(x + log(2))",     """((None~((((tg~()~((None~(x~None))~Some((+~((((log~()~((None~(2~None))~None))~))~None)))))~))~None))~None)"""),
+    ("1* exp(x)",          """((None~(1~Some((*~(((exp~()~((None~(x~None))~None))~))))))~None)"""),
+    ("exp(cos(a))",        """((None~((((exp~()~((None~((((cos~()~((None~(a~None))~None))~))~None))~None))~))~None))~None)"""),
     ("3a",                 """((None~(3~Some((~a))))~None)"""),
-    ("3sin(a)",            """((None~(3~Some((~((sin(~((None~(a~None))~None))~))))))~None)"""),
-    ("derive(cos(3x), x)", """((None~(((((derive(~((None~(((cos(~((None~(3~Some((~x))))~None))~))~None))~None))~,)~x)~))~None))~None)"""),
+    ("3sin(a)",            """((None~(3~Some((~(((sin~()~((None~(a~None))~None))~))))))~None)"""),
+    ("derive(cos(3x), x)", """((None~(((((derive(~((None~((((cos~()~((None~(3~Some((~x))))~None))~))~None))~None))~,)~x)~))~None))~None)"""),
     ("-2",                 """((Some(-)~(2~None))~None)"""),
-    ("+3sin(-a)",          """((Some(+)~(3~Some((~((sin(~((Some(-)~(a~None))~None))~))))))~None)""")
+    ("+3sin(-a)",          """((Some(+)~(3~Some((~(((sin~()~((Some(-)~(a~None))~None))~))))))~None)""")
   )
+
 
 
   for (s <- expressionStrings)

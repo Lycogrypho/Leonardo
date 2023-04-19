@@ -12,19 +12,28 @@ object Main extends App
   def parser = new Parser(env)
 
 
-  println(parser.parse("1"))
-  println(parser.parse("1 + 2"))
-  println(parser.parse("(1 + 9.2)"))
-  println(parser.parse("3*3E-5"))
-  println(parser.parse("exp(1)"))
-  println(parser.parse("sin(a)"))
-  println(parser.parse("tg(x + 2)"))
-  println(parser.parse("tg(x + log(2))"))
-  println(parser.parse("1* exp(x)"))
-  println(parser.parse("exp(cos(a))"))
-  println(parser.parse("3a"))
-  println(parser.parse("3sin(a)"))
-  println(parser.parse("derive(cos(3x), x)"))
-  println(parser.parse("-2"))
-  println(parser.parse("+3sin(-a)"))
+  val expressions = List(
+    "1",
+    "1 + 2",
+    "(1 + 9.2)",
+    "3*3E-5",
+    "exp(1)",
+    "sin(a)",
+    "tg(x + 2)",
+    "tg(x + log(2))",
+    "1* exp(x)",
+    "exp(cos(a))",
+    "3a",
+    "3sin(a)",
+    "derive(cos(3x), x)",
+    "-2",
+    "+3sin(-a)"
+  )
+
+  val i = expressions.map(_.length).max
+
+  for (expression <- expressions)
+    {
+      println(s"Parsing epression \"$expression\" ${" "*(i - expression.length)}\tas\t${parser.parse(expression).get}")
+    }
 }
