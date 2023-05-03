@@ -25,7 +25,7 @@ object Main extends App
     "exp(cos(a))",
     "3a",
     "3sin(a)",
-    //"derive(cos(3x), x)",
+    "derive(cos(3x), x)",
     "-2",
     "+3sin(-a)",
     "-3k",

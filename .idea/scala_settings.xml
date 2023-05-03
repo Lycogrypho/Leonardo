@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ScalaProjectSettings">
+    <option name="collectionTypeHighlightingLevel" value="All" />
+    <option name="customScalatestSyntaxHighlighting" value="true" />
+    <option name="groupPackageObjectWithPackage" value="true" />
+    <option name="implicitParametersSearchDepth" value="6" />
     <option name="intInjectionMapping">
       <map>
         <entry key="html" value="HTML" />

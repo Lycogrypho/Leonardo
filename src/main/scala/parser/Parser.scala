@@ -47,18 +47,19 @@ class Parser(env: Environment) extends JavaTokenParsers
 
                                             }
                                         }
-  //def factor    : Parser[_Expression] = function | functinoal | value | "(" ~> expr <~ ")"
-  def factor    : Parser[_Expression] = function | value | "(" ~> expr <~ ")"
+  def factor    : Parser[_Expression] = function | functional | value | "(" ~> expr <~ ")"
+  //def factor    : Parser[_Expression] = function | value | "(" ~> expr <~ ")"
+
   def function  : Parser[_Expression] = "exp(" ~> expr <~ ")" ^^ Exp.apply |
                                         "log(" ~> expr <~ ")" ^^ Log.apply |
                                         "sin(" ~> expr <~ ")" ^^ Sin.apply |
                                         "cos(" ~> expr <~ ")" ^^ Cos.apply |
                                         "tg("  ~> expr <~ ")" ^^ Tg.apply
 
- /* def functional: Parser[_Expression] = "derive(" ~> expr <~ "," ~> variable <~ ")" ^^ { case e ~ v => _Derivative(e, v) } |
-                                        "integral(" ~> expr <~ "," ~> variable <~ ")" ^^ { case e ~ v  => _Integral(e, v) }|
-                                        "integral(" ~> expr <~ "," ~> variable <~  "," ~> value <~  "," ~> value <~ ")" ^^ { case e ~ v ~ l ~ u => _DefIntegral(e, v, l, u) }
-*/
+  def functional: Parser[_Expression] = "derive(" ~> expr ~ "," ~ variable <~ ")"   ^^ { case e ~ _ ~ v => _Derivative(e, v) } |
+                                        "integral(" ~> expr ~ "," ~ variable <~ ")" ^^ { case e ~ _ ~ v => _Integral(e, v) }   |
+                                        "integral(" ~> expr ~ "," ~ variable ~  "," ~ value ~  "," ~ value <~ ")" ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) }
+
   def value     : Parser[_Value] = number | variable
   def number    : Parser[_Number] = (floatingPointNumber | decimalNumber | wholeNumber) ^^  {(a: String) => _Number(a.toDouble)(env)}
   def variable  :Parser[_Variable] = """[a-zA-Z]""".r ^^  {(a: String) => _Variable(a)(env)}
