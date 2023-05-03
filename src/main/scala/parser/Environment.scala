@@ -13,5 +13,9 @@ class Environment
 
   def set(variable: String, value: Option[_Number]) =
     variables + (variable -> value)
+    //verify if variable has to be updated instead
+    
+  // TODO: precision should be set at creation time or a var to be updated - evaluate alternatives
+  val precision: Int = 5 // number of decimals used in calculation
 
 }

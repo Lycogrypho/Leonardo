@@ -25,9 +25,11 @@ object Main extends App
     "exp(cos(a))",
     "3a",
     "3sin(a)",
-    "derive(cos(3x), x)",
+    //"derive(cos(3x), x)",
     "-2",
-    "+3sin(-a)"
+    "+3sin(-a)",
+    "-3k",
+    "sin(a)cos(b)"
   )
 
   val i = expressions.map(_.length).max
