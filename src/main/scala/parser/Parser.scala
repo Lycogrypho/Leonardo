@@ -17,15 +17,15 @@ import it.grypho.scala.leonardo.expr._Operation
  * operator ::= "+" | "-" | "*" | "/"
  * expr ::= value | function "(" expr ")" | expr (operator expr)?
  *
- **/
+ * */
 
-class Parser(env: Environment) extends JavaTokenParsers
+class Parser(implicit env: Environment) extends JavaTokenParsers
 {
-  def expr      : Parser[_Expression] = opt("+" | "-" | "") ~ simpleExpr ^^
-                                        {
-                                          case Some("-") ~ e => Product(_Number(-1)(env), e)
-                                          case _ ~ e         => e //Product(_Number(+1)(env), e)
-                                        }
+  def expr: Parser[_Expression] = opt("+" | "-" | "") ~ simpleExpr ^^
+                                  {
+                                    case Some("-") ~ e => Product(_Number(-1)(env), e)
+                                    case _ ~ e         => e //Product(_Number(+1)(env), e)
+                                  }
 
   def simpleExpr: Parser[_Expression] = term ~ rep(("+" | "-") ~ term) ^^
                                         {

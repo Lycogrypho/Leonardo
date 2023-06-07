@@ -10,5 +10,6 @@
         <parameter value="-explain" />
       </parameters>
     </profile>
+    <profile name="sbt 2" modules="leonardo_5360" />
   </component>
 </project>

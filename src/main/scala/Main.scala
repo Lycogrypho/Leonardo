@@ -7,9 +7,9 @@ import parser._ //{Environment, Parser}
 object Main extends App
 {
   println("Hello world!")
-  def env = new Environment()
+  implicit val env: Environment = new Environment()
 
-  def parser = new Parser(env)
+  def parser = new Parser
 
 
   val expressions = List(

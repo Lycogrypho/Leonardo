@@ -11,7 +11,7 @@ import expr._
 class ParserTest extends AnyFlatSpec with BeforeAndAfter
 {
   implicit val env: Environment = new Environment()
-  def parser = new Parser(env)
+  def parser = new Parser
 
   val expressionStrings = List( //("1",                  "test check"),
     ("1",                  """1.0""",                        _Number(1)),
