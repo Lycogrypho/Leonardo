@@ -1,47 +1,27 @@
 package it.grypho.scala.leonardo
 package expr
 
-import it.grypho.scala.leonardo.parser.Environment
+import parser.Environment
 
-trait _Value(implicit env: Environment) extends _Expression
-{
 
-}
+trait _Value extends _Expression
 
-case class _Number(d: Double)(implicit env: Environment) extends _Value
-{
-  /* TODO: Store numbers as rationals. The precision fixed by the environment */
+
+case class _Number(d: Double) extends _Value:
   override def toString(): String = d.toString
 
-  val num: Long = (d * scala.math.pow(10, (env.precision))).round
-  val den: Long = scala.math.pow(10, (env.precision)).toLong
-
-  val value: Double = num.toDouble / den
-
-  override def eval() = Right(value)
-}
+  override def eval(env: Environment): Either[_Expression, Double] =
+    val factor = scala.math.pow(10, env.precision)
+    Right((d * factor).round.toDouble / factor)
 
 
-case class _Variable(variable: String)(implicit env: Environment) extends _Value
-{
-  env.set(variable, None)
-
-
-  def value: Either[_Number, _Variable] = env.get(variable) match
-  {
-    case Some(n) => Left(n)
-    case None    => Right(this)
-  }
-
-  override def eval() = env.get(variable) match
-  {
-    case Some(n) => n.eval()
-    case None    => Left(this)
-  }
-
+case class _Variable(variable: String) extends _Value:
   override def toString(): String = variable
 
-  def set(value: _Number) = env.set(variable, Some(value))
+  override def eval(env: Environment): Either[_Expression, Double] =
+    env.get(variable) match
+      case Some(n) => n.eval(env)
+      case None    => Left(this)
 
-
-}
+  def set(value: _Number)(implicit env: Environment): Unit =
+    env.set(variable, Some(value))

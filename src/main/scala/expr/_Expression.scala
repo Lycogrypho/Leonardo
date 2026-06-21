@@ -4,8 +4,5 @@ package expr
 import parser.Environment
 
 
-trait _Expression(implicit env: Environment)
-{
-  def eval(): Either[_Expression, Double]
-
-}
+trait _Expression:
+  def eval(env: Environment): Either[_Expression, Double]

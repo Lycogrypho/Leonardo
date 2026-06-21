@@ -19,6 +19,7 @@
         <entry key="yaml" value="yaml" />
       </map>
     </option>
+    <option name="migrateConfigurationsNotificationShown" value="true" />
     <option name="projectViewHighlighting" value="true" />
     <option name="showImplicitConversions" value="true" />
   </component>

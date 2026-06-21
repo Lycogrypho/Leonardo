@@ -3,7 +3,9 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo-build.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo-build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.Leonardo-build.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.Leonardo-build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test.iml" />
     </modules>
   </component>
 </project>

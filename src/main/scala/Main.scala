@@ -1,16 +1,11 @@
 package it.grypho.scala.leonardo
 
-import parser._ //{Environment, Parser}
+import parser.{Environment, Parser}
 
 
-
-object Main extends App
-{
-  println("Hello world!")
-  implicit val env: Environment = new Environment()
-
-  def parser = new Parser
-
+object Main extends App:
+  val env    = new Environment()
+  val parser = new Parser
 
   val expressions = List(
     "1",
@@ -29,13 +24,11 @@ object Main extends App
     "-2",
     "+3sin(-a)",
     "-3k",
-    "sin(a)cos(b)"
+    "sin(a)cos(b)",
+    "pow(2, 10)"
   )
 
-  val i = expressions.map(_.length).max
+  val width = expressions.map(_.length).max
 
-  for (expression <- expressions)
-    {
-      println(s"Parsing epression \"$expression\" ${" "*(i - expression.length)}\tas\t${parser.parse(expression).get}")
-    }
-}
+  for expression <- expressions do
+    println(s"Parsing \"$expression\" ${"  " * (width - expression.length)}\tas\t${parser.parse(expression).get}")
