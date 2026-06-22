@@ -58,4 +58,4 @@ class Parser extends JavaTokenParsers:
   def number:   Parser[_Number]    = (floatingPointNumber | decimalNumber | wholeNumber) ^^ { s => _Number(s.toDouble) }
   def variable: Parser[_Variable]  = """[a-zA-Z]""".r ^^ { s => _Variable(s) }
 
-  def parse(str: String): ParseResult[Any] = parseAll(expr, str)
+  def parse(str: String): ParseResult[_Expression] = parseAll(expr, str)

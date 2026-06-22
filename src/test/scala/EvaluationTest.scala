@@ -33,6 +33,46 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
         case Left(e)  => assert(e == s._2)
     }
 
+  // --- special value handling ---
+
+  "division by zero" should "evaluate to Infinity, not a corrupt large number" in
+  {
+    Ratio(_Number(1), _Number(0)).eval(env) match
+      case Right(x)  => assert(x.isInfinite && x > 0)
+      case Left(sym) => fail(s"expected Infinity but got symbolic: $sym")
+  }
+
+  "negative division by zero" should "evaluate to -Infinity" in
+  {
+    Ratio(_Number(-1), _Number(0)).eval(env) match
+      case Right(x)  => assert(x.isInfinite && x < 0)
+      case Left(sym) => fail(s"expected -Infinity but got symbolic: $sym")
+  }
+
+  "log of a negative number" should "evaluate to NaN, not 0.0" in
+  {
+    Log(_Number(-1)).eval(env) match
+      case Right(x)  => assert(x.isNaN)
+      case Left(sym) => fail(s"expected NaN but got symbolic: $sym")
+  }
+
+  "log of zero" should "evaluate to -Infinity, not a corrupt large number" in
+  {
+    Log(_Number(0)).eval(env) match
+      case Right(x)  => assert(x.isInfinite && x < 0)
+      case Left(sym) => fail(s"expected -Infinity but got symbolic: $sym")
+  }
+
+  "a very large number" should "evaluate without Long overflow" in
+  {
+    val large = 1e15
+    _Number(large).eval(env) match
+      case Right(x)  => assert(x == large)
+      case Left(sym) => fail(s"expected $large but got symbolic: $sym")
+  }
+
+  // --- variable binding ---
+
   val a = _Variable("a")
   val b = _Variable("b")
 
