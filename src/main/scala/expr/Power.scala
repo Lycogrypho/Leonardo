@@ -6,7 +6,7 @@ import scala.math.pow
 
 
 case class Power(base: _Expression, exp: _Expression) extends _Expression:
-  override def toString: String = f"($base ^ $exp)"
+  override def toString: String = s"($base ^ $exp)"
 
   override def eval(env: Environment): Either[_Expression, Double] =
     (base.eval(env), exp.eval(env)) match

@@ -1,12 +1,9 @@
 package it.grypho.scala.leonardo
 
-import parser.{Environment, Parser}
+import parser.Parser
 
 
-object Main extends App:
-  val env    = new Environment()
-  val parser = new Parser
-
+@main def main(): Unit =
   val expressions = List(
     "1",
     "1 + 2",
@@ -31,4 +28,7 @@ object Main extends App:
   val width = expressions.map(_.length).max
 
   for expression <- expressions do
-    println(s"Parsing \"$expression\" ${"  " * (width - expression.length)}\tas\t${parser.parse(expression).get}")
+    val result = Parser.parse(expression)
+    val output = if result.successful then result.get.toString
+                 else s"[parse error: $result]"
+    println(s"Parsing \"$expression\" ${"  " * (width - expression.length)}\tas\t$output")

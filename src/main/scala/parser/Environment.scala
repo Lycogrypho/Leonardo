@@ -4,7 +4,7 @@ package parser
 import expr._Number
 
 
-class Environment(val precision: Int = 5):
+class Environment(val precision: Int = _Number.DefaultPrecision):
   private var variables: Map[String, _Number] = Map()
 
   def get(variable: String): Option[_Number] =
@@ -18,3 +18,6 @@ class Environment(val precision: Int = 5):
 
   def isBound(variable: String): Boolean =
     variables.contains(variable)
+
+  def reset(): Unit =
+    variables = Map()

@@ -2,17 +2,28 @@ package it.grypho.scala.leonardo
 package parser
 
 import scala.util.parsing.combinator.JavaTokenParsers
-import it.grypho.scala.leonardo.expr._
+import expr._
 
 
 /**
+ * Recursive descent parser for mathematical expressions.
+ *
  * Grammar:
- * value      ::= Number | Variable
- * operator   ::= "+" | "-" | "*" | "/"
- * expr       ::= value | function "(" expr ")" | expr (operator expr)?
- * */
-
-class Parser extends JavaTokenParsers:
+ *   expr       ::= ["+" | "-"] simpleExpr
+ *   simpleExpr ::= term (("+"|"-") term)*
+ *   term       ::= factor (("*"|"/"|"") factor)*    -- "" enables implicit multiplication
+ *   factor     ::= function | functional | value | "(" expr ")"
+ *   function   ::= "exp(" expr ")" | "log(" expr ")" | "sin(" expr ")"
+ *                | "cos(" expr ")" | "tg(" expr ")"
+ *                | "pow(" expr "," expr ")"
+ *   functional ::= "derive(" expr "," variable ")"
+ *                | "integral(" expr "," variable ")"
+ *                | "integral(" expr "," variable "," value "," value ")"
+ *   value      ::= number | variable
+ *   number     ::= floatingPointNumber | decimalNumber | wholeNumber
+ *   variable   ::= [a-zA-Z]    -- single character only
+ */
+object Parser extends JavaTokenParsers:
 
   def expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
     {
@@ -42,20 +53,20 @@ class Parser extends JavaTokenParsers:
   def factor: Parser[_Expression] = function | functional | value | "(" ~> expr <~ ")"
 
   def function: Parser[_Expression] =
-    "exp(" ~> expr <~ ")"                              ^^ Exp.apply       |
-    "log(" ~> expr <~ ")"                              ^^ Log.apply       |
-    "sin(" ~> expr <~ ")"                              ^^ Sin.apply       |
-    "cos(" ~> expr <~ ")"                              ^^ Cos.apply       |
-    "tg("  ~> expr <~ ")"                              ^^ Tg.apply        |
-    "pow(" ~> expr ~ "," ~ expr <~ ")"                 ^^ { case b ~ _ ~ e => Power(b, e) }
+    "exp(" ~> expr <~ ")"             ^^ Exp.apply                              |
+    "log(" ~> expr <~ ")"             ^^ Log.apply                              |
+    "sin(" ~> expr <~ ")"             ^^ Sin.apply                              |
+    "cos(" ~> expr <~ ")"             ^^ Cos.apply                              |
+    "tg("  ~> expr <~ ")"             ^^ Tg.apply                               |
+    "pow(" ~> expr ~ "," ~ expr <~ ")" ^^ { case b ~ _ ~ e => Power(b, e) }
 
   def functional: Parser[_Expression] =
-    "derive("   ~> expr ~ "," ~ variable <~ ")"                                        ^^ { case e ~ _ ~ v         => _Derivative(e, v)            } |
-    "integral(" ~> expr ~ "," ~ variable ~ "," ~ value ~ "," ~ value <~ ")"           ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
-    "integral(" ~> expr ~ "," ~ variable <~ ")"                                        ^^ { case e ~ _ ~ v         => _Integral(e, v)              }
+    "derive("   ~> expr ~ "," ~ variable <~ ")"                                ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
+    "integral(" ~> expr ~ "," ~ variable ~ "," ~ value ~ "," ~ value <~ ")"   ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
+    "integral(" ~> expr ~ "," ~ variable <~ ")"                                ^^ { case e ~ _ ~ v             => _Integral(e, v)              }
 
-  def value:    Parser[_Value]     = number | variable
-  def number:   Parser[_Number]    = (floatingPointNumber | decimalNumber | wholeNumber) ^^ { s => _Number(s.toDouble) }
-  def variable: Parser[_Variable]  = """[a-zA-Z]""".r ^^ { s => _Variable(s) }
+  def value:    Parser[_Value]    = number | variable
+  def number:   Parser[_Number]   = (floatingPointNumber | decimalNumber | wholeNumber) ^^ { s => _Number(s.toDouble) }
+  def variable: Parser[_Variable] = """[a-zA-Z]""".r ^^ { s => _Variable(s) }
 
   def parse(str: String): ParseResult[_Expression] = parseAll(expr, str)

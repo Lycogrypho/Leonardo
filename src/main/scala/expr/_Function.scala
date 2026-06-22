@@ -5,11 +5,13 @@ import parser.Environment
 import scala.math.{exp, log, sin, cos, tan}
 
 
+// Base class for unary mathematical functions. Intended to be extended with a derive()
+// method when symbolic differentiation is implemented.
 abstract class _Function extends _Expression
 
 
 case class Exp(e: _Expression) extends _Function:
-  override def toString: String = f"exp($e)"
+  override def toString: String = s"exp($e)"
 
   override def eval(env: Environment): Either[_Expression, Double] =
     e.eval(env) match
@@ -18,7 +20,7 @@ case class Exp(e: _Expression) extends _Function:
 
 
 case class Log(e: _Expression) extends _Function:
-  override def toString: String = f"log($e)"
+  override def toString: String = s"log($e)"
 
   override def eval(env: Environment): Either[_Expression, Double] =
     e.eval(env) match
@@ -27,7 +29,7 @@ case class Log(e: _Expression) extends _Function:
 
 
 case class Sin(e: _Expression) extends _Function:
-  override def toString: String = f"sin($e)"
+  override def toString: String = s"sin($e)"
 
   override def eval(env: Environment): Either[_Expression, Double] =
     e.eval(env) match
@@ -36,7 +38,7 @@ case class Sin(e: _Expression) extends _Function:
 
 
 case class Cos(e: _Expression) extends _Function:
-  override def toString: String = f"cos($e)"
+  override def toString: String = s"cos($e)"
 
   override def eval(env: Environment): Either[_Expression, Double] =
     e.eval(env) match
@@ -45,7 +47,7 @@ case class Cos(e: _Expression) extends _Function:
 
 
 case class Tg(e: _Expression) extends _Function:
-  override def toString: String = f"tg($e)"
+  override def toString: String = s"tg($e)"
 
   override def eval(env: Environment): Either[_Expression, Double] =
     e.eval(env) match

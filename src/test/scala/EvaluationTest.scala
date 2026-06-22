@@ -1,6 +1,6 @@
 package it.grypho.scala.leonardo
 
-import it.grypho.scala.leonardo.parser.Environment
+import parser.Environment
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.BeforeAndAfter
 
@@ -10,9 +10,11 @@ import expr._
 class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
   implicit val env: Environment = new Environment()
 
+  before { env.reset() }
+
   val x_var = _Variable("x")
 
-  val evaluationTests = List(
+  val evaluationTests: List[(_Expression, Any)] = List(
     (_Number(10),                                   10.0                       : Any),
     (_Number(3.1234567890),                         3.12346                    : Any),
     (Sum(_Number(2), _Number(3)),                   5.0                        : Any),

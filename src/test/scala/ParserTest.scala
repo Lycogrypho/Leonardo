@@ -1,16 +1,19 @@
 package it.grypho.scala.leonardo
 
-import it.grypho.scala.leonardo.parser.{Environment, Parser}
+import parser.Parser
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.BeforeAndAfter
 
 import expr._
 
 
-class ParserTest extends AnyFlatSpec with BeforeAndAfter:
-  val parser = new Parser
+class ParserTest extends AnyFlatSpec:
 
-  val expressionStrings = List(
+  def parse(input: String): _Expression =
+    val result = Parser.parse(input)
+    assert(result.successful, s"parse failed for \"$input\": $result")
+    result.get
+
+  val expressionStrings: List[(String, String, _Expression)] = List(
     ("1",                  """1.0""",                         _Number(1)),
     ("1 + 2",              """(1.0 + 2.0)""",                 Sum(_Number(1), _Number(2))),
     ("(1 + 9.2)",          """(1.0 + 9.2)""",                 Sum(_Number(1), _Number(9.2))),
@@ -34,7 +37,7 @@ class ParserTest extends AnyFlatSpec with BeforeAndAfter:
   for s <- expressionStrings do
     s"Expression ${s._1} in the expression list " should s"be parsed as ${s._3}" in
     {
-      assert(parser.parse(s._1).get == s._3)
+      assert(parse(s._1) == s._3)
     }
 
   for s <- expressionStrings do
