@@ -11,7 +11,8 @@ import expr._
  * Grammar:
  *   expr       ::= ["+" | "-"] simpleExpr
  *   simpleExpr ::= term (("+"|"-") term)*
- *   term       ::= factor (("*"|"/"|"") factor)*    -- "" enables implicit multiplication
+ *   term       ::= power (("*"|"/"|"") power)*      -- "" enables implicit multiplication
+ *   power      ::= factor ["^" power]               -- right-associative; binds tighter than * /
  *   factor     ::= function | functional | value | "(" expr ")"
  *   function   ::= "exp(" expr ")" | "log(" expr ")" | "sin(" expr ")"
  *                | "cos(" expr ")" | "tg(" expr ")"
@@ -40,7 +41,7 @@ object Parser extends JavaTokenParsers:
         }
     }
 
-  def term: Parser[_Expression] = factor ~ rep(("*" | "/" | "") ~ factor) ^^
+  def term: Parser[_Expression] = power ~ rep(("*" | "/" | "") ~ power) ^^
     {
       case left ~ rights => rights.foldLeft(left)
         {
@@ -48,6 +49,14 @@ object Parser extends JavaTokenParsers:
           case (x, "/" ~ y) => Ratio(x, y)
           case (x, ""  ~ y) => Product(x, y)
         }
+    }
+
+  // Right-associative exponentiation: 2 ^ 3 ^ 2 parses as 2 ^ (3 ^ 2).
+  // Binds tighter than * and /; use parentheses for a compound base or exponent.
+  def power: Parser[_Expression] = factor ~ opt("^" ~> power) ^^
+    {
+      case b ~ Some(e) => Power(b, e)
+      case b ~ None    => b
     }
 
   def factor: Parser[_Expression] = function | functional | value | "(" ~> expr <~ ")"

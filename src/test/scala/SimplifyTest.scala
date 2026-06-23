@@ -1,0 +1,175 @@
+package it.grypho.scala.leonardo
+
+import parser.Environment
+import org.scalatest.flatspec.AnyFlatSpec
+
+import expr._
+
+
+class SimplifyTest extends AnyFlatSpec:
+
+  val x = _Variable("x")
+  val y = _Variable("y")
+
+  def envWith(bindings: (String, Double)*): Environment =
+    val e = new Environment()
+    bindings.foreach((name, v) => e.assign(name, _Number(v)))
+    e
+
+  // --- identity / absorbing element rules ---
+
+  "simplify(x + 0)" should "equal x" in
+  {
+    assert(Sum(x, _Number(0)).simplify() == x)
+  }
+
+  "simplify(0 + x)" should "equal x" in
+  {
+    assert(Sum(_Number(0), x).simplify() == x)
+  }
+
+  "simplify(x * 1)" should "equal x" in
+  {
+    assert(Product(x, _Number(1)).simplify() == x)
+  }
+
+  "simplify(1 * x)" should "equal x" in
+  {
+    assert(Product(_Number(1), x).simplify() == x)
+  }
+
+  "simplify(x * 0)" should "equal 0" in
+  {
+    assert(Product(x, _Number(0)).simplify() == _Number(0))
+  }
+
+  "simplify(0 * x)" should "equal 0" in
+  {
+    assert(Product(_Number(0), x).simplify() == _Number(0))
+  }
+
+  "simplify(x / 1)" should "equal x" in
+  {
+    assert(Ratio(x, _Number(1)).simplify() == x)
+  }
+
+  "simplify(0 / x)" should "equal 0" in
+  {
+    assert(Ratio(_Number(0), x).simplify() == _Number(0))
+  }
+
+  "simplify(x ^ 0)" should "equal 1" in
+  {
+    assert(Power(x, _Number(0)).simplify() == _Number(1))
+  }
+
+  "simplify(x ^ 1)" should "equal x" in
+  {
+    assert(Power(x, _Number(1)).simplify() == x)
+  }
+
+  "simplify(1 ^ x)" should "equal 1" in
+  {
+    assert(Power(_Number(1), x).simplify() == _Number(1))
+  }
+
+  // --- constant folding ---
+
+  "simplify(2 + 3)" should "equal 5" in
+  {
+    assert(Sum(_Number(2), _Number(3)).simplify() == _Number(5))
+  }
+
+  "simplify(2 * 3)" should "equal 6" in
+  {
+    assert(Product(_Number(2), _Number(3)).simplify() == _Number(6))
+  }
+
+  "simplify(9 / 3)" should "equal 3" in
+  {
+    assert(Ratio(_Number(9), _Number(3)).simplify() == _Number(3))
+  }
+
+  "simplify(2 ^ 3)" should "equal 8" in
+  {
+    assert(Power(_Number(2), _Number(3)).simplify() == _Number(8))
+  }
+
+  // --- same-operand rules ---
+
+  "simplify(x + x)" should "equal 2*x" in
+  {
+    assert(Sum(x, x).simplify() == Product(_Number(2), x))
+  }
+
+  "simplify(x * x)" should "equal x^2" in
+  {
+    assert(Product(x, x).simplify() == Power(x, _Number(2)))
+  }
+
+  "simplify(x / x)" should "equal 1" in
+  {
+    assert(Ratio(x, x).simplify() == _Number(1))
+  }
+
+  // --- double negation ---
+
+  "simplify(-(-x))" should "equal x" in
+  {
+    assert(Product(_Number(-1), Product(_Number(-1), x)).simplify() == x)
+  }
+
+  // --- inverse function pairs ---
+
+  "simplify(log(exp(x)))" should "equal x" in
+  {
+    assert(Log(Exp(x)).simplify() == x)
+  }
+
+  "simplify(exp(log(x)))" should "equal x" in
+  {
+    assert(Exp(Log(x)).simplify() == x)
+  }
+
+  // --- known function values ---
+
+  "simplify(exp(0))" should "equal 1" in
+  {
+    assert(Exp(_Number(0)).simplify() == _Number(1))
+  }
+
+  "simplify(log(1))" should "equal 0" in
+  {
+    assert(Log(_Number(1)).simplify() == _Number(0))
+  }
+
+  "simplify(sin(0))" should "equal 0" in
+  {
+    assert(Sin(_Number(0)).simplify() == _Number(0))
+  }
+
+  "simplify(cos(0))" should "equal 1" in
+  {
+    assert(Cos(_Number(0)).simplify() == _Number(1))
+  }
+
+  // --- recursive descent ---
+
+  "simplify applied to nested expression ((x*0)+1)*x" should "equal x" in
+  {
+    // ((x*0) + 1) * x  →  (0 + 1) * x  →  1 * x  →  x
+    val expr = Product(Sum(Product(x, _Number(0)), _Number(1)), x)
+    assert(expr.simplify() == x)
+  }
+
+  // --- numeric correctness after simplification ---
+
+  "simplify of (sin(x)^2 + cos(x)^2) at x=1" should "evaluate to 1" in
+  {
+    val e = new Environment()
+    e.assign("x", _Number(1))
+    val identity = Sum(Power(Sin(x), _Number(2)), Power(Cos(x), _Number(2)))
+    identity.simplify().eval(e) match
+      case Right(v) => assert(math.abs(v - 1.0) < 1e-4)
+      case Left(s)  => fail(s"expected numeric but got symbolic: $s")
+  }

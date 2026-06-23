@@ -1,101 +1,133 @@
 package it.grypho.scala.leonardo
 
-import it.grypho.scala.leonardo.expr._ //{Number, Variable, Power, Product}
-//import it.grypho.scala.leonardo.linalg.DenseMatrix
-import it.grypho.scala.leonardo.parser.Parser
-
-import org.scalatest.BeforeAndAfter
+import parser.{Environment, Parser}
 import org.scalatest.flatspec.AnyFlatSpec
 
-/*
-class DerivativeTest extends AnyFlatSpec with BeforeAndAfter
-{
-  val derVar = Variable("a")
-
-  val matrixA = new DenseMatrix( List(
-    List(new Variable("a"), new Number(1)),
-    List(new Number(2), new Variable("b"))
-  )
-  )
-  val matrixAderived = new DenseMatrix(List(
-    List(new Number(1), new Number(0)),
-    List(new Number(0), new Number(0))
-  )
-  )
-  val exprB = derVar * Number(3)
-  val exprC = Power(derVar, Number(2)) * Number(6)
-  val exprD = Power(derVar, Number(3)) * Number(2)
-  val exprE = Power(derVar, Number(2)) * Variable("b") * Number(5)
-  val exprF = derVar * Variable("b") * Number(10)
-
-  "derivative of a Number " should "be zero" in
-    {
-      assert (Number(3.0).derive(derVar) == Number(0))
-    }
-
-  "derivative of a Variaable in respect to another one " should "be zero" in
-    {
-      assert(Variable("d").derive(derVar) == Number(0))
-    }
-
-  "derivative of a first order polynomial " should "be a number" in
-    {
-      assert(exprB.derive(derVar).eval() == Number(3))
-    }
-
-  "derivative of a third order polynomial " should "be a second order polynomial" in
-    {
-      assert(exprD.derive(derVar).eval() == exprC.eval())
-    }
-
-  "derivative of polynomial (a^2 * b)" should "be (2 * a * b)" in
-    {
-      assert((Number(1) * derVar * derVar * Variable("b") ).derive(derVar).eval() == (derVar * Variable("b") * Number(2)).eval())
-    }
-
-  it should "be the same even if expressed through Powers" in
-    {
-      assert((Power(derVar, Number(2)) * Variable("b")).derive(derVar).eval() == (derVar * Variable("b") * Number(2)).eval() )
-    }
-
-  "derivative of polynomial (a^2 * b * c)" should "be (2 * a * b * c)" in
-    {
-      assert((Number(1) * Power(derVar, Number(2)) * Variable("b") * Variable("c")).derive(derVar).eval() == (derVar * Variable("b") * Number(2) * Variable("c")).eval())
-    }
-
-  it should "also when expressed via Product() instead of *" in
-    {
-      assert(Product(Number(1), Power(derVar, Number(2)), Variable("b"), Variable("c")).eval().derive(derVar).eval() == (derVar * Variable("b") * Number(2) * Variable("c")).eval() )
-    }
+import expr._
 
 
-  "derivative of polynomial (5 * a^2 * 3)" should "be (30 * a)" in
-    {
-      assert((Number(5) * Power(Variable("a"), Number(2)) * Number(3.0)).derive(derVar).eval() == (Number(30)*Variable("a")).eval())
-    }
+class DerivativeTest extends AnyFlatSpec:
 
+  def envWith(bindings: (String, Double)*): Environment =
+    val e = new Environment()
+    bindings.foreach((name, value) => e.assign(name, _Number(value)))
+    e
 
-  "derivative of polynomial ((6 * a^2) * b)" should "be (12 * a * b)" in
-    {
-      assert((exprC * Variable("b")).derive(derVar).eval() == (Variable("a")*Variable("b")*Number(12)).eval())
-    }
+  def evalNum(expr: _Expression, bindings: (String, Double)*): Double =
+    expr.eval(envWith(bindings*)) match
+      case Right(x) => x
+      case Left(s)  => fail(s"expected numeric result but got symbolic: $s")
 
-  "derivative of polynomial ((6 * b) * a^2)" should "be (12 * a * b)" in
-    {
-      assert(((Number(6) * Variable("b")) * Power(Variable("a"), Number(2))).derive(derVar).eval() == (Variable("a") * Variable("b") * Number(12)).eval())
-    }
+  val x = _Variable("x")
+  val y = _Variable("y")
 
+  // --- constants and variables ---
 
-  "derivative of polynomial (5 * a^2 * b)" should "be (10 * a * b)" in
-    {
-      assert(exprE.derive(derVar).eval() == exprF.eval())
-    }
+  "derivative of a constant" should "be 0" in
+  {
+    assert(evalNum(_Derivative(_Number(3), x)) == 0.0)
+  }
 
-  "Derivative of a Matrix" should "be the matrix of derivatives" in
-    {
-      assert(matrixA.derive(derVar).eval() == matrixAderived)
+  "derivative of x w.r.t. x" should "be 1" in
+  {
+    assert(evalNum(_Derivative(x, x)) == 1.0)
+  }
 
-    }
+  "derivative of y w.r.t. x" should "be 0" in
+  {
+    assert(evalNum(_Derivative(y, x)) == 0.0)
+  }
 
+  // --- polynomial rules ---
 
-}*/
+  // d/dx(3x) = 3
+  "derivative of 3x" should "be 3" in
+  {
+    assert(evalNum(_Derivative(Product(_Number(3), x), x)) == 3.0)
+  }
+
+  // d/dx(x² + 2x) at x=1 → 2 + 2 = 4
+  "derivative of x² + 2x at x=1" should "be 4.0" in
+  {
+    val expr = _Derivative(Sum(Power(x, _Number(2)), Product(_Number(2), x)), x)
+    assert(math.abs(evalNum(expr, "x" -> 1.0) - 4.0) < 1e-4)
+  }
+
+  // d/dx(x³) at x=2 → 3*4 = 12
+  "derivative of x³ at x=2" should "be 12.0" in
+  {
+    val expr = _Derivative(Power(x, _Number(3)), x)
+    assert(math.abs(evalNum(expr, "x" -> 2.0) - 12.0) < 1e-4)
+  }
+
+  // --- product and quotient rules ---
+
+  // d/dx(x * sin(x)) = sin(x) + x*cos(x), at x=0 → 0
+  "derivative of x·sin(x) at x=0" should "be 0.0" in
+  {
+    val expr = _Derivative(Product(x, Sin(x)), x)
+    assert(math.abs(evalNum(expr, "x" -> 0.0) - 0.0) < 1e-5)
+  }
+
+  // d/dx(1/x) = -1/x², at x=2 → -0.25
+  "derivative of 1/x at x=2" should "be -0.25" in
+  {
+    val expr = _Derivative(Ratio(_Number(1), x), x)
+    assert(math.abs(evalNum(expr, "x" -> 2.0) - (-0.25)) < 1e-4)
+  }
+
+  // --- transcendental functions ---
+
+  // d/dx(sin(x)) = cos(x), at x=0 → 1
+  "derivative of sin(x) at x=0" should "be 1.0" in
+  {
+    val expr = _Derivative(Sin(x), x)
+    assert(math.abs(evalNum(expr, "x" -> 0.0) - 1.0) < 1e-5)
+  }
+
+  // d/dx(cos(x)) = -sin(x), at x=π/2 → -1
+  "derivative of cos(x) at x=π/2" should "be -1.0" in
+  {
+    val expr = _Derivative(Cos(x), x)
+    assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) - (-1.0)) < 1e-4)
+  }
+
+  // d/dx(exp(x)) = exp(x), at x=0 → 1
+  "derivative of exp(x) at x=0" should "be 1.0" in
+  {
+    val expr = _Derivative(Exp(x), x)
+    assert(math.abs(evalNum(expr, "x" -> 0.0) - 1.0) < 1e-5)
+  }
+
+  // d/dx(log(x)) = 1/x, at x=1 → 1
+  "derivative of log(x) at x=1" should "be 1.0" in
+  {
+    val expr = _Derivative(Log(x), x)
+    assert(math.abs(evalNum(expr, "x" -> 1.0) - 1.0) < 1e-4)
+  }
+
+  // --- chain rule ---
+
+  // d/dx(sin(x²)) = 2x·cos(x²), at x=0 → 0
+  "derivative of sin(x²) at x=0" should "be 0.0" in
+  {
+    val expr = _Derivative(Sin(Power(x, _Number(2))), x)
+    assert(math.abs(evalNum(expr, "x" -> 0.0) - 0.0) < 1e-5)
+  }
+
+  // d/dx(exp(2x)) = 2·exp(2x), at x=0 → 2
+  "derivative of exp(2x) at x=0" should "be 2.0" in
+  {
+    val expr = _Derivative(Exp(Product(_Number(2), x)), x)
+    assert(math.abs(evalNum(expr, "x" -> 0.0) - 2.0) < 1e-4)
+  }
+
+  // --- parse + derive round-trip ---
+
+  "parse+derive of \"x * x\" w.r.t. x at x=3" should "equal 6.0" in
+  {
+    val result = Parser.parse("x * x")
+    assert(result.successful, s"parse failed: $result")
+    val expr = _Derivative(result.get, x)
+    assert(math.abs(evalNum(expr, "x" -> 3.0) - 6.0) < 1e-4)
+  }

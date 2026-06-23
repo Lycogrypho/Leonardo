@@ -3,7 +3,7 @@
   <component name="DisplayModuleName">
     <option name="name" value="Leonardo" />
   </component>
-  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_26" inherit-compiler-output="true">
+  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_21" inherit-compiler-output="true">
     <exclude-output />
     <content url="file://$MODULE_DIR$/../..">
       <excludeFolder url="file://$MODULE_DIR$/../../target" />

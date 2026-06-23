@@ -21,3 +21,9 @@ class Environment(val precision: Int = _Number.DefaultPrecision):
 
   def reset(): Unit =
     variables = Map()
+
+  def withBinding(variable: String, value: _Number): Environment =
+    val copy = new Environment(precision)
+    variables.foreach((k, v) => copy.assign(k, v))
+    copy.assign(variable, value)
+    copy

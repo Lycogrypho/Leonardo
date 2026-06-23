@@ -4,7 +4,7 @@
 
 Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). The name is an homage to [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), commonly known as Fibonacci, the Italian mathematician who introduced Arabic numerals and mathematical notation to the Western world.
 
-This project is loosely inspired by the Scala project "Galileo," though the codebase has been completely rewritten from scratch.
+This project is loosely inspired by the Scala project [Cascala/Galileo]([https://github.com/cascala/galileo|), though the codebase has been completely rewritten from scratch.
 
 ## Overview
 

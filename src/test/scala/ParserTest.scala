@@ -26,12 +26,16 @@ class ParserTest extends AnyFlatSpec:
     ("exp(cos(a))",        """exp(cos(a))""",                 Exp(Cos(_Variable("a")))),
     ("3a",                 """(3.0 * a)""",                   Product(_Number(3.0), _Variable("a"))),
     ("3sin(a)",            """(3.0 * sin(a))""",              Product(_Number(3.0), Sin(_Variable("a")))),
-    ("derive(cos(3x), x)", """deriv(cos((3.0 * x)) in x)""", _Derivative(Cos(Product(_Number(3.0), _Variable("x"))), _Variable("x"))),
+    ("derive(cos(3x), x)", """derive(cos((3.0 * x)), x)""",   _Derivative(Cos(Product(_Number(3.0), _Variable("x"))), _Variable("x"))),
     ("-2",                 """(-1.0 * 2.0)""",                Product(_Number(-1), _Number(2))),
     ("+3sin(-a)",          """(3.0 * sin((-1.0 * a)))""",     Product(_Number(3), Sin(Product(_Number(-1), _Variable("a"))))),
     ("-3k",                """(-1.0 * (3.0 * k))""",          Product(_Number(-1), Product(_Number(3.0), _Variable("k")))),
     ("sin(a)cos(b)",       """(sin(a) * cos(b))""",           Product(Sin(_Variable("a")), Cos(_Variable("b")))),
-    ("pow(2, 10)",         """(2.0 ^ 10.0)""",               Power(_Number(2), _Number(10)))
+    ("pow(2, 10)",         """(2.0 ^ 10.0)""",               Power(_Number(2), _Number(10))),
+    ("2 ^ 10",             """(2.0 ^ 10.0)""",               Power(_Number(2), _Number(10))),
+    ("2 ^ 3 ^ 2",          """(2.0 ^ (3.0 ^ 2.0))""",        Power(_Number(2), Power(_Number(3), _Number(2)))),
+    ("2 ^ 3 * 4",          """((2.0 ^ 3.0) * 4.0)""",        Product(Power(_Number(2), _Number(3)), _Number(4))),
+    ("3x^2",               """(3.0 * (x ^ 2.0))""",          Product(_Number(3), Power(_Variable("x"), _Number(2))))
   )
 
   for s <- expressionStrings do
