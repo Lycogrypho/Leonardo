@@ -1,7 +1,7 @@
 package it.grypho.scala.leonardo
-package expr
+package scalar
 
-import parser.Environment
+import core.*
 import scala.math.{exp, log, sin, cos, tan}
 
 

@@ -1,5 +1,7 @@
 package it.grypho.scala.leonardo
-package expr
+package scalar
+
+import core.*
 
 
 def dependsOn(e: _Expression, v: _Variable): Boolean = e match

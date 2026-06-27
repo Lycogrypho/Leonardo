@@ -1,6 +1,7 @@
 package it.grypho.scala.leonardo
-package expr
+package scalar
 
+import core.*
 import scala.math.pow
 
 

@@ -1,10 +1,9 @@
 package it.grypho.scala.leonardo
 
-import parser.Environment
+import core.*
+import scalar.*
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.BeforeAndAfter
-
-import expr._
 
 
 class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:

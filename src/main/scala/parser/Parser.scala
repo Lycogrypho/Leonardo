@@ -2,7 +2,8 @@ package it.grypho.scala.leonardo
 package parser
 
 import scala.util.parsing.combinator.JavaTokenParsers
-import expr._
+import core.*
+import scalar.*
 
 
 /**

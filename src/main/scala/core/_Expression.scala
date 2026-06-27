@@ -1,18 +1,21 @@
 package it.grypho.scala.leonardo
-package expr
-
-import parser.Environment
+package core
 
 
+// Foundation of every expression tree, shared across all domains (scalar algebra,
+// linear algebra, logic, …). It knows only how to evaluate itself; domain-specific
+// operations (simplify, derive, …) are added as extension methods in each domain
+// package so that core depends on nothing downstream.
 trait _Expression:
   // eval reduces an expression under an environment. Right holds a fully-reduced
   // concrete value (_Value: a number now, a matrix/boolean/… later); Left holds an
   // expression that could not be fully reduced and stays symbolic.
   def eval(env: Environment): Either[_Expression, _Value]
-  def simplify(): _Expression                  = it.grypho.scala.leonardo.expr.simplify(this)
-  def expand(): _Expression                    = it.grypho.scala.leonardo.expr.expand(this)
-  def derive(v: _Variable): _Expression        = it.grypho.scala.leonardo.expr.derive(this, v)
-  def dependsOn(v: _Variable): Boolean         = it.grypho.scala.leonardo.expr.dependsOn(this, v)
+
+
+// A fully-reduced, concrete result of evaluation: a number now, later a matrix,
+// boolean, truth value, … Distinct from a symbolic atom such as a free variable.
+trait _Value extends _Expression
 
 
 // Collapse an eval result back to a plain expression. Both branches are already

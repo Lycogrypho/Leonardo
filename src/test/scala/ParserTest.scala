@@ -1,9 +1,9 @@
 package it.grypho.scala.leonardo
 
+import core.*
+import scalar.*
 import parser.Parser
 import org.scalatest.flatspec.AnyFlatSpec
-
-import expr._
 
 
 class ParserTest extends AnyFlatSpec:

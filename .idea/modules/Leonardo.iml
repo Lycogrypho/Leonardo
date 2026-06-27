@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<module external.linked.project.id="root [file:///C:/Users/Mimmo/IdeaProjects/Leonardo/]" external.linked.project.path="C:\Users\Mimmo\IdeaProjects\Leonardo" external.root.project.path="$MODULE_DIR$/../.." external.system.id="SBT" type="JAVA_MODULE" version="4">
+<module external.linked.project.id="root [file:///C:/_MiM/Documents/Mimmo/Workspace/IdeaProjects/Leonardo/]" external.linked.project.path="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo" external.root.project.path="$MODULE_DIR$/../.." external.system.id="SBT" type="JAVA_MODULE" version="4">
   <component name="DisplayModuleName">
     <option name="name" value="Leonardo" />
   </component>
-  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_21" inherit-compiler-output="true">
+  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_19" inherit-compiler-output="true">
     <exclude-output />
     <content url="file://$MODULE_DIR$/../..">
       <excludeFolder url="file://$MODULE_DIR$/../../target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="Leonardo.main" />
-    <orderEntry type="module" module-name="Leonardo.test" production-on-test="" />
+    <orderEntry type="module" module-name="Leonardo.main~1" />
+    <orderEntry type="module" module-name="Leonardo.test~1" production-on-test="" />
   </component>
 </module>
