@@ -4,8 +4,6 @@ package expr
 import parser.Environment
 
 
-// Base class for binary operations. Intended to be extended with a derive() method
-// when symbolic differentiation is implemented.
 abstract class _Operation(a: _Expression, b: _Expression) extends _Expression
 
 

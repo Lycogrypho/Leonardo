@@ -5,8 +5,6 @@ import parser.Environment
 import scala.math.{exp, log, sin, cos, tan}
 
 
-// Base class for unary mathematical functions. Intended to be extended with a derive()
-// method when symbolic differentiation is implemented.
 abstract class _Function extends _Expression
 
 

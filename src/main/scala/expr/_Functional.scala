@@ -25,7 +25,7 @@ private def dpow(a: _Expression, b: _Expression): _Expression = b match
   case _            => Power(a, b)
 
 
-private def derive(e: _Expression, v: _Variable): _Expression = e match
+def derive(e: _Expression, v: _Variable): _Expression = e match
   case _Number(_)           => _Number(0)
   case x: _Variable         => if x.variable == v.variable then _Number(1) else _Number(0)
   case Sum(a, b)            => dadd(derive(a, v), derive(b, v))
@@ -56,7 +56,7 @@ case class _Derivative(e: _Expression, v: _Variable) extends _Functional:
   override def toString: String = s"derive($e, $v)"
 
   override def eval(env: Environment): Either[_Expression, Double] =
-    derive(e, v).eval(env)
+    it.grypho.scala.leonardo.expr.derive(e, v).eval(env)
 
 
 case class _Integral(e: _Expression, v: _Variable) extends _Functional:
