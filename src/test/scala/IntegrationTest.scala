@@ -13,8 +13,8 @@ class IntegrationTest extends AnyFlatSpec:
 
   def evalDefInt(integrand: _Expression, v: _Variable, a: Double, b: Double): Double =
     _DefIntegral(integrand, v, _Number(a), _Number(b)).eval(env) match
-      case Right(y) => y
-      case Left(s)  => fail(s"expected numeric result but got symbolic: $s")
+      case Right(_Number(y)) => y
+      case other             => fail(s"expected a numeric result but got: $other")
 
   "∫1 dx from 0 to 5" should "equal 5.0" in
   {
@@ -71,6 +71,6 @@ class IntegrationTest extends AnyFlatSpec:
     val result = Parser.parse("integral(x, x, 0, 1)")
     assert(result.successful, s"parse failed: $result")
     result.get.eval(env) match
-      case Right(y) => assert(math.abs(y - 0.5) < 1e-4)
-      case Left(s)  => fail(s"expected numeric but got symbolic: $s")
+      case Right(_Number(y)) => assert(math.abs(y - 0.5) < 1e-4)
+      case other             => fail(s"expected a numeric result but got: $other")
   }

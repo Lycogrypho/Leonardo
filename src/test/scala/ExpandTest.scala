@@ -19,8 +19,8 @@ class ExpandTest extends AnyFlatSpec:
 
   def evalNum(expr: _Expression, bindings: (String, Double)*): Double =
     expr.eval(envWith(bindings*)) match
-      case Right(v) => v
-      case Left(s)  => fail(s"expected numeric but got symbolic: $s")
+      case Right(_Number(v)) => v
+      case other             => fail(s"expected a numeric result but got: $other")
 
   // --- distribution ---
 

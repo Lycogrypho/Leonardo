@@ -31,7 +31,7 @@ class RoundTripTest extends AnyFlatSpec:
     assert(result.successful, s"parse failed for \"$input\": $result")
     result.get
 
-  def evalUnder(ast: _Expression, bindings: Seq[(String, Double)]): Either[_Expression, Double] =
+  def evalUnder(ast: _Expression, bindings: Seq[(String, Double)]): Either[_Expression, _Value] =
     val e = new Environment()
     bindings.foreach((name, value) => e.assign(name, _Number(value)))
     ast.eval(e)
@@ -44,7 +44,7 @@ class RoundTripTest extends AnyFlatSpec:
     assert(pr.successful, s"toString output did not re-parse: \"$printed\" ($pr)")
     val ast2 = pr.get
     (evalUnder(ast1, bindings), evalUnder(ast2, bindings)) match
-      case (Right(a), Right(b)) =>
+      case (Right(_Number(a)), Right(_Number(b))) =>
         assert(math.abs(a - b) < 1e-6,
           s"round-trip changed value of \"$input\" -> \"$printed\": $a vs $b")
       case (Left(a), Left(b)) =>

@@ -35,8 +35,8 @@ class ParseEvalTest extends AnyFlatSpec:
     s"parse+eval of \"$input\"" should s"equal $expected" in
     {
       parse(input).eval(env) match
-        case Right(x)  => assert(x == expected, s"got $x, expected $expected")
-        case Left(sym) => fail(s"expected numeric result but got symbolic: $sym")
+        case Right(_Number(x)) => assert(x == expected, s"got $x, expected $expected")
+        case other             => fail(s"expected a numeric result but got: $other")
     }
 
   "parse+eval of \"3a\" with a = 2" should "equal 6.0" in
@@ -44,8 +44,8 @@ class ParseEvalTest extends AnyFlatSpec:
     val e = env
     _Variable("a").set(_Number(2))(e)
     parse("3a").eval(e) match
-      case Right(x)  => assert(x == 6.0)
-      case Left(sym) => fail(s"expected 6.0 but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x == 6.0)
+      case other             => fail(s"expected 6.0 but got: $other")
   }
 
   "parse+eval of \"sin(a) + cos(a)\" with a unbound" should "remain symbolic" in
@@ -60,8 +60,8 @@ class ParseEvalTest extends AnyFlatSpec:
     val e = env
     _Variable("a").set(_Number(0))(e)
     parse("sin(a) + cos(a)").eval(e) match
-      case Right(x)  => assert(x == 1.0)
-      case Left(sym) => fail(s"expected 1.0 but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x == 1.0)
+      case other             => fail(s"expected 1.0 but got: $other")
   }
 
   "parse+eval of an expression with two references to the same variable" should "use the same binding" in
@@ -69,6 +69,6 @@ class ParseEvalTest extends AnyFlatSpec:
     val e = env
     _Variable("x").set(_Number(5))(e)
     parse("x + x").eval(e) match
-      case Right(x)  => assert(x == 10.0)
-      case Left(sym) => fail(s"expected 10.0 but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x == 10.0)
+      case other             => fail(s"expected 10.0 but got: $other")
   }

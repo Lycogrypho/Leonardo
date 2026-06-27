@@ -10,31 +10,25 @@ abstract class _Operation(a: _Expression, b: _Expression) extends _Expression
 case class Sum(a: _Expression, b: _Expression) extends _Operation(a, b):
   override def toString: String = s"($a + $b)"
 
-  override def eval(env: Environment): Either[_Expression, Double] =
+  override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
-      case (Right(x), Right(y)) => _Number(x + y).eval(env)
-      case (Right(x), Left(y))  => Left(Sum(_Number(x), y))
-      case (Left(x),  Right(y)) => Left(Sum(x, _Number(y)))
-      case (Left(x),  Left(y))  => Left(Sum(x, y))
+      case (Right(_Number(x)), Right(_Number(y))) => _Number(x + y).eval(env)
+      case (ra, rb)                               => Left(Sum(ra.toExpression, rb.toExpression))
 
 
 case class Product(a: _Expression, b: _Expression) extends _Operation(a, b):
   override def toString: String = s"($a * $b)"
 
-  override def eval(env: Environment): Either[_Expression, Double] =
+  override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
-      case (Right(x), Right(y)) => _Number(x * y).eval(env)
-      case (Right(x), Left(y))  => Left(Product(_Number(x), y))
-      case (Left(x),  Right(y)) => Left(Product(x, _Number(y)))
-      case (Left(x),  Left(y))  => Left(Product(x, y))
+      case (Right(_Number(x)), Right(_Number(y))) => _Number(x * y).eval(env)
+      case (ra, rb)                               => Left(Product(ra.toExpression, rb.toExpression))
 
 
 case class Ratio(a: _Expression, b: _Expression) extends _Operation(a, b):
   override def toString: String = s"($a / $b)"
 
-  override def eval(env: Environment): Either[_Expression, Double] =
+  override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
-      case (Right(x), Right(y)) => _Number(x / y).eval(env)
-      case (Right(x), Left(y))  => Left(Ratio(_Number(x), y))
-      case (Left(x),  Right(y)) => Left(Ratio(x, _Number(y)))
-      case (Left(x),  Left(y))  => Left(Ratio(x, y))
+      case (Right(_Number(x)), Right(_Number(y))) => _Number(x / y).eval(env)
+      case (ra, rb)                               => Left(Ratio(ra.toExpression, rb.toExpression))

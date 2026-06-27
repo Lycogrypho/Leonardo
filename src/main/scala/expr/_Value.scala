@@ -21,18 +21,18 @@ object _Number:
       else (d * factor).round.toDouble / factor
 
 case class _Number(d: Double) extends _Value:
-  val value: Double = _Number.round(d, _Number.DefaultPrecision)
+  override def toString: String = _Number.round(d, _Number.DefaultPrecision).toString
 
-  override def toString: String = value.toString
-
-  override def eval(env: Environment): Either[_Expression, Double] =
-    Right(_Number.round(d, env.precision))
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    Right(_Number(_Number.round(d, env.precision)))
 
 
-case class _Variable(variable: String) extends _Value:
+// A free variable is a symbolic atom, not a concrete value, so it is not a _Value:
+// eval yields a value (Right) only once the variable is bound to one.
+case class _Variable(variable: String) extends _Expression:
   override def toString: String = variable
 
-  override def eval(env: Environment): Either[_Expression, Double] =
+  override def eval(env: Environment): Either[_Expression, _Value] =
     env.get(variable) match
       case Some(n) => n.eval(env)
       case None    => Left(this)

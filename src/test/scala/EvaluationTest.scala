@@ -14,17 +14,19 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
 
   val x_var = _Variable("x")
 
-  val evaluationTests: List[(_Expression, Any)] = List(
-    (_Number(10),                                   10.0                       : Any),
-    (_Number(3.1234567890),                         3.12346                    : Any),
-    (Sum(_Number(2), _Number(3)),                   5.0                        : Any),
-    (Product(_Number(7.0), _Number(3.1)),           21.7                       : Any),
-    (Ratio(_Number(1), _Number(4)),                 0.25                       : Any),
-    (Sum(_Number(1), Sum(_Number(4), _Number(5))),  10.0                       : Any),
-    (Ratio(Product(_Number(3), _Number(8)), _Number(4)), 6.0                   : Any),
-    (Sin(_Number(scala.math.Pi / 2)),               1.0                        : Any),
-    (x_var,                                         x_var                      : Any),
-    (Sum(Sum(_Number(1), _Number(4)), x_var),       Sum(_Number(5), x_var)     : Any)
+  // Expected result is an _Expression: a _Number for rows that reduce to a value
+  // (matched on the Right branch), a symbolic expression for rows that stay symbolic.
+  val evaluationTests: List[(_Expression, _Expression)] = List(
+    (_Number(10),                                   _Number(10.0)),
+    (_Number(3.1234567890),                         _Number(3.12346)),
+    (Sum(_Number(2), _Number(3)),                   _Number(5.0)),
+    (Product(_Number(7.0), _Number(3.1)),           _Number(21.7)),
+    (Ratio(_Number(1), _Number(4)),                 _Number(0.25)),
+    (Sum(_Number(1), Sum(_Number(4), _Number(5))),  _Number(10.0)),
+    (Ratio(Product(_Number(3), _Number(8)), _Number(4)), _Number(6.0)),
+    (Sin(_Number(scala.math.Pi / 2)),               _Number(1.0)),
+    (x_var,                                         x_var),
+    (Sum(Sum(_Number(1), _Number(4)), x_var),       Sum(_Number(5), x_var))
   )
 
   for s <- evaluationTests do
@@ -40,37 +42,37 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
   "division by zero" should "evaluate to Infinity, not a corrupt large number" in
   {
     Ratio(_Number(1), _Number(0)).eval(env) match
-      case Right(x)  => assert(x.isInfinite && x > 0)
-      case Left(sym) => fail(s"expected Infinity but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x.isInfinite && x > 0)
+      case other             => fail(s"expected Infinity but got: $other")
   }
 
   "negative division by zero" should "evaluate to -Infinity" in
   {
     Ratio(_Number(-1), _Number(0)).eval(env) match
-      case Right(x)  => assert(x.isInfinite && x < 0)
-      case Left(sym) => fail(s"expected -Infinity but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x.isInfinite && x < 0)
+      case other             => fail(s"expected -Infinity but got: $other")
   }
 
   "log of a negative number" should "evaluate to NaN, not 0.0" in
   {
     Log(_Number(-1)).eval(env) match
-      case Right(x)  => assert(x.isNaN)
-      case Left(sym) => fail(s"expected NaN but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x.isNaN)
+      case other             => fail(s"expected NaN but got: $other")
   }
 
   "log of zero" should "evaluate to -Infinity, not a corrupt large number" in
   {
     Log(_Number(0)).eval(env) match
-      case Right(x)  => assert(x.isInfinite && x < 0)
-      case Left(sym) => fail(s"expected -Infinity but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x.isInfinite && x < 0)
+      case other             => fail(s"expected -Infinity but got: $other")
   }
 
   "a very large number" should "evaluate without Long overflow" in
   {
     val large = 1e15
     _Number(large).eval(env) match
-      case Right(x)  => assert(x == large)
-      case Left(sym) => fail(s"expected $large but got symbolic: $sym")
+      case Right(_Number(x)) => assert(x == large)
+      case other             => fail(s"expected $large but got: $other")
   }
 
   // --- variable binding ---

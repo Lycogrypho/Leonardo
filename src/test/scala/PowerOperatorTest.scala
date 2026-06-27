@@ -22,8 +22,8 @@ class PowerOperatorTest extends AnyFlatSpec:
     val e = new Environment()
     bindings.foreach((name, value) => e.assign(name, _Number(value)))
     parse(input).eval(e) match
-      case Right(x) => x
-      case Left(s)  => fail(s"expected numeric but got symbolic: $s")
+      case Right(_Number(x)) => x
+      case other             => fail(s"expected a numeric result but got: $other")
 
   "2 ^ 10" should "evaluate to 1024" in
   {

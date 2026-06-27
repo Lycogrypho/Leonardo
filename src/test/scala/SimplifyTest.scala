@@ -170,6 +170,6 @@ class SimplifyTest extends AnyFlatSpec:
     e.assign("x", _Number(1))
     val identity = Sum(Power(Sin(x), _Number(2)), Power(Cos(x), _Number(2)))
     identity.simplify().eval(e) match
-      case Right(v) => assert(math.abs(v - 1.0) < 1e-4)
-      case Left(s)  => fail(s"expected numeric but got symbolic: $s")
+      case Right(_Number(v)) => assert(math.abs(v - 1.0) < 1e-4)
+      case other             => fail(s"expected a numeric result but got: $other")
   }

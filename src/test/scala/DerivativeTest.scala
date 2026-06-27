@@ -15,8 +15,8 @@ class DerivativeTest extends AnyFlatSpec:
 
   def evalNum(expr: _Expression, bindings: (String, Double)*): Double =
     expr.eval(envWith(bindings*)) match
-      case Right(x) => x
-      case Left(s)  => fail(s"expected numeric result but got symbolic: $s")
+      case Right(_Number(x)) => x
+      case other             => fail(s"expected a numeric result but got: $other")
 
   val x = _Variable("x")
   val y = _Variable("y")
