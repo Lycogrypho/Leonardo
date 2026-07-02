@@ -8,8 +8,8 @@
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="modules">
           <set>
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\project" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\project" />
           </set>
         </option>
         <option name="sbtVersion" value="1.10.11" />

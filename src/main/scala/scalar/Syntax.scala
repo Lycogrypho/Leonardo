@@ -1,7 +1,7 @@
 package it.grypho.scala.leonardo
 package scalar
 
-import core._Expression
+import core.*
 
 
 // Optional method-call syntax for the scalar algorithms, so callers can write
