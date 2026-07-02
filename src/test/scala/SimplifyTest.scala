@@ -102,6 +102,18 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Sum(x, x).simplify() == Product(_Number(2), x))
   }
 
+  // x + (-1 * x) → 0
+  "simplify(x + (-1)*x)" should "equal 0" in
+  {
+    assert(Sum(x, Product(_Number(-1), x)).simplify() == _Number(0))
+  }
+
+  // (-1 * x) + x → 0  (mirror)
+  "simplify((-1)*x + x)" should "equal 0" in
+  {
+    assert(Sum(Product(_Number(-1), x), x).simplify() == _Number(0))
+  }
+
   "simplify(x * x)" should "equal x^2" in
   {
     assert(Product(x, x).simplify() == Power(x, _Number(2)))

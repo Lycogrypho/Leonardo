@@ -27,6 +27,8 @@ def simplify(e: _Expression): _Expression = e match
       case (x, _Number(d)) if d == 0.0 => x
       case (_Number(da), _Number(db))  => _Number(da + db)
       case (x, y) if x == y            => simplify(Product(_Number(2), x))
+      case (x, Product(_Number(d), y)) if d == -1.0 && x == y => _Number(0)
+      case (Product(_Number(d), x), y) if d == -1.0 && x == y => _Number(0)
       case (x, y)                      => Sum(x, y)
 
   case Product(a, b) =>
