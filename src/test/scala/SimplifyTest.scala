@@ -112,6 +112,11 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Ratio(x, x).simplify() == _Number(1))
   }
 
+  "simplify(0 / 0)" should "remain 0/0 (undefined, not 1)" in
+  {
+    assert(Ratio(_Number(0), _Number(0)).simplify() == Ratio(_Number(0), _Number(0)))
+  }
+
   // --- double negation ---
 
   "simplify(-(-x))" should "equal x" in

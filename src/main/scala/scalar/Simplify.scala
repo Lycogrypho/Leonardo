@@ -44,10 +44,10 @@ def simplify(e: _Expression): _Expression = e match
 
   case Ratio(a, b) =>
     (simplify(a), simplify(b)) match
-      case (_Number(d), _) if d == 0.0 => _Number(0)
+      case (_Number(d), y) if d == 0.0 && y != _Number(0) => _Number(0)
       case (x, _Number(d)) if d == 1.0 => x
-      case (_Number(da), _Number(db))  => _Number(da / db)
-      case (x, y) if x == y            => _Number(1)
+      case (_Number(da), _Number(db)) if db != 0.0 => _Number(da / db)
+      case (x, y) if x == y && x != _Number(0) => _Number(1)
       case (x, y)                      => Ratio(x, y)
 
   case Power(a, b) =>
