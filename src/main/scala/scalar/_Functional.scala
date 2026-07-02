@@ -14,7 +14,12 @@ case class _Derivative(e: _Expression, v: _Variable) extends _Functional:
   override def toString: String = s"derive($e, $v)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    it.grypho.scala.leonardo.scalar.derive(e, v).eval(env)
+    val derivative = it.grypho.scala.leonardo.scalar.derive(e, v)
+    // derive returns this same _Derivative node when it cannot reduce further (e.g.
+    // differentiating an integral w.r.t. an unrelated variable). Re-evaluating that
+    // would call derive on the identical node forever, so stay symbolic instead.
+    if derivative == this then Left(this)
+    else derivative.eval(env)
 
 
 case class _Integral(e: _Expression, v: _Variable) extends _Functional:

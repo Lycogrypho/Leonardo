@@ -50,4 +50,15 @@ def derive(e: _Expression, v: _Variable): _Expression = e match
   case Sin(a)               => dmul(Cos(a), derive(a, v))
   case Cos(a)               => dmul(_Number(-1), dmul(Sin(a), derive(a, v)))
   case Tg(a)                => Ratio(derive(a, v), Product(Cos(a), Cos(a)))
-  case other                => _Derivative(other, v)
+  // Functional nodes must be reduced here, not left to fall through to a bare
+  // _Derivative wrapper: that wrapper's eval calls derive again on the same node,
+  // looping forever (StackOverflow).
+  //   - _Derivative: differentiate again → higher-order derivative.
+  //   - _Integral:   fundamental theorem, d/dx ∫f dx = f, when the variables match.
+  //   - _DefIntegral: a definite integral is a constant except through its limits,
+  //     which the engine does not track symbolically, so leave it symbolic.
+  case _Derivative(inner, iv)   => derive(derive(inner, iv), v)
+  case _Integral(inner, iv)     => if iv.variable == v.variable then inner
+                                   else _Derivative(e, v)
+  case _DefIntegral(_, _, _, _) => _Derivative(e, v)
+  case other                    => _Derivative(other, v)

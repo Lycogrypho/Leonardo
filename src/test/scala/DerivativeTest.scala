@@ -122,6 +122,38 @@ class DerivativeTest extends AnyFlatSpec:
     assert(math.abs(evalNum(expr, "x" -> 0.0) - 2.0) < 1e-4)
   }
 
+  // --- higher-order and functional nodes (no infinite recursion) ---
+
+  // d/dx(d/dx(x³)) = 6x, at x=2 → 12
+  "second derivative of x³ at x=2" should "be 12.0" in
+  {
+    val expr = _Derivative(_Derivative(Power(x, _Number(3)), x), x)
+    assert(math.abs(evalNum(expr, "x" -> 2.0) - 12.0) < 1e-4)
+  }
+
+  // d/dx(d/dx(sin(x))) = -sin(x), at x=π/2 → -1
+  "second derivative of sin(x) at x=π/2" should "be -1.0" in
+  {
+    val expr = _Derivative(_Derivative(Sin(x), x), x)
+    assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) - (-1.0)) < 1e-4)
+  }
+
+  // Differentiating an indefinite integral w.r.t. an unrelated variable must not
+  // loop forever; it stays symbolic.
+  "derivative of an integral w.r.t. an unrelated variable" should "stay symbolic" in
+  {
+    _Derivative(_Integral(x, x), y).eval(new Environment()) match
+      case Left(_)  => succeed
+      case Right(v) => fail(s"expected symbolic but got $v")
+  }
+
+  // d/dx ∫x dx = x (fundamental theorem of calculus), at x=4 → 4
+  "derivative of the integral of x w.r.t. x" should "recover the integrand" in
+  {
+    val expr = _Derivative(_Integral(x, x), x)
+    assert(math.abs(evalNum(expr, "x" -> 4.0) - 4.0) < 1e-4)
+  }
+
   // --- parse + derive round-trip ---
 
   "parse+derive of \"x * x\" w.r.t. x at x=3" should "equal 6.0" in
