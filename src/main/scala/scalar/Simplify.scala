@@ -54,10 +54,10 @@ def simplify(e: _Expression): _Expression = e match
 
   case Power(a, b) =>
     (simplify(a), simplify(b)) match
-      case (_, _Number(d)) if d == 0.0 => _Number(1)
+      case (x, _Number(d)) if d == 0.0 && x != _Number(0) => _Number(1)
       case (x, _Number(d)) if d == 1.0 => x
       case (_Number(d), _) if d == 1.0 => _Number(1)
-      case (_Number(da), _Number(db))  => _Number(pow(da, db))
+      case (_Number(da), _Number(db)) if !(da == 0.0 && db == 0.0) => _Number(pow(da, db))
       case (x, y)                      => Power(x, y)
 
   case Exp(a) =>

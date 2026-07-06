@@ -73,6 +73,16 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Power(_Number(1), x).simplify() == _Number(1))
   }
 
+  "simplify(0 ^ 0)" should "remain 0^0 (undefined, not 1)" in
+  {
+    assert(Power(_Number(0), _Number(0)).simplify() == Power(_Number(0), _Number(0)))
+  }
+
+  "simplify(0 ^ 2)" should "still fold to 0" in
+  {
+    assert(Power(_Number(0), _Number(2)).simplify() == _Number(0))
+  }
+
   // --- constant folding ---
 
   "simplify(2 + 3)" should "equal 5" in
