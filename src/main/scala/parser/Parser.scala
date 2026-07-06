@@ -29,8 +29,11 @@ object Parser extends JavaTokenParsers:
 
   def expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
     {
-      case Some("-") ~ e => Product(_Number(-1), e)
-      case _         ~ e => e
+      // A negated literal folds to a negative _Number, so "-2".toString is "-2.0"
+      // (a re-parsable fixpoint) rather than "(-1.0 * 2.0)".
+      case Some("-") ~ _Number(n) => _Number(-n)
+      case Some("-") ~ e          => Product(_Number(-1), e)
+      case _         ~ e          => e
     }
 
   def simpleExpr: Parser[_Expression] = term ~ rep(("+" | "-") ~ term) ^^

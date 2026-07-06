@@ -146,6 +146,21 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Product(_Number(-1), Product(_Number(-1), x)).simplify() == x)
   }
 
+  "simplify(-(x * -1))" should "equal x" in
+  {
+    assert(Product(_Number(-1), Product(x, _Number(-1))).simplify() == x)
+  }
+
+  "simplify((-1 * x) * -1)" should "equal x" in
+  {
+    assert(Product(Product(_Number(-1), x), _Number(-1)).simplify() == x)
+  }
+
+  "simplify((x * -1) * -1)" should "equal x" in
+  {
+    assert(Product(Product(x, _Number(-1)), _Number(-1)).simplify() == x)
+  }
+
   // --- inverse function pairs ---
 
   "simplify(log(exp(x)))" should "equal x" in

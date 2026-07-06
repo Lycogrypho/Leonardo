@@ -22,7 +22,11 @@ case class Log(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(_Number(x)) => _Number(log(x)).eval(env)
+      case Right(_Number(x)) =>
+        val r = log(x)
+        // log of a non-positive number is a domain error: stay symbolic
+        // instead of propagating -Infinity/NaN
+        if r.isNaN || r.isInfinite then Left(this) else _Number(r).eval(env)
       case other             => Left(Log(other.toExpression))
 
 

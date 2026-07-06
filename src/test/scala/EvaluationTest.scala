@@ -36,34 +36,48 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
         case Left(e)  => assert(e == s._2)
     }
 
-  // --- special value handling ---
+  // --- domain errors stay symbolic (no silent Infinity/NaN) ---
 
-  "division by zero" should "evaluate to Infinity, not a corrupt large number" in
+  "division by zero" should "stay symbolic instead of evaluating to Infinity" in
   {
-    Ratio(_Number(1), _Number(0)).eval(env) match
-      case Right(_Number(x)) => assert(x.isInfinite && x > 0)
-      case other             => fail(s"expected Infinity but got: $other")
+    val e = Ratio(_Number(1), _Number(0))
+    assert(e.eval(env) == Left(e))
   }
 
-  "negative division by zero" should "evaluate to -Infinity" in
+  "negative division by zero" should "stay symbolic instead of evaluating to -Infinity" in
   {
-    Ratio(_Number(-1), _Number(0)).eval(env) match
-      case Right(_Number(x)) => assert(x.isInfinite && x < 0)
-      case other             => fail(s"expected -Infinity but got: $other")
+    val e = Ratio(_Number(-1), _Number(0))
+    assert(e.eval(env) == Left(e))
   }
 
-  "log of a negative number" should "evaluate to NaN, not 0.0" in
+  "zero divided by zero" should "stay symbolic instead of evaluating to NaN" in
   {
-    Log(_Number(-1)).eval(env) match
-      case Right(_Number(x)) => assert(x.isNaN)
-      case other             => fail(s"expected NaN but got: $other")
+    val e = Ratio(_Number(0), _Number(0))
+    assert(e.eval(env) == Left(e))
   }
 
-  "log of zero" should "evaluate to -Infinity, not a corrupt large number" in
+  "log of a negative number" should "stay symbolic instead of evaluating to NaN" in
   {
-    Log(_Number(0)).eval(env) match
-      case Right(_Number(x)) => assert(x.isInfinite && x < 0)
-      case other             => fail(s"expected -Infinity but got: $other")
+    val e = Log(_Number(-1))
+    assert(e.eval(env) == Left(e))
+  }
+
+  "log of zero" should "stay symbolic instead of evaluating to -Infinity" in
+  {
+    val e = Log(_Number(0))
+    assert(e.eval(env) == Left(e))
+  }
+
+  "zero to a negative power" should "stay symbolic instead of evaluating to Infinity" in
+  {
+    val e = Power(_Number(0), _Number(-1))
+    assert(e.eval(env) == Left(e))
+  }
+
+  "negative base with fractional exponent" should "stay symbolic instead of evaluating to NaN" in
+  {
+    val e = Power(_Number(-2), _Number(0.5))
+    assert(e.eval(env) == Left(e))
   }
 
   "a very large number" should "evaluate without Long overflow" in

@@ -31,7 +31,10 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation(a, b):
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
-      case (Right(_Number(x)), Right(_Number(y))) => _Number(x / y).eval(env)
+      case (Right(_Number(x)), Right(_Number(y))) =>
+        val r = x / y
+        // x/0 and 0/0 are domain errors: stay symbolic instead of propagating ±Infinity/NaN
+        if r.isNaN || r.isInfinite then Left(this) else _Number(r).eval(env)
       case (ra, rb)                               => Left(Ratio(ra.toExpression, rb.toExpression))
 
 
@@ -42,5 +45,9 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation(base, e
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (base.eval(env), exp.eval(env)) match
-      case (Right(_Number(b)), Right(_Number(e))) => _Number(pow(b, e)).eval(env)
+      case (Right(_Number(b)), Right(_Number(e))) =>
+        val r = pow(b, e)
+        // 0^negative and (negative)^fractional are domain errors: stay symbolic
+        // instead of propagating ±Infinity/NaN
+        if r.isNaN || r.isInfinite then Left(this) else _Number(r).eval(env)
       case (rb, re)                               => Left(Power(rb.toExpression, re.toExpression))

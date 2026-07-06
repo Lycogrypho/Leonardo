@@ -38,8 +38,14 @@ def simplify(e: _Expression): _Expression = e match
       case (_Number(d), y) if d == 1.0              => y
       case (x, _Number(d)) if d == 1.0              => x
       case (_Number(da), _Number(db))               => _Number(da * db)
-      // double negation: -1 * (-1 * x) → x
+      // double negation, all four shapes: -1 * (-1 * x) → x and mirrors
       case (_Number(da), Product(_Number(db), x))
+        if da == -1.0 && db == -1.0                 => x
+      case (_Number(da), Product(x, _Number(db)))
+        if da == -1.0 && db == -1.0                 => x
+      case (Product(_Number(da), x), _Number(db))
+        if da == -1.0 && db == -1.0                 => x
+      case (Product(x, _Number(da)), _Number(db))
         if da == -1.0 && db == -1.0                 => x
       case (x, y) if x == y                         => simplify(Power(x, _Number(2)))
       case (x, y)                                   => Product(x, y)

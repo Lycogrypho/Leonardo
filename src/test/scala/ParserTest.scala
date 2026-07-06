@@ -27,7 +27,7 @@ class ParserTest extends AnyFlatSpec:
     ("3a",                 """(3.0 * a)""",                   Product(_Number(3.0), _Variable("a"))),
     ("3sin(a)",            """(3.0 * sin(a))""",              Product(_Number(3.0), Sin(_Variable("a")))),
     ("derive(cos(3x), x)", """derive(cos((3.0 * x)), x)""",   _Derivative(Cos(Product(_Number(3.0), _Variable("x"))), _Variable("x"))),
-    ("-2",                 """(-1.0 * 2.0)""",                Product(_Number(-1), _Number(2))),
+    ("-2",                 """-2.0""",                        _Number(-2.0)),
     ("+3sin(-a)",          """(3.0 * sin((-1.0 * a)))""",     Product(_Number(3), Sin(Product(_Number(-1), _Variable("a"))))),
     ("-3k",                """(-1.0 * (3.0 * k))""",          Product(_Number(-1), Product(_Number(3.0), _Variable("k")))),
     ("sin(a)cos(b)",       """(sin(a) * cos(b))""",           Product(Sin(_Variable("a")), Cos(_Variable("b")))),
@@ -49,3 +49,22 @@ class ParserTest extends AnyFlatSpec:
     {
       assert(s._3.toString == s._2)
     }
+
+  // --- unary minus on a literal is a toString fixpoint ---
+
+  "\"-2\"" should "parse directly to _Number(-2.0), whose toString re-parses to itself" in
+  {
+    val first = parse("-2")
+    assert(first == _Number(-2.0))
+    assert(parse(first.toString) == first)
+  }
+
+  "\"-2.5\"" should "parse directly to _Number(-2.5)" in
+  {
+    assert(parse("-2.5") == _Number(-2.5))
+  }
+
+  "\"+2\"" should "parse to _Number(2.0), not a negated literal" in
+  {
+    assert(parse("+2") == _Number(2.0))
+  }
