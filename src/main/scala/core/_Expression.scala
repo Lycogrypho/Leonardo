@@ -43,9 +43,6 @@ case class _Variable(variable: String) extends _Expression:
       case Some(n) => n.eval(env)
       case None    => Left(this)
 
-  def set(value: _Value)(implicit env: Environment): Unit =
-    env.assign(variable, value)
-
 
 // Collapse an eval result back to a plain expression — used when rebuilding a
 // symbolic node from partially-reduced operands.

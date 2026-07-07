@@ -1,4 +1,4 @@
-ThisBuild / version := "1.2.0"
+ThisBuild / version := "1.2.1"
 
 ThisBuild / scalaVersion := "3.3.4"
 
@@ -10,7 +10,7 @@ lazy val root = (project in file("."))
     idePackagePrefix := Some("it.grypho.scala.leonardo")
   )
 
-libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.3.0"
+libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 

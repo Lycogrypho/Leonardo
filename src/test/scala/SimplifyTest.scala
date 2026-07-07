@@ -215,3 +215,24 @@ class SimplifyTest extends AnyFlatSpec:
       case Right(_Number(v)) => assert(math.abs(v - 1.0) < 1e-4)
       case other             => fail(s"expected a numeric result but got: $other")
   }
+
+  // --- simplifyFully ---
+
+  "simplifyFully" should "be identical to simplify when one pass suffices" in
+  {
+    assert(Sum(x, _Number(0)).simplifyFully() == x)
+  }
+
+  it should "cascade identity eliminations across nesting levels" in
+  {
+    // (x * 1 + 0) * 1: single simplify gives (x + 0) * 1; second pass gives x
+    val expr = Product(Sum(Product(x, _Number(1)), _Number(0)), _Number(1))
+    assert(expr.simplifyFully() == x)
+  }
+
+  it should "reach fixpoint on a deeply nested constant expression" in
+  {
+    // (((2 + 3) * 1) + 0) ^ 1
+    val expr = Power(Sum(Product(Sum(_Number(2), _Number(3)), _Number(1)), _Number(0)), _Number(1))
+    assert(expr.simplifyFully() == _Number(5))
+  }

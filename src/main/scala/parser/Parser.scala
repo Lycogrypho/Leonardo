@@ -92,7 +92,7 @@ object Parser extends JavaTokenParsers:
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              }
 
   def value:    Parser[_Expression] = number | variable
-  def number:   Parser[_Number]   = (floatingPointNumber | decimalNumber | wholeNumber) ^^ { s => _Number(s.toDouble) }
+  def number:   Parser[_Number]   = floatingPointNumber ^^ { s => _Number(s.toDouble) }
   def variable: Parser[_Variable] = """[a-zA-Z]""".r ^^ { s => _Variable(s) }
 
   def parse(str: String): ParseResult[_Expression] = parseAll(expr, str)

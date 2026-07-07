@@ -42,7 +42,7 @@ class ParseEvalTest extends AnyFlatSpec:
   "parse+eval of \"3a\" with a = 2" should "equal 6.0" in
   {
     val e = env
-    _Variable("a").set(_Number(2))(e)
+    e.assign("a", _Number(2))
     parse("3a").eval(e) match
       case Right(_Number(x)) => assert(x == 6.0)
       case other             => fail(s"expected 6.0 but got: $other")
@@ -58,7 +58,7 @@ class ParseEvalTest extends AnyFlatSpec:
   "parse+eval of \"sin(a) + cos(a)\" with a = 0" should "equal 1.0" in
   {
     val e = env
-    _Variable("a").set(_Number(0))(e)
+    e.assign("a", _Number(0))
     parse("sin(a) + cos(a)").eval(e) match
       case Right(_Number(x)) => assert(x == 1.0)
       case other             => fail(s"expected 1.0 but got: $other")
@@ -67,7 +67,7 @@ class ParseEvalTest extends AnyFlatSpec:
   "parse+eval of an expression with two references to the same variable" should "use the same binding" in
   {
     val e = env
-    _Variable("x").set(_Number(5))(e)
+    e.assign("x", _Number(5))
     parse("x + x").eval(e) match
       case Right(_Number(x)) => assert(x == 10.0)
       case other             => fail(s"expected 10.0 but got: $other")

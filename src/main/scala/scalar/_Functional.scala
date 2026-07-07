@@ -38,19 +38,20 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
         val rawN = (env.precision * 200).max(100)
         val n    = if rawN % 2 == 0 then rawN else rawN + 1
         val h    = (b - a) / n
-        var sum  = 0.0
-        var i    = 0
-        var done = true
-        while i <= n && done do
-          val xi = a + i * h
-          e.eval(env.withBinding(v.variable, _Number(xi))) match
-            case Right(_Number(y)) =>
-              val coeff = if i == 0 || i == n then 1.0
-                          else if i % 2 == 1   then 4.0
-                          else                       2.0
-              sum += coeff * y
-            case _ => done = false
-          i += 1
-        if done then _Number(h / 3.0 * sum).eval(env)
-        else Left(this)
+
+        @annotation.tailrec
+        def loop(i: Int, acc: Double): Option[Double] =
+          if i > n then Some(acc)
+          else
+            e.eval(env.withBinding(v.variable, _Number(a + i * h))) match
+              case Right(_Number(y)) =>
+                val coeff = if i == 0 || i == n then 1.0
+                            else if i % 2 == 1   then 4.0
+                            else                       2.0
+                loop(i + 1, acc + coeff * y)
+              case _ => None
+
+        loop(0, 0.0) match
+          case Some(s) => _Number(h / 3.0 * s).eval(env)
+          case None    => Left(this)
       case _ => Left(this)

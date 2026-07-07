@@ -97,3 +97,11 @@ def simplify(e: _Expression): _Expression = e match
   case _Integral(f, v)            => _Integral(simplify(f), v)
   case _DefIntegral(f, v, lo, hi) => _DefIntegral(simplify(f), v, simplify(lo), simplify(hi))
   case other                      => other
+
+
+// Iterate simplify until the result stops changing (fixpoint). Terminates because
+// simplify never increases expression size.
+@annotation.tailrec
+def simplifyFully(e: _Expression): _Expression =
+  val s = simplify(e)
+  if s == e then e else simplifyFully(s)

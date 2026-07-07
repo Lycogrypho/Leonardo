@@ -95,9 +95,9 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
     val parent = new Environment()
     parent.assign("a", _Number(10))
     val child = parent.withBinding("b", _Number(20))
-    assert(child.get("b") == Some(_Number(20)))
-    assert(child.get("a") == Some(_Number(10)))
-    assert(child.get("c") == None)
+    assert(child.get("b").contains(_Number(20)))
+    assert(child.get("a").contains(_Number(10)))
+    assert(child.get("c").isEmpty)
     assert(child.isBound("b"))
     assert(child.isBound("a"))
     assert(!child.isBound("c"))
@@ -146,9 +146,9 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
 
   "an assigned variable" should "be evaluated to a numeric value" in
   {
-    a.set(_Number(3))
+    env.assign("a", _Number(3))
     assert(Sum(a, b).eval(env) == Sum(_Number(3), _Variable("b")).eval(env))
 
-    b.set(_Number(7))
+    env.assign("b", _Number(7))
     assert(Sum(a, b).eval(env) == _Number(10).eval(env))
   }

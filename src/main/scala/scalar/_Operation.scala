@@ -5,10 +5,10 @@ import core.*
 import scala.math.pow
 
 
-abstract class _Operation(a: _Expression, b: _Expression) extends _Expression
+trait _Operation extends _Expression
 
 
-case class Sum(a: _Expression, b: _Expression) extends _Operation(a, b):
+case class Sum(a: _Expression, b: _Expression) extends _Operation:
   override def toString: String = s"($a + $b)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =
@@ -17,7 +17,7 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation(a, b):
       case (ra, rb)                               => Left(Sum(ra.toExpression, rb.toExpression))
 
 
-case class Product(a: _Expression, b: _Expression) extends _Operation(a, b):
+case class Product(a: _Expression, b: _Expression) extends _Operation:
   override def toString: String = s"($a * $b)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =
@@ -34,7 +34,7 @@ case class Product(a: _Expression, b: _Expression) extends _Operation(a, b):
               case (ra, rb)                               => Left(Product(ra.toExpression, rb.toExpression))
 
 
-case class Ratio(a: _Expression, b: _Expression) extends _Operation(a, b):
+case class Ratio(a: _Expression, b: _Expression) extends _Operation:
   override def toString: String = s"($a / $b)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =
@@ -48,7 +48,7 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation(a, b):
 
 // Exponentiation is a binary operation like the others; the parser keeps it
 // right-associative (2 ^ 3 ^ 2 = 2 ^ (3 ^ 2)).
-case class Power(base: _Expression, exp: _Expression) extends _Operation(base, exp):
+case class Power(base: _Expression, exp: _Expression) extends _Operation:
   override def toString: String = s"($base ^ $exp)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =

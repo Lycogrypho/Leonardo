@@ -12,6 +12,7 @@ import core.*
 object Syntax:
   extension (e: _Expression)
     def simplify(): _Expression           = it.grypho.scala.leonardo.scalar.simplify(e)
+    def simplifyFully(): _Expression      = it.grypho.scala.leonardo.scalar.simplifyFully(e)
     def expand(): _Expression             = it.grypho.scala.leonardo.scalar.expand(e)
     def derive(v: _Variable): _Expression = it.grypho.scala.leonardo.scalar.derive(e, v)
     def dependsOn(v: _Variable): Boolean   = it.grypho.scala.leonardo.scalar.dependsOn(e, v)
