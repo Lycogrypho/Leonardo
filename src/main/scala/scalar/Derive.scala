@@ -50,6 +50,12 @@ def derive(e: _Expression, v: _Variable): _Expression = e match
   case Sin(a)               => dmul(Cos(a), derive(a, v))
   case Cos(a)               => dmul(_Number(-1), dmul(Sin(a), derive(a, v)))
   case Tg(a)                => Ratio(derive(a, v), Product(Cos(a), Cos(a)))
+  // asin'(u) =  u' / sqrt(1 - u²)
+  case Asin(a)              => dmul(Ratio(_Number(1), Power(Sum(_Number(1), dmul(_Number(-1), Power(a, _Number(2)))), _Number(0.5))), derive(a, v))
+  // acos'(u) = -u' / sqrt(1 - u²)
+  case Acos(a)              => dmul(dmul(_Number(-1), Ratio(_Number(1), Power(Sum(_Number(1), dmul(_Number(-1), Power(a, _Number(2)))), _Number(0.5)))), derive(a, v))
+  // atan'(u) =  u' / (1 + u²)
+  case Atan(a)              => dmul(Ratio(_Number(1), Sum(_Number(1), Power(a, _Number(2)))), derive(a, v))
   // Functional nodes must be reduced here, not left to fall through to a bare
   // _Derivative wrapper: that wrapper's eval calls derive again on the same node,
   // looping forever (StackOverflow).

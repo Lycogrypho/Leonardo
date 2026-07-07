@@ -16,7 +16,7 @@ import scalar.*
  *   power      ::= factor ["^" power]               -- right-associative; binds tighter than * /
  *   factor     ::= function | functional | value | "(" expr ")"
  *   function   ::= "exp(" expr ")" | "log(" expr ")" | "sin(" expr ")"
- *                | "cos(" expr ")" | "tg(" expr ")"
+ *                | "cos(" expr ")" | "tan(" expr ")" | "tg(" expr ")" | "asin(" expr ")" | "acos(" expr ")" | "atan(" expr ")"
  *                | "pow(" expr "," expr ")"
  *   functional ::= "derive(" expr "," variable ")"
  *                | "integral(" expr "," variable ")"
@@ -84,7 +84,11 @@ object Parser extends JavaTokenParsers:
     "log(" ~> guardedExpr <~ ")"                          ^^ Log.apply                         |
     "sin(" ~> guardedExpr <~ ")"                          ^^ Sin.apply                         |
     "cos(" ~> guardedExpr <~ ")"                          ^^ Cos.apply                         |
+    "tan(" ~> guardedExpr <~ ")"                          ^^ Tg.apply                         |
     "tg("  ~> guardedExpr <~ ")"                          ^^ Tg.apply                          |
+    "asin(" ~> guardedExpr <~ ")"                         ^^ Asin.apply                        |
+    "acos(" ~> guardedExpr <~ ")"                         ^^ Acos.apply                        |
+    "atan(" ~> guardedExpr <~ ")"                         ^^ Atan.apply                        |
     "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }
 
   def functional: Parser[_Expression] =

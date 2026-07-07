@@ -93,6 +93,21 @@ def simplify(e: _Expression): _Expression = e match
       case _Number(d) if d == 0.0 => _Number(0)
       case x                      => Tg(x)
 
+  case Asin(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(0)
+      case x                      => Asin(x)
+
+  case Acos(a) =>
+    simplify(a) match
+      case _Number(d) if d == 1.0 => _Number(0)
+      case x                      => Acos(x)
+
+  case Atan(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(0)
+      case x                      => Atan(x)
+
   case _Derivative(f, v)          => _Derivative(simplify(f), v)
   case _Integral(f, v)            => _Integral(simplify(f), v)
   case _DefIntegral(f, v, lo, hi) => _DefIntegral(simplify(f), v, simplify(lo), simplify(hi))

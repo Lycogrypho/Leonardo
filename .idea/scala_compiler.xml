@@ -3,7 +3,7 @@
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
     <profile name="sbt 2" modules="Leonardo,leonardo_5360" />
-    <profile name="sbt 3" modules="Leonardo.main,Leonardo.test">
+    <profile name="sbt 3" modules="Leonardo.main,Leonardo.main~1,Leonardo.test,Leonardo.test~1">
       <option name="deprecationWarnings" value="true" />
       <option name="featureWarnings" value="true" />
       <parameters>

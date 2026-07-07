@@ -20,8 +20,8 @@ class ParserTest extends AnyFlatSpec:
     ("3*3E-5",             """(3.0 * 3.0E-5)""",              Product(_Number(3), _Number(3.0E-5))),
     ("exp(1)",             """exp(1.0)""",                    Exp(_Number(1.0))),
     ("sin(a)",             """sin(a)""",                      Sin(_Variable("a"))),
-    ("tg(x + 2)",          """tg((x + 2.0))""",               Tg(Sum(_Variable("x"), _Number(2.0)))),
-    ("tg(x + log(2))",     """tg((x + log(2.0)))""",          Tg(Sum(_Variable("x"), Log(_Number(2.0))))),
+    ("tg(x + 2)",          """tan((x + 2.0))""",               Tg(Sum(_Variable("x"), _Number(2.0)))),
+    ("tg(x + log(2))",     """tan((x + log(2.0)))""",          Tg(Sum(_Variable("x"), Log(_Number(2.0))))),
     ("1* exp(x)",          """(1.0 * exp(x))""",              Product(_Number(1), Exp(_Variable("x")))),
     ("exp(cos(a))",        """exp(cos(a))""",                 Exp(Cos(_Variable("a")))),
     ("3a",                 """(3.0 * a)""",                   Product(_Number(3.0), _Variable("a"))),
@@ -158,4 +158,31 @@ class ParserTest extends AnyFlatSpec:
   "e^2" should "parse as Power(_Number(math.E), _Number(2))" in
   {
     assert(parse("e^2") == Power(_Number(math.E), _Number(2)))
+  }
+
+  // --- tan as alias for tg (item 9) ---
+
+  "tan(x)" should "parse as Tg(_Variable(\"x\"))" in
+  {
+    assert(parse("tan(x)") == Tg(_Variable("x")))
+  }
+
+  "tan(x + 2)" should "parse identically to tg(x + 2)" in
+  {
+    assert(parse("tan(x + 2)") == parse("tg(x + 2)"))
+  }
+
+  "tan(0)" should "have toString \"tan(0.0)\"" in
+  {
+    assert(parse("tan(0)").toString == "tan(0.0)")
+  }
+
+  "tg(x)" should "still parse (backward compat) and equal Tg(_Variable(\"x\"))" in
+  {
+    assert(parse("tg(x)") == Tg(_Variable("x")))
+  }
+
+  "Tg.toString" should "emit tan(...) not tg(...)" in
+  {
+    assert(Tg(_Variable("x")).toString == "tan(x)")
   }

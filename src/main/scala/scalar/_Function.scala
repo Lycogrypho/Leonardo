@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package scalar
 
 import core.*
-import scala.math.{exp, log, sin, cos, tan}
+import scala.math.{exp, log, sin, cos, tan, asin, acos, atan}
 
 
 abstract class _Function extends _Expression
@@ -49,9 +49,40 @@ case class Cos(e: _Expression) extends _Function:
 
 
 case class Tg(e: _Expression) extends _Function:
-  override def toString: String = s"tg($e)"
+  override def toString: String = s"tan($e)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
       case Right(_Number(x)) => _Number(tan(x)).eval(env)
       case other             => Left(Tg(other.toExpression))
+
+
+case class Asin(e: _Expression) extends _Function:
+  override def toString: String = s"asin($e)"
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(_Number(x)) =>
+        val r = asin(x)
+        if r.isNaN then Left(this) else _Number(r).eval(env)
+      case other             => Left(Asin(other.toExpression))
+
+
+case class Acos(e: _Expression) extends _Function:
+  override def toString: String = s"acos($e)"
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(_Number(x)) =>
+        val r = acos(x)
+        if r.isNaN then Left(this) else _Number(r).eval(env)
+      case other             => Left(Acos(other.toExpression))
+
+
+case class Atan(e: _Expression) extends _Function:
+  override def toString: String = s"atan($e)"
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(_Number(x)) => _Number(atan(x)).eval(env)
+      case other             => Left(Atan(other.toExpression))
