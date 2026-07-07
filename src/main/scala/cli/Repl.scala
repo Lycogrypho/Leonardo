@@ -42,7 +42,7 @@ final class Session:
 
   private val emptyEnv = new Environment()
 
-  private val assignment = """([a-zA-Z])\s*=(.+)""".r
+  private val assignment = """([a-zA-Z][a-zA-Z0-9]*)\s*=(.+)""".r
 
   def execute(line: String): String = line.trim match
     case ""                     => ""

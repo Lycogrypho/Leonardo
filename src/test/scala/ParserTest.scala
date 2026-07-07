@@ -83,3 +83,79 @@ class ParserTest extends AnyFlatSpec:
     val nested = "(" * 10 + "1" + ")" * 10
     assert(parse(nested) == _Number(1.0))
   }
+
+  // --- multi-character variable names (item 7) ---
+
+  "theta" should "parse as _Variable(\"theta\")" in
+  {
+    assert(parse("theta") == _Variable("theta"))
+  }
+
+  "x1" should "parse as _Variable(\"x1\")" in
+  {
+    assert(parse("x1") == _Variable("x1"))
+  }
+
+  "sin(theta)" should "parse with multi-char argument" in
+  {
+    assert(parse("sin(theta)") == Sin(_Variable("theta")))
+  }
+
+  "derive(cos(theta), theta)" should "parse with multi-char differentiation variable" in
+  {
+    assert(parse("derive(cos(theta), theta)") ==
+      _Derivative(Cos(_Variable("theta")), _Variable("theta")))
+  }
+
+  "3theta" should "parse as implicit multiplication" in
+  {
+    assert(parse("3theta") == Product(_Number(3.0), _Variable("theta")))
+  }
+
+  "alpha + beta" should "parse as Sum of two multi-char variables" in
+  {
+    assert(parse("alpha + beta") == Sum(_Variable("alpha"), _Variable("beta")))
+  }
+
+  // --- built-in constants (item 8) ---
+
+  "pi" should "parse as _Number(math.Pi)" in
+  {
+    assert(parse("pi") == _Number(math.Pi))
+  }
+
+  "e" should "parse as _Number(math.E)" in
+  {
+    assert(parse("e") == _Number(math.E))
+  }
+
+  "sin(pi)" should "evaluate to zero" in
+  {
+    val env = new Environment()
+    assert(math.abs(parse("sin(pi)").eval(env).toExpression.asInstanceOf[_Number].d) < 1e-10)
+  }
+
+  "pi * 2" should "parse as Product of pi-constant and 2" in
+  {
+    assert(parse("pi * 2") == Product(_Number(math.Pi), _Number(2)))
+  }
+
+  "exp(1)" should "still parse as Exp (not e followed by xp(1))" in
+  {
+    assert(parse("exp(1)") == Exp(_Number(1.0)))
+  }
+
+  "pine" should "parse as _Variable(\"pine\"), not pi * ne" in
+  {
+    assert(parse("pine") == _Variable("pine"))
+  }
+
+  "euler" should "parse as _Variable(\"euler\"), not e * uler" in
+  {
+    assert(parse("euler") == _Variable("euler"))
+  }
+
+  "e^2" should "parse as Power(_Number(math.E), _Number(2))" in
+  {
+    assert(parse("e^2") == Power(_Number(math.E), _Number(2)))
+  }

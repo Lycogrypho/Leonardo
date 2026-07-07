@@ -21,9 +21,10 @@ import scalar.*
  *   functional ::= "derive(" expr "," variable ")"
  *                | "integral(" expr "," variable ")"
  *                | "integral(" expr "," variable "," value "," value ")"
- *   value      ::= number | variable
- *   number     ::= floatingPointNumber | decimalNumber | wholeNumber
- *   variable   ::= [a-zA-Z]    -- single character only
+ *   value      ::= number | constant | variable
+ *   number     ::= floatingPointNumber
+ *   constant   ::= "pi" | "e"             -- built-in numeric literals (word-boundary guarded)
+ *   variable   ::= [a-zA-Z][a-zA-Z0-9]*
  */
 object Parser extends JavaTokenParsers:
 
@@ -91,8 +92,12 @@ object Parser extends JavaTokenParsers:
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ value ~ "," ~ value <~ ")"              ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              }
 
-  def value:    Parser[_Expression] = number | variable
-  def number:   Parser[_Number]   = floatingPointNumber ^^ { s => _Number(s.toDouble) }
-  def variable: Parser[_Variable] = """[a-zA-Z]""".r ^^ { s => _Variable(s) }
+  def value:    Parser[_Expression] = number | constant | variable
+  def number:   Parser[_Number]    = floatingPointNumber ^^ { s => _Number(s.toDouble) }
+  // Negative lookahead prevents "pine" from matching as pi + ne, or "exp" as e + xp.
+  def constant: Parser[_Number]    =
+    """pi(?![a-zA-Z0-9])""".r ^^^ _Number(math.Pi) |
+    """e(?![a-zA-Z0-9])""".r  ^^^ _Number(math.E)
+  def variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9]*""".r ^^ { s => _Variable(s) }
 
   def parse(str: String): ParseResult[_Expression] = parseAll(expr, str)
