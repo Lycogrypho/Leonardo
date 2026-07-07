@@ -49,7 +49,7 @@ case class Cos(e: _Expression) extends _Function:
 
 
 case class Tg(e: _Expression) extends _Function:
-  override def toString: String = s"tg($e)"
+  override def toString: String = s"tan($e)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
