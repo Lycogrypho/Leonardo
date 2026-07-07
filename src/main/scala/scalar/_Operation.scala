@@ -21,9 +21,17 @@ case class Product(a: _Expression, b: _Expression) extends _Operation(a, b):
   override def toString: String = s"($a * $b)"
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), b.eval(env)) match
-      case (Right(_Number(x)), Right(_Number(y))) => _Number(x * y).eval(env)
-      case (ra, rb)                               => Left(Product(ra.toExpression, rb.toExpression))
+    val ea = a.eval(env)
+    ea match
+      case Right(_Number(0.0)) => _Number(0.0).eval(env)
+      case _ =>
+        val eb = b.eval(env)
+        eb match
+          case Right(_Number(0.0)) => _Number(0.0).eval(env)
+          case _ =>
+            (ea, eb) match
+              case (Right(_Number(x)), Right(_Number(y))) => _Number(x * y).eval(env)
+              case (ra, rb)                               => Left(Product(ra.toExpression, rb.toExpression))
 
 
 case class Ratio(a: _Expression, b: _Expression) extends _Operation(a, b):

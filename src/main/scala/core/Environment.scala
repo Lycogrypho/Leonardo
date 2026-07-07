@@ -29,7 +29,9 @@ class Environment(val precision: Int = Environment.DefaultPrecision):
     variables = Map()
 
   def withBinding(variable: String, value: _Value): Environment =
-    val copy = new Environment(precision)
-    variables.foreach((k, v) => copy.assign(k, v))
-    copy.assign(variable, value)
-    copy
+    val parent = this
+    new Environment(precision):
+      override def get(v: String): Option[_Value] =
+        if v == variable then Some(value) else parent.get(v)
+      override def isBound(v: String): Boolean =
+        v == variable || parent.isBound(v)

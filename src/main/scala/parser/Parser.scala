@@ -27,6 +27,19 @@ import scalar.*
  */
 object Parser extends JavaTokenParsers:
 
+  private val MaxDepth = 500
+  private val depth = new ThreadLocal[Int]:
+    override def initialValue(): Int = 0
+
+  private def guardedExpr: Parser[_Expression] = Parser { in =>
+    val d = depth.get()
+    if d >= MaxDepth then Failure(s"expression exceeds maximum nesting depth of $MaxDepth", in)
+    else
+      depth.set(d + 1)
+      try expr(in)
+      finally depth.set(d)
+  }
+
   def expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
     {
       // A negated literal folds to a negative _Number, so "-2".toString is "-2.0"
@@ -63,20 +76,20 @@ object Parser extends JavaTokenParsers:
       case b ~ None    => b
     }
 
-  def factor: Parser[_Expression] = function | functional | value | "(" ~> expr <~ ")"
+  def factor: Parser[_Expression] = function | functional | value | "(" ~> guardedExpr <~ ")"
 
   def function: Parser[_Expression] =
-    "exp(" ~> expr <~ ")"             ^^ Exp.apply                              |
-    "log(" ~> expr <~ ")"             ^^ Log.apply                              |
-    "sin(" ~> expr <~ ")"             ^^ Sin.apply                              |
-    "cos(" ~> expr <~ ")"             ^^ Cos.apply                              |
-    "tg("  ~> expr <~ ")"             ^^ Tg.apply                               |
-    "pow(" ~> expr ~ "," ~ expr <~ ")" ^^ { case b ~ _ ~ e => Power(b, e) }
+    "exp(" ~> guardedExpr <~ ")"                          ^^ Exp.apply                         |
+    "log(" ~> guardedExpr <~ ")"                          ^^ Log.apply                         |
+    "sin(" ~> guardedExpr <~ ")"                          ^^ Sin.apply                         |
+    "cos(" ~> guardedExpr <~ ")"                          ^^ Cos.apply                         |
+    "tg("  ~> guardedExpr <~ ")"                          ^^ Tg.apply                          |
+    "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }
 
   def functional: Parser[_Expression] =
-    "derive("   ~> expr ~ "," ~ variable <~ ")"                                ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
-    "integral(" ~> expr ~ "," ~ variable ~ "," ~ value ~ "," ~ value <~ ")"   ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
-    "integral(" ~> expr ~ "," ~ variable <~ ")"                                ^^ { case e ~ _ ~ v             => _Integral(e, v)              }
+    "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
+    "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ value ~ "," ~ value <~ ")"              ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
+    "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              }
 
   def value:    Parser[_Expression] = number | variable
   def number:   Parser[_Number]   = (floatingPointNumber | decimalNumber | wholeNumber) ^^ { s => _Number(s.toDouble) }

@@ -35,7 +35,8 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
   override def eval(env: Environment): Either[_Expression, _Value] =
     (low_limit.eval(env), up_limit.eval(env)) match
       case (Right(_Number(a)), Right(_Number(b))) =>
-        val n    = 1000        // must be even; O(h^4) error with composite Simpson
+        val rawN = (env.precision * 200).max(100)
+        val n    = if rawN % 2 == 0 then rawN else rawN + 1
         val h    = (b - a) / n
         var sum  = 0.0
         var i    = 0

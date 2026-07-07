@@ -15,12 +15,12 @@ trait _Value extends _Expression
 
 
 object _Number:
-  private val defaultFactor: Double = scala.math.pow(10, Environment.DefaultPrecision)
+  private val factorTable: Array[Double] = Array.tabulate(16)(i => scala.math.pow(10.0, i))
 
   private[core] def round(d: Double, precision: Int): Double =
     if d.isNaN || d.isInfinite then d
     else
-      val factor = if precision == Environment.DefaultPrecision then defaultFactor
+      val factor = if precision >= 0 && precision < factorTable.length then factorTable(precision)
                    else scala.math.pow(10, precision)
       // guard: d * factor must fit in Long, otherwise rounding is meaningless
       if scala.math.abs(d) * factor > Long.MaxValue.toDouble then d

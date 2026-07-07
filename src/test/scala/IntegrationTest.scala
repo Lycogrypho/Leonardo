@@ -74,3 +74,21 @@ class IntegrationTest extends AnyFlatSpec:
       case Right(_Number(y)) => assert(math.abs(y - 0.5) < 1e-4)
       case other             => fail(s"expected a numeric result but got: $other")
   }
+
+  // --- issue 2: step count scales with env.precision ---
+
+  "∫x dx from 0 to 1 with precision=10" should "equal 0.5 with tight tolerance" in
+  {
+    val preciseEnv = new Environment(10)
+    _DefIntegral(x, x, _Number(0), _Number(1)).eval(preciseEnv) match
+      case Right(_Number(y)) => assert(math.abs(y - 0.5) < 1e-9)
+      case other             => fail(s"expected numeric result but got: $other")
+  }
+
+  "∫x dx from 0 to 1 with precision=1" should "still approximate 0.5" in
+  {
+    val coarseEnv = new Environment(1)
+    _DefIntegral(x, x, _Number(0), _Number(1)).eval(coarseEnv) match
+      case Right(_Number(y)) => assert(math.abs(y - 0.5) < 1e-2)
+      case other             => fail(s"expected numeric result but got: $other")
+  }

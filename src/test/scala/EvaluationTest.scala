@@ -88,6 +88,57 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
       case other             => fail(s"expected $large but got: $other")
   }
 
+  // --- issue 1: withBinding child env ---
+
+  "withBinding" should "resolve local binding without copying parent variables" in
+  {
+    val parent = new Environment()
+    parent.assign("a", _Number(10))
+    val child = parent.withBinding("b", _Number(20))
+    assert(child.get("b") == Some(_Number(20)))
+    assert(child.get("a") == Some(_Number(10)))
+    assert(child.get("c") == None)
+    assert(child.isBound("b"))
+    assert(child.isBound("a"))
+    assert(!child.isBound("c"))
+  }
+
+  // --- issue 3: _Number.round cache for non-default precision ---
+
+  "_Number(3.14159265) with precision=3" should "round to 3.142" in
+  {
+    val env3 = new Environment(3)
+    _Number(3.14159265).eval(env3) match
+      case Right(_Number(y)) => assert(y == 3.142)
+      case other             => fail(s"unexpected result: $other")
+  }
+
+  "_Number(2.71828182) with precision=8" should "round to 8 decimal places" in
+  {
+    val env8 = new Environment(8)
+    _Number(2.718281828459045).eval(env8) match
+      case Right(_Number(y)) => assert(math.abs(y - 2.71828183) < 1e-9)
+      case other             => fail(s"unexpected result: $other")
+  }
+
+  // --- issue 4: Product short-circuits on zero ---
+
+  "Product(0, unbound variable)" should "evaluate to 0 without evaluating the rhs" in
+  {
+    val z = _Variable("z")
+    Product(_Number(0), z).eval(new Environment()) match
+      case Right(_Number(y)) => assert(y == 0.0)
+      case other             => fail(s"expected 0.0 but got: $other")
+  }
+
+  "Product(unbound variable, 0)" should "evaluate to 0 without evaluating the lhs further" in
+  {
+    val z = _Variable("z")
+    Product(z, _Number(0)).eval(new Environment()) match
+      case Right(_Number(y)) => assert(y == 0.0)
+      case other             => fail(s"expected 0.0 but got: $other")
+  }
+
   // --- variable binding ---
 
   val a = _Variable("a")

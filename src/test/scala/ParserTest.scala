@@ -68,3 +68,18 @@ class ParserTest extends AnyFlatSpec:
   {
     assert(parse("+2") == _Number(2.0))
   }
+
+  // --- issue 5: depth guard ---
+
+  "600 levels of nested parentheses" should "fail with a parse error rather than StackOverflow" in
+  {
+    val deep = "(" * 600 + "1" + ")" * 600
+    val result = Parser.parse(deep)
+    assert(!result.successful)
+  }
+
+  "valid 10-level nesting" should "parse successfully" in
+  {
+    val nested = "(" * 10 + "1" + ")" * 10
+    assert(parse(nested) == _Number(1.0))
+  }
