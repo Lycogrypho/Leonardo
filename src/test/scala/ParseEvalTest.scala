@@ -41,8 +41,7 @@ class ParseEvalTest extends AnyFlatSpec:
 
   "parse+eval of \"3a\" with a = 2" should "equal 6.0" in
   {
-    val e = env
-    e.assign("a", _Number(2))
+    val e = new Environment().withBinding("a", _Number(2))
     parse("3a").eval(e) match
       case Right(_Number(x)) => assert(x == 6.0)
       case other             => fail(s"expected 6.0 but got: $other")
@@ -57,8 +56,7 @@ class ParseEvalTest extends AnyFlatSpec:
 
   "parse+eval of \"sin(a) + cos(a)\" with a = 0" should "equal 1.0" in
   {
-    val e = env
-    e.assign("a", _Number(0))
+    val e = new Environment().withBinding("a", _Number(0))
     parse("sin(a) + cos(a)").eval(e) match
       case Right(_Number(x)) => assert(x == 1.0)
       case other             => fail(s"expected 1.0 but got: $other")
@@ -66,8 +64,7 @@ class ParseEvalTest extends AnyFlatSpec:
 
   "parse+eval of an expression with two references to the same variable" should "use the same binding" in
   {
-    val e = env
-    e.assign("x", _Number(5))
+    val e = new Environment().withBinding("x", _Number(5))
     parse("x + x").eval(e) match
       case Right(_Number(x)) => assert(x == 10.0)
       case other             => fail(s"expected 10.0 but got: $other")
@@ -77,8 +74,7 @@ class ParseEvalTest extends AnyFlatSpec:
 
   "parse+eval of \"2 * theta\" with theta = 3" should "equal 6.0" in
   {
-    val e = env
-    e.assign("theta", _Number(3))
+    val e = new Environment().withBinding("theta", _Number(3))
     parse("2 * theta").eval(e) match
       case Right(_Number(x)) => assert(x == 6.0)
       case other             => fail(s"expected 6.0 but got: $other")
@@ -86,9 +82,7 @@ class ParseEvalTest extends AnyFlatSpec:
 
   "parse+eval of \"x1 + x2\" with x1=1, x2=2" should "equal 3.0" in
   {
-    val e = env
-    e.assign("x1", _Number(1))
-    e.assign("x2", _Number(2))
+    val e = new Environment().withBinding("x1", _Number(1)).withBinding("x2", _Number(2))
     parse("x1 + x2").eval(e) match
       case Right(_Number(x)) => assert(x == 3.0)
       case other             => fail(s"expected 3.0 but got: $other")
@@ -106,7 +100,7 @@ class ParseEvalTest extends AnyFlatSpec:
   "parse+eval of \"cos(pi)\"" should "equal -1.0" in
   {
     parse("cos(pi)").eval(env) match
-      case Right(_Number(x)) => assert(math.abs(x - (-1.0)) < 1e-5)
+      case Right(_Number(x)) => assert(math.abs(x + 1.0) < 1e-5)
       case other             => fail(s"expected -1.0 but got: $other")
   }
 

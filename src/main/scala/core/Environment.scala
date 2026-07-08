@@ -7,31 +7,18 @@ object Environment:
   val DefaultPrecision: Int = 5
 
 
-// Variable-binding context shared across all domains. Bindings map names to fully
-// reduced values (_Value): a number now, a matrix/boolean/… later — never a symbolic
-// expression. Kept in core (eval takes one) so it cannot depend on any one domain.
-class Environment(val precision: Int = Environment.DefaultPrecision):
-  private var variables: Map[String, _Value] = Map()
+// Immutable variable-binding context shared across all domains. Bindings map names
+// to fully reduced values (_Value): a number now, a matrix/boolean/… later — never
+// a symbolic expression. Kept in core (eval takes one) so it cannot depend on any
+// one domain. withBinding returns a new Environment; the original is unchanged.
+class Environment(val precision: Int = Environment.DefaultPrecision,
+                  private val variables: Map[String, _Value] = Map()):
 
   def get(variable: String): Option[_Value] =
     variables.get(variable)
 
-  def assign(variable: String, value: _Value): Unit =
-    variables = variables + (variable -> value)
-
-  def unset(variable: String): Unit =
-    variables = variables - variable
-
   def isBound(variable: String): Boolean =
     variables.contains(variable)
 
-  def reset(): Unit =
-    variables = Map()
-
   def withBinding(variable: String, value: _Value): Environment =
-    val parent = this
-    new Environment(precision):
-      override def get(v: String): Option[_Value] =
-        if v == variable then Some(value) else parent.get(v)
-      override def isBound(v: String): Boolean =
-        v == variable || parent.isBound(v)
+    new Environment(precision, variables + (variable -> value))

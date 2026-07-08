@@ -32,8 +32,7 @@ class RoundTripTest extends AnyFlatSpec:
     result.get
 
   def evalUnder(ast: _Expression, bindings: Seq[(String, Double)]): Either[_Expression, _Value] =
-    val e = new Environment()
-    bindings.foreach((name, value) => e.assign(name, _Number(value)))
+    val e = bindings.foldLeft(new Environment())((en, kv) => en.withBinding(kv._1, _Number(kv._2)))
     ast.eval(e)
 
   /** Parse, print, re-parse, and assert the two ASTs evaluate equivalently. */

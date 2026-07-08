@@ -4,22 +4,8 @@ package scalar
 import core.*
 
 
-def dependsOn(e: _Expression, v: _Variable): Boolean = e match
-  case _: _Number              => false
-  case x: _Variable            => x.variable == v.variable
-  case Sum(a, b)               => dependsOn(a, v) || dependsOn(b, v)
-  case Product(a, b)           => dependsOn(a, v) || dependsOn(b, v)
-  case Ratio(a, b)             => dependsOn(a, v) || dependsOn(b, v)
-  case Power(a, b)             => dependsOn(a, v) || dependsOn(b, v)
-  case Exp(a)                  => dependsOn(a, v)
-  case Log(a)                  => dependsOn(a, v)
-  case Sin(a)                  => dependsOn(a, v)
-  case Cos(a)                  => dependsOn(a, v)
-  case Tg(a)                   => dependsOn(a, v)
-  case Asin(a)                 => dependsOn(a, v)
-  case Acos(a)                 => dependsOn(a, v)
-  case Atan(a)                 => dependsOn(a, v)
-  case _Derivative(f, _)        => dependsOn(f, v)
-  case _Integral(f, _)          => dependsOn(f, v)
-  case _DefIntegral(f, _, l, h) => dependsOn(f, v) || dependsOn(l, v) || dependsOn(h, v)
-  case _                        => false
+// Whether expression e contains variable v as a free occurrence. Uses the cached
+// freeVars set on each node (computed once per node on first call, then O(1)),
+// so repeated dependsOn calls on the same expression tree are effectively free.
+def dependsOn(e: _Expression, v: _Variable): Boolean =
+  e.freeVars.contains(v.variable)

@@ -12,9 +12,7 @@ class SimplifyTest extends AnyFlatSpec:
   val y = _Variable("y")
 
   def envWith(bindings: (String, Double)*): Environment =
-    val e = new Environment()
-    bindings.foreach((name, v) => e.assign(name, _Number(v)))
-    e
+    bindings.foldLeft(new Environment())((e, kv) => e.withBinding(kv._1, _Number(kv._2)))
 
   // --- identity / absorbing element rules ---
 
@@ -208,8 +206,7 @@ class SimplifyTest extends AnyFlatSpec:
 
   "simplify of (sin(x)^2 + cos(x)^2) at x=1" should "evaluate to 1" in
   {
-    val e = new Environment()
-    e.assign("x", _Number(1))
+    val e = new Environment().withBinding("x", _Number(1))
     val identity = Sum(Power(Sin(x), _Number(2)), Power(Cos(x), _Number(2)))
     identity.simplify().eval(e) match
       case Right(_Number(v)) => assert(math.abs(v - 1.0) < 1e-4)

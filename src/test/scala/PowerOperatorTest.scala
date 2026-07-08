@@ -19,8 +19,7 @@ class PowerOperatorTest extends AnyFlatSpec:
     r.get
 
   def evalNum(input: String, bindings: (String, Double)*): Double =
-    val e = new Environment()
-    bindings.foreach((name, value) => e.assign(name, _Number(value)))
+    val e = bindings.foldLeft(new Environment())((en, kv) => en.withBinding(kv._1, _Number(kv._2)))
     parse(input).eval(e) match
       case Right(_Number(x)) => x
       case other             => fail(s"expected a numeric result but got: $other")

@@ -19,3 +19,5 @@ object Syntax:
     def dependsOn(v: _Variable): Boolean   = it.grypho.scala.leonardo.scalar.dependsOn(e, v)
     def substitute(definitions: Map[String, _Expression]): _Expression =
       it.grypho.scala.leonardo.scalar.substitute(e, definitions)
+    def compile(v: _Variable): Option[Double => Double] =
+      it.grypho.scala.leonardo.scalar.compile(e, v, new Environment())

@@ -9,9 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 class DerivativeTest extends AnyFlatSpec:
 
   def envWith(bindings: (String, Double)*): Environment =
-    val e = new Environment()
-    bindings.foreach((name, value) => e.assign(name, _Number(value)))
-    e
+    bindings.foldLeft(new Environment())((e, kv) => e.withBinding(kv._1, _Number(kv._2)))
 
   def evalNum(expr: _Expression, bindings: (String, Double)*): Double =
     expr.eval(envWith(bindings*)) match
@@ -73,7 +71,7 @@ class DerivativeTest extends AnyFlatSpec:
   "derivative of 1/x at x=2" should "be -0.25" in
   {
     val expr = _Derivative(Ratio(_Number(1), x), x)
-    assert(math.abs(evalNum(expr, "x" -> 2.0) - (-0.25)) < 1e-4)
+    assert(math.abs(evalNum(expr, "x" -> 2.0) + 0.25) < 1e-4)
   }
 
   // --- transcendental functions ---
@@ -89,7 +87,7 @@ class DerivativeTest extends AnyFlatSpec:
   "derivative of cos(x) at x=π/2" should "be -1.0" in
   {
     val expr = _Derivative(Cos(x), x)
-    assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) - (-1.0)) < 1e-4)
+    assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) + 1.0) < 1e-4)
   }
 
   // d/dx(exp(x)) = exp(x), at x=0 → 1
@@ -135,7 +133,7 @@ class DerivativeTest extends AnyFlatSpec:
   "second derivative of sin(x) at x=π/2" should "be -1.0" in
   {
     val expr = _Derivative(_Derivative(Sin(x), x), x)
-    assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) - (-1.0)) < 1e-4)
+    assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) + 1.0) < 1e-4)
   }
 
   // Differentiating an indefinite integral w.r.t. an unrelated variable must not

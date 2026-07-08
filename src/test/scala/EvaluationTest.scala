@@ -3,18 +3,18 @@ package it.grypho.scala.leonardo
 import core.*
 import scalar.*
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.BeforeAndAfter
 
 
-class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
-  implicit val env: Environment = new Environment()
+class EvaluationTest extends AnyFlatSpec:
 
-  before { env.reset() }
+  implicit def env: Environment = new Environment()
 
   val x_var = _Variable("x")
 
   // Expected result is an _Expression: a _Number for rows that reduce to a value
   // (matched on the Right branch), a symbolic expression for rows that stay symbolic.
+  // Numeric results are compared via toString (display at DefaultPrecision=5) so that
+  // floating-point intermediate values (e.g. 7*3.1 = 21.700000000000003) round correctly.
   val evaluationTests: List[(_Expression, _Expression)] = List(
     (_Number(10),                                   _Number(10.0)),
     (_Number(3.1234567890),                         _Number(3.12346)),
@@ -32,7 +32,7 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
     s"expression \"${s._1}\" " should s"be evaluated to \"${s._2}\" " in
     {
       s._1.eval(env) match
-        case Right(x) => assert(x == s._2)
+        case Right(x) => assert(x.toString == s._2.toString)
         case Left(e)  => assert(e == s._2)
     }
 
@@ -88,12 +88,23 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
       case other             => fail(s"expected $large but got: $other")
   }
 
+  // --- display precision: _Number.display(p) rounds for REPL output ---
+
+  "_Number(3.14159265).display(3)" should "produce \"3.142\"" in
+  {
+    assert(_Number(3.14159265).display(3) == "3.142")
+  }
+
+  "_Number(2.718281828459045).display(8)" should "round to 8 decimal places" in
+  {
+    assert(_Number(2.718281828459045).display(8) == "2.71828183")
+  }
+
   // --- issue 1: withBinding child env ---
 
   "withBinding" should "resolve local binding without copying parent variables" in
   {
-    val parent = new Environment()
-    parent.assign("a", _Number(10))
+    val parent = new Environment().withBinding("a", _Number(10))
     val child = parent.withBinding("b", _Number(20))
     assert(child.get("b").contains(_Number(20)))
     assert(child.get("a").contains(_Number(10)))
@@ -101,24 +112,6 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
     assert(child.isBound("b"))
     assert(child.isBound("a"))
     assert(!child.isBound("c"))
-  }
-
-  // --- issue 3: _Number.round cache for non-default precision ---
-
-  "_Number(3.14159265) with precision=3" should "round to 3.142" in
-  {
-    val env3 = new Environment(3)
-    _Number(3.14159265).eval(env3) match
-      case Right(_Number(y)) => assert(y == 3.142)
-      case other             => fail(s"unexpected result: $other")
-  }
-
-  "_Number(2.71828182) with precision=8" should "round to 8 decimal places" in
-  {
-    val env8 = new Environment(8)
-    _Number(2.718281828459045).eval(env8) match
-      case Right(_Number(y)) => assert(math.abs(y - 2.71828183) < 1e-9)
-      case other             => fail(s"unexpected result: $other")
   }
 
   // --- issue 4: Product short-circuits on zero ---
@@ -146,9 +139,9 @@ class EvaluationTest extends AnyFlatSpec with BeforeAndAfter:
 
   "an assigned variable" should "be evaluated to a numeric value" in
   {
-    env.assign("a", _Number(3))
-    assert(Sum(a, b).eval(env) == Sum(_Number(3), _Variable("b")).eval(env))
+    val e1 = new Environment().withBinding("a", _Number(3))
+    assert(Sum(a, b).eval(e1) == Sum(_Number(3), _Variable("b")).eval(e1))
 
-    env.assign("b", _Number(7))
-    assert(Sum(a, b).eval(env) == _Number(10).eval(env))
+    val e2 = e1.withBinding("b", _Number(7))
+    assert(Sum(a, b).eval(e2) == _Number(10).eval(e2))
   }

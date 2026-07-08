@@ -5,8 +5,21 @@ package core
 // Foundation of every expression tree, shared across all domains.
 // eval reduces an expression: Right holds a fully-reduced _Value; Left holds a
 // symbolic expression that could not be fully reduced.
+//
+// children / rebuild: generic structural traversal — algorithms that touch every node
+// type (Substitute, Analysis, …) use these instead of matching each case explicitly.
+// children returns sub-expressions subject to recursive traversal; binder positions
+// (e.g. the variable of differentiation in _Derivative) are excluded. rebuild(cs)
+// reconstructs the same node shape with new sub-expressions.
+//
+// freeVars: the set of variable names that appear free in this expression. Cached
+// as a lazy val per instance — computed once, then O(1). Provided with a default
+// implementation in terms of children so new node types get it for free.
 trait _Expression:
   def eval(env: Environment): Either[_Expression, _Value]
+  def children: List[_Expression]
+  def rebuild(newChildren: List[_Expression]): _Expression
+  lazy val freeVars: Set[String] = children.flatMap(_.freeVars).toSet
 
 
 // Marker for a fully-reduced, concrete result — a number now, a matrix/boolean/… later.
@@ -27,10 +40,17 @@ object _Number:
       else (d * factor).round.toDouble / factor
 
 case class _Number(d: Double) extends _Value:
+  // toString rounds for display only (DefaultPrecision = 5); no rounding in eval.
   override def toString: String = _Number.round(d, Environment.DefaultPrecision).toString
+  // display(p) rounds to p decimal places — used by the REPL to respect session precision.
+  def display(precision: Int): String = _Number.round(d, precision).toString
 
-  override def eval(env: Environment): Either[_Expression, _Value] =
-    Right(_Number(_Number.round(d, env.precision)))
+  // No rounding in eval: the stored Double is propagated as-is. Rounding is a
+  // display concern only, handled at the boundary by toString / display(p).
+  override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
+
+  override def children: List[_Expression] = List.empty
+  override def rebuild(c: List[_Expression]): _Expression = this
 
 
 // A free variable is a symbolic atom, not a concrete value, so it is not a _Value:
@@ -42,6 +62,10 @@ case class _Variable(variable: String) extends _Expression:
     env.get(variable) match
       case Some(n) => n.eval(env)
       case None    => Left(this)
+
+  override def children: List[_Expression] = List.empty
+  override def rebuild(c: List[_Expression]): _Expression = this
+  override lazy val freeVars: Set[String] = Set(variable)
 
 
 // Collapse an eval result back to a plain expression — used when rebuilding a

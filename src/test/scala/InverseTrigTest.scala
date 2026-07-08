@@ -53,42 +53,42 @@ class InverseTrigTest extends AnyFlatSpec:
   "asin(0)" should "evaluate to 0" in
   {
     parse("asin(0)").eval(env) match
-      case Right(_Number(x)) => assert(math.abs(x) < 1e-4)
+      case Right(_Number(x)) => assert(math.abs(x) < 1e-10)
       case other             => fail(s"expected 0 but got $other")
   }
 
   "asin(1)" should "evaluate to pi/2" in
   {
     parse("asin(1)").eval(env) match
-      case Right(_Number(x)) => assert(math.abs(x - math.Pi / 2) < 1e-4)
+      case Right(_Number(x)) => assert(math.abs(x - math.Pi / 2) < 1e-10)
       case other             => fail(s"expected pi/2 but got $other")
   }
 
   "acos(1)" should "evaluate to 0" in
   {
     parse("acos(1)").eval(env) match
-      case Right(_Number(x)) => assert(math.abs(x) < 1e-4)
+      case Right(_Number(x)) => assert(math.abs(x) < 1e-10)
       case other             => fail(s"expected 0 but got $other")
   }
 
   "acos(0)" should "evaluate to pi/2" in
   {
     parse("acos(0)").eval(env) match
-      case Right(_Number(x)) => assert(math.abs(x - math.Pi / 2) < 1e-4)
+      case Right(_Number(x)) => assert(math.abs(x - math.Pi / 2) < 1e-10)
       case other             => fail(s"expected pi/2 but got $other")
   }
 
   "atan(0)" should "evaluate to 0" in
   {
     parse("atan(0)").eval(env) match
-      case Right(_Number(x)) => assert(math.abs(x) < 1e-4)
+      case Right(_Number(x)) => assert(math.abs(x) < 1e-10)
       case other             => fail(s"expected 0 but got $other")
   }
 
   "atan(1)" should "evaluate to pi/4" in
   {
     parse("atan(1)").eval(env) match
-      case Right(_Number(x)) => assert(math.abs(x - math.Pi / 4) < 1e-4)
+      case Right(_Number(x)) => assert(math.abs(x - math.Pi / 4) < 1e-10)
       case other             => fail(s"expected pi/4 but got $other")
   }
 
@@ -138,34 +138,31 @@ class InverseTrigTest extends AnyFlatSpec:
 
   "derive(asin(x), x)" should "equal 1/sqrt(1-x^2) at x=0.5" in
   {
-    val e = new Environment()
-    e.assign("x", _Number(0.5))
+    val e = new Environment().withBinding("x", _Number(0.5))
     val d = _Derivative(Asin(_Variable("x")), _Variable("x"))
     d.eval(e) match
       case Right(_Number(v)) =>
-        assert(math.abs(v - 1.0 / math.sqrt(1 - 0.25)) < 1e-4)
+        assert(math.abs(v - 1.0 / math.sqrt(1 - 0.25)) < 1e-9)
       case other => fail(s"expected numeric but got $other")
   }
 
   "derive(acos(x), x)" should "equal -1/sqrt(1-x^2) at x=0.5" in
   {
-    val e = new Environment()
-    e.assign("x", _Number(0.5))
+    val e = new Environment().withBinding("x", _Number(0.5))
     val d = _Derivative(Acos(_Variable("x")), _Variable("x"))
     d.eval(e) match
       case Right(_Number(v)) =>
-        assert(math.abs(v - (-1.0 / math.sqrt(1 - 0.25))) < 1e-4)
+        assert(math.abs(v - (-1.0 / math.sqrt(1 - 0.25))) < 1e-9)
       case other => fail(s"expected numeric but got $other")
   }
 
   "derive(atan(x), x)" should "equal 1/(1+x^2) at x=1" in
   {
-    val e = new Environment()
-    e.assign("x", _Number(1.0))
+    val e = new Environment().withBinding("x", _Number(1.0))
     val d = _Derivative(Atan(_Variable("x")), _Variable("x"))
     d.eval(e) match
       case Right(_Number(v)) =>
-        assert(math.abs(v - 0.5) < 1e-4)
+        assert(math.abs(v - 0.5) < 1e-9)
       case other => fail(s"expected numeric but got $other")
   }
 

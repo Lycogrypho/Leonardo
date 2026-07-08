@@ -71,8 +71,7 @@ class IntegrationTest extends AnyFlatSpec:
 
   "indefinite ∫x dx with x bound to 4" should "reduce to 8.0 (x²/2)" in
   {
-    val bound = new Environment()
-    bound.assign("x", _Number(4))
+    val bound = new Environment().withBinding("x", _Number(4))
     _Integral(x, x).eval(bound) match
       case Right(_Number(y)) => assert(math.abs(y - 8.0) < 1e-4)
       case other             => fail(s"expected 8.0 but got: $other")

@@ -12,8 +12,7 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
   def env: Environment = new Environment()
 
   def evalAt(e: _Expression, value: Double): Double =
-    val en = new Environment(10)
-    en.assign("x", _Number(value))
+    val en = new Environment().withBinding("x", _Number(value))
     e.eval(en) match
       case Right(_Number(y)) => y
       case other             => fail(s"expected numeric result but got: $other")
@@ -113,8 +112,7 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
 
   "_Integral(x, x).eval with x bound" should "compute the antiderivative numerically" in
   {
-    val en = new Environment()
-    en.assign("x", _Number(4))
+    val en = new Environment().withBinding("x", _Number(4))
     _Integral(x, x).eval(en) match
       case Right(_Number(y)) => assert(math.abs(y - 8.0) < 1e-4)  // x²/2 = 16/2 = 8
       case other             => fail(s"expected 8.0 but got: $other")
@@ -124,8 +122,7 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
   {
     val result = Parser.parse("integral(x, x)")
     assert(result.successful, s"parse failed: $result")
-    val en = new Environment()
-    en.assign("x", _Number(4))
+    val en = new Environment().withBinding("x", _Number(4))
     result.get.eval(en) match
       case Right(_Number(y)) => assert(math.abs(y - 8.0) < 1e-4)
       case other             => fail(s"expected 8.0 but got: $other")

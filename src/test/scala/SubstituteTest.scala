@@ -81,8 +81,7 @@ class SubstituteTest extends AnyFlatSpec:
   {
     val defs = Map("f" -> Product(x, x))
     val derived = derive(substitute(f, defs), x)
-    val env = new Environment()
-    env.assign("x", _Number(3))
+    val env = new Environment().withBinding("x", _Number(3))
     assert(derived.eval(env) == Right(_Number(6.0)))
   }
 

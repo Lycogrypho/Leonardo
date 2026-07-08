@@ -35,12 +35,8 @@ final class Session:
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
 
-  // Rebuilt per command: Environment cannot enumerate its bindings or change
-  // precision after construction, and the maps here are tiny.
-  private def env: Environment =
-    val e = new Environment(precision)
-    bindings.foreach((k, v) => e.assign(k, v))
-    e
+  // Rebuilt per command from the immutable Environment constructor.
+  private def env: Environment = new Environment(precision, bindings)
 
   private val emptyEnv = new Environment()
 
@@ -92,7 +88,9 @@ final class Session:
     else s"parse error: ${result.toString.linesIterator.next()}"
 
   private def evaluate(e: _Expression): String =
-    substitute(e, definitions).eval(env).toExpression.toString
+    substitute(e, definitions).eval(env).toExpression match
+      case n: _Number => n.display(precision)
+      case other      => other.toString
 
   private def assign(name: String, rhs: _Expression): String =
     rhs.eval(emptyEnv) match
@@ -161,10 +159,10 @@ object Session:
   var running = true
   while running do
     print("leonardo> ")
-    scala.io.StdIn.readLine() match
-      case null | "quit" | "exit" => running = false
-      case s":load $path"         => println(Session.loadFile(session, path.trim))
-      case s":save $path"         => println(Session.saveFile(session, path.trim))
-      case line =>
+    Option(scala.io.StdIn.readLine()) match
+      case None | Some("quit") | Some("exit") => running = false
+      case Some(s":load $path")               => println(Session.loadFile(session, path.trim))
+      case Some(s":save $path")               => println(Session.saveFile(session, path.trim))
+      case Some(line)                         =>
         val out = session.execute(line)
         if out.nonEmpty then println(out)

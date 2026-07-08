@@ -13,9 +13,7 @@ class ExpandTest extends AnyFlatSpec:
   val z = _Variable("z")
 
   def envWith(bindings: (String, Double)*): Environment =
-    val e = new Environment()
-    bindings.foreach((name, v) => e.assign(name, _Number(v)))
-    e
+    bindings.foldLeft(new Environment())((e, kv) => e.withBinding(kv._1, _Number(kv._2)))
 
   def evalNum(expr: _Expression, bindings: (String, Double)*): Double =
     expr.eval(envWith(bindings*)) match

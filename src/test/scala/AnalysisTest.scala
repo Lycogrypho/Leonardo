@@ -171,5 +171,7 @@ class AnalysisTest extends AnyFlatSpec:
   {
     val unknown = new _Expression:
       def eval(env: Environment): Either[_Expression, _Value] = Left(this)
+      def children: List[_Expression] = List.empty
+      def rebuild(c: List[_Expression]): _Expression = this
     assert(!unknown.dependsOn(x))
   }

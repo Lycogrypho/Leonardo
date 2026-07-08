@@ -29,7 +29,9 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
-- **Clean API**: Environment-aware evaluation with no implicit global state. Expressions are immutable and composable.
+- **Clean API**: Environment-aware evaluation with no implicit global state. Expressions are immutable and composable. `Environment` is immutable — `withBinding` returns a new instance, enabling safe concurrent evaluation.
+
+- **Performance**: Rounding is deferred to display time only (no mid-computation precision loss). Every AST node caches its free-variable set (`freeVars`) after the first traversal, making `dependsOn` O(1). Definite-integral evaluation (Simpson's rule) uses a compiled `Double => Double` closure when the integrand has no unresolvable symbolic nodes, eliminating per-step allocations.
 
 ## Interactive CLI
 
