@@ -59,11 +59,23 @@ class IntegrationTest extends AnyFlatSpec:
       case Right(v) => fail(s"expected symbolic but got $v")
   }
 
-  "indefinite ∫x dx" should "stay symbolic" in
+  // Indefinite integration is now implemented (see IndefiniteIntegrationTest); with
+  // x unbound the antiderivative x²/2 cannot fold to a number, so it stays symbolic —
+  // but for a reason different from the old "not implemented" stub.
+  "indefinite ∫x dx with x unbound" should "stay symbolic (antiderivative x²/2)" in
   {
     _Integral(x, x).eval(env) match
       case Left(_)  => succeed
       case Right(v) => fail(s"expected symbolic but got $v")
+  }
+
+  "indefinite ∫x dx with x bound to 4" should "reduce to 8.0 (x²/2)" in
+  {
+    val bound = new Environment()
+    bound.assign("x", _Number(4))
+    _Integral(x, x).eval(bound) match
+      case Right(_Number(y)) => assert(math.abs(y - 8.0) < 1e-4)
+      case other             => fail(s"expected 8.0 but got: $other")
   }
 
   "parse+eval of \"integral(x, x, 0, 1)\"" should "equal 0.5" in

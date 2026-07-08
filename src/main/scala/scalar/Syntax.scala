@@ -15,6 +15,7 @@ object Syntax:
     def simplifyFully(): _Expression      = it.grypho.scala.leonardo.scalar.simplifyFully(e)
     def expand(): _Expression             = it.grypho.scala.leonardo.scalar.expand(e)
     def derive(v: _Variable): _Expression = it.grypho.scala.leonardo.scalar.derive(e, v)
+    def integrate(v: _Variable): _Expression = it.grypho.scala.leonardo.scalar.integrate(e, v)
     def dependsOn(v: _Variable): Boolean   = it.grypho.scala.leonardo.scalar.dependsOn(e, v)
     def substitute(definitions: Map[String, _Expression]): _Expression =
       it.grypho.scala.leonardo.scalar.substitute(e, definitions)

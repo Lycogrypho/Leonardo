@@ -25,6 +25,8 @@ import parser.Parser
  *   precision <n>        set decimal precision
  *   env                  list precision, bindings, and definitions
  *   unset <name>         remove a binding or definition
+ *   :load <file>         run a session script (file IO handled by the read loop)
+ *   :save <file>         write current state to a replayable script (read loop)
  *   help                 this summary
  *   quit | exit          leave (handled by the read loop)
  */
@@ -53,8 +55,36 @@ final class Session:
     case s"simplify $rest"      => withParsed(rest)(e => simplify(substitute(e, definitions)).toString)
     case s"expand $rest"        => withParsed(rest)(e => expand(substitute(e, definitions)).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
+    case s":$_"                 => ":load and :save are only available at the interactive prompt"
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
     case expression             => withParsed(expression)(evaluate)
+
+  /**
+   * Current session state serialized as a replayable script — one command per line,
+   * precision first, then bindings and definitions in name order. Feeding this back
+   * through `load` (or line by line through `execute`) reconstructs the session.
+   * Pure: this is what the REPL writes to a `:save` file.
+   */
+  def script: String =
+    val lines =
+      List(s"precision $precision") ++
+      bindings.toList.sortBy(_._1).map((k, v) => s"$k = $v") ++
+      definitions.toList.sortBy(_._1).map((k, e) => s"$k = $e")
+    lines.mkString("\n")
+
+  /**
+   * Execute a whole script body (e.g. the contents of a `:load` file), returning the
+   * newline-joined non-empty outputs of its commands. Blank lines and `#` comments are
+   * skipped. IO-free — the caller supplies the text, so this is unit-testable; the REPL
+   * loop is the only place that actually reads the file.
+   */
+  def load(text: String): String =
+    text.linesIterator
+      .map(_.trim)
+      .filter(l => l.nonEmpty && !l.startsWith("#"))
+      .map(execute)
+      .filter(_.nonEmpty)
+      .mkString("\n")
 
   private def withParsed(input: String)(f: _Expression => String): String =
     val result = Parser.parse(input)
@@ -104,8 +134,25 @@ object Session:
       |precision <n>        set decimal precision
       |env                  list precision, bindings, and definitions
       |unset <name>         remove a binding or definition
+      |:load <file>         run a session script (bindings/definitions/commands)
+      |:save <file>         write the current session state to a replayable script
       |help                 this summary
       |quit | exit          leave""".stripMargin
+
+  /** Read a :load file and replay it through the session. IO lives here, not in Session. */
+  def loadFile(session: Session, path: String): String =
+    scala.util.Using(scala.io.Source.fromFile(path))(_.mkString) match
+      case scala.util.Success(text) => session.load(text)
+      case scala.util.Failure(e)    => s"could not read $path: ${e.getMessage}"
+
+  /** Write the session's replayable script to a :save file. IO lives here, not in Session. */
+  def saveFile(session: Session, path: String): String =
+    scala.util.Try:
+      val w = new java.io.PrintWriter(path)
+      try w.write(session.script) finally w.close()
+    match
+      case scala.util.Success(_) => s"saved to $path"
+      case scala.util.Failure(e) => s"could not write $path: ${e.getMessage}"
 
 
 @main def repl(): Unit =
@@ -116,6 +163,8 @@ object Session:
     print("leonardo> ")
     scala.io.StdIn.readLine() match
       case null | "quit" | "exit" => running = false
+      case s":load $path"         => println(Session.loadFile(session, path.trim))
+      case s":save $path"         => println(Session.saveFile(session, path.trim))
       case line =>
         val out = session.execute(line)
         if out.nonEmpty then println(out)

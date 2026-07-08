@@ -15,3 +15,6 @@ libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 
 libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.19" % "test"
+
+// Shortcut for the interactive REPL: `sbt repl` instead of the full runMain path.
+addCommandAlias("repl", "runMain it.grypho.scala.leonardo.cli.repl")

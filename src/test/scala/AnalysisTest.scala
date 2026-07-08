@@ -108,6 +108,26 @@ class AnalysisTest extends AnyFlatSpec:
     assert(Tg(x).dependsOn(x))
   }
 
+  "Asin(x)" should "depend on x" in
+  {
+    assert(Asin(x).dependsOn(x))
+  }
+
+  "Acos(x)" should "depend on x" in
+  {
+    assert(Acos(x).dependsOn(x))
+  }
+
+  "Atan(x)" should "depend on x" in
+  {
+    assert(Atan(x).dependsOn(x))
+  }
+
+  "Asin(y)" should "not depend on x" in
+  {
+    assert(!Asin(_Variable("y")).dependsOn(x))
+  }
+
   // --- functional nodes ---
 
   "_Derivative(x^2, x)" should "depend on x" in

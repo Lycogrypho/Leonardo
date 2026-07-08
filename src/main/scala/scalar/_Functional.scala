@@ -6,7 +6,7 @@ import core.*
 
 // Higher-order operators that take an expression (and a variable) and produce a new
 // one: differentiation and integration. The algorithms live in their own files
-// (Derive.scala; integration to come); these classes are just the AST nodes.
+// (Derive.scala, Integrate.scala); these classes are just the AST nodes.
 abstract class _Functional extends _Expression
 
 
@@ -25,8 +25,13 @@ case class _Derivative(e: _Expression, v: _Variable) extends _Functional:
 case class _Integral(e: _Expression, v: _Variable) extends _Functional:
   override def toString: String = s"integral($e, $v)"
 
-  // Indefinite integration is not implemented; result stays symbolic.
-  override def eval(env: Environment): Either[_Expression, _Value] = Left(this)
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val antiderivative = it.grypho.scala.leonardo.scalar.integrate(e, v)
+    // integrate returns this same _Integral node when no rule applies. Re-evaluating
+    // it would call integrate on the identical node forever, so stay symbolic instead
+    // (mirrors _Derivative.eval's termination guard).
+    if antiderivative == this then Left(this)
+    else antiderivative.eval(env)
 
 
 case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up_limit: _Expression) extends _Functional:

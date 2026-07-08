@@ -25,7 +25,7 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
   - Binary operations (addition, subtraction, multiplication, division)
   - Unary functions (exponential, logarithm, trigonometric)
   - Power operations
-  - Higher-order operators (derivatives and integrals — stubs for future development)
+  - Higher-order operators (derivatives, definite integrals via Simpson's rule, and indefinite integrals via a symbolic rule table)
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
@@ -33,11 +33,8 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 ## Interactive CLI
 
-A minimal REPL ships alongside the library:
-
-```
-sbt "runMain it.grypho.scala.leonardo.cli.repl"
-```
+A REPL ships alongside the library. Launch it with the `sbt repl` alias (or the full
+`sbt "runMain it.grypho.scala.leonardo.cli.repl"`):
 
 ```
 leonardo> x = 3.001            -- bind a value (constant right-hand side)
@@ -50,17 +47,19 @@ leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x
 leonardo> precision 8          -- set decimal precision
 leonardo> env                  -- list precision, bindings, definitions
+leonardo> :save session.txt    -- write current state to a replayable script
+leonardo> :load session.txt    -- replay a session script
 leonardo> quit
 ```
 
 Definitions are late-bound: redefining `f` also changes any `g` defined in terms
 of `f`. Whether an assignment binds a value or defines a function is decided by the
 right-hand side alone — constant expressions fold to a numeric binding, expressions
-with free variables become definitions.
+with free variables become definitions. `:save` serializes the session (precision,
+bindings, definitions) as a script that `:load` replays.
 
 ## Planned Features
 
-- Symbolic differentiation and integration
-- Expression simplification and normalization
-- Support for multi-character variable names
+- Broader indefinite integration (integration by parts, non-linear substitution)
+- Expression normalization (combining like terms across sub-trees)
 - Additional mathematical functions and constants

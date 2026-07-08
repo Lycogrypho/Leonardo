@@ -136,3 +136,88 @@ class ReplSessionTest extends AnyFlatSpec:
   {
     assert(session.execute("help").contains("simplify"))
   }
+
+  // --- session scripts: :save (script) / :load (load) ---
+
+  "script" should "serialize precision, bindings, and definitions as replayable commands" in
+  {
+    val s = session
+    s.execute("precision 4")
+    s.execute("x = 3")
+    s.execute("f = x + 1")
+    val script = s.script
+    assert(script.contains("precision 4"))
+    assert(script.contains("x = 3.0"))
+    assert(script.contains("f = (x + 1.0)"))
+  }
+
+  "a saved script" should "reconstruct an equivalent session when loaded" in
+  {
+    val original = session
+    original.execute("precision 3")
+    original.execute("a = 2")
+    original.execute("g = a * x")
+    val script = original.script
+
+    val restored = session
+    restored.load(script)
+    // same precision effect, same binding, same late-bound definition
+    assert(restored.execute("a") == "2.0")
+    restored.execute("x = 5")
+    assert(restored.execute("g") == "10.0")
+    assert(restored.script.contains("precision 3"))
+  }
+
+  "load" should "skip blank lines and # comments" in
+  {
+    val s = session
+    val out = s.load(
+      """# a comment
+        |x = 2
+        |
+        |x + 1""".stripMargin)
+    assert(s.execute("x") == "2.0")
+    assert(out.contains("3.0"))    // x + 1 evaluated
+  }
+
+  "load" should "run a multi-line script and return the last non-empty output" in
+  {
+    val s = session
+    val out = s.load("x = 10\nx * 2")
+    assert(out.linesIterator.toList.last == "20.0")
+  }
+
+  ":load at the execute level" should "report it is interactive-only" in
+  {
+    assert(session.execute(":load foo.txt").contains("interactive"))
+  }
+
+  ":save at the execute level" should "report it is interactive-only" in
+  {
+    assert(session.execute(":save foo.txt").contains("interactive"))
+  }
+
+  "saveFile then loadFile" should "round-trip session state through a real file" in
+  {
+    val tmp = java.io.File.createTempFile("leonardo-session", ".txt")
+    tmp.deleteOnExit()
+    try
+      val original = session
+      original.execute("precision 6")
+      original.execute("k = 7")
+      original.execute("h = k + x")
+      assert(Session.saveFile(original, tmp.getPath) == s"saved to ${tmp.getPath}")
+
+      val restored = session
+      val out = Session.loadFile(restored, tmp.getPath)
+      assert(!out.startsWith("could not read"), out)
+      assert(restored.execute("k") == "7.0")
+      restored.execute("x = 1")
+      assert(restored.execute("h") == "8.0")
+    finally tmp.delete()
+  }
+
+  "loadFile on a missing file" should "report a read error" in
+  {
+    assert(Session.loadFile(session, "no-such-file-xyz.txt").startsWith("could not read"))
+  }
