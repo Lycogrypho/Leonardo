@@ -45,6 +45,9 @@ def expand(e: _Expression): _Expression = e match
   case Sin(a)   => Sin(expand(a))
   case Cos(a)   => Cos(expand(a))
   case Tg(a)    => Tg(expand(a))
+  case Asin(a)  => Asin(expand(a))
+  case Acos(a)  => Acos(expand(a))
+  case Atan(a)  => Atan(expand(a))
 
   case _Derivative(f, v)          => _Derivative(expand(f), v)
   case _Integral(f, v)            => _Integral(expand(f), v)
