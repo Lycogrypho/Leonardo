@@ -80,6 +80,22 @@ class EvaluationTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
+  // tan(pi/2) in floating-point is NOT Infinity (pi/2 has no exact double representation);
+  // it evaluates to ~1.633e16, which is finite and propagates normally.
+  // The guard fires for NaN inputs (e.g. tan(NaN) = NaN, tan(Infinity) = NaN).
+  "tan(pi/4)" should "evaluate to approximately 1" in
+  {
+    Tg(_Number(math.Pi / 4)).eval(env) match
+      case Right(_Number(x)) => assert(math.abs(x - 1.0) < 1e-10)
+      case other             => fail(s"expected 1.0 but got $other")
+  }
+
+  "tan(NaN input)" should "stay symbolic instead of propagating NaN" in
+  {
+    val e = Tg(_Number(Double.NaN))
+    assert(e.eval(env) == Left(e))
+  }
+
   "a very large number" should "evaluate without Long overflow" in
   {
     val large = 1e15

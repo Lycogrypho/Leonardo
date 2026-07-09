@@ -63,7 +63,9 @@ case class Tg(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(_Number(x)) => Right(_Number(tan(x)))
+      case Right(_Number(x)) =>
+        val r = tan(x)
+        if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
       case other             => Left(Tg(other.toExpression))
 
 
