@@ -40,6 +40,12 @@ def derive(e: _Expression, v: _Variable): _Expression = e match
                                )
   // Literal-exponent power rule: b * a^(b-1) * a'  — avoids b/a singularity at a=0
   case Power(a, _Number(n)) => dmul(dmul(_Number(n), dpow(a, _Number(n - 1))), derive(a, v))
+  // Guard: base 0 with a symbolic exponent. The general rule below would produce
+  // log(0) in the derivative tree. When the exponent is v-independent, 0^b is a
+  // constant → derivative is 0. When the exponent depends on v the derivative is
+  // mathematically undefined (sign of b unknown); stay symbolic rather than emit log(0).
+  case Power(_Number(0.0), b) =>
+    if !dependsOn(b, v) then _Number(0) else _Derivative(e, v)
   // General power rule: a^b * (b' * log(a) + b * a' / a)
   case Power(a, b)          => dmul(
                                  Power(a, b),

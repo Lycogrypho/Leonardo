@@ -152,6 +152,23 @@ class DerivativeTest extends AnyFlatSpec:
     assert(math.abs(evalNum(expr, "x" -> 4.0) - 4.0) < 1e-4)
   }
 
+  // --- base-0 power rule guard (issue #25) ---
+
+  // d/dx(0^y) where y is independent of x: 0^y is a constant → 0
+  "derivative of 0^y w.r.t. x (y independent of x)" should "be 0" in
+  {
+    assert(evalNum(_Derivative(Power(_Number(0), y), x)) == 0.0)
+  }
+
+  // d/dx(0^x): the general power rule would inject log(0) into the tree;
+  // the guard stays symbolic instead to avoid that domain error expression.
+  "derivative of 0^x w.r.t. x (base 0, exponent depends on x)" should "stay symbolic" in
+  {
+    _Derivative(Power(_Number(0), x), x).eval(new Environment()) match
+      case Left(_)  => succeed
+      case Right(v) => fail(s"expected symbolic but got $v")
+  }
+
   // --- parse + derive round-trip ---
 
   "parse+derive of \"x * x\" w.r.t. x at x=3" should "equal 6.0" in
