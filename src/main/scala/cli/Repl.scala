@@ -52,6 +52,12 @@ final class Session:
     case s"expand $rest"        => withParsed(rest)(e => expand(substitute(e, definitions)).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
+    // Reserved constants are resolved at parse time, so a binding under their name
+    // would be silently unreachable ("e" always parses to _Number(math.E)). Reject
+    // before parsing the right-hand side; scripts replayed through load surface the
+    // same message.
+    case assignment(name, _) if Session.ReservedConstants.contains(name) =>
+      s"cannot assign to '$name': it is a built-in constant"
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
     case expression             => withParsed(expression)(evaluate)
 
@@ -123,6 +129,9 @@ final class Session:
     lines.mkString("\n")
 
 object Session:
+  // Names the parser always resolves as constants; assignment to them is rejected.
+  val ReservedConstants: Set[String] = Set("pi", "e")
+
   val help: String =
     """x = 3.001            bind a value (constant right-hand side)
       |f = sin(x) + x       define a function (right-hand side with free variables)

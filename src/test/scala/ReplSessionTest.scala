@@ -58,6 +58,38 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("f") == "(f + 1.0)")
   }
 
+  // --- issue 1.1: reserved constants cannot be assigned ---
+
+  "assigning to e" should "be rejected, keeping e the built-in constant" in
+  {
+    val s = session
+    assert(s.execute("e = 5") == "cannot assign to 'e': it is a built-in constant")
+    assert(s.execute("e") == "2.71828")           // still Euler's number
+    assert(!s.execute("env").contains("e = "))    // no binding was stored
+  }
+
+  "assigning to pi" should "be rejected, keeping pi the built-in constant" in
+  {
+    val s = session
+    assert(s.execute("pi = 3") == "cannot assign to 'pi': it is a built-in constant")
+    assert(s.execute("pi") == "3.14159")
+  }
+
+  "a loaded script containing a reserved-name assignment" should "surface the warning" in
+  {
+    val s = session
+    val out = s.load("x = 2\npi = 3\nx")
+    assert(out.contains("cannot assign to 'pi'"))
+    assert(out.contains("2.0"))                   // rest of the script still ran
+  }
+
+  "names that merely start with a reserved name" should "still be assignable" in
+  {
+    val s = session
+    assert(s.execute("eps = 0.001") == "eps = 0.001")
+    assert(s.execute("pivot = 2") == "pivot = 2.0")
+  }
+
   "reassigning a definition with a constant" should "turn it into a binding" in
   {
     val s = session

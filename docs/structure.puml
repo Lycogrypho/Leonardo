@@ -278,7 +278,8 @@ package "cli" {
         + execute(line: String): String
         + script: String
         + load(text: String): String
-        __ companion (IO only) __
+        __ companion __
+        ReservedConstants: Set = {pi, e}
         + loadFile(session, path): String
         + saveFile(session, path): String
     }
