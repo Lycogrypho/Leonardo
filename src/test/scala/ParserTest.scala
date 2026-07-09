@@ -35,7 +35,16 @@ class ParserTest extends AnyFlatSpec:
     ("2 ^ 10",             """(2.0 ^ 10.0)""",               Power(_Number(2), _Number(10))),
     ("2 ^ 3 ^ 2",          """(2.0 ^ (3.0 ^ 2.0))""",        Power(_Number(2), Power(_Number(3), _Number(2)))),
     ("2 ^ 3 * 4",          """((2.0 ^ 3.0) * 4.0)""",        Product(Power(_Number(2), _Number(3)), _Number(4))),
-    ("3x^2",               """(3.0 * (x ^ 2.0))""",          Product(_Number(3), Power(_Variable("x"), _Number(2))))
+    ("3x^2",               """(3.0 * (x ^ 2.0))""",          Product(_Number(3), Power(_Variable("x"), _Number(2)))),
+    // unary minus in operand position (issue 26)
+    ("3 * -x",             """(3.0 * (-1.0 * x))""",         Product(_Number(3), Product(_Number(-1), _Variable("x")))),
+    ("3 + -x",             """(3.0 + (-1.0 * x))""",         Sum(_Number(3), Product(_Number(-1), _Variable("x")))),
+    ("2^-x",               """(2.0 ^ (-1.0 * x))""",         Power(_Number(2), Product(_Number(-1), _Variable("x")))),
+    ("2^-3",               """(2.0 ^ -3.0)""",               Power(_Number(2), _Number(-3))),
+    ("3 - -2",             """(3.0 + (-1.0 * -2.0))""",      Sum(_Number(3), Product(_Number(-1), _Number(-2)))),
+    // subtraction must never bind as implicit multiplication by a signed literal
+    ("3-2",                """(3.0 + (-1.0 * 2.0))""",       Sum(_Number(3), Product(_Number(-1), _Number(2)))),
+    ("x-2",                """(x + (-1.0 * 2.0))""",         Sum(_Variable("x"), Product(_Number(-1), _Number(2))))
   )
 
   for s <- expressionStrings do
@@ -67,6 +76,44 @@ class ParserTest extends AnyFlatSpec:
   "\"+2\"" should "parse to _Number(2.0), not a negated literal" in
   {
     assert(parse("+2") == _Number(2.0))
+  }
+
+  // --- issue 26: subtraction vs implicit multiplication of a signed literal ---
+
+  // Before the fix, the sign-carrying number literal let implicit multiplication
+  // swallow the minus: "3-2" and "3 -2" silently evaluated to -6 (as 3 * (-2)).
+  "\"3-2\", \"3 -2\" and \"3 - 2\"" should "all evaluate to 1.0, never to -6" in
+  {
+    for input <- List("3-2", "3 -2", "3 - 2") do
+      parse(input).eval(new Environment()) match
+        case Right(_Number(v)) => assert(v == 1.0, s"\"$input\" evaluated to $v")
+        case other             => fail(s"\"$input\" did not reduce: $other")
+  }
+
+  "\"e-3\"" should "evaluate to e minus 3, not e times -3" in
+  {
+    parse("e-3").eval(new Environment()) match
+      case Right(_Number(v)) => assert(math.abs(v - (math.E - 3.0)) < 1e-9)
+      case other             => fail(s"did not reduce: $other")
+  }
+
+  "\"2e-3\"" should "stay a single scientific-notation literal" in
+  {
+    assert(parse("2e-3") == _Number(0.002))
+  }
+
+  "\"3(-2)\"" should "remain implicit multiplication (parenthesized operand)" in
+  {
+    assert(parse("3(-2)") == Product(_Number(3), _Number(-2)))
+  }
+
+  "\"integral(x, x, -1, 1)\"" should "accept signed limits" in
+  {
+    val e = parse("integral(x, x, -1, 1)")
+    assert(e == _DefIntegral(_Variable("x"), _Variable("x"), _Number(-1), _Number(1)))
+    e.eval(new Environment()) match
+      case Right(_Number(v)) => assert(math.abs(v) < 1e-4)   // odd integrand, symmetric limits
+      case other             => fail(s"did not reduce: $other")
   }
 
   // --- issue 5: depth guard ---

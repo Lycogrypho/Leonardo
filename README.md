@@ -12,7 +12,7 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 ### Main Characteristics
 
-- **Expression Parsing**: Parses mathematical expressions using a recursive descent parser based on `scala-parser-combinators`. Supports standard operators, mathematical functions (`sin`, `cos`, `tan`/`tg`, `asin`, `acos`, `atan`, `exp`, `log`), implicit multiplication, multi-character variable names (`theta`, `x1`, `alpha`), and built-in constants `pi` and `e`.
+- **Expression Parsing**: Parses mathematical expressions using a recursive descent parser based on `scala-parser-combinators`. Supports standard operators, mathematical functions (`sin`, `cos`, `tan`/`tg`, `asin`, `acos`, `atan`, `exp`, `log`), implicit multiplication, unary minus in any operand position (`3 * -x`, `2^-x`), multi-character variable names (`theta`, `x1`, `alpha`), and built-in constants `pi` and `e`.
 
 - **Dual Evaluation**: Expressions evaluate to either:
   - A numeric result (`Double`) if all variables are bound
