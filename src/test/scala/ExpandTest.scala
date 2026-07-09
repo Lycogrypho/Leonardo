@@ -126,3 +126,29 @@ class ExpandTest extends AnyFlatSpec:
     // Numeric check: at x=5, y=3: (5+3)(5-3) = 16, 25-9 = 16
     assert(math.abs(evalNum(expr, "x" -> 5.0, "y" -> 3.0) - 16.0) < 1e-4)
   }
+
+  // --- inverse trig: arguments must be expanded (regression for issue #20) ---
+
+  "expand(asin(x * (y + z)))" should "distribute inside the argument" in
+  {
+    val result = Asin(Product(x, Sum(y, z))).expand()
+    assert(result == Asin(Sum(Product(x, y), Product(x, z))))
+  }
+
+  "expand(acos(x * (y + z)))" should "distribute inside the argument" in
+  {
+    val result = Acos(Product(x, Sum(y, z))).expand()
+    assert(result == Acos(Sum(Product(x, y), Product(x, z))))
+  }
+
+  "expand(atan(x * (y + z)))" should "distribute inside the argument" in
+  {
+    val result = Atan(Product(x, Sum(y, z))).expand()
+    assert(result == Atan(Sum(Product(x, y), Product(x, z))))
+  }
+
+  "expand(asin((x+1)^2)) at x=0" should "equal asin(1)" in
+  {
+    val expr = Asin(Power(Sum(x, _Number(1)), _Number(2))).expand()
+    assert(math.abs(evalNum(expr, "x" -> 0.0) - math.asin(1.0)) < 1e-5)
+  }
