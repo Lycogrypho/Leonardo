@@ -9,6 +9,11 @@ import java.util.stream.IntStream
 // exactly as _Number is the concrete counterpart of a scalar expression. It lives in
 // core so Environment can bind matrix values without core depending on any domain.
 //
+// Immutability: the public factory takes a defensive copy of the caller's array and
+// the storage is private, so no live reference into a value's data can exist outside
+// it — a _MatrixValue is as immutable as every other _Value. Kernels build results
+// with `new` on arrays they own, skipping the copy.
+//
 // The O(n²)/O(n³) kernels (add, multiply, transpose, scale) operate directly on the
 // dense array. multiply parallelizes over rows — each row of the output depends only
 // on one row of the left operand, so the writes are disjoint and need no locking —
@@ -18,25 +23,30 @@ object _MatrixValue:
   // rows × inner × cols below this stays sequential: fork/join costs more than it saves.
   private val ParallelThreshold = 1L << 16
 
+  def apply(rows: Int, cols: Int, data: Array[Double]): _MatrixValue =
+    new _MatrixValue(rows, cols, data.clone)
 
-case class _MatrixValue(rows: Int, cols: Int, data: Array[Double]) extends _Value:
+
+final class _MatrixValue private (val rows: Int, val cols: Int, private val data: Array[Double]) extends _Value:
   require(rows > 0 && cols > 0, s"matrix dimensions must be positive: ${rows}x$cols")
   require(data.length == rows * cols, s"expected ${rows * cols} elements, got ${data.length}")
 
   def apply(i: Int, j: Int): Double = data(i * cols + j)
 
+  // Read-only view of the dense storage (row-major).
+  def toVector: Vector[Double] = data.toVector
+
   override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
   override def children: List[_Expression] = List.empty
   override def rebuild(c: List[_Expression]): _Expression = this
 
-  // The synthesized case-class equals compares the Array field by reference;
-  // matrices must compare by dimensions and contents.
   override def equals(other: Any): Boolean = other match
     case that: _MatrixValue =>
       rows == that.rows && cols == that.cols && java.util.Arrays.equals(data, that.data)
     case _ => false
 
-  override def hashCode: Int =
+  // Cached: the storage is immutable, and recomputing would rescan the whole array.
+  override lazy val hashCode: Int =
     31 * (31 * rows + cols) + java.util.Arrays.hashCode(data)
 
   // toString rounds for display only (DefaultPrecision), mirroring _Number.
@@ -55,10 +65,10 @@ case class _MatrixValue(rows: Int, cols: Int, data: Array[Double]) extends _Valu
     while i < data.length do
       out(i) = data(i) + that.data(i)
       i += 1
-    _MatrixValue(rows, cols, out)
+    new _MatrixValue(rows, cols, out)
 
   def scale(k: Double): _MatrixValue =
-    _MatrixValue(rows, cols, data.map(_ * k))
+    new _MatrixValue(rows, cols, data.map(_ * k))
 
   def transpose: _MatrixValue =
     val out = new Array[Double](data.length)
@@ -69,7 +79,7 @@ case class _MatrixValue(rows: Int, cols: Int, data: Array[Double]) extends _Valu
         out(j * rows + i) = data(i * cols + j)
         j += 1
       i += 1
-    _MatrixValue(cols, rows, out)
+    new _MatrixValue(cols, rows, out)
 
   // (this: rows×n) * (that: n×that.cols). The i-k-j loop order streams both arrays
   // sequentially (cache-friendly) instead of striding down columns of `that`.
@@ -96,4 +106,4 @@ case class _MatrixValue(rows: Int, cols: Int, data: Array[Double]) extends _Valu
       while i < rows do
         rowKernel(i)
         i += 1
-    _MatrixValue(rows, that.cols, out)
+    new _MatrixValue(rows, that.cols, out)

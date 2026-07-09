@@ -59,7 +59,10 @@ leonardo> quit
 Definitions are late-bound: redefining `f` also changes any `g` defined in terms
 of `f`. Whether an assignment binds a value or defines a function is decided by the
 right-hand side alone — constant expressions fold to a numeric binding, expressions
-with free variables become definitions. `:save` serializes the session (precision,
+with free variables become definitions. Differentiating *with respect to a defined
+function* applies the chain rule: with `f = sin(x)` and `g = f^2`, `derive(g, f)`
+computes dg/df as `derive(g, x) / derive(f, x)` over the definition's single free
+variable (definitions with several free variables are rejected with a message). `:save` serializes the session (precision,
 bindings, definitions) as a script that `:load` replays.
 
 ## Planned Features

@@ -91,12 +91,44 @@ final class Session:
   private def withParsed(input: String)(f: _Expression => String): String =
     val result = Parser.parse(input)
     if result.successful then f(result.get)
-    else s"parse error: ${result.toString.linesIterator.next()}"
+    else
+      val base = s"parse error: ${result.toString.linesIterator.next()}"
+      // "g(x)"-style call syntax on a defined name is a common spelling of issue
+      // 1.1's derive(g(x), f(x)); the grammar has bare variables only, so hint.
+      definitions.keys.find(n => input.matches(s".*\\b$n\\s*\\(.*")) match
+        case Some(n) => s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'"
+        case None    => base
 
   private def evaluate(e: _Expression): String =
-    substitute(e, definitions).eval(env).toExpression match
-      case n: _Number => n.display(precision)
-      case other      => other.toString
+    resolveDerivativeBinders(e) match
+      case Left(message) => message
+      case Right(resolved) =>
+        substitute(resolved, definitions).eval(env).toExpression match
+          case n: _Number => n.display(precision)
+          case other      => other.toString
+
+  /**
+   * d/df where f names a *definition*: the binder is (correctly) never substituted,
+   * so left alone the derivative would be taken with respect to a variable that no
+   * longer occurs in the substituted body — a silent 0. Rewrite via the chain rule
+   * instead: dg/df = (dg/dx) / (df/dx) over the definition's single free variable x.
+   * Definitions of zero or several free variables have no unambiguous chain-rule
+   * variable; those are rejected with a message (Left).
+   */
+  private def resolveDerivativeBinders(e: _Expression): Either[String, _Expression] = e match
+    case _Derivative(body, v) if definitions.contains(v.variable) =>
+      resolveDerivativeBinders(body).flatMap { b =>
+        val fbody = substitute(definitions(v.variable), definitions)
+        fbody.freeVars.toList.sorted match
+          case x :: Nil => Right(Ratio(_Derivative(b, _Variable(x)), _Derivative(fbody, _Variable(x))))
+          case Nil      => Left(s"cannot derive with respect to '${v.variable}': its definition has no free variables")
+          case vars     => Left(s"cannot derive with respect to '${v.variable}': its definition has several free variables ${vars.mkString("(", ", ", ")")}")
+      }
+    case other =>
+      val results = other.children.map(resolveDerivativeBinders)
+      results.collectFirst { case Left(message) => message } match
+        case Some(message) => Left(message)
+        case None          => Right(other.rebuild(results.map(_.toOption.get)))
 
   private def assign(name: String, rhs: _Expression): String =
     rhs.eval(emptyEnv) match

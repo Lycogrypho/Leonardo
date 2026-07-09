@@ -90,6 +90,55 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("pivot = 2") == "pivot = 2.0")
   }
 
+  // --- issue 1.1: derivative with respect to a defined function ---
+
+  "derive(g, f) with f and g defined over x" should "apply the chain rule, not return 0" in
+  {
+    val s = session
+    s.execute("f = sin(x)")
+    s.execute("g = f^2")
+    s.execute("x = 0.5")
+    // dg/df = 2f = 2*sin(0.5) ≈ 0.95885 — before the fix this was 0.0
+    assert(s.execute("derive(g, f)") == "0.95885")
+  }
+
+  "derive(g, f) with x unbound" should "stay symbolic instead of answering 0" in
+  {
+    val s = session
+    s.execute("f = sin(x)")
+    s.execute("g = f^2")
+    val out = s.execute("derive(g, f)")
+    assert(out != "0.0", "chain-rule derivative must not collapse to 0")
+    assert(out.contains("sin(x)"))   // symbolic quotient over the shared variable
+  }
+
+  "derive with respect to a multi-variable definition" should "be rejected with a message" in
+  {
+    val s = session
+    s.execute("h = x + y")
+    val out = s.execute("derive(h, h)")
+    assert(out.contains("cannot derive with respect to 'h'"))
+    assert(out.contains("(x, y)"))
+  }
+
+  "call syntax on a defined name" should "fail with a hint about the bare name" in
+  {
+    val s = session
+    s.execute("f = sin(x)")
+    s.execute("g = f^2")
+    val out = s.execute("derive(g(x), f(x))")
+    assert(out.startsWith("parse error"))
+    assert(out.contains("function-call syntax") && out.contains("bare name"))
+  }
+
+  "derive with respect to a plain variable" should "be unaffected by the binder rewrite" in
+  {
+    val s = session
+    s.execute("g = x^2")
+    s.execute("x = 3")
+    assert(s.execute("derive(g, x)") == "6.0")
+  }
+
   "reassigning a definition with a constant" should "turn it into a binding" in
   {
     val s = session

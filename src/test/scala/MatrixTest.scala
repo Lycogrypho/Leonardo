@@ -95,6 +95,30 @@ class MatrixTest extends AnyFlatSpec:
     assert(dense(2, 2, 1, 2, 3, 4).hashCode == dense(2, 2, 1, 2, 3, 4).hashCode)
   }
 
+  // issue 2.1: the factory takes a defensive copy — mutating the source array
+  // after construction must not change the value (equality, hashing, elements).
+  "_MatrixValue" should "be immune to mutation of the array it was built from" in
+  {
+    val arr = Array(1.0, 2.0, 3.0, 4.0)
+    val m   = _MatrixValue(2, 2, arr)
+    val h   = m.hashCode
+    arr(0) = 99.0
+    assert(m(0, 0) == 1.0)
+    assert(m == dense(2, 2, 1, 2, 3, 4))
+    assert(m.hashCode == h)
+  }
+
+  // issue 2.2: the symbolic path folds concrete element pairs directly, without a
+  // second evaluation pass — constant pairs are already _Numbers in the result.
+  "MatSum's symbolic path" should "fold concrete element pairs eagerly" in
+  {
+    MatSum(literal(1, 2, x, _Number(1)), dense(1, 2, 10, 20)).eval(new Environment()) match
+      case Left(m: _Matrix) =>
+        assert(m(0, 0) == Sum(x, _Number(10)))   // symbolic pair stays a Sum node
+        assert(m(0, 1) == _Number(21))           // concrete pair folded, no re-eval needed
+      case other => fail(s"expected a symbolic matrix but got: $other")
+  }
+
   "_MatrixValue toString" should "render rows with display rounding" in
   {
     assert(dense(2, 2, 1, 2, 3, 4.123456789).toString == "[[1.0, 2.0], [3.0, 4.12346]]")

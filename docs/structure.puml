@@ -45,14 +45,17 @@ package "core" {
         + variable: String
     }
 
-    class "_MatrixValue" <<case>> {
+    class "_MatrixValue" {
         + rows: Int
         + cols: Int
-        + data: Array[Double]
+        - data: Array[Double]
+        + toVector: Vector[Double]
         + add(that): _MatrixValue
         + multiply(that): _MatrixValue
         + transpose: _MatrixValue
         + scale(k: Double): _MatrixValue
+        __ companion __
+        + apply(rows, cols, data) : defensive copy
     }
 
     class "Environment" {

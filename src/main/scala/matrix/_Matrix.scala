@@ -26,7 +26,7 @@ object _Matrix:
   // Re-inflate a dense value into a literal of _Number elements — used by the matrix
   // operations to combine a concrete operand with a symbolic one element-wise.
   def fromValue(v: _MatrixValue): _Matrix =
-    _Matrix(v.rows, v.cols, v.data.toVector.map(_Number(_)))
+    _Matrix(v.rows, v.cols, v.toVector.map(_Number(_)))
 
 
 case class _Matrix(rows: Int, cols: Int, elems: Vector[_Expression]) extends _Expression:
