@@ -1,5 +1,3 @@
-ThisBuild / version := "1.3.1"
-
 ThisBuild / scalaVersion := "3.3.4"
 
 scalacOptions ++= Seq( "-explain", "-deprecation", "-feature" )
