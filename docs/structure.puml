@@ -45,6 +45,16 @@ package "core" {
         + variable: String
     }
 
+    class "_MatrixValue" <<case>> {
+        + rows: Int
+        + cols: Int
+        + data: Array[Double]
+        + add(that): _MatrixValue
+        + multiply(that): _MatrixValue
+        + transpose: _MatrixValue
+        + scale(k: Double): _MatrixValue
+    }
+
     class "Environment" {
         + precision: Int
         + get(name: String): Option
@@ -53,10 +63,11 @@ package "core" {
         DefaultPrecision: Int = 5
     }
 
-    "_Value"      --|> "_Expression"
-    "_Number"    ..|> "_Value"
-    "_Variable"  ..|> "_Expression"
-    "_Expression" --> "Environment" : eval(env)
+    "_Value"       --|> "_Expression"
+    "_Number"      ..|> "_Value"
+    "_MatrixValue" ..|> "_Value"
+    "_Variable"    ..|> "_Expression"
+    "_Expression"  --> "Environment" : eval(env)
 }
 
 ' ===================================================
@@ -196,6 +207,51 @@ package "scalar" {
     "Syntax" ..> "Substitute" : delegates
     "Syntax" ..> "Analysis"   : delegates
     "Syntax" ..> "Compile"    : delegates
+}
+
+' ===================================================
+' PACKAGE: matrix - matrix domain (imports core + scalar)
+' ===================================================
+package "matrix" {
+
+    class "_Matrix" <<case>> {
+        + rows: Int
+        + cols: Int
+        + elems: Vector[_Expression]
+        __ companion __
+        + ofRows(rows*): _Matrix
+        + fromValue(v): _Matrix
+    }
+
+    interface "_MatrixOperation" <<trait>>
+
+    class "MatSum" <<case>> {
+        a : _Expression
+        b : _Expression
+    }
+    class "MatProduct" <<case>> {
+        a : _Expression
+        b : _Expression
+    }
+    class "MatScale" <<case>> {
+        k : _Expression
+        m : _Expression
+    }
+    class "Transpose" <<case>> {
+        m : _Expression
+    }
+
+    "_Matrix"          --|> "_Expression"
+    "_MatrixOperation" --|> "_Expression"
+    "MatSum"           --|> "_MatrixOperation"
+    "MatProduct"       --|> "_MatrixOperation"
+    "MatScale"         --|> "_MatrixOperation"
+    "Transpose"        --|> "_MatrixOperation"
+
+    "_Matrix"          ..> "_MatrixValue" : collapses to at eval
+    "_MatrixOperation" ..> "_MatrixValue" : dense kernels (fast path)
+    "_MatrixOperation" ..> "Sum"          : element-wise symbolic combine
+    "_MatrixOperation" ..> "Product"      : element-wise symbolic combine
 }
 
 ' ===================================================
