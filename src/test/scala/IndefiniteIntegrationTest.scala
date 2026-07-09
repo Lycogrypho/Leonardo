@@ -128,6 +128,33 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
       case other             => fail(s"expected 8.0 but got: $other")
   }
 
+  // --- inverse-trig primitives (issue #24) ---
+
+  "∫ 1/(1 + x²) dx" should "have derivative 1/(1+x²)" in
+  {
+    assertAntiderivative(Ratio(_Number(1), Sum(_Number(1), Power(x, _Number(2)))), 0.5, 1.0, 2.0)
+  }
+
+  "∫ 1/(x² + 1) dx (commuted denominator)" should "have derivative 1/(x²+1)" in
+  {
+    assertAntiderivative(Ratio(_Number(1), Sum(Power(x, _Number(2)), _Number(1))), 0.5, 1.0, 2.0)
+  }
+
+  "∫ 1/(1 + (2x)²) dx" should "have derivative 1/(1+(2x)²)" in
+  {
+    val u = Product(_Number(2), x)
+    assertAntiderivative(Ratio(_Number(1), Sum(_Number(1), Power(u, _Number(2)))), 0.5, 1.0, 2.0)
+  }
+
+  "∫ 1/√(1 - x²) dx" should "have derivative 1/√(1-x²)" in
+  {
+    // domain: |x| < 1
+    assertAntiderivative(
+      Ratio(_Number(1), Power(Sum(_Number(1), Product(_Number(-1), Power(x, _Number(2)))), _Number(0.5))),
+      0.1, 0.5, 0.9
+    )
+  }
+
   // --- unsupported forms stay symbolic ---
 
   "∫ x*sin(x) dx (needs integration by parts)" should "stay symbolic" in

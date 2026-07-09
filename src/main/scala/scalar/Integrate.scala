@@ -50,6 +50,25 @@ def integrate(e: _Expression, v: _Variable): _Expression = e match
     case Some(a)              => Ratio(Power(u, _Number(n + 1)), _Number(a * (n + 1)))
     case None                 => _Integral(e, v)
 
+  // ∫ a/(1 + u²) dv = a·atan(u)/slope   (standard atan primitive; linear-arg chain rule)
+  // Both orderings of the denominator sum are matched (1+u² and u²+1).
+  case Ratio(a, Sum(_Number(1.0), Power(u, _Number(2.0)))) if !dependsOn(a, v) =>
+    linearSlope(u, v) match
+      case Some(s) => Product(a, Ratio(Atan(u), _Number(s)))
+      case None    => _Integral(e, v)
+
+  case Ratio(a, Sum(Power(u, _Number(2.0)), _Number(1.0))) if !dependsOn(a, v) =>
+    linearSlope(u, v) match
+      case Some(s) => Product(a, Ratio(Atan(u), _Number(s)))
+      case None    => _Integral(e, v)
+
+  // ∫ a/√(1 − u²) dv = a·asin(u)/slope  (standard asin primitive; linear-arg chain rule)
+  case Ratio(a, Power(Sum(_Number(1.0), Product(_Number(-1.0), Power(u, _Number(2.0)))), _Number(0.5)))
+      if !dependsOn(a, v) =>
+    linearSlope(u, v) match
+      case Some(s) => Product(a, Ratio(Asin(u), _Number(s)))
+      case None    => _Integral(e, v)
+
   // ∫ c/u dv = c·log(u)/a   (reciprocal written as a Ratio rather than Power(u, -1))
   case Ratio(a, u) if !dependsOn(a, v) => linearSlope(u, v) match
     case Some(s) => Product(a, Ratio(Log(u), _Number(s)))
