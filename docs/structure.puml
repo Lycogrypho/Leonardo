@@ -1,4 +1,4 @@
-@startuml Leonardo — class structure
+@startuml Leonardo - class structure
 
 skinparam packageStyle rectangle
 skinparam classAttributeIconSize 0
@@ -18,64 +18,71 @@ skinparam interface {
     BackgroundColor  #FFFBE6
     BorderColor      #AAAA55
 }
-skinparam stereotype {
-    ABackgroundColor #EEFFF0
-}
 
 hide empty members
 
-' ═══════════════════════════════════════════════════════
+' ===================================================
 ' PACKAGE: core
-' Foundation shared by every domain — no domain imports.
-' ═══════════════════════════════════════════════════════
+' Foundation shared by every domain.
+' ===================================================
 package "core" {
 
     interface "_Expression" <<trait>> {
-        + eval(env: Environment): Either[_Expression, _Value]
-        + children: List[_Expression]
-        + rebuild(cs: List[_Expression]): _Expression
-        + freeVars: Set[String]
+        + eval(env: Environment): Either
+        + children: List
+        + rebuild(cs: List): _Expression
+        + freeVars: Set
     }
 
     interface "_Value" <<trait>>
 
-    class "_Number" <<case class>> {
+    class "_Number" <<case>> {
         + d: Double
         + display(precision: Int): String
     }
 
-    class "_Variable" <<case class>> {
+    class "_Variable" <<case>> {
         + variable: String
-        + freeVars: Set[String]
     }
 
     class "Environment" {
         + precision: Int
-        + get(name: String): Option[_Value]
-        + isBound(name: String): Boolean
-        + withBinding(name: String, v: _Value): Environment
+        + get(name: String): Option
+        + withBinding(name, v): Environment
         __ companion __
         DefaultPrecision: Int = 5
     }
 
-    "_Value"    --|>  "_Expression"
-    "_Number"   ..|>  "_Value"
-    "_Variable" ..|>  "_Expression"
+    "_Value"      --|> "_Expression"
+    "_Number"    ..|> "_Value"
+    "_Variable"  ..|> "_Expression"
     "_Expression" --> "Environment" : eval(env)
 }
 
-' ═══════════════════════════════════════════════════════
-' PACKAGE: scalar — AST nodes
-' ═══════════════════════════════════════════════════════
+' ===================================================
+' PACKAGE: scalar - AST nodes
+' ===================================================
 package "scalar" {
 
-    ' ── Operations ──────────────────────────────────
+    ' -- Operations ---------------------------------
     interface "_Operation" <<trait>>
 
-    class "Sum"     <<case class>> { a, b : _Expression }
-    class "Product" <<case class>> { a, b : _Expression }
-    class "Ratio"   <<case class>> { a, b : _Expression }
-    class "Power"   <<case class>> { base, exp : _Expression }
+    class "Sum" <<case>> {
+        a : _Expression
+        b : _Expression
+    }
+    class "Product" <<case>> {
+        a : _Expression
+        b : _Expression
+    }
+    class "Ratio" <<case>> {
+        a : _Expression
+        b : _Expression
+    }
+    class "Power" <<case>> {
+        base : _Expression
+        exp  : _Expression
+    }
 
     "_Operation" --|> "_Expression"
     "Sum"        --|> "_Operation"
@@ -83,17 +90,33 @@ package "scalar" {
     "Ratio"      --|> "_Operation"
     "Power"      --|> "_Operation"
 
-    ' ── Unary Functions ─────────────────────────────
+    ' -- Unary Functions ----------------------------
     abstract class "_Function"
 
-    class "Exp"  <<case class>> { e : _Expression }
-    class "Log"  <<case class>> { e : _Expression }
-    class "Sin"  <<case class>> { e : _Expression }
-    class "Cos"  <<case class>> { e : _Expression }
-    class "Tg"   <<case class>> { e : _Expression }
-    class "Asin" <<case class>> { e : _Expression }
-    class "Acos" <<case class>> { e : _Expression }
-    class "Atan" <<case class>> { e : _Expression }
+    class "Exp" <<case>> {
+        e : _Expression
+    }
+    class "Log" <<case>> {
+        e : _Expression
+    }
+    class "Sin" <<case>> {
+        e : _Expression
+    }
+    class "Cos" <<case>> {
+        e : _Expression
+    }
+    class "Tg" <<case>> {
+        e : _Expression
+    }
+    class "Asin" <<case>> {
+        e : _Expression
+    }
+    class "Acos" <<case>> {
+        e : _Expression
+    }
+    class "Atan" <<case>> {
+        e : _Expression
+    }
 
     "_Function" --|> "_Expression"
     "Exp"  --|> "_Function"
@@ -105,20 +128,20 @@ package "scalar" {
     "Acos" --|> "_Function"
     "Atan" --|> "_Function"
 
-    ' ── Higher-order (Functionals) ──────────────────
+    ' -- Functionals (higher-order) -----------------
     abstract class "_Functional"
 
-    class "_Derivative" <<case class>> {
+    class "_Derivative" <<case>> {
         e : _Expression
         v : _Variable
     }
-    class "_Integral" <<case class>> {
+    class "_Integral" <<case>> {
         e : _Expression
         v : _Variable
     }
-    class "_DefIntegral" <<case class>> {
-        e : _Expression
-        v : _Variable
+    class "_DefIntegral" <<case>> {
+        e         : _Expression
+        v         : _Variable
         low_limit : _Expression
         up_limit  : _Expression
     }
@@ -128,38 +151,36 @@ package "scalar" {
     "_Integral"    --|> "_Functional"
     "_DefIntegral" --|> "_Functional"
 
-    ' ── Algorithm modules (package-level functions) ─
+    ' -- Algorithm modules (package-level functions) -
     class "Derive" <<utility>> {
-        + derive(e: _Expression, v: _Variable): _Expression
+        + derive(e, v): _Expression
     }
     class "Integrate" <<utility>> {
-        + integrate(e: _Expression, v: _Variable): _Expression
+        + integrate(e, v): _Expression
     }
     class "Simplify" <<utility>> {
-        + simplify(e: _Expression): _Expression
-        + simplifyFully(e: _Expression): _Expression
+        + simplify(e): _Expression
+        + simplifyFully(e): _Expression
     }
     class "Expand" <<utility>> {
-        + expand(e: _Expression): _Expression
+        + expand(e): _Expression
     }
     class "Substitute" <<utility>> {
-        + substitute(e: _Expression, defs: Map[String,_Expression]): _Expression
+        + substitute(e, defs): _Expression
     }
     class "Analysis" <<utility>> {
-        + dependsOn(e: _Expression, v: _Variable): Boolean
+        + dependsOn(e, v): Boolean
     }
     class "Compile" <<utility>> {
-        + compile(e: _Expression, v: _Variable, env: Environment): Option[Double=>Double]
+        + compile(e, v, env): Option
     }
 
     class "Syntax" <<object>> {
-        extension (_Expression):
-        + simplify() / simplifyFully()
-        + expand()
-        + derive(v) / integrate(v)
-        + dependsOn(v)
-        + substitute(defs)
-        + compile(v)
+        simplify() / simplifyFully()
+        expand()
+        derive(v) / integrate(v)
+        dependsOn(v) / substitute(defs)
+        compile(v)
     }
 
     ' Functional nodes call algorithm modules at eval time
@@ -177,30 +198,27 @@ package "scalar" {
     "Syntax" ..> "Compile"    : delegates
 }
 
-' ═══════════════════════════════════════════════════════
+' ===================================================
 ' PACKAGE: parser
-' ═══════════════════════════════════════════════════════
+' ===================================================
 package "parser" {
     class "Parser" <<object>> {
-        + parse(str: String): ParseResult[_Expression]
-        __ internal __
-        - guardedExpr (depth-limited)
-        - MaxDepth: Int = 500
+        + parse(str: String): ParseResult
+        __ __
+        MaxDepth = 500
     }
 }
 
 "Parser" ..> "_Expression" : produces AST nodes
-"Parser" ..> "_Variable"   : produces
-"Parser" ..> "_Number"     : produces
 
-' ═══════════════════════════════════════════════════════
-' PACKAGE: cli   (leaf — nothing imports it)
-' ═══════════════════════════════════════════════════════
+' ===================================================
+' PACKAGE: cli   (leaf - nothing imports it)
+' ===================================================
 package "cli" {
     class "Session" {
         - precision: Int
-        - bindings: Map[String, _Value]
-        - definitions: Map[String, _Expression]
+        - bindings: Map
+        - definitions: Map
         + execute(line: String): String
         + script: String
         + load(text: String): String
@@ -209,12 +227,12 @@ package "cli" {
         + saveFile(session, path): String
     }
 
-    class "repl()" <<@main>> {
-        + reads StdIn in a loop
-        + dispatches :load / :save
+    class "repl()" <<main>> {
+        reads StdIn in a loop
+        dispatches :load / :save
     }
 
-    "repl()" --> "Session" : creates & drives
+    "repl()" --> "Session" : creates and drives
 }
 
 "Session" --> "Parser"      : parses every input line
@@ -222,6 +240,6 @@ package "cli" {
 "Session" ..> "Derive"      : derive command
 "Session" ..> "Simplify"    : simplify command
 "Session" ..> "Expand"      : expand command
-"Session" ..> "Substitute"  : resolves late-bound definitions
+"Session" ..> "Substitute"  : resolves definitions
 
 @enduml
