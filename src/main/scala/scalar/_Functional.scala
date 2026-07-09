@@ -84,7 +84,9 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
                   case _ => None
 
             loop(0, 0.0) match
-              case Some(s) => Right(_Number(h / 3.0 * s))
+              case Some(s) =>
+                val result = h / 3.0 * s
+                if result.isNaN || result.isInfinite then Left(this) else Right(_Number(result))
               case None    => Left(this)
 
       case _ => Left(this)

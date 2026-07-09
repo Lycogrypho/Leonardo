@@ -103,3 +103,26 @@ class IntegrationTest extends AnyFlatSpec:
       case Right(_Number(y)) => assert(math.abs(y - 0.5) < 1e-2)
       case other             => fail(s"expected numeric result but got: $other")
   }
+
+  // --- NaN/Infinite guard: unbounded integrands must stay symbolic ---
+
+  // Fast path (compiled closure): 1/x is compilable; at x=0 produces Infinity.
+  // The existing fast-path guard catches this — regression test.
+  "∫ 1/x dx from 0 to 1 (fast path, unbounded at 0)" should "stay symbolic" in
+  {
+    _DefIntegral(Ratio(_Number(1), x), x, _Number(0), _Number(1)).eval(env) match
+      case Left(_)  => succeed
+      case Right(v) => fail(s"expected symbolic but got $v")
+  }
+
+  // Fallback path (non-compiled): _Derivative nodes are not compilable, so the
+  // tree-eval loop is used. d/dx(exp(1000x)) = 1000*exp(1000x); at x=1 this is
+  // Infinity in double precision, accumulating to Infinity in the sum.
+  // Before the fix the fallback returned Right(_Number(Infinity)); now Left(this).
+  "∫ d/dx(exp(1000x)) dx from 0 to 1 (fallback path, overflows to Infinity)" should "stay symbolic" in
+  {
+    val integrand = _Derivative(Exp(Product(_Number(1000.0), x)), x)
+    _DefIntegral(integrand, x, _Number(0.0), _Number(1.0)).eval(env) match
+      case Left(_)  => succeed
+      case Right(v) => fail(s"expected symbolic but got $v")
+  }
