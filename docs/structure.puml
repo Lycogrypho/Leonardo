@@ -1,0 +1,227 @@
+@startuml Leonardo — class structure
+
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam class {
+    BackgroundColor White
+    BorderColor      #555577
+    ArrowColor       #444466
+    FontName         Monospaced
+}
+skinparam package {
+    BackgroundColor  #F4F4FF
+    BorderColor      #7777AA
+    FontStyle        Bold
+}
+skinparam interface {
+    BackgroundColor  #FFFBE6
+    BorderColor      #AAAA55
+}
+skinparam stereotype {
+    ABackgroundColor #EEFFF0
+}
+
+hide empty members
+
+' ═══════════════════════════════════════════════════════
+' PACKAGE: core
+' Foundation shared by every domain — no domain imports.
+' ═══════════════════════════════════════════════════════
+package "core" {
+
+    interface "_Expression" <<trait>> {
+        + eval(env: Environment): Either[_Expression, _Value]
+        + children: List[_Expression]
+        + rebuild(cs: List[_Expression]): _Expression
+        + freeVars: Set[String]
+    }
+
+    interface "_Value" <<trait>>
+
+    class "_Number" <<case class>> {
+        + d: Double
+        + display(precision: Int): String
+    }
+
+    class "_Variable" <<case class>> {
+        + variable: String
+        + freeVars: Set[String]
+    }
+
+    class "Environment" {
+        + precision: Int
+        + get(name: String): Option[_Value]
+        + isBound(name: String): Boolean
+        + withBinding(name: String, v: _Value): Environment
+        __ companion __
+        DefaultPrecision: Int = 5
+    }
+
+    "_Value"    --|>  "_Expression"
+    "_Number"   ..|>  "_Value"
+    "_Variable" ..|>  "_Expression"
+    "_Expression" --> "Environment" : eval(env)
+}
+
+' ═══════════════════════════════════════════════════════
+' PACKAGE: scalar — AST nodes
+' ═══════════════════════════════════════════════════════
+package "scalar" {
+
+    ' ── Operations ──────────────────────────────────
+    interface "_Operation" <<trait>>
+
+    class "Sum"     <<case class>> { a, b : _Expression }
+    class "Product" <<case class>> { a, b : _Expression }
+    class "Ratio"   <<case class>> { a, b : _Expression }
+    class "Power"   <<case class>> { base, exp : _Expression }
+
+    "_Operation" --|> "_Expression"
+    "Sum"        --|> "_Operation"
+    "Product"    --|> "_Operation"
+    "Ratio"      --|> "_Operation"
+    "Power"      --|> "_Operation"
+
+    ' ── Unary Functions ─────────────────────────────
+    abstract class "_Function"
+
+    class "Exp"  <<case class>> { e : _Expression }
+    class "Log"  <<case class>> { e : _Expression }
+    class "Sin"  <<case class>> { e : _Expression }
+    class "Cos"  <<case class>> { e : _Expression }
+    class "Tg"   <<case class>> { e : _Expression }
+    class "Asin" <<case class>> { e : _Expression }
+    class "Acos" <<case class>> { e : _Expression }
+    class "Atan" <<case class>> { e : _Expression }
+
+    "_Function" --|> "_Expression"
+    "Exp"  --|> "_Function"
+    "Log"  --|> "_Function"
+    "Sin"  --|> "_Function"
+    "Cos"  --|> "_Function"
+    "Tg"   --|> "_Function"
+    "Asin" --|> "_Function"
+    "Acos" --|> "_Function"
+    "Atan" --|> "_Function"
+
+    ' ── Higher-order (Functionals) ──────────────────
+    abstract class "_Functional"
+
+    class "_Derivative" <<case class>> {
+        e : _Expression
+        v : _Variable
+    }
+    class "_Integral" <<case class>> {
+        e : _Expression
+        v : _Variable
+    }
+    class "_DefIntegral" <<case class>> {
+        e : _Expression
+        v : _Variable
+        low_limit : _Expression
+        up_limit  : _Expression
+    }
+
+    "_Functional"  --|> "_Expression"
+    "_Derivative"  --|> "_Functional"
+    "_Integral"    --|> "_Functional"
+    "_DefIntegral" --|> "_Functional"
+
+    ' ── Algorithm modules (package-level functions) ─
+    class "Derive" <<utility>> {
+        + derive(e: _Expression, v: _Variable): _Expression
+    }
+    class "Integrate" <<utility>> {
+        + integrate(e: _Expression, v: _Variable): _Expression
+    }
+    class "Simplify" <<utility>> {
+        + simplify(e: _Expression): _Expression
+        + simplifyFully(e: _Expression): _Expression
+    }
+    class "Expand" <<utility>> {
+        + expand(e: _Expression): _Expression
+    }
+    class "Substitute" <<utility>> {
+        + substitute(e: _Expression, defs: Map[String,_Expression]): _Expression
+    }
+    class "Analysis" <<utility>> {
+        + dependsOn(e: _Expression, v: _Variable): Boolean
+    }
+    class "Compile" <<utility>> {
+        + compile(e: _Expression, v: _Variable, env: Environment): Option[Double=>Double]
+    }
+
+    class "Syntax" <<object>> {
+        extension (_Expression):
+        + simplify() / simplifyFully()
+        + expand()
+        + derive(v) / integrate(v)
+        + dependsOn(v)
+        + substitute(defs)
+        + compile(v)
+    }
+
+    ' Functional nodes call algorithm modules at eval time
+    "_Derivative"  ..> "Derive"    : derive() at eval
+    "_Integral"    ..> "Integrate" : integrate() at eval
+    "_DefIntegral" ..> "Compile"   : compile() fast path
+
+    ' Syntax sugar delegates to each algorithm module
+    "Syntax" ..> "Derive"     : delegates
+    "Syntax" ..> "Integrate"  : delegates
+    "Syntax" ..> "Simplify"   : delegates
+    "Syntax" ..> "Expand"     : delegates
+    "Syntax" ..> "Substitute" : delegates
+    "Syntax" ..> "Analysis"   : delegates
+    "Syntax" ..> "Compile"    : delegates
+}
+
+' ═══════════════════════════════════════════════════════
+' PACKAGE: parser
+' ═══════════════════════════════════════════════════════
+package "parser" {
+    class "Parser" <<object>> {
+        + parse(str: String): ParseResult[_Expression]
+        __ internal __
+        - guardedExpr (depth-limited)
+        - MaxDepth: Int = 500
+    }
+}
+
+"Parser" ..> "_Expression" : produces AST nodes
+"Parser" ..> "_Variable"   : produces
+"Parser" ..> "_Number"     : produces
+
+' ═══════════════════════════════════════════════════════
+' PACKAGE: cli   (leaf — nothing imports it)
+' ═══════════════════════════════════════════════════════
+package "cli" {
+    class "Session" {
+        - precision: Int
+        - bindings: Map[String, _Value]
+        - definitions: Map[String, _Expression]
+        + execute(line: String): String
+        + script: String
+        + load(text: String): String
+        __ companion (IO only) __
+        + loadFile(session, path): String
+        + saveFile(session, path): String
+    }
+
+    class "repl()" <<@main>> {
+        + reads StdIn in a loop
+        + dispatches :load / :save
+    }
+
+    "repl()" --> "Session" : creates & drives
+}
+
+"Session" --> "Parser"      : parses every input line
+"Session" --> "Environment" : builds per command
+"Session" ..> "Derive"      : derive command
+"Session" ..> "Simplify"    : simplify command
+"Session" ..> "Expand"      : expand command
+"Session" ..> "Substitute"  : resolves late-bound definitions
+
+@enduml
