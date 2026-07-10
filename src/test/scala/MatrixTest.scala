@@ -283,6 +283,56 @@ class MatrixTest extends AnyFlatSpec:
       case Right(v) => fail(s"expected symbolic but got $v")
   }
 
+  // --- issue 4.1: scalar operations evaluate concrete matrix operands ---
+
+  "scalar Sum of two bound matrix variables" should "add the dense values" in
+  {
+    val env = new Environment()
+      .withBinding("M", dense(2, 2, 1, 2, 3, 4))
+      .withBinding("N", dense(2, 2, 10, 20, 30, 40))
+    assert(evalMatrix(Sum(_Variable("M"), _Variable("N")), env) == dense(2, 2, 11, 22, 33, 44))
+  }
+
+  "scalar Sum of matrices with mismatched dimensions" should "stay symbolic" in
+  {
+    val s = Sum(_Variable("M"), _Variable("N"))
+    val env = new Environment()
+      .withBinding("M", dense(2, 2, 1, 2, 3, 4))
+      .withBinding("N", dense(1, 2, 1, 2))
+    assert(s.eval(env) == Left(s))
+  }
+
+  "scalar Product" should "dispatch scale and matrix multiply on concrete values" in
+  {
+    val env = new Environment()
+      .withBinding("M", dense(2, 2, 1, 2, 3, 4))
+      .withBinding("N", dense(2, 2, 5, 6, 7, 8))
+    assert(evalMatrix(Product(_Number(2), _Variable("M")), env) == dense(2, 2, 2, 4, 6, 8))
+    assert(evalMatrix(Product(_Variable("M"), _Number(2)), env) == dense(2, 2, 2, 4, 6, 8))
+    assert(evalMatrix(Product(_Variable("M"), _Variable("N")), env) == dense(2, 2, 19, 22, 43, 50))
+  }
+
+  "scalar Product of 0 and a concrete matrix" should "be the zero matrix, not the scalar 0" in
+  {
+    val env = new Environment().withBinding("M", dense(1, 2, 1, 2))
+    assert(evalMatrix(Product(_Number(0), _Variable("M")), env) == dense(1, 2, 0, 0))
+  }
+
+  "scalar Ratio of a matrix by a number" should "scale by the reciprocal" in
+  {
+    val env = new Environment().withBinding("M", dense(1, 2, 2, 4))
+    assert(evalMatrix(Ratio(_Variable("M"), _Number(2)), env) == dense(1, 2, 1, 2))
+    // division by zero stays symbolic (non-finite elements)
+    assert(Ratio(_Variable("M"), _Number(0)).eval(env).isLeft)
+  }
+
+  "parse + eval of a full matrix expression" should "compute end to end" in
+  {
+    val result = parser.Parser.parse("[[1, 2], [3, 4]] * [[5, 6], [7, 8]] + [[1, 0], [0, 1]]")
+    assert(result.successful, s"parse failed: $result")
+    assert(evalMatrix(result.get) == dense(2, 2, 20, 22, 43, 51))
+  }
+
   // --- generic traversals work through matrix elements ---
 
   "substitute" should "replace definitions inside matrix elements" in

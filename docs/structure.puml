@@ -277,6 +277,8 @@ package "parser" {
 }
 
 "Parser" ..> "_Expression" : produces AST nodes
+"Parser" ..> "_Matrix" : matrix literals [[..], [..]]
+"Parser" ..> "_MatrixOperation" : structural + - * dispatch
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)

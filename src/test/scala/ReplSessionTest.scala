@@ -90,6 +90,43 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("pivot = 2") == "pivot = 2.0")
   }
 
+  // --- issue 4.1: matrices in the REPL ---
+
+  "a matrix literal assignment" should "bind a dense matrix value" in
+  {
+    val s = session
+    assert(s.execute("M = [[1, 2], [3, 4]]") == "M = [[1.0, 2.0], [3.0, 4.0]]")
+    assert(s.execute("M") == "[[1.0, 2.0], [3.0, 4.0]]")
+  }
+
+  "matrix arithmetic through the ordinary operators" should "evaluate on bound matrices" in
+  {
+    val s = session
+    s.execute("M = [[1, 2], [3, 4]]")
+    assert(s.execute("M + M") == "[[2.0, 4.0], [6.0, 8.0]]")
+    assert(s.execute("2 * M") == "[[2.0, 4.0], [6.0, 8.0]]")
+    assert(s.execute("M * M") == "[[7.0, 10.0], [15.0, 22.0]]")
+    assert(s.execute("transpose(M)") == "[[1.0, 3.0], [2.0, 4.0]]")
+  }
+
+  "a session script with a matrix binding" should "replay to the same state" in
+  {
+    val s = session
+    s.execute("M = [[1, 2], [3, 4]]")
+    val replayed = new Session()
+    replayed.load(s.script)
+    assert(replayed.execute("M") == "[[1.0, 2.0], [3.0, 4.0]]")
+    assert(replayed.execute("M + M") == "[[2.0, 4.0], [6.0, 8.0]]")
+  }
+
+  "a matrix with free variables" should "become a definition and bind late" in
+  {
+    val s = session
+    s.execute("A = [[x, 2]]")
+    s.execute("x = 5")
+    assert(s.execute("A") == "[[5.0, 2.0]]")
+  }
+
   // --- issue 1.1: derivative with respect to a defined function ---
 
   "derive(g, f) with f and g defined over x" should "apply the chain rule, not return 0" in

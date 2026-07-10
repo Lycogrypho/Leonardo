@@ -29,7 +29,8 @@ class ParserTest extends AnyFlatSpec:
     ("derive(cos(3x), x)", """derive(cos((3.0 * x)), x)""",   _Derivative(Cos(Product(_Number(3.0), _Variable("x"))), _Variable("x"))),
     ("-2",                 """-2.0""",                        _Number(-2.0)),
     ("+3sin(-a)",          """(3.0 * sin((-1.0 * a)))""",     Product(_Number(3), Sin(Product(_Number(-1), _Variable("a"))))),
-    ("-3k",                """(-1.0 * (3.0 * k))""",          Product(_Number(-1), Product(_Number(3.0), _Variable("k")))),
+    // the sign folds into the leading numeric coefficient (round-trip stability)
+    ("-3k",                """(-3.0 * k)""",                  Product(_Number(-3), _Variable("k"))),
     ("sin(a)cos(b)",       """(sin(a) * cos(b))""",           Product(Sin(_Variable("a")), Cos(_Variable("b")))),
     ("pow(2, 10)",         """(2.0 ^ 10.0)""",               Power(_Number(2), _Number(10))),
     ("2 ^ 10",             """(2.0 ^ 10.0)""",               Power(_Number(2), _Number(10))),
@@ -76,6 +77,67 @@ class ParserTest extends AnyFlatSpec:
   "\"+2\"" should "parse to _Number(2.0), not a negated literal" in
   {
     assert(parse("+2") == _Number(2.0))
+  }
+
+  // --- issue 4.1: matrix literals and structural operator dispatch ---
+
+  "\"[[1, 2], [3, 4]]\"" should "parse to a 2x2 _Matrix literal" in
+  {
+    assert(parse("[[1, 2], [3, 4]]")
+      == matrix._Matrix(2, 2, Vector(_Number(1), _Number(2), _Number(3), _Number(4))))
+  }
+
+  "\"[[x, sin(x)]]\"" should "parse a row vector of arbitrary expressions" in
+  {
+    assert(parse("[[x, sin(x)]]")
+      == matrix._Matrix(1, 2, Vector(_Variable("x"), Sin(_Variable("x")))))
+  }
+
+  "\"[[1, 2], [3]]\" (ragged rows)" should "fail to parse" in
+  {
+    assert(!Parser.parse("[[1, 2], [3]]").successful)
+  }
+
+  "\"[[1]] + [[2]]\"" should "dispatch to MatSum" in
+  {
+    assert(parse("[[1]] + [[2]]").isInstanceOf[matrix.MatSum])
+  }
+
+  "\"[[1]] - [[2]]\"" should "dispatch to MatSum of a MatScale(-1, ...)" in
+  {
+    parse("[[1]] - [[2]]") match
+      case matrix.MatSum(_, matrix.MatScale(_Number(-1.0), _)) => succeed
+      case other => fail(s"unexpected shape: $other")
+  }
+
+  "\"[[1]] * [[2]]\"" should "dispatch to MatProduct" in
+  {
+    assert(parse("[[1]] * [[2]]").isInstanceOf[matrix.MatProduct])
+  }
+
+  "\"2 * [[1]]\" and \"[[1]] * 2\"" should "both dispatch to MatScale" in
+  {
+    assert(parse("2 * [[1]]").isInstanceOf[matrix.MatScale])
+    assert(parse("[[1]] * 2").isInstanceOf[matrix.MatScale])
+  }
+
+  "\"-[[1, 2]]\"" should "dispatch unary minus to MatScale(-1, ...)" in
+  {
+    assert(parse("-[[1, 2]]").isInstanceOf[matrix.MatScale])
+  }
+
+  "\"transpose([[1, 2], [3, 4]])\"" should "parse to a Transpose node" in
+  {
+    assert(parse("transpose([[1, 2], [3, 4]])").isInstanceOf[matrix.Transpose])
+  }
+
+  "matrix expressions" should "round-trip through toString with the same node types" in
+  {
+    for input <- List("[[1, 2], [3, 4]]", "[[1]] + [[2]]", "[[1]] * [[2]]",
+                      "2 * [[1, 2]]", "transpose([[1, 2]])", "[[1]] - [[2]]") do
+      val first = parse(input)
+      val second = parse(first.toString)
+      assert(second == first, s"round-trip changed \"$input\": $first vs $second")
   }
 
   // --- issue 26: subtraction vs implicit multiplication of a signed literal ---

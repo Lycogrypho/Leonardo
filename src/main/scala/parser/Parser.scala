@@ -4,6 +4,7 @@ package parser
 import scala.util.parsing.combinator.JavaTokenParsers
 import core.*
 import scalar.*
+import matrix.*
 
 
 /**
@@ -17,10 +18,12 @@ import scalar.*
  *                                                    -- its operand is UNSIGNED (see below)
  *   signedPower ::= ["+" | "-"] power                -- signed operand after an explicit operator
  *   power       ::= factor ["^" signedPower]         -- right-associative; binds tighter than * /
- *   factor      ::= function | functional | value | "(" expr ")"
+ *   factor      ::= function | functional | matrix | value | "(" expr ")"
+ *   matrix      ::= "[" matrixRow ("," matrixRow)* "]"   -- rows must be equally long
+ *   matrixRow   ::= "[" expr ("," expr)* "]"
  *   function    ::= "exp(" expr ")" | "log(" expr ")" | "sin(" expr ")"
  *                 | "cos(" expr ")" | "tan(" expr ")" | "tg(" expr ")" | "asin(" expr ")" | "acos(" expr ")" | "atan(" expr ")"
- *                 | "pow(" expr "," expr ")"
+ *                 | "transpose(" expr ")" | "pow(" expr "," expr ")"
  *   functional  ::= "derive(" expr "," variable ")"
  *                 | "integral(" expr "," variable ")"
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
@@ -37,6 +40,15 @@ import scalar.*
  * token is unsigned, and the sign is grammar: allowed where an explicit operator
  * precedes (start of expression, after "+ - * / ^" and in integral limits), and
  * deliberately NOT allowed as the operand of implicit multiplication.
+ *
+ * Matrix dispatch: operand types are unknown at parse time, so + and * normally
+ * build the scalar Sum/Product nodes (whose eval also computes CONCRETE matrix
+ * values — see scalar._Operation). But when a matrix is syntactically visible
+ * (a matrix literal, transpose(...), or a node built from one), the fold dispatches
+ * structurally: + → MatSum, matrix*matrix → MatProduct, scalar*matrix → MatScale,
+ * -M → MatScale(-1, M). This keeps the round-trip invariant: the matrix nodes print
+ * as "(a + b)" / "(a * b)", and re-parsing recovers the same node type from the
+ * shape of the operands.
  */
 object Parser extends JavaTokenParsers:
 
@@ -53,12 +65,36 @@ object Parser extends JavaTokenParsers:
       finally depth.set(d)
   }
 
+  // A node is matrix-shaped when a matrix is syntactically visible in it: a matrix
+  // literal or one of the matrix operation nodes (MatSum, MatProduct, MatScale,
+  // Transpose). Drives the structural dispatch of + - * and unary minus.
+  private def isMatrixShaped(e: _Expression): Boolean =
+    e.isInstanceOf[_Matrix] || e.isInstanceOf[_MatrixOperation]
+
+  private def mkSum(x: _Expression, y: _Expression): _Expression =
+    if isMatrixShaped(x) || isMatrixShaped(y) then MatSum(x, y) else Sum(x, y)
+
+  private def mkMul(x: _Expression, y: _Expression): _Expression =
+    (isMatrixShaped(x), isMatrixShaped(y)) match
+      case (true, true)   => MatProduct(x, y)
+      case (false, true)  => MatScale(x, y)
+      case (true, false)  => MatScale(y, x)
+      case (false, false) => Product(x, y)
+
+  private def mkNeg(e: _Expression): _Expression =
+    if isMatrixShaped(e) then MatScale(_Number(-1), e) else Product(_Number(-1), e)
+
   // A negated literal folds to a negative _Number, so "-2".toString is "-2.0"
-  // (a re-parsable fixpoint) rather than "(-1.0 * 2.0)".
+  // (a re-parsable fixpoint) rather than "(-1.0 * 2.0)". Likewise the sign folds
+  // into an existing leading numeric coefficient — "-3k" is (-3.0 * k), and
+  // "(-1.0 * M)" re-parses to MatScale(-1, M) rather than a doubly-wrapped
+  // MatScale(-1, MatScale(1, M)) — keeping negated products round-trip stable.
   private def applySign(sign: Option[String], e: _Expression): _Expression = (sign, e) match
-    case (Some("-"), _Number(n)) => _Number(-n)
-    case (Some("-"), _)          => Product(_Number(-1), e)
-    case _                       => e
+    case (Some("-"), _Number(n))                => _Number(-n)
+    case (Some("-"), Product(_Number(k), rest)) => Product(_Number(-k), rest)
+    case (Some("-"), MatScale(_Number(k), m))   => MatScale(_Number(-k), m)
+    case (Some("-"), _)                         => mkNeg(e)
+    case _                                      => e
 
   def expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
     {
@@ -69,8 +105,8 @@ object Parser extends JavaTokenParsers:
     {
       case left ~ rights => rights.foldLeft(left)
         {
-          case (x, "+" ~ y) => Sum(x, y)
-          case (x, "-" ~ y) => Sum(x, Product(_Number(-1), y))
+          case (x, "+" ~ y) => mkSum(x, y)
+          case (x, "-" ~ y) => mkSum(x, mkNeg(y))
         }
     }
 
@@ -80,9 +116,9 @@ object Parser extends JavaTokenParsers:
     {
       case left ~ rights => rights.foldLeft(left)
         {
-          case (x, "*" ~ y) => Product(x, y)
+          case (x, "*" ~ y) => mkMul(x, y)
           case (x, "/" ~ y) => Ratio(x, y)
-          case (x, ""  ~ y) => Product(x, y)
+          case (x, ""  ~ y) => mkMul(x, y)
         }
     }
 
@@ -101,7 +137,18 @@ object Parser extends JavaTokenParsers:
       case b ~ None    => b
     }
 
-  def factor: Parser[_Expression] = function | functional | value | "(" ~> guardedExpr <~ ")"
+  def factor: Parser[_Expression] = function | functional | matrixLiteral | value | "(" ~> guardedExpr <~ ")"
+
+  // Matrix literal: [[a, b], [c, d]] — rows of full expressions, all equally long
+  // (a row vector is [[1, 2]]). Ragged rows are a parse error, not an exception.
+  def matrixLiteral: Parser[_Expression] =
+    "[" ~> rep1sep(matrixRow, ",") <~ "]" ^? (
+      { case rows if rows.forall(_.size == rows.head.size) =>
+          _Matrix(rows.size, rows.head.size, rows.flatten.toVector) },
+      _ => "matrix rows must all have the same length"
+    )
+
+  def matrixRow: Parser[List[_Expression]] = "[" ~> rep1sep(guardedExpr, ",") <~ "]"
 
   def function: Parser[_Expression] =
     "exp(" ~> guardedExpr <~ ")"                          ^^ Exp.apply                         |
@@ -113,6 +160,7 @@ object Parser extends JavaTokenParsers:
     "asin(" ~> guardedExpr <~ ")"                         ^^ Asin.apply                        |
     "acos(" ~> guardedExpr <~ ")"                         ^^ Acos.apply                        |
     "atan(" ~> guardedExpr <~ ")"                         ^^ Atan.apply                        |
+    "transpose(" ~> guardedExpr <~ ")"                    ^^ Transpose.apply                   |
     "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }
 
   def functional: Parser[_Expression] =
