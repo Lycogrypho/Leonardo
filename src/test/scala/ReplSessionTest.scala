@@ -138,6 +138,61 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("A") == "[[5.0, 2.0]]")
   }
 
+  // --- simplify/expand execute matrix algebra ---
+
+  "simplify of a matrix-product definition" should "execute the multiplication" in
+  {
+    val s = session
+    s.execute("A = [[1, 2], [3, 4]]")
+    s.execute("B = [[5, 6], [7, 8]]")
+    s.execute("C = A * B")
+    assert(s.execute("simplify C") == "[[19.0, 22.0], [43.0, 50.0]]")
+  }
+
+  "simplify of a symbolic matrix product" should "multiply and simplify each element" in
+  {
+    val s = session
+    s.execute("A = [[x + 0]]")          // free x → definition
+    s.execute("B = [[3]]")              // constant → dense binding
+    s.execute("C = A * B")
+    // element before simplification: (x + 0) * 3 → simplified: x * 3
+    assert(s.execute("simplify C") == "[[(x * 3.0)]]")
+  }
+
+  "expand of a symbolic matrix product" should "distribute inside the elements" in
+  {
+    val s = session
+    s.execute("A = [[x]]")
+    s.execute("B = [[x + 1]]")
+    s.execute("C = A * B")
+    assert(s.execute("expand C") == "[[((x * x) + (x * 1.0))]]")
+  }
+
+  "simplify of a transpose definition" should "execute the transposition" in
+  {
+    val s = session
+    s.execute("A = [[1, 2], [3, 4]]")
+    s.execute("T = transpose(A)")
+    assert(s.execute("simplify T") == "[[1.0, 3.0], [2.0, 4.0]]")
+  }
+
+  "simplify of a matrix sum and scale" should "execute through the ordinary operators" in
+  {
+    val s = session
+    s.execute("A = [[1, 2]]")
+    s.execute("S = A + A")
+    s.execute("D = 3 * A")
+    assert(s.execute("simplify S") == "[[2.0, 4.0]]")
+    assert(s.execute("simplify D") == "[[3.0, 6.0]]")
+  }
+
+  "scalar simplify" should "still ignore numeric bindings" in
+  {
+    val s = session
+    s.execute("x = 3")
+    assert(s.execute("simplify x + 0") == "x")
+  }
+
   // --- issue 1.1: derivative with respect to a defined function ---
 
   "derive(g, f) with f and g defined over x" should "apply the chain rule, not return 0" in

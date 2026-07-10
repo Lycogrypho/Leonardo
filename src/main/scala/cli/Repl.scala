@@ -3,6 +3,7 @@ package cli
 
 import core.*
 import scalar.*
+import matrix.*
 import parser.Parser
 
 
@@ -58,8 +59,8 @@ final class Session:
       s"cannot assign to '$name': it is a reserved word"
     case s"precision $n"        => setPrecision(n.trim)
     case s"unset $name"         => unset(name.trim)
-    case s"simplify $rest"      => withParsed(rest)(e => simplify(substitute(e, definitions)).toString)
-    case s"expand $rest"        => withParsed(rest)(e => expand(substitute(e, definitions)).toString)
+    case s"simplify $rest"      => withParsed(rest)(e => simplify(resolveMatrixOps(substitute(e, definitions))).toString)
+    case s"expand $rest"        => withParsed(rest)(e => expand(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
@@ -110,6 +111,32 @@ final class Session:
         substitute(resolved, definitions).eval(env).toExpression match
           case n: _Number => n.display(precision)
           case other      => other.toString
+
+  /**
+   * Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes
+   * whose operands are matrix-shaped — a matrix literal, a matrix operation node, or
+   * a variable bound to a matrix value — are re-typed to the matrix operations and
+   * reduced, so "C = A * B" then "simplify C" executes the multiplication and hands
+   * simplify a _Matrix whose elements it simplifies one by one (_ElementWise).
+   * Purely scalar sub-expressions are untouched: "simplify x + 0" keeps ignoring
+   * numeric bindings. Matrix operands, by contrast, must be resolved through the
+   * session bindings — executing A * B is impossible without knowing A and B.
+   */
+  private def resolveMatrixOps(e: _Expression): _Expression =
+    def isMatrixish(x: _Expression): Boolean = x match
+      case _: _Matrix | _: _MatrixOperation | _: _MatrixValue => true
+      case v: _Variable => env.get(v.variable).exists(_.isInstanceOf[_MatrixValue])
+      case _            => false
+
+    val rec = e.rebuild(e.children.map(resolveMatrixOps))
+    rec match
+      case Sum(a, b) if isMatrixish(a) || isMatrixish(b)     => MatSum(a, b).eval(env).toExpression
+      case Product(a, b) if isMatrixish(a) && isMatrixish(b) => MatProduct(a, b).eval(env).toExpression
+      case Product(a, b) if isMatrixish(b)                   => MatScale(a, b).eval(env).toExpression
+      case Product(a, b) if isMatrixish(a)                   => MatScale(b, a).eval(env).toExpression
+      case Ratio(a, b) if isMatrixish(a) && !isMatrixish(b)  => MatScale(Ratio(_Number(1), b), a).eval(env).toExpression
+      case m: _MatrixOperation                               => m.eval(env).toExpression
+      case other                                             => other
 
   /**
    * d/df where f names a *definition*: the binder is (correctly) never substituted,
@@ -172,8 +199,9 @@ object Session:
     """x = 3.001            bind a value (constant right-hand side)
       |f = sin(x) + x       define a function (right-hand side with free variables)
       |<expression>         evaluate, e.g.  f + 1  or  derive(f, x)
-      |simplify <expr>      structural simplification, no numeric evaluation
-      |expand <expr>        distribute products over sums
+      |simplify <expr>      structural simplification (matrix algebra is carried out,
+      |                     then each element is simplified; scalars ignore bindings)
+      |expand <expr>        distribute products over sums (matrix algebra as above)
       |precision <n>        set decimal precision
       |env                  list precision, bindings, and definitions
       |unset <name>         remove a binding or definition
