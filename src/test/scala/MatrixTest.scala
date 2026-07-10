@@ -180,13 +180,33 @@ class MatrixTest extends AnyFlatSpec:
     assert(evalMatrix(p, envWith("x" -> 2.0)) == dense(2, 2, 2, 4, 6, 8))
   }
 
-  "a large MatProduct" should "compute correctly through the parallel kernel" in
+  "a large MatProduct" should "compute correctly through the parallel blocked kernel" in
   {
-    // 48³ exceeds the sequential/parallel threshold (2^16): identity * A == A.
-    val n  = 48
+    // 80³ exceeds the work-volume threshold (2^16) AND spans two 64-row blocks,
+    // exercising the parallel multi-block path: identity * A == A.
+    val n  = 80
     val id = _MatrixValue(n, n, Array.tabulate(n * n)(i => if i / n == i % n then 1.0 else 0.0))
     val a  = _MatrixValue(n, n, Array.tabulate(n * n)(_.toDouble))
     assert(evalMatrix(MatProduct(id, a)) == a)
+  }
+
+  // Straightforward triple-loop reference with the same ascending-k accumulation
+  // order as the blocked kernel, so results must be bit-identical.
+  def refMultiply(a: _MatrixValue, b: _MatrixValue): _MatrixValue =
+    val out = new Array[Double](a.rows * b.cols)
+    for i <- 0 until a.rows; j <- 0 until b.cols do
+      var s = 0.0
+      for k <- 0 until a.cols do s += a(i, k) * b(k, j)
+      out(i * b.cols + j) = s
+    _MatrixValue(a.rows, b.cols, out)
+
+  "the blocked multiply kernel" should "match a naive reference on tile-crossing shapes" in
+  {
+    // Dimensions deliberately not multiples of the 64-wide tile, rectangular both ways.
+    for (ar, ac, bc) <- List((70, 65, 130), (129, 64, 63), (1, 100, 1), (64, 64, 64)) do
+      val a = _MatrixValue(ar, ac, Array.tabulate(ar * ac)(i => (i % 7) - 3.0))
+      val b = _MatrixValue(ac, bc, Array.tabulate(ac * bc)(i => (i % 5) - 2.0))
+      assert(a.multiply(b) == refMultiply(a, b), s"mismatch for ${ar}x$ac * ${ac}x$bc")
   }
 
   // --- MatScale ---

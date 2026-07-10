@@ -22,6 +22,8 @@ import java.util.stream.IntStream
 object _MatrixValue:
   // rows × inner × cols below this stays sequential: fork/join costs more than it saves.
   private val ParallelThreshold = 1L << 16
+  // Multiply block edge: 64×64 doubles = 32 KB, an L1-sized tile of each operand.
+  private val Tile = 64
 
   def apply(rows: Int, cols: Int, data: Array[Double]): _MatrixValue =
     new _MatrixValue(rows, cols, data.clone)
@@ -81,29 +83,51 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       i += 1
     new _MatrixValue(cols, rows, out)
 
-  // (this: rows×n) * (that: n×that.cols). The i-k-j loop order streams both arrays
-  // sequentially (cache-friendly) instead of striding down columns of `that`.
+  // (this: rows×n) * (that: n×that.cols). Block-tiled i-k-j: Tile×Tile blocks keep
+  // the hot block of `that` (and of `out`) cache-resident across a whole row block,
+  // instead of re-streaming all of `that` from memory for every output row. Within
+  // each output cell the k-accumulation order is still ascending, so results are
+  // bit-identical to the untiled kernel. Row blocks write disjoint output slices,
+  // so they parallelize with no locking, above the work-volume threshold.
   def multiply(that: _MatrixValue): _MatrixValue =
     require(cols == that.rows, s"dimension mismatch: ${rows}x$cols * ${that.rows}x${that.cols}")
-    val n   = cols
-    val out = new Array[Double](rows * that.cols)
+    val n    = cols
+    val w    = that.cols
+    val tile = _MatrixValue.Tile
+    val out  = new Array[Double](rows * w)
 
-    def rowKernel(i: Int): Unit =
-      var k = 0
-      while k < n do
-        val a = data(i * n + k)
-        if a != 0.0 then
-          var j = 0
-          while j < that.cols do
-            out(i * that.cols + j) += a * that.data(k * that.cols + j)
-            j += 1
-        k += 1
+    // One row block: output rows [ii, min(ii+Tile, rows)).
+    def blockKernel(ii: Int): Unit =
+      val iEnd = math.min(ii + tile, rows)
+      var kk = 0
+      while kk < n do
+        val kEnd = math.min(kk + tile, n)
+        var jj = 0
+        while jj < w do
+          val jEnd = math.min(jj + tile, w)
+          var i = ii
+          while i < iEnd do
+            var k = kk
+            while k < kEnd do
+              val a = data(i * n + k)
+              if a != 0.0 then
+                val offO = i * w
+                val offB = k * w
+                var j = jj
+                while j < jEnd do
+                  out(offO + j) += a * that.data(offB + j)
+                  j += 1
+              k += 1
+            i += 1
+          jj += tile
+        kk += tile
 
-    if rows.toLong * n * that.cols >= _MatrixValue.ParallelThreshold then
-      IntStream.range(0, rows).parallel().forEach(i => rowKernel(i))
+    val blocks = (rows + tile - 1) / tile
+    if rows.toLong * n * w >= _MatrixValue.ParallelThreshold && blocks > 1 then
+      IntStream.range(0, blocks).parallel().forEach(b => blockKernel(b * tile))
     else
-      var i = 0
-      while i < rows do
-        rowKernel(i)
-        i += 1
+      var b = 0
+      while b < blocks do
+        blockKernel(b * tile)
+        b += 1
     new _MatrixValue(rows, that.cols, out)

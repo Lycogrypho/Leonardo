@@ -27,7 +27,7 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
   - Power operations
   - Higher-order operators (derivatives, definite integrals via Simpson's rule, and indefinite integrals via a symbolic rule table)
 
-- **Matrix Domain**: matrix literals parse as `[[1, 2], [3, 4]]` (a row vector is `[[1, 2]]`), with `transpose(...)` and the ordinary `+`, `-`, `*`, `/` operators — `M = [[1, 2], [3, 4]]` then `M * M` works in the REPL, and `:save`d sessions restore matrix bindings. Matrices are grids of arbitrary expressions — numbers, variables, functions, even functionals — evaluated element-wise. When every element reduces to a number, the matrix collapses to a dense row-major `Array[Double]` value (`_MatrixValue`), on which sum, product (row-parallel above a work threshold), transpose, and scalar multiplication run as array kernels; otherwise operations combine element-wise symbolically and stay symbolic until the free variables are bound. The calculus and structural algorithms (`derive`, `integrate`, `simplify`, `expand`) distribute element-wise over matrices, matrix sums, and transposes (d/dx [aᵢⱼ] = [daᵢⱼ/dx]); matrix products deliberately stay symbolic under differentiation, as they need the product rule.
+- **Matrix Domain**: matrix literals parse as `[[1, 2], [3, 4]]` (a row vector is `[[1, 2]]`), with `transpose(...)` and the ordinary `+`, `-`, `*`, `/` operators — `M = [[1, 2], [3, 4]]` then `M * M` works in the REPL, and `:save`d sessions restore matrix bindings. Matrices are grids of arbitrary expressions — numbers, variables, functions, even functionals — evaluated element-wise. When every element reduces to a number, the matrix collapses to a dense row-major `Array[Double]` value (`_MatrixValue`), on which sum, product (block-tiled for cache locality, parallel over row blocks above a work threshold), transpose, and scalar multiplication run as array kernels; otherwise operations combine element-wise symbolically and stay symbolic until the free variables are bound. The calculus and structural algorithms (`derive`, `integrate`, `simplify`, `expand`) distribute element-wise over matrices, matrix sums, and transposes (d/dx [aᵢⱼ] = [daᵢⱼ/dx]); matrix products deliberately stay symbolic under differentiation, as they need the product rule.
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
@@ -49,6 +49,8 @@ leonardo> derive(f, x)         -- differentiation works through definitions
 0.00987
 leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x
+leonardo> C = A * B            -- with A, B matrices: simplify C executes the
+leonardo> simplify C           -- multiplication and simplifies each element
 leonardo> precision 8          -- set decimal precision
 leonardo> env                  -- list precision, bindings, definitions
 leonardo> :save session.txt    -- write current state to a replayable script
