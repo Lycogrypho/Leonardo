@@ -79,6 +79,34 @@ class ParserTest extends AnyFlatSpec:
     assert(parse("+2") == _Number(2.0))
   }
 
+  // --- reserved words are never variables ---
+
+  "bare reserved words" should "fail to parse instead of becoming variables" in
+  {
+    for w <- List("sin", "cos", "exp", "log", "tan", "tg", "asin", "acos", "atan",
+                  "pow", "transpose", "derive", "integral",
+                  "simplify", "expand", "eval", "env", "vars",
+                  "precision", "unset", "help", "quit", "exit") do
+      assert(!Parser.parse(w).successful, s"'$w' must not parse as a variable")
+  }
+
+  "\"sin x\" (function without parentheses)" should "be a parse error, not sin·x" in
+  {
+    assert(!Parser.parse("sin x").successful)
+  }
+
+  "\"derive(x^2, sin)\" (reserved word as binder)" should "fail to parse" in
+  {
+    assert(!Parser.parse("derive(x^2, sin)").successful)
+  }
+
+  "names that merely start with a reserved word" should "still parse as variables" in
+  {
+    assert(parse("sina") == _Variable("sina"))
+    assert(parse("evalx") == _Variable("evalx"))
+    assert(parse("transposeM") == _Variable("transposeM"))
+  }
+
   // --- issue 4.1: matrix literals and structural operator dispatch ---
 
   "\"[[1, 2], [3, 4]]\"" should "parse to a 2x2 _Matrix literal" in

@@ -271,6 +271,7 @@ package "matrix" {
 package "parser" {
     class "Parser" <<object>> {
         + parse(str: String): ParseResult
+        + ReservedWords: Set
         __ __
         MaxDepth = 500
     }

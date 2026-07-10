@@ -90,6 +90,17 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("pivot = 2") == "pivot = 2.0")
   }
 
+  "assigning to a reserved word" should "be rejected before the command vocabulary is shadowed" in
+  {
+    val s = session
+    for name <- List("simplify", "eval", "env", "sin", "derive", "precision", "quit") do
+      assert(s.execute(s"$name = 3") == s"cannot assign to '$name': it is a reserved word",
+        s"'$name' must be rejected as an assignment target")
+    // commands still work afterwards
+    assert(s.execute("simplify x + 0") == "x")
+    assert(s.execute("env") == "precision = 5")
+  }
+
   // --- issue 4.1: matrices in the REPL ---
 
   "a matrix literal assignment" should "bind a dense matrix value" in

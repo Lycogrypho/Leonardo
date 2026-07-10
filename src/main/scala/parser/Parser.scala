@@ -33,7 +33,8 @@ import matrix.*
  *                                                    -- part of the token; scientific-notation
  *                                                    -- exponent signs ("3E-5") are unaffected
  *   constant    ::= "pi" | "e"            -- built-in numeric literals (word-boundary guarded)
- *   variable    ::= [a-zA-Z][a-zA-Z0-9]*
+ *   variable    ::= [a-zA-Z][a-zA-Z0-9]*  -- except ReservedWords (functions, functionals,
+ *                                         -- constants, REPL commands); exact match only
  *
  * Sign handling: a signed literal token would let implicit multiplication swallow
  * "3-2" as 3 * (-2) instead of subtraction (and "e-3" as e * (-3)). So the number
@@ -51,6 +52,20 @@ import matrix.*
  * shape of the operands.
  */
 object Parser extends JavaTokenParsers:
+
+  // Words that can never be parsed as a variable name: the function/functional
+  // vocabulary and constants of the grammar itself, plus the REPL command words —
+  // reserved here too so a session binding can never shadow (or be shadowed by)
+  // a command. Bare "sin" or "simplify" is a parse error, not a variable; names
+  // merely starting with a reserved word ("sina", "evalx") stay legal.
+  val ReservedWords: Set[String] = Set(
+    "exp", "log", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
+    "pow", "transpose",                                   // functions
+    "derive", "integral",                                 // functionals
+    "pi", "e",                                            // constants
+    "simplify", "expand", "eval", "env", "vars",
+    "precision", "unset", "help", "quit", "exit"          // REPL commands
+  )
 
   private val MaxDepth = 500
   private val depth = new ThreadLocal[Int]:
@@ -183,6 +198,11 @@ object Parser extends JavaTokenParsers:
   def constant: Parser[_Number]    =
     """pi(?![a-zA-Z0-9])""".r ^^^ _Number(math.Pi) |
     """e(?![a-zA-Z0-9])""".r  ^^^ _Number(math.E)
-  def variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9]*""".r ^^ { s => _Variable(s) }
+  // Reserved words are rejected wholesale — the regex is greedy, so "simplify"
+  // cannot fall back to variable "simplif" times variable "y".
+  def variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9]*""".r ^? (
+    { case s if !ReservedWords.contains(s) => _Variable(s) },
+    s => s"'$s' is a reserved word and cannot be used as a variable"
+  )
 
   def parse(str: String): ParseResult[_Expression] = parseAll(expr, str)

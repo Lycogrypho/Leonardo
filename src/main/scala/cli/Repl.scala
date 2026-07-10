@@ -46,18 +46,22 @@ final class Session:
     case ""                     => ""
     case "help" | "?"           => Session.help
     case "env" | "vars"         => state
+    // Reserved-name assignments are rejected BEFORE the command patterns: an input
+    // like "simplify = 3" would otherwise be captured by the "simplify <expr>"
+    // command and fail with a confusing parse error. Constants get their own
+    // message ("e" always parses to _Number(math.E), so a binding would be
+    // silently unreachable); the rest of the reserved vocabulary (function names,
+    // functionals, command words) can never be parsed as a variable either.
+    case assignment(name, _) if Session.ReservedConstants.contains(name) =>
+      s"cannot assign to '$name': it is a built-in constant"
+    case assignment(name, _) if Parser.ReservedWords.contains(name) =>
+      s"cannot assign to '$name': it is a reserved word"
     case s"precision $n"        => setPrecision(n.trim)
     case s"unset $name"         => unset(name.trim)
     case s"simplify $rest"      => withParsed(rest)(e => simplify(substitute(e, definitions)).toString)
     case s"expand $rest"        => withParsed(rest)(e => expand(substitute(e, definitions)).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
-    // Reserved constants are resolved at parse time, so a binding under their name
-    // would be silently unreachable ("e" always parses to _Number(math.E)). Reject
-    // before parsing the right-hand side; scripts replayed through load surface the
-    // same message.
-    case assignment(name, _) if Session.ReservedConstants.contains(name) =>
-      s"cannot assign to '$name': it is a built-in constant"
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
     case expression             => withParsed(expression)(evaluate)
 
