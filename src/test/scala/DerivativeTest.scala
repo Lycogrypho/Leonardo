@@ -169,6 +169,24 @@ class DerivativeTest extends AnyFlatSpec:
       case Right(v) => fail(s"expected symbolic but got $v")
   }
 
+  // --- memoization (issue 4.1, split from legacy 19) ---
+
+  // The result tree is freshly built on a cache miss, so reference identity (eq)
+  // across two calls — even from structurally equal but distinct input trees —
+  // proves the memo hit.
+  "repeated derive calls on equal trees" should "return the cached instance" in
+  {
+    val first = derive(Product(x, Sin(x)), x)
+    assert(derive(Product(x, Sin(x)), x) eq first)
+  }
+
+  "memoized derivatives" should "key on the differentiation variable" in
+  {
+    val e = Product(x, y)
+    assert(derive(e, x) == y)
+    assert(derive(e, y) == x)
+  }
+
   // --- parse + derive round-trip ---
 
   "parse+derive of \"x * x\" w.r.t. x at x=3" should "equal 6.0" in

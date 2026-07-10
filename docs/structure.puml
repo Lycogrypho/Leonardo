@@ -171,6 +171,7 @@ package "scalar" {
     ' -- Algorithm modules (package-level functions) -
     class "Derive" <<utility>> {
         + derive(e, v): _Expression
+        memoized (Memo)
     }
     class "Integrate" <<utility>> {
         + integrate(e, v): _Expression
@@ -178,6 +179,7 @@ package "scalar" {
     class "Simplify" <<utility>> {
         + simplify(e): _Expression
         + simplifyFully(e): _Expression
+        memoized (Memo)
     }
     class "Expand" <<utility>> {
         + expand(e): _Expression

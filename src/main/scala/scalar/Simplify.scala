@@ -17,7 +17,15 @@ import scala.math.pow
  * This is NOT a full normaliser: like terms in different sub-trees (x + (x + y))
  * are not combined. For that, call simplify() iteratively until the result stabilises.
  */
-def simplify(e: _Expression): _Expression = e match
+// Memoized entry point: simplify is pure in e, so results are cached across calls.
+// simplifyFully's fixpoint iteration and shared subtrees hit the cache instead of
+// re-walking the rule table (the pragmatic core of the legacy hash-consing idea).
+private val simplifyMemo = new Memo[_Expression, _Expression](10000)
+
+def simplify(e: _Expression): _Expression =
+  simplifyMemo.getOrElseUpdate(e)(simplifyImpl(e))
+
+private def simplifyImpl(e: _Expression): _Expression = e match
   case _: _Number   => e
   case _: _Variable => e
 

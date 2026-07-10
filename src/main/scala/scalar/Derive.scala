@@ -29,7 +29,16 @@ private def dpow(a: _Expression, b: _Expression): _Expression = b match
   case _            => Power(a, b)
 
 
-def derive(e: _Expression, v: _Variable): _Expression = e match
+// Memoized entry point: derive is pure in (e, v), so results are cached across
+// calls. This pays off heavily where the same derivative is requested repeatedly —
+// e.g. _DefIntegral's tree-eval fallback re-derives its integrand at every Simpson
+// sample point — and across shared subtrees, since every recursive call lands here.
+private val deriveMemo = new Memo[(_Expression, String), _Expression](10000)
+
+def derive(e: _Expression, v: _Variable): _Expression =
+  deriveMemo.getOrElseUpdate((e, v.variable))(deriveImpl(e, v))
+
+private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case _Number(_)           => _Number(0)
   case x: _Variable         => if x.variable == v.variable then _Number(1) else _Number(0)
   case Sum(a, b)            => dadd(derive(a, v), derive(b, v))

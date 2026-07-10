@@ -14,6 +14,17 @@ class SimplifyTest extends AnyFlatSpec:
   def envWith(bindings: (String, Double)*): Environment =
     bindings.foldLeft(new Environment())((e, kv) => e.withBinding(kv._1, _Number(kv._2)))
 
+  // --- memoization (issue 4.1, split from legacy 19) ---
+
+  // simplify(Sum(x, x)) builds a fresh Product(2, x) on a cache miss, so reference
+  // identity across two calls proves the memo hit.
+  "repeated simplify calls on equal trees" should "return the cached instance" in
+  {
+    val first = Sum(x, x).simplify()
+    assert(Sum(x, x).simplify() eq first)
+    assert(first == Product(_Number(2), x))
+  }
+
   // --- identity / absorbing element rules ---
 
   "simplify(x + 0)" should "equal x" in
