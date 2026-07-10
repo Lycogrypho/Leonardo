@@ -69,6 +69,9 @@ def derive(e: _Expression, v: _Variable): _Expression = e match
   //   - _Integral:   fundamental theorem, d/dx ∫f dx = f, when the variables match.
   //   - _DefIntegral: a definite integral is a constant except through its limits,
   //     which the engine does not track symbolically, so leave it symbolic.
+  // Element-wise containers (matrix literals, matrix sums, transpose — see
+  // core._ElementWise): differentiation distributes over the children.
+  case ew: _ElementWise         => ew.rebuild(ew.children.map(derive(_, v)))
   case _Derivative(inner, iv)   => derive(derive(inner, iv), v)
   case _Integral(inner, iv)     => if iv.variable == v.variable then inner
                                    else _Derivative(e, v)

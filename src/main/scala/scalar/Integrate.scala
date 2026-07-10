@@ -26,6 +26,11 @@ private def linearSlope(u: _Expression, v: _Variable): Option[Double] =
 
 
 def integrate(e: _Expression, v: _Variable): _Expression = e match
+  // Element-wise containers (see core._ElementWise): integrate each child. Must
+  // precede the constant rule below, which would otherwise wrap a v-independent
+  // matrix in the scalar node Product(matrix, v) instead of integrating per element.
+  case ew: _ElementWise => ew.rebuild(ew.children.map(integrate(_, v)))
+
   // ∫ c dv = c*v          (c independent of v)
   case _ if !dependsOn(e, v) => Product(e, v)
 

@@ -111,6 +111,8 @@ def simplify(e: _Expression): _Expression = e match
   case _Derivative(f, v)          => _Derivative(simplify(f), v)
   case _Integral(f, v)            => _Integral(simplify(f), v)
   case _DefIntegral(f, v, lo, hi) => _DefIntegral(simplify(f), v, simplify(lo), simplify(hi))
+  // Element-wise containers (see core._ElementWise): simplify each child in place.
+  case ew: _ElementWise           => ew.rebuild(ew.children.map(simplify))
   case other                      => other
 
 

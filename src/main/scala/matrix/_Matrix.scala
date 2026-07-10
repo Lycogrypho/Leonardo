@@ -29,7 +29,9 @@ object _Matrix:
     _Matrix(v.rows, v.cols, v.toVector.map(_Number(_)))
 
 
-case class _Matrix(rows: Int, cols: Int, elems: Vector[_Expression]) extends _Expression:
+// _ElementWise: derive/simplify/expand/integrate distribute over the elements
+// (d/dx [aᵢⱼ] = [daᵢⱼ/dx] — valid because the matrix is a plain container).
+case class _Matrix(rows: Int, cols: Int, elems: Vector[_Expression]) extends _ElementWise:
   require(rows > 0 && cols > 0, s"matrix dimensions must be positive: ${rows}x$cols")
   require(elems.size == rows * cols, s"expected ${rows * cols} elements, got ${elems.size}")
 

@@ -49,7 +49,10 @@ private def collapse(m: _Matrix, orElse: _Expression): Either[_Expression, _Valu
 
 
 // Element-wise sum: (A + B)ᵢⱼ = Aᵢⱼ + Bᵢⱼ.
-case class MatSum(a: _Expression, b: _Expression) extends _MatrixOperation:
+// _ElementWise: sum is linear, so derive/simplify/expand/integrate distribute over
+// the operands (d/dx (A + B) = dA/dx + dB/dx). MatProduct and MatScale are NOT
+// marked — they need product rules.
+case class MatSum(a: _Expression, b: _Expression) extends _MatrixOperation, _ElementWise:
   override def toString: String = s"($a + $b)"
   override def children: List[_Expression] = List(a, b)
   override def rebuild(c: List[_Expression]): _Expression = MatSum(c.head, c(1))
@@ -101,7 +104,9 @@ case class MatScale(k: _Expression, m: _Expression) extends _MatrixOperation:
 
 
 // Transpose: (Aᵀ)ᵢⱼ = Aⱼᵢ.
-case class Transpose(m: _Expression) extends _MatrixOperation:
+// _ElementWise: transposition is linear and element-independent, so per-element
+// algorithms commute with it (d/dx Aᵀ = (dA/dx)ᵀ).
+case class Transpose(m: _Expression) extends _MatrixOperation, _ElementWise:
   override def toString: String = s"transpose($m)"
   override def children: List[_Expression] = List(m)
   override def rebuild(c: List[_Expression]): _Expression = Transpose(c.head)

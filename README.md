@@ -27,7 +27,7 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
   - Power operations
   - Higher-order operators (derivatives, definite integrals via Simpson's rule, and indefinite integrals via a symbolic rule table)
 
-- **Matrix Domain** (API-only, no parser syntax yet): matrices are grids of arbitrary expressions — numbers, variables, functions, even functionals — evaluated element-wise. When every element reduces to a number, the matrix collapses to a dense row-major `Array[Double]` value (`_MatrixValue`), on which sum, product (row-parallel above a work threshold), transpose, and scalar multiplication run as array kernels; otherwise operations combine element-wise symbolically and stay symbolic until the free variables are bound.
+- **Matrix Domain** (API-only, no parser syntax yet): matrices are grids of arbitrary expressions — numbers, variables, functions, even functionals — evaluated element-wise. When every element reduces to a number, the matrix collapses to a dense row-major `Array[Double]` value (`_MatrixValue`), on which sum, product (row-parallel above a work threshold), transpose, and scalar multiplication run as array kernels; otherwise operations combine element-wise symbolically and stay symbolic until the free variables are bound. The calculus and structural algorithms (`derive`, `integrate`, `simplify`, `expand`) distribute element-wise over matrices, matrix sums, and transposes (d/dx [aᵢⱼ] = [daᵢⱼ/dx]); matrix products deliberately stay symbolic under differentiation, as they need the product rule.
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 

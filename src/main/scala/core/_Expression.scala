@@ -27,6 +27,15 @@ trait _Expression:
 trait _Value extends _Expression
 
 
+// Marker for plain containers of expressions (a matrix literal, an element-wise sum,
+// a transpose): per-element algorithms (derive, simplify, expand, integrate) may
+// distribute over children and rebuild the same node shape. Mark a node ONLY when
+// that distribution is mathematically valid for ALL such algorithms — linear
+// containers qualify; product-like nodes, which need product rules, do not.
+// Lives in core so domain packages can opt in without scalar importing them.
+trait _ElementWise extends _Expression
+
+
 object _Number:
   private val factorTable: Array[Double] = Array.tabulate(16)(i => scala.math.pow(10.0, i))
 

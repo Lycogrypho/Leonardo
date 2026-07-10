@@ -36,6 +36,8 @@ package "core" {
 
     interface "_Value" <<trait>>
 
+    interface "_ElementWise" <<trait>>
+
     class "_Number" <<case>> {
         + d: Double
         + display(precision: Int): String
@@ -67,6 +69,7 @@ package "core" {
     }
 
     "_Value"       --|> "_Expression"
+    "_ElementWise" --|> "_Expression"
     "_Number"      ..|> "_Value"
     "_MatrixValue" ..|> "_Value"
     "_Variable"    ..|> "_Expression"
@@ -250,6 +253,11 @@ package "matrix" {
     "MatProduct"       --|> "_MatrixOperation"
     "MatScale"         --|> "_MatrixOperation"
     "Transpose"        --|> "_MatrixOperation"
+
+    ' Linear containers: derive/simplify/expand/integrate distribute element-wise
+    "_Matrix"   ..|> "_ElementWise"
+    "MatSum"    ..|> "_ElementWise"
+    "Transpose" ..|> "_ElementWise"
 
     "_Matrix"          ..> "_MatrixValue" : collapses to at eval
     "_MatrixOperation" ..> "_MatrixValue" : dense kernels (fast path)

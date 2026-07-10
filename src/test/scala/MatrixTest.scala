@@ -227,6 +227,62 @@ class MatrixTest extends AnyFlatSpec:
     assert(evalMatrix(Transpose(Transpose(a))) == a)
   }
 
+  // --- issue 2.1: element-wise algorithms distribute over matrices ---
+
+  "derive of a matrix" should "differentiate element-wise" in
+  {
+    val m = literal(1, 2, Power(x, _Number(2)), Sin(x))
+    // d/dx [x², sin(x)] = [2x, cos(x)] → at x=2: [4, cos(2)]
+    assert(evalMatrix(_Derivative(m, x), envWith("x" -> 2.0)) == dense(1, 2, 4.0, math.cos(2.0)))
+  }
+
+  "integrate of a matrix" should "integrate element-wise, constants included" in
+  {
+    val m = literal(1, 2, x, _Number(1))
+    // ∫ [x, 1] dx = [x²/2, x] → at x=2: [2, 2]
+    assert(evalMatrix(_Integral(m, x), envWith("x" -> 2.0)) == dense(1, 2, 2.0, 2.0))
+  }
+
+  "integrate of a v-independent matrix" should "integrate per element, not wrap in a scalar Product" in
+  {
+    assert(integrate(literal(1, 2, y, _Number(2)), x)
+      == literal(1, 2, Product(y, x), Product(_Number(2), x)))
+  }
+
+  "simplify" should "simplify inside matrix elements" in
+  {
+    val m = literal(1, 2, Sum(x, _Number(0)), Product(_Number(1), y))
+    assert(simplify(m) == literal(1, 2, x, y))
+  }
+
+  "expand" should "distribute inside matrix elements" in
+  {
+    val m = literal(1, 1, Product(x, Sum(y, _Number(1))))
+    assert(expand(m) == literal(1, 1, Sum(Product(x, y), Product(x, _Number(1)))))
+  }
+
+  "derive of a MatSum" should "distribute over both operands (linearity)" in
+  {
+    val d = _Derivative(MatSum(literal(1, 1, Power(x, _Number(2))), literal(1, 1, Product(_Number(3), x))), x)
+    // d/dx (x² + 3x) = 2x + 3 → at x=2: 7
+    assert(evalMatrix(d, envWith("x" -> 2.0)) == dense(1, 1, 7.0))
+  }
+
+  "derive of a Transpose" should "commute with transposition" in
+  {
+    val d = _Derivative(Transpose(literal(1, 2, Power(x, _Number(2)), x)), x)
+    // (d/dx [x², x])ᵀ = [2x, 1]ᵀ → at x=3: column (6, 1)
+    assert(evalMatrix(d, envWith("x" -> 3.0)) == dense(2, 1, 6.0, 1.0))
+  }
+
+  "derive of a MatProduct" should "stay symbolic (needs the product rule, not marked element-wise)" in
+  {
+    val p = MatProduct(literal(1, 1, x), literal(1, 1, Sin(x)))
+    _Derivative(p, x).eval(envWith("x" -> 2.0)) match
+      case Left(_)  => succeed
+      case Right(v) => fail(s"expected symbolic but got $v")
+  }
+
   // --- generic traversals work through matrix elements ---
 
   "substitute" should "replace definitions inside matrix elements" in

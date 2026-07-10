@@ -52,4 +52,6 @@ def expand(e: _Expression): _Expression = e match
   case _Derivative(f, v)          => _Derivative(expand(f), v)
   case _Integral(f, v)            => _Integral(expand(f), v)
   case _DefIntegral(f, v, lo, hi) => _DefIntegral(expand(f), v, expand(lo), expand(hi))
+  // Element-wise containers (see core._ElementWise): expand each child in place.
+  case ew: _ElementWise           => ew.rebuild(ew.children.map(expand))
   case other                      => other

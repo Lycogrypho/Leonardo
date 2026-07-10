@@ -1,6 +1,10 @@
-ThisBuild / scalaVersion := "3.3.4"
+ThisBuild / scalaVersion := "3.3.6"
 
 scalacOptions ++= Seq( "-explain", "-deprecation", "-feature" )
+
+// idePackagePrefix is consumed by the IntelliJ sbt import, not by any sbt task;
+// exclude it from the lintUnused warning printed at every startup.
+Global / excludeLintKeys += idePackagePrefix
 
 lazy val root = (project in file("."))
   .settings(
