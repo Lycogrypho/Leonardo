@@ -30,6 +30,7 @@ import equation.*
  *   functional  ::= "derive(" expr "," variable ")"
  *                 | "integral(" expr "," variable ")"
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
+ *                 | "solve(" expr "=" expr "," variable ")"
  *   signedValue ::= ["+" | "-"] value
  *   value       ::= number | constant | variable
  *   number      ::= unsigned floating literal       -- a '-' is ALWAYS an operator, never
@@ -64,7 +65,7 @@ object Parser extends JavaTokenParsers:
   val ReservedWords: Set[String] = Set(
     "exp", "log", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose",                                   // functions
-    "derive", "integral",                                 // functionals
+    "derive", "integral", "solve",                        // functionals
     "pi", "e",                                            // constants
     "simplify", "expand", "eval", "env", "vars",
     "precision", "unset", "help", "quit", "exit"          // REPL commands
@@ -184,7 +185,9 @@ object Parser extends JavaTokenParsers:
   def functional: Parser[_Expression] =
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
-    "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              }
+    "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
+    // the only place an equation appears below the top level: solve's first argument
+    "solve("    ~> guardedExpr ~ "=" ~ guardedExpr ~ "," ~ variable <~ ")"                       ^^ { case l ~ _ ~ r ~ _ ~ v     => _Solve(_Equation(l, r), v)   }
 
   // Integral limits accept a sign ("integral(x, x, -1, 1)", lower limit "-pi")
   // without opening the limit position to full sub-expressions.

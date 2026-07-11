@@ -293,9 +293,22 @@ package "equation" {
         + rhs : _Expression
     }
 
+    class "_Solve" <<case>> {
+        + eq : _Equation
+        + v  : _Variable
+    }
+
+    class "Solve" <<utility>> {
+        + solve(eq, v, env): List
+    }
+
     "_Equation" --|> "_Expression"
     "_Equation" ..|> "_ElementWise"
     "_Equation" ..> "_Bool" : reduces to at eval
+    "_Solve"    --|> "_Expression"
+    "_Solve"    ..> "Solve"     : solve() at eval
+    "Solve"     ..> "Normalize" : collect() linear/quadratic tiers
+    "Solve"     ..> "Compile"   : numeric fallback
 }
 
 ' ===================================================
