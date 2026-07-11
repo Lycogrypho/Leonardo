@@ -1,0 +1,37 @@
+package it.grypho.scala.leonardo
+package equation
+
+import core.*
+
+
+// Equation domain: a relation between two expressions, following the matrix
+// blueprint (own package importing core; nothing imports back).
+//
+// eval reduces both sides; when both fold to concrete values the equation itself
+// reduces to a _Bool. Numeric equality is tolerance-based, tied to env.precision —
+// exact Double comparison would make "sin(pi) = 0" false on floating-point noise;
+// instead two numbers are equal when their difference vanishes at the configured
+// number of decimals (|a − b| ≤ 0.5·10⁻ᵖ). Concrete matrices compare element-wise
+// under the same tolerance. Anything else stays symbolic with the sides reduced.
+//
+// _ElementWise: an equation is a container of its two sides — differentiating,
+// simplifying, expanding, or integrating an equation applies the algorithm to both
+// sides (d/dx (lhs = rhs) is d(lhs)/dx = d(rhs)/dx), so the marker is sound here.
+//
+// toString is "lhs = rhs" (no outer parentheses): equations exist only at the top
+// level of the grammar, and the round-trip invariant parse(toString(e)) == e holds.
+case class _Equation(lhs: _Expression, rhs: _Expression) extends _ElementWise:
+  override def toString: String = s"$lhs = $rhs"
+  override def children: List[_Expression] = List(lhs, rhs)
+  override def rebuild(c: List[_Expression]): _Expression = _Equation(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    def tolerance: Double = 0.5 * math.pow(10, -env.precision)
+    (lhs.eval(env), rhs.eval(env)) match
+      case (Right(_Number(a)), Right(_Number(b))) =>
+        Right(_Bool(math.abs(a - b) <= tolerance))
+      case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
+        val equal = x.rows == y.rows && x.cols == y.cols &&
+          x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
+        Right(_Bool(equal))
+      case (ra, rb) => Left(_Equation(ra.toExpression, rb.toExpression))

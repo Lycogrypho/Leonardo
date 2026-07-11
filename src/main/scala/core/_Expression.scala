@@ -62,6 +62,16 @@ case class _Number(d: Double) extends _Value:
   override def rebuild(c: List[_Expression]): _Expression = this
 
 
+// Truth value — the concrete result of a fully-reduced relation (an _Equation whose
+// sides both fold to numbers today; logic connectives later). The third concrete
+// _Value after _Number and _MatrixValue.
+case class _Bool(b: Boolean) extends _Value:
+  override def toString: String = b.toString
+  override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
+  override def children: List[_Expression] = List.empty
+  override def rebuild(c: List[_Expression]): _Expression = this
+
+
 // A free variable is a symbolic atom, not a concrete value, so it is not a _Value:
 // eval yields Right only once the variable is bound to one in the environment.
 case class _Variable(variable: String) extends _Expression:

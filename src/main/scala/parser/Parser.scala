@@ -5,12 +5,15 @@ import scala.util.parsing.combinator.JavaTokenParsers
 import core.*
 import scalar.*
 import matrix.*
+import equation.*
 
 
 /**
  * Recursive descent parser for mathematical expressions.
  *
  * Grammar:
+ *   topLevel    ::= expr ["=" expr]              -- "=" makes an _Equation; top level only,
+ *                                                -- so equations never nest
  *   expr        ::= ["+" | "-"] simpleExpr
  *   simpleExpr  ::= term (("+"|"-") term)*
  *   term        ::= signedPower (("*"|"/") signedPower | "" power)*
@@ -205,4 +208,12 @@ object Parser extends JavaTokenParsers:
     s => s"'$s' is a reserved word and cannot be used as a variable"
   )
 
-  def parse(str: String): ParseResult[_Expression] = parseAll(expr, str)
+  // Equations exist only at the top level: "a = b" is an _Equation, "a = b = c" and
+  // "(a = b)" are parse errors (parenthesized positions contain plain expressions).
+  def topLevel: Parser[_Expression] = expr ~ opt("=" ~> expr) ^^
+    {
+      case l ~ Some(r) => _Equation(l, r)
+      case l ~ None    => l
+    }
+
+  def parse(str: String): ParseResult[_Expression] = parseAll(topLevel, str)

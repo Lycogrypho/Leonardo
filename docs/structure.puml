@@ -1,5 +1,11 @@
 @startuml Leonardo - class structure
 
+
+!define DIAGRAM_WIDTH 12000
+!define DIAGRAM_HEIGHT 8000
+skinparam defaultFontName Courier
+skinparam monochrome true
+
 skinparam packageStyle rectangle
 skinparam classAttributeIconSize 0
 skinparam shadowing false
@@ -43,6 +49,10 @@ package "core" {
         + display(precision: Int): String
     }
 
+    class "_Bool" <<case>> {
+        + b: Boolean
+    }
+
     class "_Variable" <<case>> {
         + variable: String
     }
@@ -71,6 +81,7 @@ package "core" {
     "_Value"       --|> "_Expression"
     "_ElementWise" --|> "_Expression"
     "_Number"      ..|> "_Value"
+    "_Bool"        ..|> "_Value"
     "_MatrixValue" ..|> "_Value"
     "_Variable"    ..|> "_Expression"
     "_Expression"  --> "Environment" : eval(env)
@@ -265,6 +276,21 @@ package "matrix" {
     "_MatrixOperation" ..> "_MatrixValue" : dense kernels (fast path)
     "_MatrixOperation" ..> "Sum"          : element-wise symbolic combine
     "_MatrixOperation" ..> "Product"      : element-wise symbolic combine
+}
+
+' ===================================================
+' PACKAGE: equation - equation domain (imports core)
+' ===================================================
+package "equation" {
+
+    class "_Equation" <<case>> {
+        + lhs : _Expression
+        + rhs : _Expression
+    }
+
+    "_Equation" --|> "_Expression"
+    "_Equation" ..|> "_ElementWise"
+    "_Equation" ..> "_Bool" : reduces to at eval
 }
 
 ' ===================================================
