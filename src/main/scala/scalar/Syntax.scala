@@ -24,3 +24,5 @@ object Syntax:
       it.grypho.scala.leonardo.scalar.substitute(e, definitions)
     def compile(v: _Variable): Option[Double => Double] =
       it.grypho.scala.leonardo.scalar.compile(e, v, new Environment())
+    def sample(v: _Variable, lo: Double, hi: Double, n: Int = 200, env: Environment = new Environment()): Vector[(Double, Double)] =
+      it.grypho.scala.leonardo.scalar.sample(e, v, lo, hi, n, env)

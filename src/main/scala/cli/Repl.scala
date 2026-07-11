@@ -48,7 +48,10 @@ final class Session:
 
   private val emptyEnv = new Environment()
 
-  private val assignment = """([a-zA-Z][a-zA-Z0-9]*)\s*:=(.+)""".r
+  private val assignment   = """([a-zA-Z][a-zA-Z0-9]*)\s*:=(.+)""".r
+  // Lazy first group lets the regex engine find the shortest expression that still
+  // leaves valid tokens for <var> <lo> <hi> and an optional <n> at the tail.
+  private val samplesRegex = """^(.+?)\s+([a-zA-Z]\w*)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)(?:\s+(\d+))?$""".r
 
   def execute(line: String): String = line.trim match
     case ""                     => ""
@@ -71,6 +74,7 @@ final class Session:
     case s"simplify $rest"      => withParsed(rest)(e => simplify(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"expand $rest"        => withParsed(rest)(e => expand(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
+    case s"samples $rest"       => doSamples(rest)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
     case expression             => withParsed(expression)(evaluate)
@@ -182,6 +186,24 @@ final class Session:
         bindings = bindings - name
         s"$name := $rhs"
 
+  private def doSamples(rest: String): String = rest.trim match
+    case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
+      val lo = loStr.toDouble
+      val hi = hiStr.toDouble
+      if lo >= hi then "samples: lo must be strictly less than hi"
+      else
+        val n = Option(nStr).flatMap(_.toIntOption).getOrElse(200)
+        withParsed(exprStr.trim) { e =>
+          val v      = _Variable(varStr)
+          val points = sample(substitute(e, definitions), v, lo, hi, n, env)
+          if points.isEmpty then "(no finite values in range)"
+          else
+            points.map((x, y) =>
+              s"${_Number(x).display(precision)}\t${_Number(y).display(precision)}"
+            ).mkString("\n")
+        }
+    case _ => "usage: samples <expr> <var> <lo> <hi> [<n>]"
+
   private def setPrecision(text: String): String =
     text.toIntOption match
       case Some(n) if n >= 0 => precision = n; s"precision = $n"
@@ -275,6 +297,12 @@ object Session:
     "integral" ->
       """|Indefinite symbolic integration via a rule table.
          |  integral(x^2, x)            → ((1.0 / 3.0) * (x ^ 3.0))""".stripMargin,
+    "samples" ->
+      """|Sample a function over a uniform grid, returning tab-separated (x, f(x)) pairs.
+         |Non-finite values (div-by-zero, domain errors) are silently skipped.
+         |n defaults to 200; x values are in ascending order.
+         |  samples sin(x) x -10 10
+         |  samples f x 0 5 100    (f must be a defined function)""".stripMargin,
     "solveSystem" ->
       """|Solve a square system of n linear equations in n unknowns.
          |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).
