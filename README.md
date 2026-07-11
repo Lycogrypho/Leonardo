@@ -84,8 +84,9 @@ bindings, definitions) as a script that `:load` replays.
 
 - **Normalization**: `normalize(e, x)` collects like terms into an ascending polynomial in one variable (`10x - 2x` → `8x`, whatever the tree shape), and `collect(e, x)` extracts the dense coefficient list — the foundation for the upcoming equation solver. Non-polynomial forms are left untouched.
 
+- **Linear system solver**: `solveSystem([[eq₁, eq₂, …]], x, y, …)` solves a square system of n linear equations in n unknowns. Coefficient extraction uses `collect` (the same polynomial prerequisite as `solve`). Dense path: Gaussian elimination with partial pivoting on Double arrays. Symbolic path: row reduction using `_Expression` arithmetic and `simplifyFully` when any coefficient or constant stays symbolic. Named equation matrices work too: `S := [[eq1, eq2]]; solveSystem(S, x, y)`. Solutions display as `[[x = 2.0, y = 1.0]]`.
+
 ## Planned Features
 
-- Systems of linear equations (LU decomposition over the matrix domain)
 - Broader indefinite integration (integration by parts, non-linear substitution)
 - Additional mathematical functions and constants

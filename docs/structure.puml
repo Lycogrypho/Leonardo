@@ -307,6 +307,23 @@ package "equation" {
         + solve(eq, v, env): List
     }
 
+    class "_SolveSystem" <<case>> {
+        + equations : _Expression
+        + variables : List[_Variable]
+    }
+
+    class "SolveSystem" <<utility>> {
+        + solveSystem(eqs, vars, env): Option[List]
+        __ dense path __
+        Gaussian elimination (partial pivot)
+        __ symbolic path __
+        Row reduction with simplifyFully
+    }
+
+    "_SolveSystem" --|> "_Expression"
+    "_SolveSystem" ..> "SolveSystem" : solve() at eval
+    "SolveSystem"  ..> "Normalize"   : collect() coefficient extraction
+
     "_Equation"       --|> "_Expression"
     "_Equation"       ..|> "_ElementWise"
     "_Equation"       ..> "_Bool"     : reduces to at eval

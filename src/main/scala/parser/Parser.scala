@@ -34,6 +34,9 @@ import equation.*
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
  *                 | "solve(" equationExpr "," variable ")"   -- equationExpr may be an inline
  *                                                            -- "lhs = rhs" or a named variable
+ *                 | "solveSystem(" equationExpr "," variable ("," variable)* ")"
+ *                                                            -- equationExpr is a matrix of
+ *                                                            -- equations [[eq1, eq2, …]]
  *   signedValue ::= ["+" | "-"] value
  *   value       ::= number | constant | variable
  *   number      ::= unsigned floating literal       -- a '-' is ALWAYS an operator, never
@@ -68,7 +71,7 @@ object Parser extends JavaTokenParsers:
   val ReservedWords: Set[String] = Set(
     "exp", "log", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose",                                   // functions
-    "derive", "integral", "solve",                        // functionals
+    "derive", "integral", "solve", "solveSystem",           // functionals
     "pi", "e",                                            // constants
     "simplify", "expand", "eval", "env", "vars",
     "precision", "unset", "help", "quit", "exit"          // REPL commands
@@ -202,7 +205,9 @@ object Parser extends JavaTokenParsers:
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
     // guardedExpr here calls equationExpr, so "solve(x = 5, x)" and "solve(h, x)" both work
-    "solve("    ~> guardedExpr ~ "," ~ variable <~ ")"                                            ^^ { case e ~ _ ~ v             => _Solve(e, v)                 }
+    "solve("    ~> guardedExpr ~ "," ~ variable <~ ")"                                            ^^ { case e ~ _ ~ v             => _Solve(e, v)                 } |
+    // equations is a matrix of _Equation nodes; variables are listed after the first comma
+    "solveSystem(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")"                          ^^ { case eqs ~ _ ~ vars         => _SolveSystem(eqs, vars)      }
 
   // Integral limits accept a sign ("integral(x, x, -1, 1)", lower limit "-pi")
   // without opening the limit position to full sub-expressions.
