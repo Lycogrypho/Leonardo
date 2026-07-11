@@ -5,24 +5,31 @@ import core.*
 import matrix.*
 
 
-// AST node for the solve(eq, v) functional (parser: "solve(lhs = rhs, v)").
+// AST node for the solve(eq, v) functional (parser: "solve(expr, v)").
+// eq is _Expression, not _Equation, so a named equation (h := x = 5) can be
+// passed directly: after Session.substitute expands h → _Equation(x, 5), eval
+// pattern-matches on the concrete _Equation and delegates to solve(). If eq is
+// not an _Equation at eval time (e.g. a plain expression or an _EqualityCheck),
+// the node stays symbolic — only "=" builds a solvable relation, not "==".
+//
 // A solution set is never a concrete _Value, so eval always answers Left:
 //   - no solution found/known  → Left(this)                (stays symbolic)
 //   - exactly one solution     → Left(x = expr)            (an _Equation)
 //   - several solutions        → Left([[x = e₁, x = e₂]])  (a row-vector _Matrix)
-// The row-vector display is an eval RESULT, like _Bool's "true" — it is not
-// required to re-parse; the _Solve node itself round-trips through toString.
 //
-// children exposes the equation's two sides (the binder v is excluded, exactly as
-// in _Derivative), so substitute/dependsOn work through the equation while the
-// solve variable is never rewritten.
-case class _Solve(eq: _Equation, v: _Variable) extends _Expression:
+// children exposes eq as a single child (binder v excluded), so substitute/
+// dependsOn/rebuild walk into it — if eq is a _Variable naming a definition,
+// substitute replaces it with its body before eval runs.
+case class _Solve(eq: _Expression, v: _Variable) extends _Expression:
   override def toString: String = s"solve($eq, $v)"
-  override def children: List[_Expression] = List(eq.lhs, eq.rhs)
-  override def rebuild(c: List[_Expression]): _Expression = _Solve(_Equation(c.head, c(1)), v)
+  override def children: List[_Expression] = List(eq)
+  override def rebuild(c: List[_Expression]): _Expression = _Solve(c.head, v)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    solve(eq, v, env) match
-      case Nil           => Left(this)
-      case single :: Nil => Left(single)
-      case many          => Left(_Matrix(1, many.size, many.toVector))
+    eq match
+      case e: _Equation =>
+        solve(e, v, env) match
+          case Nil           => Left(this)
+          case single :: Nil => Left(single)
+          case many          => Left(_Matrix(1, many.size, many.toVector))
+      case _ => Left(this)

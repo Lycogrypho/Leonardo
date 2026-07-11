@@ -24,7 +24,9 @@ import parser.Parser
  * Commands:
  *   x := 3.001           bind a value (constant right-hand side)
  *   f := sin(x) + x      define a function (right-hand side with free variables)
- *   lhs = rhs            an equation: true/false when both sides are concrete
+ *   h := lhs = rhs       bind a named equation (can be passed to solve(h, x))
+ *   lhs = rhs            equation: true/false when concrete; solvable via solve()
+ *   lhs == rhs           equality check: evaluates to bool but not solvable
  *   <expression>         evaluate, e.g.  f + 1  or  derive(f, x)
  *   simplify <expr>      structural simplification, no numeric evaluation
  *   expand <expr>        distribute products over sums
@@ -203,7 +205,10 @@ object Session:
   val help: String =
     """x := 3.001           bind a value (constant right-hand side)
       |f := sin(x) + x      define a function (right-hand side with free variables)
-      |lhs = rhs            an equation: true/false once both sides are concrete
+      |h := lhs = rhs       bind a named equation (use with solve(h, x))
+      |lhs = rhs            equation: true/false once both sides are concrete; stays
+      |                     symbolic with free variables; solvable via solve()
+      |lhs == rhs           equality check: same as "=" but not accepted by solve()
       |<expression>         evaluate, e.g.  f + 1  or  derive(f, x)
       |simplify <expr>      structural simplification (matrix algebra is carried out,
       |                     then each element is simplified; scalars ignore bindings)

@@ -41,14 +41,59 @@ class EquationTest extends AnyFlatSpec:
     assert(parse(first.toString) == first)
   }
 
-  "\"a = b = c\"" should "fail to parse (equations do not nest)" in
+  "\"a = b = c\"" should "fail to parse (= is non-associative)" in
   {
     assert(!Parser.parse("a = b = c").successful)
   }
 
-  "\"(a = b)\"" should "fail to parse (equations are top-level only)" in
+  "\"(a = b)\"" should "parse to an _Equation (equations are now valid sub-expressions)" in
   {
-    assert(!Parser.parse("(a = b)").successful)
+    parse("(a = b)") match
+      case _Equation(_Variable("a"), _Variable("b")) => succeed
+      case other => fail(s"unexpected: $other")
+  }
+
+  // --- _EqualityCheck (==) ---
+
+  "\"x == 5\"" should "parse to an _EqualityCheck" in
+  {
+    parse("x == 5") match
+      case _EqualityCheck(_Variable("x"), _Number(5.0)) => succeed
+      case other => fail(s"unexpected: $other")
+  }
+
+  "an _EqualityCheck" should "round-trip through toString" in
+  {
+    val first = parse("x + 1 == y * 2")
+    assert(parse(first.toString) == first)
+  }
+
+  "x == 5 at x = 5" should "evaluate to true" in
+  {
+    assert(evalBool(parse("x == 5"), envWith("x" -> 5.0)))
+  }
+
+  "x == 5 at x = 3" should "evaluate to false" in
+  {
+    assert(!evalBool(parse("x == 5"), envWith("x" -> 3.0)))
+  }
+
+  "sin(pi) == 0" should "be true under the precision tolerance" in
+  {
+    assert(evalBool(parse("sin(pi) == 0")))
+  }
+
+  "an _EqualityCheck with a free variable" should "stay symbolic" in
+  {
+    parse("x == 5").eval(new Environment()) match
+      case Left(_EqualityCheck(_, _)) => succeed
+      case other => fail(s"expected symbolic _EqualityCheck but got: $other")
+  }
+
+  "simplify of an _EqualityCheck" should "simplify both sides" in
+  {
+    assert(simplify(_EqualityCheck(Sum(x, _Number(0)), Product(_Number(1), y)))
+      == _EqualityCheck(x, y))
   }
 
   // --- evaluation to _Bool ---

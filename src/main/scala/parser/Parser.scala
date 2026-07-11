@@ -12,25 +12,28 @@ import equation.*
  * Recursive descent parser for mathematical expressions.
  *
  * Grammar:
- *   topLevel    ::= expr ["=" expr]              -- "=" makes an _Equation; top level only,
- *                                                -- so equations never nest
- *   expr        ::= ["+" | "-"] simpleExpr
+ *   topLevel      ::= equationExpr
+ *   equationExpr  ::= expr ["=" expr | "==" expr]  -- non-associative; "=" → _Equation,
+ *                                                   -- "==" → _EqualityCheck (always _Bool).
+ *                                                   -- "(a = b)" is now valid; "a = b = c" is not.
+ *   expr          ::= ["+" | "-"] simpleExpr
  *   simpleExpr  ::= term (("+"|"-") term)*
  *   term        ::= signedPower (("*"|"/") signedPower | "" power)*
  *                                                    -- "" enables implicit multiplication;
  *                                                    -- its operand is UNSIGNED (see below)
  *   signedPower ::= ["+" | "-"] power                -- signed operand after an explicit operator
  *   power       ::= factor ["^" signedPower]         -- right-associative; binds tighter than * /
- *   factor      ::= function | functional | matrix | value | "(" expr ")"
+ *   factor      ::= function | functional | matrix | value | "(" equationExpr ")"
  *   matrix      ::= "[" matrixRow ("," matrixRow)* "]"   -- rows must be equally long
- *   matrixRow   ::= "[" expr ("," expr)* "]"
+ *   matrixRow   ::= "[" equationExpr ("," equationExpr)* "]"
  *   function    ::= "exp(" expr ")" | "log(" expr ")" | "sin(" expr ")"
  *                 | "cos(" expr ")" | "tan(" expr ")" | "tg(" expr ")" | "asin(" expr ")" | "acos(" expr ")" | "atan(" expr ")"
  *                 | "transpose(" expr ")" | "pow(" expr "," expr ")"
  *   functional  ::= "derive(" expr "," variable ")"
  *                 | "integral(" expr "," variable ")"
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
- *                 | "solve(" expr "=" expr "," variable ")"
+ *                 | "solve(" equationExpr "," variable ")"   -- equationExpr may be an inline
+ *                                                            -- "lhs = rhs" or a named variable
  *   signedValue ::= ["+" | "-"] value
  *   value       ::= number | constant | variable
  *   number      ::= unsigned floating literal       -- a '-' is ALWAYS an operator, never
@@ -80,7 +83,7 @@ object Parser extends JavaTokenParsers:
     if d >= MaxDepth then Failure(s"expression exceeds maximum nesting depth of $MaxDepth", in)
     else
       depth.set(d + 1)
-      try expr(in)
+      try equationExpr(in)
       finally depth.set(d)
   }
 
@@ -114,6 +117,18 @@ object Parser extends JavaTokenParsers:
     case (Some("-"), MatScale(_Number(k), m))   => MatScale(_Number(-k), m)
     case (Some("-"), _)                         => mkNeg(e)
     case _                                      => e
+
+  // "==" is tried before "=" so that the two-character operator is not shadowed by the
+  // one-character one. Non-associative: only one optional relation per expression, so
+  // "a = b = c" is a parse error (the trailing "= c" is rejected by parseAll / the
+  // surrounding rule). "(a = b)" is now a valid sub-expression — use it to bind a
+  // named equation: "h := x = 5", then "solve(h, x)".
+  def equationExpr: Parser[_Expression] = expr ~ opt(("==" | "=") ~ expr) ^^
+    {
+      case l ~ Some("==" ~ r) => _EqualityCheck(l, r)
+      case l ~ Some(_ ~ r)    => _Equation(l, r)
+      case l ~ None           => l
+    }
 
   def expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
     {
@@ -186,8 +201,8 @@ object Parser extends JavaTokenParsers:
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
-    // the only place an equation appears below the top level: solve's first argument
-    "solve("    ~> guardedExpr ~ "=" ~ guardedExpr ~ "," ~ variable <~ ")"                       ^^ { case l ~ _ ~ r ~ _ ~ v     => _Solve(_Equation(l, r), v)   }
+    // guardedExpr here calls equationExpr, so "solve(x = 5, x)" and "solve(h, x)" both work
+    "solve("    ~> guardedExpr ~ "," ~ variable <~ ")"                                            ^^ { case e ~ _ ~ v             => _Solve(e, v)                 }
 
   // Integral limits accept a sign ("integral(x, x, -1, 1)", lower limit "-pi")
   // without opening the limit position to full sub-expressions.
@@ -211,12 +226,6 @@ object Parser extends JavaTokenParsers:
     s => s"'$s' is a reserved word and cannot be used as a variable"
   )
 
-  // Equations exist only at the top level: "a = b" is an _Equation, "a = b = c" and
-  // "(a = b)" are parse errors (parenthesized positions contain plain expressions).
-  def topLevel: Parser[_Expression] = expr ~ opt("=" ~> expr) ^^
-    {
-      case l ~ Some(r) => _Equation(l, r)
-      case l ~ None    => l
-    }
+  def topLevel: Parser[_Expression] = equationExpr
 
   def parse(str: String): ParseResult[_Expression] = parseAll(topLevel, str)

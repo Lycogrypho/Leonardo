@@ -29,7 +29,7 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 - **Matrix Domain**: matrix literals parse as `[[1, 2], [3, 4]]` (a row vector is `[[1, 2]]`), with `transpose(...)` and the ordinary `+`, `-`, `*`, `/` operators — `M := [[1, 2], [3, 4]]` then `M * M` works in the REPL, and `:save`d sessions restore matrix bindings. Matrices are grids of arbitrary expressions — numbers, variables, functions, even functionals — evaluated element-wise. When every element reduces to a number, the matrix collapses to a dense row-major `Array[Double]` value (`_MatrixValue`), on which sum, product (block-tiled for cache locality, parallel over row blocks above a work threshold), transpose, and scalar multiplication run as array kernels; otherwise operations combine element-wise symbolically and stay symbolic until the free variables are bound. The calculus and structural algorithms (`derive`, `integrate`, `simplify`, `expand`) distribute element-wise over matrices, matrix sums, and transposes (d/dx [aᵢⱼ] = [daᵢⱼ/dx]); matrix products deliberately stay symbolic under differentiation, as they need the product rule.
 
-- **Equations**: `10 * x = 2 * x + 1` parses as a relation; once all variables are bound, it evaluates to `true`/`false` using tolerance-based equality tied to the configured precision (so `sin(pi) = 0` is true despite floating-point noise). Concrete matrices compare element-wise. `derive`, `simplify`, `expand`, and `integrate` apply to both sides. `solve(lhs = rhs, x)` solves for a variable: linear equations exactly (symbolic coefficients included, `x = -b/a`), quadratics via the discriminant (0, 1, or 2 real roots, `±√Δ` closed forms when coefficients are symbolic), and transcendental or higher-degree forms numerically (sign-change scan plus bisection over [-100, 100], up to 8 roots). One solution prints as `x = 0.125`; several as `[[x = -2.0, x = 2.0]]`.
+- **Equations**: `10 * x = 2 * x + 1` parses as a relation; once all variables are bound, it evaluates to `true`/`false` using tolerance-based equality tied to the configured precision (so `sin(pi) = 0` is true despite floating-point noise). Concrete matrices compare element-wise. `derive`, `simplify`, `expand`, and `integrate` apply to both sides. Equations are first-class values: `h := x^2 = 4` stores the relation, and `solve(h, x)` then works. `lhs == rhs` is an explicit equality check (same semantics, but not accepted by `solve()`). `solve(lhs = rhs, x)` — or equivalently `solve(h, x)` for a named equation — solves for a variable: linear equations exactly (symbolic coefficients included, `x = -b/a`), quadratics via the discriminant (0, 1, or 2 real roots, `±√Δ` closed forms when coefficients are symbolic), and transcendental or higher-degree forms numerically (sign-change scan plus bisection over [-100, 100], up to 8 roots). One solution prints as `x = 0.125`; several as `[[x = -2.0, x = 2.0]]`.
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
@@ -51,7 +51,12 @@ leonardo> derive(f, x)         -- differentiation works through definitions
 0.00987
 leonardo> 10 * x = 2 * x + 1   -- bare "=" is an equation: true/false once bound
 false
-leonardo> solve(10 * x = 2 * x + 1, x)
+leonardo> 10 * x == 2 * x + 1  -- "==" is an equality check: same eval, not solvable
+false
+leonardo> h := x^2 = 4         -- bind a named equation
+leonardo> solve(h, x)           -- pass a named equation to solve
+[[x = -2.0, x = 2.0]]
+leonardo> solve(10 * x = 2 * x + 1, x)  -- inline equation still works
 x = 0.125
 leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x

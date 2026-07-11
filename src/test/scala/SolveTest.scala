@@ -145,6 +145,36 @@ class SolveTest extends AnyFlatSpec:
     assert(node.eval(new Environment()) == Left(node))
   }
 
+  // --- named equations via h := lhs = rhs ---
+
+  "solve with a named linear equation" should "work after binding h := lhs = rhs" in
+  {
+    val s = Session()
+    s.execute("h := 10 * x = 2 * x + 1")
+    assert(s.execute("solve(h, x)") == "x = 0.125")
+  }
+
+  "solve with a named quadratic equation" should "work after binding h := lhs = rhs" in
+  {
+    val s = Session()
+    s.execute("h := x^2 = 4")
+    assert(s.execute("solve(h, x)") == "[[x = -2.0, x = 2.0]]")
+  }
+
+  "solve(h, x) where h is an _EqualityCheck (==)" should "stay symbolic" in
+  {
+    val s = Session()
+    s.execute("h := x == 5")
+    // _EqualityCheck is not solvable; _Solve stays symbolic
+    assert(s.execute("solve(h, x)") == "solve(x == 5.0, x)")
+  }
+
+  "solve(h, x) where h is an unbound variable" should "stay symbolic" in
+  {
+    val s = Session()
+    assert(s.execute("solve(h, x)") == "solve(h, x)")
+  }
+
   // --- REPL flow ---
 
   "solve in the REPL" should "answer with the solution set" in
