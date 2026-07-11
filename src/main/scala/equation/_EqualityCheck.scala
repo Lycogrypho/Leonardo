@@ -25,4 +25,10 @@ case class _EqualityCheck(lhs: _Expression, rhs: _Expression) extends _ElementWi
         val equal = x.rows == y.rows && x.cols == y.cols &&
           x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
         Right(_Bool(equal))
+      // Complex (or complex vs. real): equal when both parts vanish within tolerance.
+      case (Right(av: _Value), Right(bv: _Value))
+        if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
+        val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
+          yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
+        close.map(b => Right(_Bool(b))).getOrElse(Left(_EqualityCheck(av, bv)))
       case (ra, rb) => Left(_EqualityCheck(ra.toExpression, rb.toExpression))

@@ -29,6 +29,9 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
       case (Right(_Number(x)), Right(_Number(y))) => Right(_Number(x + y))
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
         if x.rows == y.rows && x.cols == y.cols then guardedMatrix(x.add(y), this) else Left(this)
+      // At least one operand is complex: field addition, else stay symbolic.
+      case (Right(av: _Value), Right(bv: _Value)) if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
+        _Complex.add(av, bv).map(Right(_)).getOrElse(Left(Sum(av, bv)))
       case (ra, rb)                               => Left(Sum(ra.toExpression, rb.toExpression))
 
 
@@ -47,6 +50,9 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
       // zero short-circuit for everything scalar or unreducible: 0 * e folds to 0
       case (Right(_Number(0.0)), _) | (_, Right(_Number(0.0))) => Right(_Number(0.0))
       case (Right(_Number(x)), Right(_Number(y)))           => Right(_Number(x * y))
+      // At least one operand is complex: field multiplication, else stay symbolic.
+      case (Right(av: _Value), Right(bv: _Value)) if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
+        _Complex.mul(av, bv).map(Right(_)).getOrElse(Left(Product(av, bv)))
       case (ra, rb) => Left(Product(ra.toExpression, rb.toExpression))
 
 
@@ -63,6 +69,9 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
         if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
       // M / k = (1/k) · M; k = 0 yields non-finite elements → the guard stays symbolic
       case (Right(m: _MatrixValue), Right(_Number(k))) => guardedMatrix(m.scale(1.0 / k), this)
+      // At least one operand is complex: field division (None on zero denominator).
+      case (Right(av: _Value), Right(bv: _Value)) if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
+        _Complex.div(av, bv).map(Right(_)).getOrElse(Left(this))
       case (ra, rb)                               => Left(Ratio(ra.toExpression, rb.toExpression))
 
 
@@ -77,7 +86,13 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
     (base.eval(env), exp.eval(env)) match
       case (Right(_Number(b)), Right(_Number(e))) =>
         val r = pow(b, e)
-        // 0^negative and (negative)^fractional are domain errors: stay symbolic
-        // instead of propagating ±Infinity/NaN
-        if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+        // A non-finite real result means the real power is undefined: fall back to the
+        // principal complex value ((negative)^fractional → complex; 0^negative → still
+        // undefined, so _Complex.pow returns None and we stay symbolic as before).
+        if r.isNaN || r.isInfinite then
+          _Complex.pow(_Number(b), _Number(e)).map(Right(_)).getOrElse(Left(this))
+        else Right(_Number(r))
+      // At least one operand is complex: principal complex power.
+      case (Right(bv: _Value), Right(ev: _Value)) if _Complex.parts(bv).isDefined && _Complex.parts(ev).isDefined =>
+        _Complex.pow(bv, ev).map(Right(_)).getOrElse(Left(this))
       case (rb, re)                               => Left(Power(rb.toExpression, re.toExpression))

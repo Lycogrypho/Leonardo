@@ -56,10 +56,14 @@ class EvaluationTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
-  "log of a negative number" should "stay symbolic instead of evaluating to NaN" in
+  // Complex closure: log/sqrt of a negative real now yield the principal complex
+  // value rather than staying symbolic (see ComplexTest for the full behaviour).
+  "log of a negative number" should "yield the principal complex value ln|x| + iπ" in
   {
-    val e = Log(_Number(-1))
-    assert(e.eval(env) == Left(e))
+    Log(_Number(-1)).eval(env) match
+      case Right(c: _Complex) =>
+        assert(math.abs(c.re) < 1e-9 && math.abs(c.im - math.Pi) < 1e-9)
+      case other => fail(s"expected a complex value but got $other")
   }
 
   "log of zero" should "stay symbolic instead of evaluating to -Infinity" in
@@ -74,10 +78,13 @@ class EvaluationTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
-  "negative base with fractional exponent" should "stay symbolic instead of evaluating to NaN" in
+  "negative base with fractional exponent" should "yield the principal complex root" in
   {
-    val e = Power(_Number(-2), _Number(0.5))
-    assert(e.eval(env) == Left(e))
+    // (-2)^0.5 = i·√2
+    Power(_Number(-2), _Number(0.5)).eval(env) match
+      case Right(c: _Complex) =>
+        assert(math.abs(c.re) < 1e-9 && math.abs(c.im - math.sqrt(2)) < 1e-9)
+      case other => fail(s"expected a complex value but got $other")
   }
 
   // tan(pi/2) in floating-point is NOT Infinity (pi/2 has no exact double representation);

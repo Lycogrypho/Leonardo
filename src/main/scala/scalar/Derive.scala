@@ -40,6 +40,7 @@ def derive(e: _Expression, v: _Variable): _Expression =
 
 private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case _Number(_)           => _Number(0)
+  case _: _Complex          => _Number(0)    // a complex constant, like any number
   case x: _Variable         => if x.variable == v.variable then _Number(1) else _Number(0)
   case Sum(a, b)            => dadd(derive(a, v), derive(b, v))
   case Product(a, b)        => dadd(dmul(derive(a, v), b), dmul(a, derive(b, v)))

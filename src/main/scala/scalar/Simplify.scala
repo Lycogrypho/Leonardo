@@ -27,6 +27,7 @@ def simplify(e: _Expression): _Expression =
 
 private def simplifyImpl(e: _Expression): _Expression = e match
   case _: _Number   => e
+  case _: _Complex  => e
   case _: _Variable => e
 
   case Sum(a, b) =>

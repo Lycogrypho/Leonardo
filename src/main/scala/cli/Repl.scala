@@ -116,8 +116,9 @@ final class Session:
       case Left(message) => message
       case Right(resolved) =>
         substitute(resolved, definitions).eval(env).toExpression match
-          case n: _Number => n.display(precision)
-          case other      => other.toString
+          case n: _Number  => n.display(precision)
+          case c: _Complex => c.display(precision)
+          case other       => other.toString
 
   /**
    * Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes

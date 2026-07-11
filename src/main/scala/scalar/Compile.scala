@@ -15,6 +15,7 @@ import scala.math.{pow, exp, log, sin, cos, tan, asin, acos, atan}
 // in _DefIntegral.eval (Simpson's rule) and future Monte-Carlo / matrix-fill loops.
 def compile(e: _Expression, v: _Variable, env: Environment): Option[Double => Double] = e match
   case _Number(d)    => Some(_ => d)
+  case _: _Complex   => None    // a complex value has no Double => Double closure
   case x: _Variable if x.variable == v.variable => Some(x => x)
   case _Variable(n)  => env.get(n).collect { case _Number(d) => _ => d }
   case Sum(a, b)     =>

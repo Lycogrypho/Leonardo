@@ -16,6 +16,7 @@ case class Exp(e: _Expression) extends _Function:
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
       case Right(_Number(x)) => Right(_Number(exp(x)))
+      case Right(c: _Complex) => _Complex.expc(c).map(Right(_)).getOrElse(Left(Exp(c)))
       case other             => Left(Exp(other.toExpression))
 
 
@@ -28,9 +29,12 @@ case class Log(e: _Expression) extends _Function:
     e.eval(env) match
       case Right(_Number(x)) =>
         val r = log(x)
-        // log of a non-positive number is a domain error: stay symbolic
-        // instead of propagating -Infinity/NaN
-        if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+        // log of a negative number is now the principal complex value ln|x| + iπ;
+        // log(0) is still undefined (_Complex.logc returns None) → stays symbolic.
+        if r.isNaN || r.isInfinite then
+          _Complex.logc(_Number(x)).map(Right(_)).getOrElse(Left(this))
+        else Right(_Number(r))
+      case Right(c: _Complex) => _Complex.logc(c).map(Right(_)).getOrElse(Left(Log(c)))
       case other             => Left(Log(other.toExpression))
 
 
@@ -42,6 +46,7 @@ case class Sin(e: _Expression) extends _Function:
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
       case Right(_Number(x)) => Right(_Number(sin(x)))
+      case Right(c: _Complex) => _Complex.sinc(c).map(Right(_)).getOrElse(Left(Sin(c)))
       case other             => Left(Sin(other.toExpression))
 
 
@@ -53,6 +58,7 @@ case class Cos(e: _Expression) extends _Function:
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
       case Right(_Number(x)) => Right(_Number(cos(x)))
+      case Right(c: _Complex) => _Complex.cosc(c).map(Right(_)).getOrElse(Left(Cos(c)))
       case other             => Left(Cos(other.toExpression))
 
 
@@ -66,6 +72,7 @@ case class Tg(e: _Expression) extends _Function:
       case Right(_Number(x)) =>
         val r = tan(x)
         if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+      case Right(c: _Complex) => _Complex.tanc(c).map(Right(_)).getOrElse(Left(Tg(c)))
       case other             => Left(Tg(other.toExpression))
 
 

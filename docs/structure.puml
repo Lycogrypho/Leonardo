@@ -53,6 +53,16 @@ package "core" {
         + b: Boolean
     }
 
+    class "_Complex" <<case>> {
+        + re: Double
+        + im: Double
+        + display(precision: Int): String
+        __ companion __
+        + of(re, im): _Value  (im==0 -> _Number)
+        + add/sub/mul/div/pow
+        + expc/logc/sinc/cosc/tanc
+    }
+
     class "_Variable" <<case>> {
         + variable: String
     }
@@ -82,6 +92,7 @@ package "core" {
     "_ElementWise" --|> "_Expression"
     "_Number"      ..|> "_Value"
     "_Bool"        ..|> "_Value"
+    "_Complex"     ..|> "_Value"
     "_MatrixValue" ..|> "_Value"
     "_Variable"    ..|> "_Expression"
     "_Expression"  --> "Environment" : eval(env)

@@ -42,7 +42,8 @@ import equation.*
  *   number      ::= unsigned floating literal       -- a '-' is ALWAYS an operator, never
  *                                                    -- part of the token; scientific-notation
  *                                                    -- exponent signs ("3E-5") are unaffected
- *   constant    ::= "pi" | "e"            -- built-in numeric literals (word-boundary guarded)
+ *   constant    ::= "pi" | "e" | "i"      -- built-in literals (word-boundary guarded);
+ *                                         -- "i" is the imaginary unit → _Complex(0, 1)
  *   variable    ::= [a-zA-Z][a-zA-Z0-9]*  -- except ReservedWords (functions, functionals,
  *                                         -- constants, REPL commands); exact match only
  *
@@ -72,7 +73,7 @@ object Parser extends JavaTokenParsers:
     "exp", "log", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose",                                   // functions
     "derive", "integral", "solve", "solveSystem",           // functionals
-    "pi", "e",                                            // constants
+    "pi", "e", "i",                                       // constants (i = imaginary unit)
     "simplify", "expand", "eval", "env", "vars",
     "precision", "unset", "help", "quit", "exit"          // REPL commands
   )
@@ -221,9 +222,12 @@ object Parser extends JavaTokenParsers:
   // exponent keeps scientific notation ("3E-5", "2e-3") intact.
   def number:   Parser[_Number]    = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s => _Number(s.toDouble) }
   // Negative lookahead prevents "pine" from matching as pi + ne, or "exp" as e + xp.
-  def constant: Parser[_Number]    =
+  // "i" is the imaginary unit; "3i" is implicit multiplication (3 * i) → _Complex(0, 3),
+  // and "im"/"i1" stay ordinary variables (guarded like "e"/"pi").
+  def constant: Parser[_Value]     =
     """pi(?![a-zA-Z0-9])""".r ^^^ _Number(math.Pi) |
-    """e(?![a-zA-Z0-9])""".r  ^^^ _Number(math.E)
+    """e(?![a-zA-Z0-9])""".r  ^^^ _Number(math.E)  |
+    """i(?![a-zA-Z0-9])""".r  ^^^ _Complex.of(0, 1)
   // Reserved words are rejected wholesale — the regex is greedy, so "simplify"
   // cannot fall back to variable "simplif" times variable "y".
   def variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9]*""".r ^? (
