@@ -53,6 +53,8 @@ final class Session:
   def execute(line: String): String = line.trim match
     case ""                     => ""
     case "help" | "?"           => Session.help
+    case s"help $rest" => Session.helpTopic(rest.trim)
+    case s"? $rest"    => Session.helpTopic(rest.trim)
     case "env" | "vars"         => state
     // Reserved-name assignments are rejected BEFORE the command patterns: an input
     // like "simplify := 3" would otherwise be captured by the "simplify <expr>"
@@ -202,6 +204,86 @@ final class Session:
 object Session:
   // Names the parser always resolves as constants; assignment to them is rejected.
   val ReservedConstants: Set[String] = Set("pi", "e")
+
+  /** Per-command help text, keyed by the command token (":=", "simplify", …).
+   *  Returned by `help <topic>`; bare `help` still shows the full `help` listing. */
+  val helpTopics: Map[String, String] = Map(
+    ":=" ->
+      """|Bind a name or define a function.
+         |Constant RHS → numeric value; RHS with free variables → late-bound definition.
+         |  x := 3.001          bind a numeric value
+         |  f := sin(x) + x     define a function (late-bound: redefining f updates g := f^2)
+         |  h := x^2 = 4        bind a named equation (pass to solve(h, x))""".stripMargin,
+    "=" ->
+      """|Equation relation: true/false when both sides are concrete, symbolic otherwise.
+         |Solvable via solve().  Use ":=" for assignment — "=" is never a binding.
+         |  10*x = 2*x + 1      evaluates to false when x = 3
+         |  solve(10*x = 2*x + 1, x)   → x = 0.125""".stripMargin,
+    "==" ->
+      """|Equality check: same semantics as "=" but not accepted by solve().
+         |Useful when you want a boolean result without accidentally creating a solvable equation.
+         |  i == 0 - i*i*i      evaluates true""".stripMargin,
+    "simplify" ->
+      """|Structural simplification: remove identities, fold constants, cancel inverses.
+         |Matrix algebra is carried out first, then each element simplified.
+         |Numeric bindings are NOT applied (use bare evaluation for that).
+         |  simplify x + 0      → x
+         |  simplify C          (C := A * B) executes the multiplication, simplifies each cell""".stripMargin,
+    "expand" ->
+      """|Distribute products over sums; expand integer powers via the binomial theorem.
+         |Matrix algebra is carried out first.
+         |  expand x * (y + z)  → ((x * y) + (x * z))
+         |  expand (x + 1)^2    → (((x ^ 2.0) + (2.0 * x)) + 1.0)""".stripMargin,
+    "eval" ->
+      """|Evaluate an expression substituting current bindings and returning a numeric result.
+         |  eval sin(pi/2)      → 1.0""".stripMargin,
+    "precision" ->
+      """|Set the decimal precision for display and numeric comparisons.
+         |  precision 8         8 significant decimal digits
+         |  precision 5         restore default""".stripMargin,
+    "env" ->
+      """|List current precision, numeric bindings, and symbolic definitions.
+         |  env""".stripMargin,
+    "unset" ->
+      """|Remove a binding or definition by name.
+         |  unset x""".stripMargin,
+    ":load" ->
+      """|Replay a session script from a file (interactive prompt only; not available via execute).
+         |  :load session.txt""".stripMargin,
+    ":save" ->
+      """|Write the current session state to a replayable script (interactive prompt only).
+         |  :save session.txt""".stripMargin,
+    "help" ->
+      """|Print the command summary, or topic-specific detail for one command.
+         |  help               full listing
+         |  help simplify      details for the simplify command
+         |  ? :=               same as "help :=" """.stripMargin,
+    "quit" ->
+      """|Exit the REPL (interactive prompt only; "exit" is accepted too).
+         |  quit""".stripMargin,
+    "solve" ->
+      """|Solve an equation for a variable.
+         |Linear and quadratic forms are solved exactly; other forms use numeric bisection.
+         |  solve(10*x = 2*x + 1, x)   → x = 0.125
+         |  solve(x^2 = 4, x)          → [[x = -2.0, x = 2.0]]
+         |  solve(h, x)                h is a named equation""".stripMargin,
+    "derive" ->
+      """|Differentiate an expression with respect to a variable or a defined function.
+         |Chain rule applies when the binder is a definition.
+         |  derive(sin(x), x)           → cos(x)
+         |  derive(g, f)                chain rule when f := sin(x)""".stripMargin,
+    "integral" ->
+      """|Indefinite symbolic integration via a rule table.
+         |  integral(x^2, x)            → ((1.0 / 3.0) * (x ^ 3.0))""".stripMargin,
+    "solveSystem" ->
+      """|Solve a square system of n linear equations in n unknowns.
+         |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).
+         |  solveSystem([[2*x + y = 3, x - y = 0]], x, y)   → [[x = 1.0, y = 1.0]]
+         |  Named equation matrices work: solveSystem(S, x, y)""".stripMargin,
+  )
+
+  def helpTopic(topic: String): String =
+    if topic.isEmpty then help else helpTopics.getOrElse(topic, help)
 
   val help: String =
     """x := 3.001           bind a value (constant right-hand side)

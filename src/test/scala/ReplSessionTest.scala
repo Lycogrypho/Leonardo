@@ -344,6 +344,31 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(session.execute("help").contains(":="))
   }
 
+  "help <topic>" should "return topic-specific help containing the topic name" in
+  {
+    assert(session.execute("help simplify").contains("simplify"))
+    assert(session.execute("help precision").contains("precision"))
+    assert(session.execute("help solve").contains("solve"))
+    assert(session.execute("? :=").contains(":="))
+  }
+
+  "help <topic>" should "not return the full listing for a known topic" in
+  {
+    val out = session.execute("help precision")
+    assert(!out.contains(":load"), "topic help should not include unrelated commands")
+  }
+
+  "help with an unknown topic" should "fall back to the full listing" in
+  {
+    val out = session.execute("help xyzzy_unknown")
+    assert(out.contains(":=") && out.contains("simplify"), "full listing on unknown topic")
+  }
+
+  "? <topic>" should "behave identically to help <topic>" in
+  {
+    assert(session.execute("? simplify") == session.execute("help simplify"))
+  }
+
   // --- session scripts: :save (script) / :load (load) ---
 
   "script" should "serialize precision, bindings, and definitions as replayable := commands" in
