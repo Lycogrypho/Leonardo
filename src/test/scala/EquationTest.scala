@@ -125,8 +125,8 @@ class EquationTest extends AnyFlatSpec:
     val s = Session()
     // unbound: echoes the symbolic equation with both sides reduced
     assert(s.execute("10 * x = 2 * x + 1") == "(10.0 * x) = ((2.0 * x) + 1.0)")
-    s.execute("x = 0.125")
+    s.execute("x := 0.125")
     assert(s.execute("10 * x = 2 * x + 1") == "true")
-    s.execute("x = 1")
+    s.execute("x := 1")
     assert(s.execute("10 * x = 2 * x + 1") == "false")
   }

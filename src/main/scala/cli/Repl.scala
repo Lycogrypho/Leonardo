@@ -17,9 +17,14 @@ import parser.Parser
  * cannot hold). Definitions are late-bound: they are substituted into input at use
  * time, so redefining f also changes any g defined in terms of f.
  *
+ * Assignment uses ":=" (CAS convention): bare "=" always parses as an _Equation,
+ * so "x = 2*x + 1" is a relation to evaluate, never a binding. Session scripts
+ * (:save) emit ":=" and old "="-style scripts are NOT accepted — re-create them.
+ *
  * Commands:
- *   x = 3.001            bind a value (constant right-hand side)
- *   f = sin(x) + x       define a function (right-hand side with free variables)
+ *   x := 3.001           bind a value (constant right-hand side)
+ *   f := sin(x) + x      define a function (right-hand side with free variables)
+ *   lhs = rhs            an equation: true/false when both sides are concrete
  *   <expression>         evaluate, e.g.  f + 1  or  derive(f, x)
  *   simplify <expr>      structural simplification, no numeric evaluation
  *   expand <expr>        distribute products over sums
@@ -41,14 +46,14 @@ final class Session:
 
   private val emptyEnv = new Environment()
 
-  private val assignment = """([a-zA-Z][a-zA-Z0-9]*)\s*=(.+)""".r
+  private val assignment = """([a-zA-Z][a-zA-Z0-9]*)\s*:=(.+)""".r
 
   def execute(line: String): String = line.trim match
     case ""                     => ""
     case "help" | "?"           => Session.help
     case "env" | "vars"         => state
     // Reserved-name assignments are rejected BEFORE the command patterns: an input
-    // like "simplify = 3" would otherwise be captured by the "simplify <expr>"
+    // like "simplify := 3" would otherwise be captured by the "simplify <expr>"
     // command and fail with a confusing parse error. Constants get their own
     // message ("e" always parses to _Number(math.E), so a binding would be
     // silently unreachable); the rest of the reserved vocabulary (function names,
@@ -75,8 +80,8 @@ final class Session:
   def script: String =
     val lines =
       List(s"precision $precision") ++
-      bindings.toList.sortBy(_._1).map((k, v) => s"$k = $v") ++
-      definitions.toList.sortBy(_._1).map((k, e) => s"$k = $e")
+      bindings.toList.sortBy(_._1).map((k, v) => s"$k := $v") ++
+      definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
     lines.mkString("\n")
 
   /**
@@ -166,11 +171,11 @@ final class Session:
       case Right(value) =>
         bindings = bindings + (name -> value)
         definitions = definitions - name
-        s"$name = $value"
+        s"$name := $value"
       case Left(_) =>
         definitions = definitions + (name -> rhs)
         bindings = bindings - name
-        s"$name = $rhs"
+        s"$name := $rhs"
 
   private def setPrecision(text: String): String =
     text.toIntOption match
@@ -187,8 +192,8 @@ final class Session:
   private def state: String =
     val lines =
       List(s"precision = $precision") ++
-      bindings.toList.sortBy(_._1).map((k, v) => s"$k = $v") ++
-      definitions.toList.sortBy(_._1).map((k, e) => s"$k = $e")
+      bindings.toList.sortBy(_._1).map((k, v) => s"$k := $v") ++
+      definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
     lines.mkString("\n")
 
 object Session:
@@ -196,8 +201,9 @@ object Session:
   val ReservedConstants: Set[String] = Set("pi", "e")
 
   val help: String =
-    """x = 3.001            bind a value (constant right-hand side)
-      |f = sin(x) + x       define a function (right-hand side with free variables)
+    """x := 3.001           bind a value (constant right-hand side)
+      |f := sin(x) + x      define a function (right-hand side with free variables)
+      |lhs = rhs            an equation: true/false once both sides are concrete
       |<expression>         evaluate, e.g.  f + 1  or  derive(f, x)
       |simplify <expr>      structural simplification (matrix algebra is carried out,
       |                     then each element is simplified; scalars ignore bindings)
