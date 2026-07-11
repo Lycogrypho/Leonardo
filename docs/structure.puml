@@ -195,6 +195,10 @@ package "scalar" {
     class "Expand" <<utility>> {
         + expand(e): _Expression
     }
+    class "Normalize" <<utility>> {
+        + collect(e, v): Option[Vector]
+        + normalize(e, v): _Expression
+    }
     class "Substitute" <<utility>> {
         + substitute(e, defs): _Expression
     }
@@ -223,6 +227,7 @@ package "scalar" {
     "Syntax" ..> "Integrate"  : delegates
     "Syntax" ..> "Simplify"   : delegates
     "Syntax" ..> "Expand"     : delegates
+    "Syntax" ..> "Normalize"  : delegates
     "Syntax" ..> "Substitute" : delegates
     "Syntax" ..> "Analysis"   : delegates
     "Syntax" ..> "Compile"    : delegates

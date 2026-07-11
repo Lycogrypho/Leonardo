@@ -75,8 +75,10 @@ computes dg/df as `derive(g, x) / derive(f, x)` over the definition's single fre
 variable (definitions with several free variables are rejected with a message). `:save` serializes the session (precision,
 bindings, definitions) as a script that `:load` replays.
 
+- **Normalization**: `normalize(e, x)` collects like terms into an ascending polynomial in one variable (`10x - 2x` → `8x`, whatever the tree shape), and `collect(e, x)` extracts the dense coefficient list — the foundation for the upcoming equation solver. Non-polynomial forms are left untouched.
+
 ## Planned Features
 
+- Symbolic equation solver (linear and quadratic exact forms, numeric fallback)
 - Broader indefinite integration (integration by parts, non-linear substitution)
-- Expression normalization (combining like terms across sub-trees)
 - Additional mathematical functions and constants

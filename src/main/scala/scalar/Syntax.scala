@@ -17,6 +17,9 @@ object Syntax:
     def derive(v: _Variable): _Expression = it.grypho.scala.leonardo.scalar.derive(e, v)
     def integrate(v: _Variable): _Expression = it.grypho.scala.leonardo.scalar.integrate(e, v)
     def dependsOn(v: _Variable): Boolean   = it.grypho.scala.leonardo.scalar.dependsOn(e, v)
+    def normalize(v: _Variable): _Expression = it.grypho.scala.leonardo.scalar.normalize(e, v)
+    def collect(v: _Variable): Option[Vector[_Expression]] =
+      it.grypho.scala.leonardo.scalar.collect(e, v)
     def substitute(definitions: Map[String, _Expression]): _Expression =
       it.grypho.scala.leonardo.scalar.substitute(e, definitions)
     def compile(v: _Variable): Option[Double => Double] =
