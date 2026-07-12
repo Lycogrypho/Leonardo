@@ -244,3 +244,31 @@ class SimplifyTest extends AnyFlatSpec:
     val expr = Power(Sum(Product(Sum(_Number(2), _Number(3)), _Number(1)), _Number(0)), _Number(1))
     assert(expr.simplifyFully() == _Number(5))
   }
+
+  // --- issue 1.3: Power constant-fold must not produce NaN / Infinity ---
+
+  "simplify((-2)^0.5)" should "stay symbolic rather than fold to NaN" in
+  {
+    val e = Power(_Number(-2), _Number(0.5))
+    val s = e.simplify()
+    assert(s == e, s"expected Power(-2, 0.5) but got $s")
+  }
+
+  "simplify(10^400)" should "stay symbolic rather than fold to Infinity" in
+  {
+    val e = Power(_Number(10), _Number(400))
+    val s = e.simplify()
+    assert(s == e, s"expected Power(10, 400) but got $s")
+  }
+
+  "simplify(0^(-1))" should "stay symbolic (division-by-zero domain error)" in
+  {
+    val e = Power(_Number(0), _Number(-1))
+    val s = e.simplify()
+    assert(s == e, s"expected Power(0, -1) but got $s")
+  }
+
+  "simplify(2^3)" should "still constant-fold to 8 (finite result)" in
+  {
+    assert(Power(_Number(2), _Number(3)).simplify() == _Number(8))
+  }

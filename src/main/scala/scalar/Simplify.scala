@@ -72,7 +72,9 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (x, _Number(d)) if d == 0.0 && x != _Number(0) => _Number(1)
       case (x, _Number(d)) if d == 1.0 => x
       case (_Number(d), _) if d == 1.0 => _Number(1)
-      case (_Number(da), _Number(db)) if !(da == 0.0 && db == 0.0) => _Number(pow(da, db))
+      case (_Number(da), _Number(db)) if !(da == 0.0 && db == 0.0) =>
+        val r = pow(da, db)
+        if r.isFinite then _Number(r) else Power(_Number(da), _Number(db))
       case (x, y)                      => Power(x, y)
 
   case Exp(a) =>
