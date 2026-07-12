@@ -280,6 +280,30 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("derive(f, x)") == "6.0")
   }
 
+  "assigning the derivative of a definition to a name" should "substitute the definition, not collapse to 0" in
+  {
+    val s = session
+    s.execute("p := 2 * x^2 + 3*x + 4")
+    // q := derive(p, x) must differentiate the SUBSTITUTED p, not treat p as a
+    // constant w.r.t. x (which gave q := 0.0 before the fix). Stored raw and late-bound.
+    assert(s.execute("q := derive(p, x)") == "q := derive(p, x)")
+    // evaluating q reduces the derivative: d/dx(2x^2 + 3x + 4) = 4x + 3
+    assert(s.execute("q") == "((2.0 * (2.0 * x)) + 3.0)")
+    s.execute("x := 1")
+    assert(s.execute("q") == "7.0")
+  }
+
+  "an assigned derivative" should "stay late-bound to its definition" in
+  {
+    val s = session
+    s.execute("p := x^2")
+    s.execute("q := derive(p, x)")
+    // redefining p updates q (derivative recomputed at use time)
+    s.execute("p := x^3")
+    s.execute("x := 2")
+    assert(s.execute("q") == "12.0")   // d/dx(x^3) = 3x^2 = 12 at x = 2
+  }
+
   "simplify" should "simplify without numeric evaluation" in
   {
     val s = session

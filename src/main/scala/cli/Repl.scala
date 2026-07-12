@@ -175,16 +175,26 @@ final class Session:
         case Some(message) => Left(message)
         case None          => Right(other.rebuild(results.map(_.toOption.get)))
 
+  /**
+   * The numeric-vs-definition decision must see the same expression bare evaluation
+   * would: resolve derivative binders and substitute definitions BEFORE folding, so
+   * "q := derive(p, x)" (p a definition) differentiates the substituted body instead
+   * of treating p as an unknown constant and collapsing to 0. The RAW rhs is still
+   * what gets stored for a definition, keeping it late-bound (redefining p updates q).
+   */
   private def assign(name: String, rhs: _Expression): String =
-    rhs.eval(emptyEnv) match
-      case Right(value) =>
-        bindings = bindings + (name -> value)
-        definitions = definitions - name
-        s"$name := $value"
-      case Left(_) =>
-        definitions = definitions + (name -> rhs)
-        bindings = bindings - name
-        s"$name := $rhs"
+    resolveDerivativeBinders(rhs) match
+      case Left(message) => message
+      case Right(resolved) =>
+        substitute(resolved, definitions).eval(emptyEnv) match
+          case Right(value) =>
+            bindings = bindings + (name -> value)
+            definitions = definitions - name
+            s"$name := $value"
+          case Left(_) =>
+            definitions = definitions + (name -> rhs)
+            bindings = bindings - name
+            s"$name := $rhs"
 
   private def doSamples(rest: String): String = rest.trim match
     case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
