@@ -1,5 +1,9 @@
-@startuml Leonardo - class structure
+@startuml
 
+' Layout engine: Graphviz dot (default).
+' If dot is not on PATH, set GRAPHVIZ_DOT before running `sbt puml`
+' or add `!pragma layout smetana` here to use the built-in pure-Java engine
+' (smetana does NOT support clickable [[url]] links in SVG).
 
 !define DIAGRAM_WIDTH 12000
 !define DIAGRAM_HEIGHT 8000
@@ -33,27 +37,27 @@ hide empty members
 ' ===================================================
 package "core" {
 
-    interface "_Expression" <<trait>> {
+    interface "_Expression" <<trait>> [[expressions.html]] {
         + eval(env: Environment): Either
         + children: List
         + rebuild(cs: List): _Expression
         + freeVars: Set
     }
 
-    interface "_Value" <<trait>>
+    interface "_Value" <<trait>> [[expressions.html]]
 
-    interface "_ElementWise" <<trait>>
+    interface "_ElementWise" <<trait>> [[expressions.html]]
 
-    class "_Number" <<case>> {
+    class "_Number" <<case>> [[expressions.html]] {
         + d: Double
         + display(precision: Int): String
     }
 
-    class "_Bool" <<case>> {
+    class "_Bool" <<case>> [[expressions.html]] {
         + b: Boolean
     }
 
-    class "_Complex" <<case>> {
+    class "_Complex" <<case>> [[equations.html]] {
         + re: Double
         + im: Double
         + display(precision: Int): String
@@ -63,11 +67,11 @@ package "core" {
         + expc/logc/sinc/cosc/tanc
     }
 
-    class "_Variable" <<case>> {
+    class "_Variable" <<case>> [[expressions.html]] {
         + variable: String
     }
 
-    class "_MatrixValue" {
+    class "_MatrixValue" [[matrix.html]] {
         + rows: Int
         + cols: Int
         - data: Array[Double]
@@ -80,7 +84,7 @@ package "core" {
         + apply(rows, cols, data) : defensive copy
     }
 
-    class "Environment" {
+    class "Environment" [[expressions.html]] {
         + precision: Int
         + get(name: String): Option
         + withBinding(name, v): Environment
@@ -104,21 +108,21 @@ package "core" {
 package "scalar" {
 
     ' -- Operations ---------------------------------
-    interface "_Operation" <<trait>>
+    interface "_Operation" <<trait>> [[expressions.html]]
 
-    class "Sum" <<case>> {
+    class "Sum" <<case>> [[expressions.html]] {
         a : _Expression
         b : _Expression
     }
-    class "Product" <<case>> {
+    class "Product" <<case>> [[expressions.html]] {
         a : _Expression
         b : _Expression
     }
-    class "Ratio" <<case>> {
+    class "Ratio" <<case>> [[expressions.html]] {
         a : _Expression
         b : _Expression
     }
-    class "Power" <<case>> {
+    class "Power" <<case>> [[expressions.html]] {
         base : _Expression
         exp  : _Expression
     }
@@ -130,30 +134,30 @@ package "scalar" {
     "Power"      --|> "_Operation"
 
     ' -- Unary Functions ----------------------------
-    abstract class "_Function"
+    abstract class "_Function" [[expressions.html]]
 
-    class "Exp" <<case>> {
+    class "Exp" <<case>> [[expressions.html]] {
         e : _Expression
     }
-    class "Log" <<case>> {
+    class "Log" <<case>> [[expressions.html]] {
         e : _Expression
     }
-    class "Sin" <<case>> {
+    class "Sin" <<case>> [[expressions.html]] {
         e : _Expression
     }
-    class "Cos" <<case>> {
+    class "Cos" <<case>> [[expressions.html]] {
         e : _Expression
     }
-    class "Tg" <<case>> {
+    class "Tg" <<case>> [[expressions.html]] {
         e : _Expression
     }
-    class "Asin" <<case>> {
+    class "Asin" <<case>> [[expressions.html]] {
         e : _Expression
     }
-    class "Acos" <<case>> {
+    class "Acos" <<case>> [[expressions.html]] {
         e : _Expression
     }
-    class "Atan" <<case>> {
+    class "Atan" <<case>> [[expressions.html]] {
         e : _Expression
     }
 
@@ -168,17 +172,17 @@ package "scalar" {
     "Atan" --|> "_Function"
 
     ' -- Functionals (higher-order) -----------------
-    abstract class "_Functional"
+    abstract class "_Functional" [[calculus.html]]
 
-    class "_Derivative" <<case>> {
+    class "_Derivative" <<case>> [[calculus.html]] {
         e : _Expression
         v : _Variable
     }
-    class "_Integral" <<case>> {
+    class "_Integral" <<case>> [[calculus.html]] {
         e : _Expression
         v : _Variable
     }
-    class "_DefIntegral" <<case>> {
+    class "_DefIntegral" <<case>> [[calculus.html]] {
         e         : _Expression
         v         : _Variable
         low_limit : _Expression
@@ -191,36 +195,36 @@ package "scalar" {
     "_DefIntegral" --|> "_Functional"
 
     ' -- Algorithm modules (package-level functions) -
-    class "Derive" <<utility>> {
+    class "Derive" <<utility>> [[calculus.html]] {
         + derive(e, v): _Expression
         memoized (Memo)
     }
-    class "Integrate" <<utility>> {
+    class "Integrate" <<utility>> [[calculus.html]] {
         + integrate(e, v): _Expression
     }
-    class "Simplify" <<utility>> {
+    class "Simplify" <<utility>> [[expressions.html]] {
         + simplify(e): _Expression
         + simplifyFully(e): _Expression
         memoized (Memo)
     }
-    class "Expand" <<utility>> {
+    class "Expand" <<utility>> [[expressions.html]] {
         + expand(e): _Expression
     }
-    class "Normalize" <<utility>> {
+    class "Normalize" <<utility>> [[equations.html]] {
         + collect(e, v): Option[Vector]
         + normalize(e, v): _Expression
     }
-    class "Substitute" <<utility>> {
+    class "Substitute" <<utility>> [[expressions.html]] {
         + substitute(e, defs): _Expression
     }
-    class "Analysis" <<utility>> {
+    class "Analysis" <<utility>> [[expressions.html]] {
         + dependsOn(e, v): Boolean
     }
-    class "Compile" <<utility>> {
+    class "Compile" <<utility>> [[calculus.html]] {
         + compile(e, v, env): Option
     }
 
-    class "Syntax" <<object>> {
+    class "Syntax" <<object>> [[expressions.html]] {
         simplify() / simplifyFully()
         expand()
         derive(v) / integrate(v)
@@ -249,7 +253,7 @@ package "scalar" {
 ' ===================================================
 package "matrix" {
 
-    class "_Matrix" <<case>> {
+    class "_Matrix" <<case>> [[matrix.html]] {
         + rows: Int
         + cols: Int
         + elems: Vector[_Expression]
@@ -258,21 +262,21 @@ package "matrix" {
         + fromValue(v): _Matrix
     }
 
-    interface "_MatrixOperation" <<trait>>
+    interface "_MatrixOperation" <<trait>> [[matrix.html]]
 
-    class "MatSum" <<case>> {
+    class "MatSum" <<case>> [[matrix.html]] {
         a : _Expression
         b : _Expression
     }
-    class "MatProduct" <<case>> {
+    class "MatProduct" <<case>> [[matrix.html]] {
         a : _Expression
         b : _Expression
     }
-    class "MatScale" <<case>> {
+    class "MatScale" <<case>> [[matrix.html]] {
         k : _Expression
         m : _Expression
     }
-    class "Transpose" <<case>> {
+    class "Transpose" <<case>> [[matrix.html]] {
         m : _Expression
     }
 
@@ -299,31 +303,31 @@ package "matrix" {
 ' ===================================================
 package "equation" {
 
-    class "_Equation" <<case>> {
+    class "_Equation" <<case>> [[equations.html]] {
         + lhs : _Expression
         + rhs : _Expression
     }
 
-    class "_EqualityCheck" <<case>> {
+    class "_EqualityCheck" <<case>> [[equations.html]] {
         + lhs : _Expression
         + rhs : _Expression
     }
 
-    class "_Solve" <<case>> {
+    class "_Solve" <<case>> [[equations.html]] {
         + eq : _Expression
         + v  : _Variable
     }
 
-    class "Solve" <<utility>> {
+    class "Solve" <<utility>> [[equations.html]] {
         + solve(eq, v, env): List
     }
 
-    class "_SolveSystem" <<case>> {
+    class "_SolveSystem" <<case>> [[equations.html]] {
         + equations : _Expression
         + variables : List[_Variable]
     }
 
-    class "SolveSystem" <<utility>> {
+    class "SolveSystem" <<utility>> [[equations.html]] {
         + solveSystem(eqs, vars, env): Option[List]
         __ dense path __
         Gaussian elimination (partial pivot)
@@ -351,7 +355,7 @@ package "equation" {
 ' PACKAGE: parser
 ' ===================================================
 package "parser" {
-    class "Parser" <<object>> {
+    class "Parser" <<object>> [[getting-started.html]] {
         + parse(str: String): ParseResult
         + ReservedWords: Set
         __ __
@@ -360,14 +364,14 @@ package "parser" {
 }
 
 "Parser" ..> "_Expression" : produces AST nodes
-"Parser" ..> "_Matrix" : matrix literals [[..], [..]]
+"Parser" ..> "_Matrix" : matrix row literals
 "Parser" ..> "_MatrixOperation" : structural + - * dispatch
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)
 ' ===================================================
 package "cli" {
-    class "Session" {
+    class "Session" [[repl.html]] {
         - precision: Int
         - bindings: Map
         - definitions: Map
@@ -380,7 +384,7 @@ package "cli" {
         + saveFile(session, path): String
     }
 
-    class "repl()" <<main>> {
+    class "repl()" <<main>> [[repl.html]] {
         reads StdIn in a loop
         dispatches :load / :save
     }

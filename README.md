@@ -1,8 +1,8 @@
-# Leonardo
+<p align="center"><img src="docs/src/Banner.svg" alt="Leonardo" width="80%"/></p>
 
 ## Introduction
 
-Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). The name is an homage to [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), commonly known as Fibonacci, the Italian mathematician who introduced Arabic numerals and mathematical notation to the Western world.
+Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). The name is an homage to [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), commonly known as Fibonacci, the Italian mathematician and author of [Liber Abbaci](https://en.wikipedia.org/wiki/Liber_Abaci#cite_note-sigler-3): with his works he introduced Indo/Arabic numerals and mathematical notation to the Western world.
 
 This project is loosely inspired by the Scala project [Cascala/Galileo]([https://github.com/cascala/galileo|), though the codebase has been completely rewritten from scratch.
 
@@ -92,3 +92,10 @@ bindings, definitions) as a script that `:load` replays.
 
 - Broader indefinite integration (integration by parts, non-linear substitution)
 - Additional mathematical functions and constants
+
+## Credits
+
+Design Credits: Leonardo's Logo and banner were created using Inkscape, elaborating the following elements:
+
+- **Rotunda Pommerania font** by Peter Wiegel — free for commercial use (available at 1001fonts.com) 
+- **Fibonacci's portrait** — vectorized from "I benefattori dell'umanità" (vol. VI, Firenze: Ducci, 1850), sourced from Wikimedia Commons and used under Creative Commons license
