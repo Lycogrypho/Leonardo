@@ -221,6 +221,21 @@ class ParserTest extends AnyFlatSpec:
     assert(parse(nested) == _Number(1.0))
   }
 
+  // --- issue 1.2: depth guard on ^ exponent chains ---
+
+  "a deep chain of ^ operators" should "fail with a parse error rather than StackOverflow" in
+  {
+    val deep = "2" + "^-2" * 600
+    val result = Parser.parse(deep)
+    assert(!result.successful, "deep ^ chain must be rejected, not crash")
+  }
+
+  "a short ^ chain" should "still parse correctly" in
+  {
+    // right-associative: 2^3^2 = 2^(3^2) — uses the standard positive-exponent path
+    assert(parse("2^3^2") == Power(_Number(2), Power(_Number(3), _Number(2))))
+  }
+
   // --- multi-character variable names (item 7) ---
 
   "theta" should "parse as _Variable(\"theta\")" in

@@ -107,7 +107,9 @@ final class Session:
       .mkString("\n")
 
   private def withParsed(input: String)(f: _Expression => String): String =
-    val result = Parser.parse(input)
+    val result =
+      try Parser.parse(input)
+      catch case e: Exception => return s"parse error: ${e.getMessage}"
     if result.successful then f(result.get)
     else
       val base = s"parse error: ${result.toString.linesIterator.next()}"

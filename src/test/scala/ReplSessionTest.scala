@@ -477,3 +477,13 @@ class ReplSessionTest extends AnyFlatSpec:
   {
     assert(Session.loadFile(session, "no-such-file-xyz.txt").startsWith("could not read"))
   }
+
+  // --- issue 1.2: deeply nested ^ chain must not crash the REPL ---
+
+  "a deeply nested ^ chain" should "return a parse-error string rather than throwing" in
+  {
+    val s = session
+    val bomb = "2" + "^-2" * 600
+    val out = s.execute(bomb)
+    assert(out.startsWith("parse error"), s"expected 'parse error', got: ${out.take(80)}")
+  }

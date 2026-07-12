@@ -91,6 +91,19 @@ object Parser extends JavaTokenParsers:
       finally depth.set(d)
   }
 
+  // The power → signedPower → power right-recursion never passes through guardedExpr
+  // (which is only entered via explicit parentheses and function argument lists), so
+  // 2^-2^-2^-… bypasses the MaxDepth check and blows the JVM stack. This wrapper
+  // increments the depth counter at every ^ so the same cap applies to both paths.
+  private def guardedSignedPower: Parser[_Expression] = Parser { in =>
+    val d = depth.get()
+    if d >= MaxDepth then Failure(s"expression exceeds maximum nesting depth of $MaxDepth", in)
+    else
+      depth.set(d + 1)
+      try signedPower(in)
+      finally depth.set(d)
+  }
+
   // A node is matrix-shaped when a matrix is syntactically visible in it: a matrix
   // literal or one of the matrix operation nodes (MatSum, MatProduct, MatScale,
   // Transpose). Drives the structural dispatch of + - * and unary minus.
@@ -169,7 +182,9 @@ object Parser extends JavaTokenParsers:
 
   // Right-associative exponentiation: 2 ^ 3 ^ 2 parses as 2 ^ (3 ^ 2).
   // Binds tighter than * and /; use parentheses for a compound base or exponent.
-  def power: Parser[_Expression] = factor ~ opt("^" ~> signedPower) ^^
+  // The exponent uses guardedSignedPower so that deep ^ chains are caught by the same
+  // MaxDepth cap as deeply parenthesised expressions.
+  def power: Parser[_Expression] = factor ~ opt("^" ~> guardedSignedPower) ^^
     {
       case b ~ Some(e) => Power(b, e)
       case b ~ None    => b
