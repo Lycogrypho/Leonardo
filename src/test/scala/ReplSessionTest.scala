@@ -487,3 +487,49 @@ class ReplSessionTest extends AnyFlatSpec:
     val out = s.execute(bomb)
     assert(out.startsWith("parse error"), s"expected 'parse error', got: ${out.take(80)}")
   }
+
+  // --- issue 1.4: integral with a definition as binder silently gives wrong answer ---
+
+  "integral(x^2, f) when f := x" should "apply change-of-variable (slope 1) and give x^3/3" in
+  {
+    val s = session
+    s.execute("f := x")
+    // change-of-var: integral(x^2 * d(x)/dx, x) = integral(x^2 * 1, x) = integral(x^2, x) = x^3/3
+    assert(s.execute("integral(x^2, f)") == "((x ^ 3.0) / 3.0)")
+  }
+
+  "integral(g, f) when f := sin(x) and g := f^2" should "not produce an answer containing definition name 'f'" in
+  {
+    val s = session
+    s.execute("f := sin(x)")
+    s.execute("g := f^2")
+    val out = s.execute("integral(g, f)")
+    // The bug produced ((sin(x) ^ 2.0) * f) — the definition name 'f' in the result.
+    // After fix: change-of-var gives integral(sin(x)^2 * cos(x), x) which stays symbolic
+    // but no longer references the definition name.
+    assert(!out.matches(".*\\bf\\b.*"), s"result must not reference definition name 'f' but got: $out")
+    assert(out.contains("sin(x)"), s"result should reference sin(x) but got: $out")
+  }
+
+  "integral(x, f) when f has several free variables" should "be rejected with an error message" in
+  {
+    val s = session
+    s.execute("f := x + y")
+    val out = s.execute("integral(x, f)")
+    assert(out.contains("cannot integrate with respect to 'f'"), s"expected error but got: $out")
+    assert(out.contains("several free variables"), s"expected 'several free variables' but got: $out")
+  }
+
+  "integral(x, f, 0, 1) when f := sin(x)" should "be rejected (definite integral with definition binder)" in
+  {
+    val s = session
+    s.execute("f := sin(x)")
+    val out = s.execute("integral(x, f, 0, 1)")
+    assert(out.contains("cannot compute a definite integral"), s"expected error but got: $out")
+  }
+
+  "integral(x^2, x) with a plain variable binder" should "still work correctly" in
+  {
+    val s = session
+    assert(s.execute("integral(x^2, x)") == "((x ^ 3.0) / 3.0)")
+  }

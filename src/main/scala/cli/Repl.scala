@@ -171,6 +171,23 @@ final class Session:
           case Nil      => Left(s"cannot derive with respect to '${v.variable}': its definition has no free variables")
           case vars     => Left(s"cannot derive with respect to '${v.variable}': its definition has several free variables ${vars.mkString("(", ", ", ")")}")
       }
+    // Change-of-variable: ∫ g df = ∫ g · (df/dx) dx over f's single free variable x.
+    // The derivative df/dx is evaluated eagerly so constant slopes fold immediately
+    // (e.g. f := 2*x → df/dx = 2, and simplify(g * 2) folds away the trivial product).
+    // _DefIntegral with a definition binder is rejected because its bounds are stated
+    // in terms of f and would need to be back-solved via the definition, which is out of scope.
+    case _Integral(body, v) if definitions.contains(v.variable) =>
+      resolveDerivativeBinders(body).flatMap { b =>
+        val fbody = substitute(definitions(v.variable), definitions)
+        fbody.freeVars.toList.sorted match
+          case x :: Nil =>
+            val deriv = _Derivative(fbody, _Variable(x)).eval(emptyEnv).toExpression
+            Right(_Integral(simplify(Product(b, deriv)), _Variable(x)))
+          case Nil  => Left(s"cannot integrate with respect to '${v.variable}': its definition has no free variables")
+          case vars => Left(s"cannot integrate with respect to '${v.variable}': its definition has several free variables ${vars.mkString("(", ", ", ")")}")
+      }
+    case _DefIntegral(_, v, _, _) if definitions.contains(v.variable) =>
+      Left(s"cannot compute a definite integral with respect to '${v.variable}': it is a definition; use the underlying variable directly")
     case other =>
       val results = other.children.map(resolveDerivativeBinders)
       results.collectFirst { case Left(message) => message } match
