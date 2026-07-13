@@ -61,6 +61,11 @@ import equation.*
  * -M → MatScale(-1, M). This keeps the round-trip invariant: the matrix nodes print
  * as "(a + b)" / "(a * b)", and re-parsing recovers the same node type from the
  * shape of the operands.
+ *
+ * Performance: all grammar productions are `lazy val` so the combinator graph and
+ * compiled regexes are built once on first access and reused for every subsequent
+ * `parse` call. Only `guardedExpr` and `guardedSignedPower` remain `def` because
+ * they capture per-call depth state via a ThreadLocal counter.
  */
 object Parser extends JavaTokenParsers:
 
@@ -140,19 +145,19 @@ object Parser extends JavaTokenParsers:
   // "a = b = c" is a parse error (the trailing "= c" is rejected by parseAll / the
   // surrounding rule). "(a = b)" is now a valid sub-expression — use it to bind a
   // named equation: "h := x = 5", then "solve(h, x)".
-  def equationExpr: Parser[_Expression] = expr ~ opt(("==" | "=") ~ expr) ^^
+  lazy val equationExpr: Parser[_Expression] = expr ~ opt(("==" | "=") ~ expr) ^^
     {
       case l ~ Some("==" ~ r) => _EqualityCheck(l, r)
       case l ~ Some(_ ~ r)    => _Equation(l, r)
       case l ~ None           => l
     }
 
-  def expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
+  lazy val expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
     {
       case sign ~ e => applySign(sign, e)
     }
 
-  def simpleExpr: Parser[_Expression] = term ~ rep(("+" | "-") ~ term) ^^
+  lazy val simpleExpr: Parser[_Expression] = term ~ rep(("+" | "-") ~ term) ^^
     {
       case left ~ rights => rights.foldLeft(left)
         {
@@ -163,7 +168,7 @@ object Parser extends JavaTokenParsers:
 
   // Explicit * and / take a signed right operand (3 * -x); implicit multiplication
   // takes an unsigned one, so that "3-2" binds as subtraction, never as 3 * (-2).
-  def term: Parser[_Expression] = signedPower ~ rep(("*" | "/") ~ signedPower | "" ~ power) ^^
+  lazy val term: Parser[_Expression] = signedPower ~ rep(("*" | "/") ~ signedPower | "" ~ power) ^^
     {
       case left ~ rights => rights.foldLeft(left)
         {
@@ -175,7 +180,7 @@ object Parser extends JavaTokenParsers:
 
   // Signed operand for explicit-operator positions: start of a term, after * / ^
   // and after binary + -. Enables 3 * -x, 3 + -x, 2^-x, 3 - -2.
-  def signedPower: Parser[_Expression] = opt("+" | "-") ~ power ^^
+  lazy val signedPower: Parser[_Expression] = opt("+" | "-") ~ power ^^
     {
       case sign ~ e => applySign(sign, e)
     }
@@ -184,26 +189,26 @@ object Parser extends JavaTokenParsers:
   // Binds tighter than * and /; use parentheses for a compound base or exponent.
   // The exponent uses guardedSignedPower so that deep ^ chains are caught by the same
   // MaxDepth cap as deeply parenthesised expressions.
-  def power: Parser[_Expression] = factor ~ opt("^" ~> guardedSignedPower) ^^
+  lazy val power: Parser[_Expression] = factor ~ opt("^" ~> guardedSignedPower) ^^
     {
       case b ~ Some(e) => Power(b, e)
       case b ~ None    => b
     }
 
-  def factor: Parser[_Expression] = function | functional | matrixLiteral | value | "(" ~> guardedExpr <~ ")"
+  lazy val factor: Parser[_Expression] = function | functional | matrixLiteral | value | "(" ~> guardedExpr <~ ")"
 
   // Matrix literal: [[a, b], [c, d]] — rows of full expressions, all equally long
   // (a row vector is [[1, 2]]). Ragged rows are a parse error, not an exception.
-  def matrixLiteral: Parser[_Expression] =
+  lazy val matrixLiteral: Parser[_Expression] =
     "[" ~> rep1sep(matrixRow, ",") <~ "]" ^? (
       { case rows if rows.forall(_.size == rows.head.size) =>
           _Matrix(rows.size, rows.head.size, rows.flatten.toVector) },
       _ => "matrix rows must all have the same length"
     )
 
-  def matrixRow: Parser[List[_Expression]] = "[" ~> rep1sep(guardedExpr, ",") <~ "]"
+  lazy val matrixRow: Parser[List[_Expression]] = "[" ~> rep1sep(guardedExpr, ",") <~ "]"
 
-  def function: Parser[_Expression] =
+  lazy val function: Parser[_Expression] =
     "exp(" ~> guardedExpr <~ ")"                          ^^ Exp.apply                         |
     "log(" ~> guardedExpr <~ ")"                          ^^ Log.apply                         |
     "sin(" ~> guardedExpr <~ ")"                          ^^ Sin.apply                         |
@@ -216,7 +221,7 @@ object Parser extends JavaTokenParsers:
     "transpose(" ~> guardedExpr <~ ")"                    ^^ Transpose.apply                   |
     "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }
 
-  def functional: Parser[_Expression] =
+  lazy val functional: Parser[_Expression] =
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
@@ -227,29 +232,29 @@ object Parser extends JavaTokenParsers:
 
   // Integral limits accept a sign ("integral(x, x, -1, 1)", lower limit "-pi")
   // without opening the limit position to full sub-expressions.
-  def signedValue: Parser[_Expression] = opt("+" | "-") ~ value ^^
+  lazy val signedValue: Parser[_Expression] = opt("+" | "-") ~ value ^^
     {
       case sign ~ e => applySign(sign, e)
     }
 
-  def value:    Parser[_Expression] = number | constant | variable
+  lazy val value:    Parser[_Expression] = number | constant | variable
   // Unsigned by design — see the sign-handling note in the header. The [eE][+-]?
   // exponent keeps scientific notation ("3E-5", "2e-3") intact.
-  def number:   Parser[_Number]    = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s => _Number(s.toDouble) }
+  lazy val number:   Parser[_Number]    = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s => _Number(s.toDouble) }
   // Negative lookahead prevents "pine" from matching as pi + ne, or "exp" as e + xp.
   // "i" is the imaginary unit; "3i" is implicit multiplication (3 * i) → _Complex(0, 3),
   // and "im"/"i1" stay ordinary variables (guarded like "e"/"pi").
-  def constant: Parser[_Value]     =
+  lazy val constant: Parser[_Value]     =
     """pi(?![a-zA-Z0-9])""".r ^^^ _Number(math.Pi) |
     """e(?![a-zA-Z0-9])""".r  ^^^ _Number(math.E)  |
     """i(?![a-zA-Z0-9])""".r  ^^^ _Complex.of(0, 1)
   // Reserved words are rejected wholesale — the regex is greedy, so "simplify"
   // cannot fall back to variable "simplif" times variable "y".
-  def variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9]*""".r ^? (
+  lazy val variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9]*""".r ^? (
     { case s if !ReservedWords.contains(s) => _Variable(s) },
     s => s"'$s' is a reserved word and cannot be used as a variable"
   )
 
-  def topLevel: Parser[_Expression] = equationExpr
+  lazy val topLevel: Parser[_Expression] = equationExpr
 
   def parse(str: String): ParseResult[_Expression] = parseAll(topLevel, str)

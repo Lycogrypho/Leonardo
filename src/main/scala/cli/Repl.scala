@@ -39,6 +39,7 @@ import parser.Parser
  *   quit | exit          leave (handled by the read loop)
  */
 final class Session:
+  private val MaxPrecision = 15
   private var precision: Int = Environment.DefaultPrecision
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
@@ -79,6 +80,16 @@ final class Session:
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
     case expression             => withParsed(expression)(evaluate)
 
+  // Serialize a _Value for a :save script in a way that round-trips exactly.
+  // _Number uses the raw Double (d.toString), not the display-rounded toString, so
+  // no digits are lost regardless of session precision.  _Bool is written as a
+  // concrete equation (0 = 0 / 0 = 1) rather than the bare word "true"/"false",
+  // which the grammar would re-parse as a free variable named 'true'/'false'.
+  private def serializeValue(v: _Value): String = v match
+    case _Number(d) => d.toString
+    case _Bool(b)   => if b then "0 = 0" else "0 = 1"
+    case other      => other.toString
+
   /**
    * Current session state serialized as a replayable script — one command per line,
    * precision first, then bindings and definitions in name order. Feeding this back
@@ -88,7 +99,7 @@ final class Session:
   def script: String =
     val lines =
       List(s"precision $precision") ++
-      bindings.toList.sortBy(_._1).map((k, v) => s"$k := $v") ++
+      bindings.toList.sortBy(_._1).map((k, v) => s"$k := ${serializeValue(v)}") ++
       definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
     lines.mkString("\n")
 
@@ -236,8 +247,10 @@ final class Session:
 
   private def setPrecision(text: String): String =
     text.toIntOption match
-      case Some(n) if n >= 0 => precision = n; s"precision = $n"
-      case _                 => s"precision expects a non-negative integer, got: $text"
+      case Some(n) if n >= 0 && n <= MaxPrecision => precision = n; s"precision = $n"
+      case Some(n) if n > MaxPrecision =>
+        s"precision expects a value between 0 and $MaxPrecision, got: $n"
+      case _ => s"precision expects a non-negative integer, got: $text"
 
   private def unset(name: String): String =
     if bindings.contains(name) || definitions.contains(name) then
@@ -364,14 +377,14 @@ object Session:
 
   /** Read a :load file and replay it through the session. IO lives here, not in Session. */
   def loadFile(session: Session, path: String): String =
-    scala.util.Using(scala.io.Source.fromFile(path))(_.mkString) match
+    scala.util.Using(scala.io.Source.fromFile(path, "UTF-8"))(_.mkString) match
       case scala.util.Success(text) => session.load(text)
       case scala.util.Failure(e)    => s"could not read $path: ${e.getMessage}"
 
   /** Write the session's replayable script to a :save file. IO lives here, not in Session. */
   def saveFile(session: Session, path: String): String =
     scala.util.Try:
-      val w = new java.io.PrintWriter(path)
+      val w = new java.io.PrintWriter(path, java.nio.charset.StandardCharsets.UTF_8)
       try w.write(session.script) finally w.close()
     match
       case scala.util.Success(_) => s"saved to $path"

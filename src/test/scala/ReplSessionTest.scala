@@ -534,6 +534,98 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("integral(x^2, x)") == "((x ^ 3.0) / 3.0)")
   }
 
+  // --- issue 2.3: Parser lazy val (regression — all existing parse paths must still work) ---
+
+  "Parser" should "produce consistent results across multiple parses of the same input" in
+  {
+    // Exercises the lazy-val grammar graph being reused correctly on repeated calls.
+    assert(parser.Parser.parse("sin(x) + cos(x)").get == parser.Parser.parse("sin(x) + cos(x)").get)
+    assert(parser.Parser.parse("x^2 + 2*x + 1").get == parser.Parser.parse("x^2 + 2*x + 1").get)
+  }
+
+  // --- issue 2.4: :save script round-trips _Number precision and _Bool bindings ---
+
+  "session.script" should "serialize _Number bindings with full Double precision" in
+  {
+    val s = session
+    s.execute("precision 8")
+    s.execute("x := 3.00000001")
+    // toString rounds to DefaultPrecision=5; d.toString gives "3.00000001"
+    assert(s.script.contains("x := 3.00000001"),
+      s"expected full-precision serialization but script was:\n${s.script}")
+  }
+
+  "session.script" should "serialize _Bool(true) as '0 = 0', not as bare 'true'" in
+  {
+    val s = session
+    s.execute("h := 2 = 2")   // evaluates to _Bool(true)
+    val sc = s.script
+    assert(!sc.contains("true"), s"Bool(true) must not be serialized as 'true'; got:\n$sc")
+    assert(sc.contains("h := 0 = 0"), s"expected 'h := 0 = 0'; got:\n$sc")
+  }
+
+  "session.script" should "serialize _Bool(false) as '0 = 1', not as bare 'false'" in
+  {
+    val s = session
+    s.execute("h := 2 = 3")   // evaluates to _Bool(false)
+    val sc = s.script
+    assert(!sc.contains("false"), s"Bool(false) must not be serialized as 'false'; got:\n$sc")
+    assert(sc.contains("h := 0 = 1"), s"expected 'h := 0 = 1'; got:\n$sc")
+  }
+
+  "a _Bool binding saved and reloaded" should "still evaluate as a boolean" in
+  {
+    val s1 = session
+    s1.execute("ok := 2 = 2")
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("ok") == "true")
+  }
+
+  // --- issue 2.5: precision must be capped to prevent a session-hang ---
+
+  "precision 15" should "be accepted (at the cap)" in
+  {
+    val s = session
+    assert(s.execute("precision 15") == "precision = 15")
+  }
+
+  "precision 16" should "be rejected with a helpful error" in
+  {
+    val s = session
+    val out = s.execute("precision 16")
+    assert(out.contains("16"), s"error must name the bad value; got: $out")
+    assert(out.contains("15"), s"error must name the cap; got: $out")
+  }
+
+  "precision -1" should "still be rejected" in
+  {
+    val s = session
+    val out = s.execute("precision -1")
+    assert(out.contains("non-negative") || out.contains("expects"), s"expected rejection; got: $out")
+  }
+
+  // --- issue 2.7: :load / :save must use UTF-8, not the platform default charset ---
+
+  "Session.saveFile / loadFile" should "round-trip the session state through a temp file" in
+  {
+    val s1 = session
+    s1.execute("precision 8")
+    s1.execute("x := 3.00000001")
+    s1.execute("g := sin(y) + y")   // y is unbound → stays a definition after reload
+    val tmp = java.io.File.createTempFile("leonardo_test", ".leo")
+    try
+      val saveMsg = Session.saveFile(s1, tmp.getPath)
+      assert(saveMsg.startsWith("saved"), s"save failed: $saveMsg")
+      val s2 = session
+      Session.loadFile(s2, tmp.getPath)
+      assert(s2.execute("env").contains("precision = 8"))
+      assert(s2.execute("x") == "3.00000001")
+      assert(s2.execute("g") == "(sin(y) + y)")
+    finally
+      tmp.delete()
+  }
+
   // --- issue 1.6: _MatrixValue display must respect session precision ---
 
   "a matrix result" should "respect precision 2" in
