@@ -90,18 +90,22 @@ final class Session:
     case _Bool(b)   => if b then "0 = 0" else "0 = 1"
     case other      => other.toString
 
+  // Shared line-building for script (replayable) and state (human-readable).
+  // precLine differs in format: "precision N" (command) vs "precision = N" (display).
+  // bindFmt differs: serializeValue (raw round-trip safe) vs toString (display-rounded).
+  private def buildLines(precLine: String, bindFmt: _Value => String): String =
+    (List(precLine) ++
+     bindings.toList.sortBy(_._1).map((k, v) => s"$k := ${bindFmt(v)}") ++
+     definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
+    ).mkString("\n")
+
   /**
    * Current session state serialized as a replayable script — one command per line,
    * precision first, then bindings and definitions in name order. Feeding this back
    * through `load` (or line by line through `execute`) reconstructs the session.
    * Pure: this is what the REPL writes to a `:save` file.
    */
-  def script: String =
-    val lines =
-      List(s"precision $precision") ++
-      bindings.toList.sortBy(_._1).map((k, v) => s"$k := ${serializeValue(v)}") ++
-      definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
-    lines.mkString("\n")
+  def script: String = buildLines(s"precision $precision", serializeValue)
 
   /**
    * Execute a whole script body (e.g. the contents of a `:load` file), returning the
@@ -201,10 +205,9 @@ final class Session:
     case _DefIntegral(_, v, _, _) if definitions.contains(v.variable) =>
       Left(s"cannot compute a definite integral with respect to '${v.variable}': it is a definition; use the underlying variable directly")
     case other =>
-      val results = other.children.map(resolveDerivativeBinders)
-      results.collectFirst { case Left(message) => message } match
-        case Some(message) => Left(message)
-        case None          => Right(other.rebuild(results.map(_.toOption.get)))
+      other.children.map(resolveDerivativeBinders).partitionMap(identity) match
+        case (message :: _, _) => Left(message)
+        case (Nil, children)   => Right(other.rebuild(children))
 
   /**
    * The numeric-vs-definition decision must see the same expression bare evaluation
@@ -259,12 +262,7 @@ final class Session:
       s"$name unset"
     else s"$name is not set"
 
-  private def state: String =
-    val lines =
-      List(s"precision = $precision") ++
-      bindings.toList.sortBy(_._1).map((k, v) => s"$k := $v") ++
-      definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
-    lines.mkString("\n")
+  private def state: String = buildLines(s"precision = $precision", _.toString)
 
 object Session:
   // Names the parser always resolves as constants; assignment to them is rejected.

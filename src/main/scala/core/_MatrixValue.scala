@@ -63,6 +63,13 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
 
   def isFinite: Boolean = data.forall(d => !d.isNaN && !d.isInfinite)
 
+  // Lift this matrix into an Either for eval: Right when all elements are finite,
+  // Left(orElse) otherwise (non-finite = domain error; stays symbolic like x/0).
+  // Shared by scalar._Operation and matrix._MatrixOperation; living here avoids
+  // duplicating the guard in two packages that cannot import each other.
+  def guarded(orElse: _Expression): Either[_Expression, _Value] =
+    if isFinite then Right(this) else Left(orElse)
+
   def add(that: _MatrixValue): _MatrixValue =
     require(rows == that.rows && cols == that.cols, s"dimension mismatch: ${rows}x$cols + ${that.rows}x${that.cols}")
     val out = new Array[Double](data.length)

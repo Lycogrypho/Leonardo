@@ -17,18 +17,4 @@ case class _EqualityCheck(lhs: _Expression, rhs: _Expression) extends _ElementWi
   override def rebuild(c: List[_Expression]): _Expression = _EqualityCheck(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    def tolerance: Double = 0.5 * math.pow(10, -env.precision)
-    (lhs.eval(env), rhs.eval(env)) match
-      case (Right(_Number(a)), Right(_Number(b))) =>
-        Right(_Bool(math.abs(a - b) <= tolerance))
-      case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
-        val equal = x.rows == y.rows && x.cols == y.cols &&
-          x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
-        Right(_Bool(equal))
-      // Complex (or complex vs. real): equal when both parts vanish within tolerance.
-      case (Right(av: _Value), Right(bv: _Value))
-        if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
-        val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
-          yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
-        close.map(b => Right(_Bool(b))).getOrElse(Left(_EqualityCheck(av, bv)))
-      case (ra, rb) => Left(_EqualityCheck(ra.toExpression, rb.toExpression))
+    compareSides(lhs, rhs, env)(_EqualityCheck(_, _))

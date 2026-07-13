@@ -25,9 +25,6 @@ private def asLiteral(r: Either[_Expression, _Value]): Option[_Matrix] = r match
   case Right(v: _MatrixValue) => Some(_Matrix.fromValue(v))
   case _                      => None
 
-private def guarded(result: _MatrixValue, orElse: _Expression): Either[_Expression, _Value] =
-  if result.isFinite then Right(result) else Left(orElse)
-
 // Element combiners over ALREADY-REDUCED operands: fold concrete pairs immediately
 // instead of building a Sum/Product node and evaluating it again (issue 2.2).
 // productOf keeps Product.eval's zero short-circuit so 0 * symbolic still folds.
@@ -44,7 +41,7 @@ private def productOf(a: _Expression, b: _Expression): _Expression = (a, b) matc
 // → dense value (finite-guarded); otherwise stay symbolic as-is.
 private def collapse(m: _Matrix, orElse: _Expression): Either[_Expression, _Value] =
   val numbers = m.elems.collect { case _Number(d) => d }
-  if numbers.size == m.elems.size then guarded(_MatrixValue(m.rows, m.cols, numbers.toArray), orElse)
+  if numbers.size == m.elems.size then _MatrixValue(m.rows, m.cols, numbers.toArray).guarded(orElse)
   else Left(m)
 
 
@@ -60,7 +57,7 @@ case class MatSum(a: _Expression, b: _Expression) extends _MatrixOperation, _Ele
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
-        if x.rows == y.rows && x.cols == y.cols then guarded(x.add(y), this) else Left(this)
+        if x.rows == y.rows && x.cols == y.cols then x.add(y).guarded(this) else Left(this)
       case (ra, rb) => (asLiteral(ra), asLiteral(rb)) match
         case (Some(x), Some(y)) if x.rows == y.rows && x.cols == y.cols =>
           collapse(_Matrix(x.rows, x.cols, x.elems.zip(y.elems).map((p, q) => sumOf(p, q))), this)
@@ -77,7 +74,7 @@ case class MatProduct(a: _Expression, b: _Expression) extends _MatrixOperation:
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
-        if x.cols == y.rows then guarded(x.multiply(y), this) else Left(this)
+        if x.cols == y.rows then x.multiply(y).guarded(this) else Left(this)
       case (ra, rb) => (asLiteral(ra), asLiteral(rb)) match
         case (Some(x), Some(y)) if x.cols == y.rows =>
           val elems =
@@ -96,7 +93,7 @@ case class MatScale(k: _Expression, m: _Expression) extends _MatrixOperation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (k.eval(env), m.eval(env)) match
-      case (Right(_Number(s)), Right(mv: _MatrixValue)) => guarded(mv.scale(s), this)
+      case (Right(_Number(s)), Right(mv: _MatrixValue)) => mv.scale(s).guarded(this)
       case (rk, rm) => asLiteral(rm) match
         case Some(lit) =>
           collapse(_Matrix(lit.rows, lit.cols, lit.elems.map(productOf(rk.toExpression, _))), this)

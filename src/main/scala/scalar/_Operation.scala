@@ -15,9 +15,6 @@ trait _Operation extends _Expression
 // element-wise combination remains the job of the matrix package's own nodes
 // (MatSum/MatProduct/MatScale) — a scalar op over a partially-symbolic matrix stays
 // symbolic. Dimension mismatches and non-finite results stay symbolic, like x/0.
-private def guardedMatrix(result: _MatrixValue, orElse: _Expression): Either[_Expression, _Value] =
-  if result.isFinite then Right(result) else Left(orElse)
-
 
 case class Sum(a: _Expression, b: _Expression) extends _Operation:
   override def toString: String = s"($a + $b)"
@@ -28,7 +25,7 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
     (a.eval(env), b.eval(env)) match
       case (Right(_Number(x)), Right(_Number(y))) => Right(_Number(x + y))
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
-        if x.rows == y.rows && x.cols == y.cols then guardedMatrix(x.add(y), this) else Left(this)
+        if x.rows == y.rows && x.cols == y.cols then x.add(y).guarded(this) else Left(this)
       // At least one operand is complex: field addition, else stay symbolic.
       case (Right(av: _Value), Right(bv: _Value)) if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
         _Complex.add(av, bv).map(Right(_)).getOrElse(Left(Sum(av, bv)))
@@ -43,10 +40,10 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
       // matrix cases precede the zero short-circuit: 0 * M is the zero MATRIX
-      case (Right(_Number(k)), Right(m: _MatrixValue))      => guardedMatrix(m.scale(k), this)
-      case (Right(m: _MatrixValue), Right(_Number(k)))      => guardedMatrix(m.scale(k), this)
+      case (Right(_Number(k)), Right(m: _MatrixValue))      => m.scale(k).guarded(this)
+      case (Right(m: _MatrixValue), Right(_Number(k)))      => m.scale(k).guarded(this)
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
-        if x.cols == y.rows then guardedMatrix(x.multiply(y), this) else Left(this)
+        if x.cols == y.rows then x.multiply(y).guarded(this) else Left(this)
       // zero short-circuit for everything scalar or unreducible: 0 * e folds to 0
       case (Right(_Number(0.0)), _) | (_, Right(_Number(0.0))) => Right(_Number(0.0))
       case (Right(_Number(x)), Right(_Number(y)))           => Right(_Number(x * y))
@@ -68,7 +65,7 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
         // x/0 and 0/0 are domain errors: stay symbolic instead of propagating ±Infinity/NaN
         if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
       // M / k = (1/k) · M; k = 0 yields non-finite elements → the guard stays symbolic
-      case (Right(m: _MatrixValue), Right(_Number(k))) => guardedMatrix(m.scale(1.0 / k), this)
+      case (Right(m: _MatrixValue), Right(_Number(k))) => m.scale(1.0 / k).guarded(this)
       // At least one operand is complex: field division (None on zero denominator).
       case (Right(av: _Value), Right(bv: _Value)) if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
         _Complex.div(av, bv).map(Right(_)).getOrElse(Left(this))

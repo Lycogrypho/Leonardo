@@ -4,6 +4,29 @@ package equation
 import core.*
 
 
+// Shared helper for _Equation.eval and _EqualityCheck.eval: both bodies are
+// line-for-line identical except for the node type used to rebuild symbolic
+// residuals. `wrap` receives the two (possibly reduced) operands and produces
+// the appropriate node, keeping the shared logic in one place.
+private[equation] def compareSides(
+    lhs: _Expression, rhs: _Expression, env: Environment
+)(wrap: (_Expression, _Expression) => _Expression): Either[_Expression, _Value] =
+  val tolerance = 0.5 * math.pow(10, -env.precision)
+  (lhs.eval(env), rhs.eval(env)) match
+    case (Right(_Number(a)), Right(_Number(b))) =>
+      Right(_Bool(math.abs(a - b) <= tolerance))
+    case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
+      val equal = x.rows == y.rows && x.cols == y.cols &&
+        x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
+      Right(_Bool(equal))
+    case (Right(av: _Value), Right(bv: _Value))
+      if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
+      val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
+        yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
+      close.map(b => Right(_Bool(b))).getOrElse(Left(wrap(av, bv)))
+    case (ra, rb) => Left(wrap(ra.toExpression, rb.toExpression))
+
+
 // Equation domain: a relation between two expressions, following the matrix
 // blueprint (own package importing core; nothing imports back).
 //
@@ -26,18 +49,4 @@ case class _Equation(lhs: _Expression, rhs: _Expression) extends _ElementWise:
   override def rebuild(c: List[_Expression]): _Expression = _Equation(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    def tolerance: Double = 0.5 * math.pow(10, -env.precision)
-    (lhs.eval(env), rhs.eval(env)) match
-      case (Right(_Number(a)), Right(_Number(b))) =>
-        Right(_Bool(math.abs(a - b) <= tolerance))
-      case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
-        val equal = x.rows == y.rows && x.cols == y.cols &&
-          x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
-        Right(_Bool(equal))
-      // Complex (or complex vs. real): equal when both parts vanish within tolerance.
-      case (Right(av: _Value), Right(bv: _Value))
-        if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
-        val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
-          yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
-        close.map(b => Right(_Bool(b))).getOrElse(Left(_Equation(av, bv)))
-      case (ra, rb) => Left(_Equation(ra.toExpression, rb.toExpression))
+    compareSides(lhs, rhs, env)(_Equation(_, _))

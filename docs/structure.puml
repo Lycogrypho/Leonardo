@@ -81,6 +81,7 @@ package "core" {
         + multiply(that): _MatrixValue
         + transpose: _MatrixValue
         + scale(k: Double): _MatrixValue
+        + guarded(orElse): Either
         __ companion __
         + apply(rows, cols, data) : defensive copy
     }
@@ -314,6 +315,11 @@ package "matrix" {
 ' ===================================================
 package "equation" {
 
+    class "compareSides" <<utility>> [[equations.html]] {
+        + compareSides(lhs, rhs, env)(wrap): Either
+        shared eval logic for _Equation / _EqualityCheck
+    }
+
     class "_Equation" <<case>> [[equations.html]] {
         + lhs : _Expression
         + rhs : _Expression
@@ -350,11 +356,14 @@ package "equation" {
     "_SolveSystem" ..> "SolveSystem" : solve() at eval
     "SolveSystem"  ..> "Normalize"   : collect() coefficient extraction
 
+    "compareSides"    ..> "_Bool"      : produces at eval
     "_Equation"       --|> "_Expression"
     "_Equation"       ..|> "_ElementWise"
+    "_Equation"       ..> "compareSides" : delegates eval
     "_Equation"       ..> "_Bool"     : reduces to at eval
     "_EqualityCheck"  --|> "_Expression"
     "_EqualityCheck"  ..|> "_ElementWise"
+    "_EqualityCheck"  ..> "compareSides" : delegates eval
     "_EqualityCheck"  ..> "_Bool"     : reduces to at eval
     "_Solve"          --|> "_Expression"
     "_Solve"          ..> "Solve"     : solve() at eval (eq must be _Equation)
