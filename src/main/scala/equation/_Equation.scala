@@ -19,8 +19,9 @@ private[equation] def compareSides(
       val equal = x.rows == y.rows && x.cols == y.cols &&
         x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
       Right(_Bool(equal))
-    case (Right(av: _Value), Right(bv: _Value))
-      if _Complex.parts(av).isDefined && _Complex.parts(bv).isDefined =>
+    // Both sides are concrete: for-comprehension extracts (re,im) via _Complex.parts;
+    // None on non-numeric values → close = None → stays symbolic. No double-call of parts.
+    case (Right(av: _Value), Right(bv: _Value)) =>
       val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
         yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
       close.map(b => Right(_Bool(b))).getOrElse(Left(wrap(av, bv)))
