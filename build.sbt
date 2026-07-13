@@ -24,7 +24,7 @@ lazy val root = (project in file("."))
 
     // ── PlantUML dependency (resolved, never on project classpath) ─────────────
     ivyConfigurations += PlantUML,
-    libraryDependencies += "net.sourceforge.plantuml" % "plantuml" % "1.2024.8" % PlantUML,
+    libraryDependencies += "net.sourceforge.plantuml" % "plantuml" % "1.2026.0" % PlantUML,
 
     puml := {
       import scala.sys.process._
