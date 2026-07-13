@@ -74,7 +74,17 @@ private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_
       while i < SearchSamples && found.size < MaxNumericRoots do
         val b  = a + step
         val fb = fn(b)
-        if fa == 0.0 then found += a
+        if fa == 0.0 then
+          // An exact grid-point zero is a genuine root only if the function changes
+          // sign around it.  When f is identically zero (e.g. sin(x) = sin(x) →
+          // f ≡ 0), every grid point triggers fa == 0.0 and both neighbourhood
+          // samples are also zero — their product is 0, not negative, so no root
+          // is collected and the identity case returns Nil instead of 8 fake roots.
+          val eps     = step * 0.5
+          val fBefore = fn(a - eps)
+          val fAfter  = fn(a + eps)
+          if !fBefore.isNaN && !fAfter.isNaN && fBefore * fAfter < 0.0 then
+            found += a
         else if !fa.isNaN && !fb.isNaN && fa * fb < 0.0 then found += bisect(fn, a, b, fa)
         a = b; fa = fb; i += 1
       found.toList.map(_Number(_))

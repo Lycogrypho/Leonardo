@@ -185,3 +185,31 @@ class SolveTest extends AnyFlatSpec:
     s.execute("a := 2")
     assert(s.execute("solve(a * x = 4, x)") == "x = 2.0")
   }
+
+  // --- issue 1.5: identity equations must return Nil, not MaxNumericRoots fake roots ---
+
+  "solve(sin(x) = sin(x))" should "return no solutions (identity, not 8 grid points)" in
+  {
+    // Before the fix, the numeric fallback's fa == 0.0 branch collected every grid
+    // point where f ≡ 0, filling found up to MaxNumericRoots = 8 arbitrary results.
+    assert(solve(parseEq("sin(x) = sin(x)"), x).isEmpty)
+  }
+
+  "solve(sin(x) = sin(x)) via REPL" should "stay symbolic rather than emit fake solutions" in
+  {
+    val s = Session()
+    val out = s.execute("solve(sin(x) = sin(x), x)")
+    // No concrete solution set — stays as the unsolved node (not a matrix of fake roots)
+    assert(!out.startsWith("[["), s"expected no solution matrix but got: $out")
+  }
+
+  "solve(sin(x) = 0) after the fix" should "still find genuine roots via sign-change detection" in
+  {
+    // Regression: the neighbourhood guard only affects the fa == 0.0 branch. Roots
+    // found via sign-change bisection (the vast majority) are unaffected. All
+    // returned values must actually satisfy sin(r) ≈ 0.
+    val roots = num(solve(parseEq("sin(x) = 0"), x))
+    assert(roots.nonEmpty, "sin(x) = 0 must have at least one root in [-100, 100]")
+    assert(roots.forall(r => math.abs(math.sin(r)) < 1e-5),
+      s"all found values must be genuine roots: $roots")
+  }
