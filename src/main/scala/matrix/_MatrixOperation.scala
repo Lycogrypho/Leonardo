@@ -119,3 +119,31 @@ case class Transpose(m: _Expression) extends _MatrixOperation, _ElementWise:
           val elems = for j <- 0 until lit.cols; i <- 0 until lit.rows yield lit(i, j)
           collapse(_Matrix(lit.cols, lit.rows, elems.toVector), this)
         case None => Left(Transpose(r.toExpression))
+
+
+// Element access: at(A, i, j) returns the element at row i, column j (1-based).
+// Does NOT extend _MatrixOperation because the result is a scalar, not a matrix —
+// isMatrixShaped must not match it or the REPL would try to dispatch it as a matrix op.
+// When the matrix is still symbolic but the indices are concrete we extract the
+// element directly from the _Matrix literal so that at([[x, 2]], 1, 2) → 2.0
+// without needing the whole matrix to be dense.
+case class _MatrixIndex(matrix: _Expression, row: _Expression, col: _Expression) extends _Expression:
+  override def toString: String = s"at($matrix, $row, $col)"
+  override def children: List[_Expression] = List(matrix, row, col)
+  override def rebuild(c: List[_Expression]): _Expression = _MatrixIndex(c(0), c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val rm = matrix.eval(env)
+    val rr = row.eval(env)
+    val rc = col.eval(env)
+    (rr, rc) match
+      case (Right(_Number(r)), Right(_Number(c))) =>
+        val i = r.round.toInt - 1   // 1-based → 0-based
+        val j = c.round.toInt - 1
+        rm match
+          case Right(mv: _MatrixValue) if i >= 0 && i < mv.rows && j >= 0 && j < mv.cols =>
+            Right(_Number(mv(i, j)))
+          case Left(m: _Matrix) if i >= 0 && i < m.rows && j >= 0 && j < m.cols =>
+            m(i, j).eval(env)
+          case _ => Left(this)
+      case _ => Left(_MatrixIndex(rm.toExpression, rr.toExpression, rc.toExpression))

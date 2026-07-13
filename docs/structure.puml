@@ -76,6 +76,7 @@ package "core" {
         + cols: Int
         - data: Array[Double]
         + toVector: Vector[Double]
+        + display(precision: Int): String
         + add(that): _MatrixValue
         + multiply(that): _MatrixValue
         + transpose: _MatrixValue
@@ -280,12 +281,21 @@ package "matrix" {
         m : _Expression
     }
 
+    class "_MatrixIndex" <<case>> [[matrix.html]] {
+        matrix : _Expression
+        row    : _Expression
+        col    : _Expression
+        __ at(A, i, j) : 1-based __
+        returns scalar element, not matrix
+    }
+
     "_Matrix"          --|> "_Expression"
     "_MatrixOperation" --|> "_Expression"
     "MatSum"           --|> "_MatrixOperation"
     "MatProduct"       --|> "_MatrixOperation"
     "MatScale"         --|> "_MatrixOperation"
     "Transpose"        --|> "_MatrixOperation"
+    "_MatrixIndex"     --|> "_Expression"
 
     ' Linear containers: derive/simplify/expand/integrate distribute element-wise
     "_Matrix"   ..|> "_ElementWise"
@@ -296,6 +306,7 @@ package "matrix" {
     "_MatrixOperation" ..> "_MatrixValue" : dense kernels (fast path)
     "_MatrixOperation" ..> "Sum"          : element-wise symbolic combine
     "_MatrixOperation" ..> "Product"      : element-wise symbolic combine
+    "_MatrixIndex"     ..> "_MatrixValue" : extracts element at eval
 }
 
 ' ===================================================
@@ -363,9 +374,10 @@ package "parser" {
     }
 }
 
-"Parser" ..> "_Expression" : produces AST nodes
-"Parser" ..> "_Matrix" : matrix row literals
-"Parser" ..> "_MatrixOperation" : structural + - * dispatch
+"Parser" ..> "_Expression"    : produces AST nodes
+"Parser" ..> "_Matrix"         : matrix row literals
+"Parser" ..> "_MatrixOperation": structural + - * dispatch
+"Parser" ..> "_MatrixIndex"    : at(A, i, j) element access
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)

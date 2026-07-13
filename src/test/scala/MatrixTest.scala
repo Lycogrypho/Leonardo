@@ -380,3 +380,62 @@ class MatrixTest extends AnyFlatSpec:
     assert(dependsOn(m, x))
     assert(!dependsOn(m, y))
   }
+
+  // --- issue 4.1: at(A, i, j) matrix element extraction (1-based) ---
+
+  "at([[1, 2], [3, 4]], 2, 1)" should "return 3 (1-based row 2 col 1)" in
+  {
+    val expr = parser.Parser.parse("at([[1, 2], [3, 4]], 2, 1)")
+    assert(expr.successful, s"parse failed: $expr")
+    assert(expr.get.eval(new Environment()) == Right(_Number(3.0)))
+  }
+
+  "at([[1, 2], [3, 4]], 1, 2)" should "return 2 (1-based row 1 col 2)" in
+  {
+    assert(parser.Parser.parse("at([[1, 2], [3, 4]], 1, 2)").get.eval(new Environment()) == Right(_Number(2.0)))
+  }
+
+  "at(A, i, j) with A bound in the environment" should "resolve through the binding" in
+  {
+    val env = new Environment().withBinding("A", dense(2, 2, 1, 2, 3, 4))
+    assert(parser.Parser.parse("at(A, 2, 1)").get.eval(env) == Right(_Number(3.0)))
+  }
+
+  "at([[x, 2]], 1, 2)" should "return 2.0 even though the matrix is partially symbolic" in
+  {
+    // The matrix is symbolic (x is free) but the requested element is concrete.
+    assert(parser.Parser.parse("at([[x, 2]], 1, 2)").get.eval(new Environment()) == Right(_Number(2.0)))
+  }
+
+  "at([[x, 2]], 1, 1)" should "stay symbolic when the element is a free variable" in
+  {
+    val result = parser.Parser.parse("at([[x, 2]], 1, 1)").get.eval(new Environment())
+    assert(result.isLeft, s"expected symbolic result but got: $result")
+  }
+
+  "at(A, 3, 1) on a 2×2 matrix" should "stay symbolic (out of bounds)" in
+  {
+    val result = _MatrixIndex(dense(2, 2, 1, 2, 3, 4), _Number(3), _Number(1)).eval(new Environment())
+    assert(result.isLeft, s"expected symbolic (out-of-bounds) but got: $result")
+  }
+
+  "at(...) toString" should "round-trip through the parser" in
+  {
+    val e = _MatrixIndex(literal(1, 2, x, y), _Number(1), _Number(1))
+    val s = e.toString
+    val reparsed = parser.Parser.parse(s)
+    assert(reparsed.successful, s"round-trip parse failed for: $s")
+  }
+
+  "bare 'at'" should "be a reserved word (parse error)" in
+  {
+    assert(!parser.Parser.parse("at").successful)
+  }
+
+  "at(A, i, j) in the REPL" should "extract elements from a bound matrix" in
+  {
+    val s = cli.Session()
+    s.execute("A := [[1, 2], [3, 4]]")
+    assert(s.execute("at(A, 2, 1)") == "3.0")
+    assert(s.execute("at(A, 1, 2)") == "2.0")
+  }

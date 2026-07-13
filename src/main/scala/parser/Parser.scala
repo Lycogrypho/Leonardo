@@ -76,7 +76,7 @@ object Parser extends JavaTokenParsers:
   // merely starting with a reserved word ("sina", "evalx") stay legal.
   val ReservedWords: Set[String] = Set(
     "exp", "log", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
-    "pow", "transpose",                                   // functions
+    "pow", "transpose", "at",                             // functions
     "derive", "integral", "solve", "solveSystem",           // functionals
     "pi", "e", "i",                                       // constants (i = imaginary unit)
     "simplify", "expand", "eval", "env", "vars",
@@ -219,7 +219,8 @@ object Parser extends JavaTokenParsers:
     "acos(" ~> guardedExpr <~ ")"                         ^^ Acos.apply                        |
     "atan(" ~> guardedExpr <~ ")"                         ^^ Atan.apply                        |
     "transpose(" ~> guardedExpr <~ ")"                    ^^ Transpose.apply                   |
-    "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }
+    "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }            |
+    "at("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case m ~ _ ~ r ~ _ ~ c => _MatrixIndex(m, r, c) }
 
   lazy val functional: Parser[_Expression] =
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
