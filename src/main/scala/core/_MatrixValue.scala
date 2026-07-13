@@ -51,12 +51,15 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
   override lazy val hashCode: Int =
     31 * (31 * rows + cols) + java.util.Arrays.hashCode(data)
 
-  // toString rounds for display only (DefaultPrecision), mirroring _Number.
-  override def toString: String =
+  // display(p) rounds to p decimal places — mirrors _Number.display(p) for REPL precision.
+  def display(precision: Int): String =
     (0 until rows).map(i =>
-      (0 until cols).map(j => _Number.round(this(i, j), Environment.DefaultPrecision))
+      (0 until cols).map(j => _Number.round(this(i, j), precision))
         .mkString("[", ", ", "]")
     ).mkString("[", ", ", "]")
+
+  // toString rounds for display only (DefaultPrecision), mirroring _Number.
+  override def toString: String = display(Environment.DefaultPrecision)
 
   def isFinite: Boolean = data.forall(d => !d.isNaN && !d.isInfinite)
 

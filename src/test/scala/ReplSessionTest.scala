@@ -533,3 +533,26 @@ class ReplSessionTest extends AnyFlatSpec:
     val s = session
     assert(s.execute("integral(x^2, x)") == "((x ^ 3.0) / 3.0)")
   }
+
+  // --- issue 1.6: _MatrixValue display must respect session precision ---
+
+  "a matrix result" should "respect precision 2" in
+  {
+    val s = session
+    s.execute("precision 2")
+    assert(s.execute("[[1.23456789, 2]]") == "[[1.23, 2.0]]")
+  }
+
+  "a matrix result" should "respect precision 0 (whole numbers)" in
+  {
+    val s = session
+    s.execute("precision 0")
+    assert(s.execute("[[1.7, 2.3]]") == "[[2.0, 2.0]]")
+  }
+
+  "a scalar result after setting precision 2" should "still honour precision (regression)" in
+  {
+    val s = session
+    s.execute("precision 2")
+    assert(s.execute("1.23456789") == "1.23")
+  }

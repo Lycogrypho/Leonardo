@@ -124,6 +124,18 @@ class MatrixTest extends AnyFlatSpec:
     assert(dense(2, 2, 1, 2, 3, 4.123456789).toString == "[[1.0, 2.0], [3.0, 4.12346]]")
   }
 
+  // --- issue 1.6: display(precision) must honour the requested precision ---
+
+  "_MatrixValue display(2)" should "round elements to 2 decimal places" in
+  {
+    assert(dense(1, 2, 1.23456789, 2.0).display(2) == "[[1.23, 2.0]]")
+  }
+
+  "_MatrixValue display(0)" should "round elements to whole numbers" in
+  {
+    assert(dense(1, 2, 1.7, 2.3).display(0) == "[[2.0, 2.0]]")
+  }
+
   // --- MatSum ---
 
   "MatSum of two dense matrices" should "add element-wise" in
