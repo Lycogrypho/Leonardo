@@ -49,10 +49,10 @@ final class Session:
 
   private val emptyEnv = new Environment()
 
-  private val assignment   = """([a-zA-Z][a-zA-Z0-9]*)\s*:=(.+)""".r
+  private val assignment   = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=(.+)""".r
   // Lazy first group lets the regex engine find the shortest expression that still
   // leaves valid tokens for <var> <lo> <hi> and an optional <n> at the tail.
-  private val samplesRegex = """^(.+?)\s+([a-zA-Z]\w*)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)(?:\s+(\d+))?$""".r
+  private val samplesRegex = """^(.+?)\s+([a-zA-Z][a-zA-Z0-9_]*)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)(?:\s+(\d+))?$""".r
 
   def execute(line: String): String = line.trim match
     case ""                     => ""

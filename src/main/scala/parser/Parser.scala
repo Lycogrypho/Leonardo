@@ -44,8 +44,9 @@ import equation.*
  *                                                    -- exponent signs ("3E-5") are unaffected
  *   constant    ::= "pi" | "e" | "i"      -- built-in literals (word-boundary guarded);
  *                                         -- "i" is the imaginary unit → _Complex(0, 1)
- *   variable    ::= [a-zA-Z][a-zA-Z0-9]*  -- except ReservedWords (functions, functionals,
- *                                         -- constants, REPL commands); exact match only
+ *   variable    ::= [a-zA-Z][a-zA-Z0-9_]*  -- except ReservedWords (functions, functionals,
+ *                                         -- constants, REPL commands); exact match only;
+ *                                         -- underscore allowed after the first char (x_1, alpha_hat)
  *
  * Sign handling: a signed literal token would let implicit multiplication swallow
  * "3-2" as 3 * (-2) instead of subtraction (and "e-3" as e * (-3)). So the number
@@ -251,7 +252,7 @@ object Parser extends JavaTokenParsers:
     """i(?![a-zA-Z0-9])""".r  ^^^ _Complex.of(0, 1)
   // Reserved words are rejected wholesale — the regex is greedy, so "simplify"
   // cannot fall back to variable "simplif" times variable "y".
-  lazy val variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9]*""".r ^? (
+  lazy val variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9_]*""".r ^? (
     { case s if !ReservedWords.contains(s) => _Variable(s) },
     s => s"'$s' is a reserved word and cannot be used as a variable"
   )

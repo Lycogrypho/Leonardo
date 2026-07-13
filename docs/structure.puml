@@ -380,6 +380,7 @@ package "parser" {
         + ReservedWords: Set
         __ __
         MaxDepth = 500
+        variable ::= [a-zA-Z][a-zA-Z0-9_]*
     }
 }
 
