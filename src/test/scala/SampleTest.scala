@@ -132,6 +132,23 @@ class SampleTest extends AnyFlatSpec:
     assert(s.execute("samples x x").contains("usage"))
   }
 
+  "the samples command with underscore variable name" should "accept x_1 and sample the expression" in
+  {
+    val s = Session()
+    // x_1 is a valid variable name (grammar extended to [a-zA-Z][a-zA-Z0-9_]*); the command
+    // should produce data rows, not a usage error.
+    val out = s.execute("samples x_1*x_1 x_1 0 1 5")
+    assert(!out.contains("usage"), s"expected data rows, got: $out")
+    assert(out.linesIterator.length == 5)
+  }
+
+  "the samples command with underscore variable name in parser" should "produce a valid parse" in
+  {
+    import parser.Parser
+    val r = Parser.parse("x_1 + alpha_hat")
+    assert(r.successful, s"expected successful parse, got: $r")
+  }
+
   "samples as a variable name" should "be rejected by the parser" in
   {
     val r = Parser.parse("samples")
