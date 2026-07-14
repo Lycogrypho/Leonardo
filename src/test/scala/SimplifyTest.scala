@@ -172,14 +172,14 @@ class SimplifyTest extends AnyFlatSpec:
 
   // --- inverse function pairs ---
 
-  "simplify(log(exp(x)))" should "equal x" in
+  "simplify(ln(exp(x)))" should "equal x" in
   {
-    assert(Log(Exp(x)).simplify() == x)
+    assert(Ln(Exp(x)).simplify() == x)
   }
 
-  "simplify(exp(log(x)))" should "equal x" in
+  "simplify(exp(ln(x)))" should "equal x" in
   {
-    assert(Exp(Log(x)).simplify() == x)
+    assert(Exp(Ln(x)).simplify() == x)
   }
 
   // --- known function values ---
@@ -189,9 +189,19 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Exp(_Number(0)).simplify() == _Number(1))
   }
 
-  "simplify(log(1))" should "equal 0" in
+  "simplify(ln(1))" should "equal 0" in
   {
-    assert(Log(_Number(1)).simplify() == _Number(0))
+    assert(Ln(_Number(1)).simplify() == _Number(0))
+  }
+
+  "simplify(log(1, 10))" should "equal 0" in
+  {
+    assert(LogBase(_Number(1), _Number(10)).simplify() == _Number(0))
+  }
+
+  "simplify(log(x, x))" should "equal 1" in
+  {
+    assert(LogBase(x, x).simplify() == _Number(1))
   }
 
   "simplify(sin(0))" should "equal 0" in

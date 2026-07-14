@@ -26,7 +26,7 @@ import equation.*
  *   factor      ::= function | functional | matrix | value | "(" equationExpr ")"
  *   matrix      ::= "[" matrixRow ("," matrixRow)* "]"   -- rows must be equally long
  *   matrixRow   ::= "[" equationExpr ("," equationExpr)* "]"
- *   function    ::= "exp(" expr ")" | "log(" expr ")" | "sin(" expr ")"
+ *   function    ::= "exp(" expr ")" | "log(" expr ")" | "ln(" expr ")" | "sin(" expr ")"
  *                 | "cos(" expr ")" | "tan(" expr ")" | "tg(" expr ")" | "asin(" expr ")" | "acos(" expr ")" | "atan(" expr ")"
  *                 | "transpose(" expr ")" | "pow(" expr "," expr ")"
  *   functional  ::= "derive(" expr "," variable ")"
@@ -76,7 +76,7 @@ object Parser extends JavaTokenParsers:
   // a command. Bare "sin" or "simplify" is a parse error, not a variable; names
   // merely starting with a reserved word ("sina", "evalx") stay legal.
   val ReservedWords: Set[String] = Set(
-    "exp", "log", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
+    "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at",                             // functions
     "derive", "integral", "solve", "solveSystem",           // functionals
     "pi", "e", "i",                                       // constants (i = imaginary unit)
@@ -210,9 +210,13 @@ object Parser extends JavaTokenParsers:
   lazy val matrixRow: Parser[List[_Expression]] = "[" ~> rep1sep(guardedExpr, ",") <~ "]"
 
   lazy val function: Parser[_Expression] =
-    "exp(" ~> guardedExpr <~ ")"                          ^^ Exp.apply                         |
-    "log(" ~> guardedExpr <~ ")"                          ^^ Log.apply                         |
-    "sin(" ~> guardedExpr <~ ")"                          ^^ Sin.apply                         |
+    "exp(" ~> guardedExpr <~ ")"                                              ^^ Exp.apply      |
+    "ln("  ~> guardedExpr <~ ")"                                              ^^ Ln.apply       |
+    "log(" ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ {
+      case e ~ None    => LogBase(e, _Number(10))
+      case e ~ Some(b) => LogBase(e, b)
+    }                                                                                           |
+    "sin(" ~> guardedExpr <~ ")"                                              ^^ Sin.apply      |
     "cos(" ~> guardedExpr <~ ")"                          ^^ Cos.apply                         |
     "tan(" ~> guardedExpr <~ ")"                          ^^ Tg.apply                         |
     "tg("  ~> guardedExpr <~ ")"                          ^^ Tg.apply                          |

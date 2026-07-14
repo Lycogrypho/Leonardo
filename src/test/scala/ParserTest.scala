@@ -21,7 +21,7 @@ class ParserTest extends AnyFlatSpec:
     ("exp(1)",             """exp(1.0)""",                    Exp(_Number(1.0))),
     ("sin(a)",             """sin(a)""",                      Sin(_Variable("a"))),
     ("tg(x + 2)",          """tan((x + 2.0))""",               Tg(Sum(_Variable("x"), _Number(2.0)))),
-    ("tg(x + log(2))",     """tan((x + log(2.0)))""",          Tg(Sum(_Variable("x"), Log(_Number(2.0))))),
+    ("tg(x + log(2))",     """tan((x + log(2.0, 10.0)))""",     Tg(Sum(_Variable("x"), LogBase(_Number(2.0), _Number(10.0))))),
     ("1* exp(x)",          """(1.0 * exp(x))""",              Product(_Number(1), Exp(_Variable("x")))),
     ("exp(cos(a))",        """exp(cos(a))""",                 Exp(Cos(_Variable("a")))),
     ("3a",                 """(3.0 * a)""",                   Product(_Number(3.0), _Variable("a"))),
@@ -337,4 +337,73 @@ class ParserTest extends AnyFlatSpec:
   "Tg.toString" should "emit tan(...) not tg(...)" in
   {
     assert(Tg(_Variable("x")).toString == "tan(x)")
+  }
+
+  // --- ln(x) = natural logarithm; log(x) / log(x, b) = general-base logarithm ---
+
+  "ln(x)" should "parse as Ln(_Variable(\"x\"))" in
+  {
+    assert(parse("ln(x)") == Ln(_Variable("x")))
+  }
+
+  "ln(e)" should "evaluate to 1.0" in
+  {
+    parse("ln(e)").eval(new Environment()) match
+      case Right(_Number(v)) => assert(math.abs(v - 1.0) < 1e-9)
+      case other             => fail(s"did not reduce: $other")
+  }
+
+  "Ln.toString" should "emit ln(...)" in
+  {
+    assert(Ln(_Variable("x")).toString == "ln(x)")
+  }
+
+  "ln(x) round-trip" should "be a toString fixpoint" in
+  {
+    val parsed = parse("ln(x)")
+    assert(parsed.toString == "ln(x)")
+    assert(parse(parsed.toString) == parsed)
+  }
+
+  "log(x)" should "parse as LogBase(x, 10.0) — base-10 shorthand" in
+  {
+    assert(parse("log(x)") == LogBase(_Variable("x"), _Number(10.0)))
+  }
+
+  "log(x, 2)" should "parse as LogBase(x, 2.0) — binary logarithm" in
+  {
+    assert(parse("log(x, 2)") == LogBase(_Variable("x"), _Number(2.0)))
+  }
+
+  "log(x, e)" should "be identical to ln(x) after eval" in
+  {
+    val env = new Environment().withBinding("x", _Number(math.E))
+    val logE = parse("log(x, e)").eval(env)
+    val lnX  = parse("ln(x)").eval(env)
+    (logE, lnX) match
+      case (Right(_Number(a)), Right(_Number(b))) => assert(math.abs(a - b) < 1e-9)
+      case other                                  => fail(s"unexpected: $other")
+  }
+
+  "log(100, 10)" should "evaluate to 2.0" in
+  {
+    parse("log(100, 10)").eval(new Environment()) match
+      case Right(_Number(v)) => assert(math.abs(v - 2.0) < 1e-9)
+      case other             => fail(s"did not reduce: $other")
+  }
+
+  "LogBase.toString" should "emit log(e, base)" in
+  {
+    assert(LogBase(_Variable("x"), _Number(10.0)).toString == "log(x, 10.0)")
+  }
+
+  "log(x, 10) round-trip" should "be a toString fixpoint" in
+  {
+    val parsed = parse("log(x, 10)")
+    assert(parse(parsed.toString) == parsed)
+  }
+
+  "bare \"ln\"" should "fail to parse as a variable (reserved word)" in
+  {
+    assert(!Parser.parse("ln").successful)
   }

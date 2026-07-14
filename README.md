@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/src/Banner.svg" alt="Leonardo" width="80%"/></p>
+<div align="center"><img src="docs/src/Banner.svg" alt="Leonardo" width="80%"/></div>
 
 ## Introduction
 
@@ -12,13 +12,13 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 ### Main Characteristics
 
-- **Expression Parsing**: Parses mathematical expressions using a recursive descent parser based on `scala-parser-combinators`. Supports standard operators, mathematical functions (`sin`, `cos`, `tan`/`tg`, `asin`, `acos`, `atan`, `exp`, `log`), implicit multiplication, unary minus in any operand position (`3 * -x`, `2^-x`), multi-character variable names (`theta`, `x1`, `alpha`), and built-in constants `pi` and `e`.
+- **Expression Parsing**: Parses mathematical expressions using a recursive descent parser based on `scala-parser-combinators`. Supports standard operators, mathematical functions (`sin`, `cos`, `tan`/`tg`, `asin`, `acos`, `atan`, `exp`, `ln`, `log`, `log(x, b)`), implicit multiplication, unary minus in any operand position (`3 * -x`, `2^-x`), multi-character variable names (`theta`, `x1`, `alpha`), and built-in constants `pi`, `e`, and `i` (imaginary unit). Logarithms: `ln(x)` is the natural log; `log(x)` is decimal (base-10); `log(x, b)` is the general base-b log computed as `ln(x)/ln(b)` — so `log(1000, 10) = 3`, `log(8, 2) = 3`.
 
 - **Dual Evaluation**: Expressions evaluate to either:
   - A numeric result (`Double`, or a complex value) if all variables are bound
   - A symbolic result (an AST node) if variables remain unbound
 
-- **Complex Numbers**: The imaginary unit `i` is a built-in constant (`2 + 3i`, `3i`), sitting alongside `pi` and `e`. Arithmetic is a full field — `i*i = -1`, `(2 + 3i)*(1 - i) = 5 + i`, division and powers included — implemented as a `_Complex(re, im)` value that collapses back to a plain real whenever the imaginary part vanishes, so real math is untouched. The elementary functions `exp`, `log`, `sin`, `cos`, `tan` accept complex arguments (`exp(i*pi) = -1`, Euler's identity), and complex closure means roots and logarithms of negatives now return their principal complex values: `(-2)^0.5 = i√2`, `log(-1) = iπ`, `(-8)^(1/3)` is the principal complex cube root. Values display as `(a + bi)` (or `bi` / `i` when purely imaginary) and round-trip through the parser; a floating-point residual imaginary part rounds away at display, so `exp(i*pi)` prints `-1.0`. Genuinely undefined forms (`log(0)`, `0^-1`, division by zero) still stay symbolic.
+- **Complex Numbers**: The imaginary unit `i` is a built-in constant (`2 + 3i`, `3i`), sitting alongside `pi` and `e`. Arithmetic is a full field — `i*i = -1`, `(2 + 3i)*(1 - i) = 5 + i`, division and powers included — implemented as a `_Complex(re, im)` value that collapses back to a plain real whenever the imaginary part vanishes, so real math is untouched. The elementary functions `exp`, `ln`, `log`, `sin`, `cos`, `tan` accept complex arguments (`exp(i*pi) = -1`, Euler's identity), and complex closure means roots and logarithms of negatives now return their principal complex values: `(-2)^0.5 = i√2`, `ln(-1) = iπ`, `(-8)^(1/3)` is the principal complex cube root. Values display as `(a + bi)` (or `bi` / `i` when purely imaginary) and round-trip through the parser; a floating-point residual imaginary part rounds away at display, so `exp(i*pi)` prints `-1.0`. Genuinely undefined forms (`ln(0)`, `0^-1`, division by zero) still stay symbolic.
 
 - **Variable Binding**: Support for binding variables to numeric values, allowing mixed symbolic-numeric evaluation of complex expressions. Multi-character variable names are fully supported.
 

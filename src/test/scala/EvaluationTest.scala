@@ -56,19 +56,19 @@ class EvaluationTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
-  // Complex closure: log/sqrt of a negative real now yield the principal complex
+  // Complex closure: ln/sqrt of a negative real now yield the principal complex
   // value rather than staying symbolic (see ComplexTest for the full behaviour).
-  "log of a negative number" should "yield the principal complex value ln|x| + iπ" in
+  "ln of a negative number" should "yield the principal complex value ln|x| + iπ" in
   {
-    Log(_Number(-1)).eval(env) match
+    Ln(_Number(-1)).eval(env) match
       case Right(c: _Complex) =>
         assert(math.abs(c.re) < 1e-9 && math.abs(c.im - math.Pi) < 1e-9)
       case other => fail(s"expected a complex value but got $other")
   }
 
-  "log of zero" should "stay symbolic instead of evaluating to -Infinity" in
+  "ln of zero" should "stay symbolic instead of evaluating to -Infinity" in
   {
-    val e = Log(_Number(0))
+    val e = Ln(_Number(0))
     assert(e.eval(env) == Left(e))
   }
 

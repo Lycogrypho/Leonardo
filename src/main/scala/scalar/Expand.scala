@@ -40,8 +40,9 @@ def expand(e: _Expression): _Expression = e match
 
   case Power(a, b) => Power(expand(a), expand(b))
 
-  case Exp(a)   => Exp(expand(a))
-  case Log(a)   => Log(expand(a))
+  case Exp(a)        => Exp(expand(a))
+  case Ln(a)         => Ln(expand(a))
+  case LogBase(a, b) => LogBase(expand(a), expand(b))
   case Sin(a)   => Sin(expand(a))
   case Cos(a)   => Cos(expand(a))
   case Tg(a)    => Tg(expand(a))

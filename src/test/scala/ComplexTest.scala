@@ -102,14 +102,19 @@ class ComplexTest extends AnyFlatSpec:
     assertComplex(evalValue("pow(0 - 8, 1/3)"), 1.0, math.sqrt(3))
   }
 
-  "log(-1)" should "be iπ" in
+  "ln(-1)" should "be iπ" in
   {
-    assertComplex(evalValue("log(0 - 1)"), 0.0, math.Pi)
+    assertComplex(evalValue("ln(0 - 1)"), 0.0, math.Pi)
   }
 
-  "log(i)" should "be iπ/2" in
+  "ln(i)" should "be iπ/2" in
   {
-    assertComplex(evalValue("log(i)"), 0.0, math.Pi / 2)
+    assertComplex(evalValue("ln(i)"), 0.0, math.Pi / 2)
+  }
+
+  "log(-1, 10)" should "be iπ/ln(10)" in
+  {
+    assertComplex(evalValue("log(0 - 1, 10)"), 0.0, math.Pi / math.log(10))
   }
 
   // --- elementary functions on complex arguments ---
@@ -137,9 +142,9 @@ class ComplexTest extends AnyFlatSpec:
 
   // --- domain errors still stay symbolic ---
 
-  "log(0)" should "stay symbolic even under complex closure" in
+  "ln(0)" should "stay symbolic even under complex closure" in
   {
-    val e = Log(_Number(0))
+    val e = Ln(_Number(0))
     assert(e.eval(env) == Left(e))
   }
 

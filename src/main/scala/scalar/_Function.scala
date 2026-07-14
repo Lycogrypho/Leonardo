@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package scalar
 
 import core.*
-import scala.math.{exp, log, sin, cos, tan, asin, acos, atan}
+import scala.math.{exp, log, log10, sin, cos, tan, asin, acos, atan}
 
 
 abstract class _Function extends _Expression
@@ -20,22 +20,43 @@ case class Exp(e: _Expression) extends _Function:
       case other             => Left(Exp(other.toExpression))
 
 
-case class Log(e: _Expression) extends _Function:
-  override def toString: String = s"log($e)"
+// Natural logarithm (base e). ln(x) in the grammar.
+case class Ln(e: _Expression) extends _Function:
+  override def toString: String = s"ln($e)"
   override def children: List[_Expression] = List(e)
-  override def rebuild(c: List[_Expression]): _Expression = Log(c.head)
+  override def rebuild(c: List[_Expression]): _Expression = Ln(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
       case Right(_Number(x)) =>
         val r = log(x)
-        // log of a negative number is now the principal complex value ln|x| + iπ;
-        // log(0) is still undefined (_Complex.logc returns None) → stays symbolic.
+        // ln of a negative number is now the principal complex value ln|x| + iπ;
+        // ln(0) is still undefined (_Complex.logc returns None) → stays symbolic.
         if r.isNaN || r.isInfinite then
           _Complex.logc(_Number(x)).map(Right(_)).getOrElse(Left(this))
         else Right(_Number(r))
-      case Right(c: _Complex) => _Complex.logc(c).map(Right(_)).getOrElse(Left(Log(c)))
-      case other             => Left(Log(other.toExpression))
+      case Right(c: _Complex) => _Complex.logc(c).map(Right(_)).getOrElse(Left(Ln(c)))
+      case other             => Left(Ln(other.toExpression))
+
+
+// General-base logarithm. log(x, b) in the grammar; log(x) redirects to log(x, 10).
+// Evaluated via the change-of-base formula: log_b(x) = ln(x) / ln(b).
+// Complex closure is inherited: both ln(x) and ln(b) use _Complex.logc, so
+// log(-1, 10) = iπ / ln(10) and log(i, e) = iπ/2 are computed correctly.
+// Undefined forms (log(0, b), log(x, 1), log(x, 0)) stay symbolic.
+case class LogBase(e: _Expression, base: _Expression) extends _Function:
+  override def toString: String = s"log($e, $base)"
+  override def children: List[_Expression] = List(e, base)
+  override def rebuild(c: List[_Expression]): _Expression = LogBase(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (e.eval(env), base.eval(env)) match
+      case (Right(ev: _Value), Right(bv: _Value)) =>
+        (_Complex.logc(ev), _Complex.logc(bv)) match
+          case (Some(le), Some(lb)) =>
+            _Complex.div(le, lb).map(Right(_)).getOrElse(Left(this))
+          case _ => Left(this)
+      case (re, rb) => Left(LogBase(re.toExpression, rb.toExpression))
 
 
 case class Sin(e: _Expression) extends _Function:

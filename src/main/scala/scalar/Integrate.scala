@@ -51,7 +51,7 @@ def integrate(e: _Expression, v: _Variable): _Expression = e match
   //   ∫ uⁿ dv = u^(n+1) / (a·(n+1))   for n ≠ -1
   //   ∫ u⁻¹ dv = log(u) / a           for n = -1
   case Power(u, _Number(n)) => linearSlope(u, v) match
-    case Some(a) if n == -1.0 => Ratio(Log(u), _Number(a))
+    case Some(a) if n == -1.0 => Ratio(Ln(u), _Number(a))
     case Some(a)              => Ratio(Power(u, _Number(n + 1)), _Number(a * (n + 1)))
     case None                 => _Integral(e, v)
 
@@ -76,7 +76,7 @@ def integrate(e: _Expression, v: _Variable): _Expression = e match
 
   // ∫ c/u dv = c·log(u)/a   (reciprocal written as a Ratio rather than Power(u, -1))
   case Ratio(a, u) if !dependsOn(a, v) => linearSlope(u, v) match
-    case Some(s) => Product(a, Ratio(Log(u), _Number(s)))
+    case Some(s) => Product(a, Ratio(Ln(u), _Number(s)))
     case None    => _Integral(e, v)
 
   // exponential / trigonometric primitives over a linear argument u (slope a):

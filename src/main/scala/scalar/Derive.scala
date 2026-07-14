@@ -56,13 +56,18 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   // mathematically undefined (sign of b unknown); stay symbolic rather than emit log(0).
   case Power(_Number(0.0), b) =>
     if !dependsOn(b, v) then _Number(0) else _Derivative(e, v)
-  // General power rule: a^b * (b' * log(a) + b * a' / a)
+  // General power rule: a^b * (b' * ln(a) + b * a' / a)
   case Power(a, b)          => dmul(
                                  Power(a, b),
-                                 dadd(dmul(derive(b, v), Log(a)), Ratio(dmul(b, derive(a, v)), a))
+                                 dadd(dmul(derive(b, v), Ln(a)), Ratio(dmul(b, derive(a, v)), a))
                                )
   case Exp(a)               => dmul(Exp(a), derive(a, v))
-  case Log(a)               => Ratio(derive(a, v), a)
+  case Ln(a)                => Ratio(derive(a, v), a)
+  // d/dx log_b(f(x)) = f'(x) / (f(x) * ln(b))   when b is constant w.r.t. x
+  // general case: reduce to the ratio rule on ln(f)/ln(b)
+  case LogBase(a, b) if !dependsOn(b, v) =>
+                               Ratio(derive(a, v), Product(a, Ln(b)))
+  case LogBase(a, b)        => derive(Ratio(Ln(a), Ln(b)), v)
   case Sin(a)               => dmul(Cos(a), derive(a, v))
   case Cos(a)               => dmul(_Number(-1), dmul(Sin(a), derive(a, v)))
   case Tg(a)                => Ratio(derive(a, v), Product(Cos(a), Cos(a)))

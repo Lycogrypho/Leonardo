@@ -97,11 +97,18 @@ class DerivativeTest extends AnyFlatSpec:
     assert(math.abs(evalNum(expr, "x" -> 0.0) - 1.0) < 1e-5)
   }
 
-  // d/dx(log(x)) = 1/x, at x=1 → 1
-  "derivative of log(x) at x=1" should "be 1.0" in
+  // d/dx(ln(x)) = 1/x, at x=1 → 1
+  "derivative of ln(x) at x=1" should "be 1.0" in
   {
-    val expr = _Derivative(Log(x), x)
+    val expr = _Derivative(Ln(x), x)
     assert(math.abs(evalNum(expr, "x" -> 1.0) - 1.0) < 1e-4)
+  }
+
+  // d/dx(log₁₀(x)) = 1/(x·ln(10)), at x=1 → 1/ln(10) ≈ 0.4343
+  "derivative of log(x, 10) at x=1" should "be 1/ln(10)" in
+  {
+    val expr = _Derivative(LogBase(x, _Number(10)), x)
+    assert(math.abs(evalNum(expr, "x" -> 1.0) - (1.0 / math.log(10))) < 1e-4)
   }
 
   // --- chain rule ---

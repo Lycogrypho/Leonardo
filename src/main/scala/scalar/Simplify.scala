@@ -80,14 +80,20 @@ private def simplifyImpl(e: _Expression): _Expression = e match
   case Exp(a) =>
     simplify(a) match
       case _Number(d) if d == 0.0 => _Number(1)
-      case Log(x)                 => x             // exp(log(x)) = x
+      case Ln(x)                  => x             // exp(ln(x)) = x
       case x                      => Exp(x)
 
-  case Log(a) =>
+  case Ln(a) =>
     simplify(a) match
       case _Number(d) if d == 1.0 => _Number(0)
-      case Exp(x)                 => x             // log(exp(x)) = x
-      case x                      => Log(x)
+      case Exp(x)                 => x             // ln(exp(x)) = x
+      case x                      => Ln(x)
+
+  case LogBase(a, b) =>
+    (simplify(a), simplify(b)) match
+      case (_Number(d), _) if d == 1.0 => _Number(0)   // log_b(1) = 0
+      case (x, y) if x == y            => _Number(1)   // log_b(b) = 1
+      case (x, y)                      => LogBase(x, y)
 
   case Sin(a) =>
     simplify(a) match

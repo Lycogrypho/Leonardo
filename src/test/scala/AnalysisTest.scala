@@ -88,9 +88,9 @@ class AnalysisTest extends AnyFlatSpec:
     assert(!Exp(n).dependsOn(x))
   }
 
-  "Log(x)" should "depend on x" in
+  "Ln(x)" should "depend on x" in
   {
-    assert(Log(x).dependsOn(x))
+    assert(Ln(x).dependsOn(x))
   }
 
   "Sin(x)" should "depend on x" in

@@ -34,7 +34,7 @@ class SampleTest extends AnyFlatSpec:
   "sample of a complex-only result" should "return empty (complex not _Number)" in
   {
     // log(-|x|) for x in [1, 2] gives complex results → not _Number → all dropped
-    val pts = sample(Log(Product(_Number(-1), x)), x, 1.0, 2.0, 5, env)
+    val pts = sample(Ln(Product(_Number(-1), x)), x, 1.0, 2.0, 5, env)
     assert(pts.isEmpty)
   }
 
