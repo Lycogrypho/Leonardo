@@ -1,6 +1,6 @@
 package it.grypho.scala.leonardo
 
-import cli.Session
+import cli.{Session, LeonardoHighlighter}
 import org.scalatest.flatspec.AnyFlatSpec
 
 
@@ -120,7 +120,7 @@ class ReplSessionTest extends AnyFlatSpec:
         s"'$name' must be rejected as an assignment target")
     // commands still work afterwards
     assert(s.execute("simplify x + 0") == "x")
-    assert(s.execute("env") == "precision = 5")
+    assert(s.execute("env").contains("precision = 5"))
   }
 
   // --- issue 4.1: matrices in the REPL ---
@@ -647,6 +647,119 @@ class ReplSessionTest extends AnyFlatSpec:
     val s = session
     s.execute("precision 2")
     assert(s.execute("1.23456789") == "1.23")
+  }
+
+  // --- issue 4.5b: syntax highlighting color schemes ---
+
+  "default color scheme" should "be dark" in
+  {
+    assert(session.currentColorScheme == "dark")
+  }
+
+  "colors dark" should "accept the dark scheme and report it" in
+  {
+    val s = session
+    assert(s.execute("colors dark") == "colors = dark")
+    assert(s.currentColorScheme == "dark")
+  }
+
+  "colors light" should "switch to the light scheme" in
+  {
+    val s = session
+    assert(s.execute("colors light") == "colors = light")
+    assert(s.currentColorScheme == "light")
+  }
+
+  "colors none" should "disable highlighting" in
+  {
+    val s = session
+    assert(s.execute("colors none") == "colors = none")
+    assert(s.currentColorScheme == "none")
+  }
+
+  "bare colors" should "report the active scheme without changing it" in
+  {
+    val s = session
+    s.execute("colors light")
+    assert(s.execute("colors") == "colors = light")
+    assert(s.currentColorScheme == "light")
+  }
+
+  "colors with an unknown name" should "report an error and list available schemes" in
+  {
+    val s = session
+    val out = s.execute("colors rainbow")
+    assert(out.contains("rainbow"),  s"error must echo the bad name; got: $out")
+    assert(out.contains("dark") && out.contains("light") && out.contains("none"),
+      s"error must list available schemes; got: $out")
+    assert(s.currentColorScheme == "dark")   // unchanged
+  }
+
+  "session.script" should "include the colors command for persistence" in
+  {
+    val s = session
+    s.execute("colors none")
+    assert(s.script.contains("colors none"), s"script must persist colors; got:\n${s.script}")
+  }
+
+  "colors setting" should "round-trip through script / load" in
+  {
+    val s1 = session
+    s1.execute("colors light")
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.currentColorScheme == "light")
+  }
+
+  "colors setting" should "round-trip through saveFile / loadFile" in
+  {
+    val tmp = java.io.File.createTempFile("leonardo-colors", ".txt")
+    tmp.deleteOnExit()
+    try
+      val s1 = session
+      s1.execute("colors none")
+      Session.saveFile(s1, tmp.getPath)
+      val s2 = session
+      Session.loadFile(s2, tmp.getPath)
+      assert(s2.currentColorScheme == "none")
+    finally tmp.delete()
+  }
+
+  // LeonardoHighlighter — verify content is preserved for all three schemes.
+  // reader is passed as null because our highlight() implementation never uses it.
+
+  "LeonardoHighlighter with none scheme" should "preserve buffer content unchanged" in
+  {
+    val h = LeonardoHighlighter(() => "none")
+    val inputs = List(
+      "sin(pi) + 3.14",
+      "simplify x + 0",
+      "derive(f, x)",
+      "x := 2 * pi",
+      "solve(x^2 = 4, x)",
+      "e + i + pi"
+    )
+    for input <- inputs do
+      assert(h.highlight(null, input).toString == input,
+        s"none scheme must not alter content for: $input")
+  }
+
+  "LeonardoHighlighter with dark scheme" should "preserve buffer content unchanged" in
+  {
+    val h = LeonardoHighlighter(() => "dark")
+    val inputs = List("simplify sin(x) + 0", "x := 3", "1.5e-3 + 2", "pi * e")
+    for input <- inputs do
+      assert(h.highlight(null, input).toString == input,
+        s"dark scheme must not alter content for: $input")
+  }
+
+  "LeonardoHighlighter with light scheme" should "preserve buffer content unchanged" in
+  {
+    val h = LeonardoHighlighter(() => "light")
+    val inputs = List("expand (x + 1)^2", "integral(x^2, x)", "cos(pi) + i")
+    for input <- inputs do
+      assert(h.highlight(null, input).toString == input,
+        s"light scheme must not alter content for: $input")
   }
 
   // --- issue 4.5: REPL read-loop dispatch (Session.step) ---

@@ -77,6 +77,17 @@ edit the current line and to recall earlier commands, which persist across sessi
 `Ctrl-D` (or `quit`/`exit`) ends it. When no interactive console is attached (piped
 input, CI), the prompt degrades gracefully to a plain line reader.
 
+Token-level syntax highlighting colours the input as you type. Three built-in schemes are
+available; switch with the `colors` command:
+
+| Command | Scheme |
+|---|---|
+| `colors dark` | bold yellow commands · cyan functions · magenta constants · green numbers (default) |
+| `colors light` | bold blue commands · green functions · magenta constants · red numbers |
+| `colors none` | no colouring |
+
+The active scheme is persisted by `:save` and restored by `:load`.
+
 Assignment uses `:=` (the CAS convention): bare `=` always denotes an equation, so
 `x = 2*x + 1` is a relation to evaluate, never a binding. Session scripts emit `:=`;
 old `=`-style `:save` files are not accepted and must be re-created.

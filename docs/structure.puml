@@ -395,9 +395,11 @@ package "parser" {
 package "cli" {
     class "Session" [[repl.html]] {
         - precision: Int
+        - colorSchemeName: String
         - bindings: Map
         - definitions: Map
         + execute(line: String): String
+        + currentColorScheme: String
         + script: String
         + load(text: String): String
         __ companion __
@@ -407,10 +409,28 @@ package "cli" {
         + step(session, line): Option
     }
 
+    class "ColorScheme" [[repl.html]] {
+        command / function / constant
+        number / operator / equation
+        paren / variable: AttributedStyle
+        __ companion __
+        Dark / Light / Plain schemes
+        All: Map[String, ColorScheme]
+        + named(name): ColorScheme
+    }
+
+    class "LeonardoHighlighter" [[repl.html]] {
+        schemeName: () => String
+        + highlight(reader, buffer): AttributedString
+    }
+
     class "repl()" <<main>> [[repl.html]] {
         JLine line editing + history
+        syntax highlighting wired
         drives the pure Session.step
     }
+
+    "LeonardoHighlighter" ..> "ColorScheme" : named()
 
     "repl()" --> "Session" : creates and drives
 }

@@ -44,8 +44,11 @@ import org.jline.terminal.TerminalBuilder
 final class Session:
   private val MaxPrecision = 15
   private var precision: Int = Environment.DefaultPrecision
+  private var colorSchemeName: String = "dark"
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
+
+  def currentColorScheme: String = colorSchemeName
 
   // Rebuilt per command from the immutable Environment constructor.
   private def env: Environment = new Environment(precision, bindings)
@@ -75,6 +78,8 @@ final class Session:
       s"cannot assign to '$name': it is a reserved word"
     case s"precision $n"        => setPrecision(n.trim)
     case s"unset $name"         => unset(name.trim)
+    case "colors"               => s"colors = $colorSchemeName"
+    case s"colors $name"        => setColors(name.trim)
     case s"simplify $rest"      => withParsed(rest)(e => simplify(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"expand $rest"        => withParsed(rest)(e => expand(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
@@ -94,10 +99,10 @@ final class Session:
     case other      => other.toString
 
   // Shared line-building for script (replayable) and state (human-readable).
-  // precLine differs in format: "precision N" (command) vs "precision = N" (display).
-  // bindFmt differs: serializeValue (raw round-trip safe) vs toString (display-rounded).
-  private def buildLines(precLine: String, bindFmt: _Value => String): String =
-    (List(precLine) ++
+  // headers: ordered preamble lines before bindings/definitions.
+  // bindFmt: serializeValue (raw, round-trip safe) for script; toString (display-rounded) for state.
+  private def buildLines(headers: List[String], bindFmt: _Value => String): String =
+    (headers ++
      bindings.toList.sortBy(_._1).map((k, v) => s"$k := ${bindFmt(v)}") ++
      definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
     ).mkString("\n")
@@ -108,7 +113,7 @@ final class Session:
    * through `load` (or line by line through `execute`) reconstructs the session.
    * Pure: this is what the REPL writes to a `:save` file.
    */
-  def script: String = buildLines(s"precision $precision", serializeValue)
+  def script: String = buildLines(List(s"precision $precision", s"colors $colorSchemeName"), serializeValue)
 
   /**
    * Execute a whole script body (e.g. the contents of a `:load` file), returning the
@@ -258,6 +263,14 @@ final class Session:
         s"precision expects a value between 0 and $MaxPrecision, got: $n"
       case _ => s"precision expects a non-negative integer, got: $text"
 
+  private def setColors(name: String): String =
+    if ColorScheme.All.contains(name) then
+      colorSchemeName = name
+      s"colors = $name"
+    else
+      val available = ColorScheme.All.keys.toList.sorted.mkString(", ")
+      s"unknown color scheme '$name'; available: $available"
+
   private def unset(name: String): String =
     if bindings.contains(name) || definitions.contains(name) then
       bindings = bindings - name
@@ -265,7 +278,7 @@ final class Session:
       s"$name unset"
     else s"$name is not set"
 
-  private def state: String = buildLines(s"precision = $precision", _.toString)
+  private def state: String = buildLines(List(s"precision = $precision"), _.toString)
 
 object Session:
   // Names the parser always resolves as constants; assignment to them is rejected.
@@ -307,6 +320,13 @@ object Session:
       """|Set the decimal precision for display and numeric comparisons.
          |  precision 8         8 significant decimal digits
          |  precision 5         restore default""".stripMargin,
+    "colors" ->
+      """|Switch the syntax-highlighting colour scheme for the interactive prompt.
+         |The scheme takes effect immediately and is persisted by :save / :load.
+         |  colors dark         bold yellow commands, cyan functions, magenta constants, green numbers (default)
+         |  colors light        bold blue commands, green functions, magenta constants, red numbers
+         |  colors none         disable highlighting
+         |  colors              show the active scheme""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -369,6 +389,7 @@ object Session:
       |                     then each element is simplified; scalars ignore bindings)
       |expand <expr>        distribute products over sums (matrix algebra as above)
       |precision <n>        set decimal precision
+      |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |env                  list precision, bindings, and definitions
       |unset <name>         remove a binding or definition
       |:load <file>         run a session script (bindings/definitions/commands)
@@ -416,9 +437,11 @@ object Session:
   // Command history persisted across sessions in the user's home directory; JLine
   // loads it on start and appends to it as lines are entered.
   val historyFile = java.nio.file.Paths.get(System.getProperty("user.home"), ".leonardo_history")
+  val highlighter = LeonardoHighlighter(() => session.currentColorScheme)
   val reader = LineReaderBuilder.builder()
     .terminal(terminal)
     .variable(LineReader.HISTORY_FILE, historyFile)
+    .highlighter(highlighter)
     .build()
   val out = terminal.writer()
   out.println("Leonardo CAS — type 'help' for commands, 'quit' to leave")
