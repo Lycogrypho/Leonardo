@@ -648,3 +648,54 @@ class ReplSessionTest extends AnyFlatSpec:
     s.execute("precision 2")
     assert(s.execute("1.23456789") == "1.23")
   }
+
+  // --- issue 4.5: REPL read-loop dispatch (Session.step) ---
+  // The JLine line-editing / persistent-history plumbing in repl() itself is
+  // interactive-only and not unit-testable, but the loop's dispatch logic is
+  // factored into the pure Session.step and covered here.
+
+  "step on quit, exit, or end-of-input" should "stop the loop (None)" in
+  {
+    assert(Session.step(session, Some("quit")).isEmpty)
+    assert(Session.step(session, Some("exit")).isEmpty)
+    assert(Session.step(session, None).isEmpty)   // Ctrl-D
+  }
+
+  "step on an ordinary expression" should "continue and carry the evaluated output" in
+  {
+    val s = session
+    s.execute("x := 4")
+    assert(Session.step(s, Some("x + 1")).contains("5.0"))
+  }
+
+  "step on a := assignment" should "continue and mutate the session" in
+  {
+    val s = session
+    assert(Session.step(s, Some("k := 3")).contains("k := 3.0"))
+    assert(s.execute("k") == "3.0")
+  }
+
+  "step on a blank or Ctrl-C-abandoned line" should "continue with empty output" in
+  {
+    // Ctrl-C is surfaced to the loop as an empty line, so it must never stop it.
+    assert(Session.step(session, Some("")).contains(""))
+  }
+
+  "step on :load and :save" should "perform the file IO the bare execute path refuses" in
+  {
+    val tmp = java.io.File.createTempFile("leonardo-step", ".txt")
+    tmp.deleteOnExit()
+    try
+      val s1 = session
+      s1.execute("a := 9")
+      val saved = Session.step(s1, Some(s":save ${tmp.getPath}"))
+      assert(saved.exists(_.startsWith("saved to")), s"expected save confirmation, got: $saved")
+
+      val s2 = session
+      val loaded = Session.step(s2, Some(s":load ${tmp.getPath}"))
+      assert(loaded.exists(!_.startsWith("could not read")), s"expected a successful load, got: $loaded")
+      assert(s2.execute("a") == "9.0")
+      // contrast: the same tokens through execute are refused as interactive-only
+      assert(s2.execute(":save foo.txt").contains("interactive"))
+    finally tmp.delete()
+  }

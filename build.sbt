@@ -66,6 +66,12 @@ lazy val root = (project in file("."))
 
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0"
 
+// JLine powers the REPL's interactive line editing (arrow keys, in-line editing) and
+// persistent command history (see cli/Repl.scala). Used only by the `repl` main — it
+// is not on the library's public API, and the read loop degrades to a plain dumb
+// terminal when no interactive console is attached (piped input, CI).
+libraryDependencies += "org.jline" % "jline" % "3.27.1"
+
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 
 libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.19" % "test"

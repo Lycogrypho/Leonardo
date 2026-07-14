@@ -6,6 +6,9 @@ import scalar.*
 import matrix.*
 import parser.Parser
 
+import org.jline.reader.{EndOfFileException, LineReader, LineReaderBuilder, UserInterruptException}
+import org.jline.terminal.TerminalBuilder
+
 
 /**
  * Interactive command-line session over the Leonardo library.
@@ -388,17 +391,51 @@ object Session:
       case scala.util.Success(_) => s"saved to $path"
       case scala.util.Failure(e) => s"could not write $path: ${e.getMessage}"
 
+  /**
+   * Interpret one line read by the REPL loop, resolving the commands `execute` cannot:
+   * the file-IO `:load`/`:save` and the `quit`/`exit` sentinels. A `None` line stands
+   * for end-of-input (Ctrl-D). Returns `None` to stop the loop, or `Some(output)` to
+   * continue — `output` is the (possibly empty) text to print. This keeps the loop's
+   * dispatch logic unit-testable; only the JLine line-editing/history plumbing in
+   * `repl()` is genuinely interactive-only and therefore uncovered by the test suite.
+   */
+  def step(session: Session, line: Option[String]): Option[String] =
+    line match
+      case None | Some("quit") | Some("exit") => None
+      case Some(s":load $path")               => Some(loadFile(session, path.trim))
+      case Some(s":save $path")               => Some(saveFile(session, path.trim))
+      case Some(other)                        => Some(session.execute(other))
+
 
 @main def repl(): Unit =
-  println("Leonardo CAS — type 'help' for commands, 'quit' to leave")
   val session = Session()
-  var running = true
-  while running do
-    print("leonardo> ")
-    Option(scala.io.StdIn.readLine()) match
-      case None | Some("quit") | Some("exit") => running = false
-      case Some(s":load $path")               => println(Session.loadFile(session, path.trim))
-      case Some(s":save $path")               => println(Session.saveFile(session, path.trim))
-      case Some(line)                         =>
-        val out = session.execute(line)
-        if out.nonEmpty then println(out)
+  // A system terminal enables arrow-key line editing; dumb(true) makes it fall back
+  // gracefully (rather than throwing) when no interactive console is attached, e.g.
+  // piped input or CI, where the loop still works line-by-line without editing.
+  val terminal = TerminalBuilder.builder().system(true).dumb(true).build()
+  // Command history persisted across sessions in the user's home directory; JLine
+  // loads it on start and appends to it as lines are entered.
+  val historyFile = java.nio.file.Paths.get(System.getProperty("user.home"), ".leonardo_history")
+  val reader = LineReaderBuilder.builder()
+    .terminal(terminal)
+    .variable(LineReader.HISTORY_FILE, historyFile)
+    .build()
+  val out = terminal.writer()
+  out.println("Leonardo CAS — type 'help' for commands, 'quit' to leave")
+  out.flush()
+  try
+    var running = true
+    while running do
+      // Ctrl-C abandons the current line but keeps the session (empty line = no-op);
+      // Ctrl-D (end of input) ends the loop like `quit`.
+      val line =
+        try Some(reader.readLine("leonardo> "))
+        catch
+          case _: UserInterruptException => Some("")
+          case _: EndOfFileException     => None
+      Session.step(session, line) match
+        case None         => running = false
+        case Some(result) => if result.nonEmpty then out.println(result)
+      out.flush()
+  finally
+    terminal.close()

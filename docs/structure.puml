@@ -404,11 +404,12 @@ package "cli" {
         ReservedConstants: Set = {pi, e}
         + loadFile(session, path): String
         + saveFile(session, path): String
+        + step(session, line): Option
     }
 
     class "repl()" <<main>> [[repl.html]] {
-        reads StdIn in a loop
-        dispatches :load / :save
+        JLine line editing + history
+        drives the pure Session.step
     }
 
     "repl()" --> "Session" : creates and drives

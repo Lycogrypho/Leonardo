@@ -71,6 +71,12 @@ leonardo> :load session.txt    -- replay a session script
 leonardo> quit
 ```
 
+The prompt has full line editing and history (powered by JLine): use the arrow keys to
+edit the current line and to recall earlier commands, which persist across sessions in
+`~/.leonardo_history`. `Ctrl-C` abandons the current line without leaving the session;
+`Ctrl-D` (or `quit`/`exit`) ends it. When no interactive console is attached (piped
+input, CI), the prompt degrades gracefully to a plain line reader.
+
 Assignment uses `:=` (the CAS convention): bare `=` always denotes an equation, so
 `x = 2*x + 1` is a relation to evaluate, never a binding. Session scripts emit `:=`;
 old `=`-style `:save` files are not accepted and must be re-created.
