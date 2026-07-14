@@ -4,6 +4,11 @@ package scalar
 import core.*
 
 
+// Direction of approach for a limit.
+enum LimitDir:
+  case Both, FromRight, FromLeft
+
+
 // Higher-order operators that take an expression (and a variable) and produce a new
 // one: differentiation and integration. The algorithms live in their own files
 // (Derive.scala, Integrate.scala, Compile.scala); these classes are just the AST nodes.
@@ -90,3 +95,20 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
               case None    => Left(this)
 
       case _ => Left(this)
+
+
+// lim_{v → point[dir]} e
+// dir defaults to Both (two-sided). The limit algorithm lives in Limit.scala.
+// The binder variable v is excluded from children — same convention as _Derivative.
+// point IS in children because it may contain other free variables.
+case class _Limit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir = LimitDir.Both) extends _Functional:
+  override def toString: String = dir match
+    case LimitDir.Both      => s"limit($e, $v, $point)"
+    case LimitDir.FromRight => s"limit($e, $v, $point, +)"
+    case LimitDir.FromLeft  => s"limit($e, $v, $point, -)"
+  override def children: List[_Expression] = List(e, point)
+  override def rebuild(c: List[_Expression]): _Expression = _Limit(c.head, v, c(1), dir)
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val result = evalLimit(e, v, point, dir, env)
+    if result == this then Left(this)
+    else result.eval(env)

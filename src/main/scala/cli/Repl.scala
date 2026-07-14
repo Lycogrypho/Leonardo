@@ -367,6 +367,14 @@ object Session:
          |n defaults to 200; x values are in ascending order.
          |  samples sin(x) x -10 10
          |  samples f x 0 5 100    (f must be a defined function)""".stripMargin,
+    "limit" ->
+      """|Compute lim_{v → point} e. Optional direction: "+" (from right) or "-" (from left).
+         |Uses L'Hôpital's rule for 0/0 and ∞/∞ forms; "inf" / "-inf" as limit points.
+         |  limit(sin(x)/x, x, 0)       → 1.0 (L'Hôpital)
+         |  limit(1/x, x, 0, +)         → inf
+         |  limit(1/x, x, 0, -)         → -inf
+         |  limit(atan(x), x, inf)       → 1.5708 (π/2)
+         |  limit(1/x, x, inf)           → 0.0""".stripMargin,
     "solveSystem" ->
       """|Solve a square system of n linear equations in n unknowns.
          |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).
@@ -384,7 +392,7 @@ object Session:
       |lhs = rhs            equation: true/false once both sides are concrete; stays
       |                     symbolic with free variables; solvable via solve()
       |lhs == rhs           equality check: same as "=" but not accepted by solve()
-      |<expression>         evaluate, e.g.  f + 1  or  derive(f, x)
+      |<expression>         evaluate, e.g.  f + 1  or  limit(sin(x)/x, x, 0)
       |simplify <expr>      structural simplification (matrix algebra is carried out,
       |                     then each element is simplified; scalars ignore bindings)
       |expand <expr>        distribute products over sums (matrix algebra as above)

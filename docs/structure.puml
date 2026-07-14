@@ -190,13 +190,34 @@ package "scalar" {
         low_limit : _Expression
         up_limit  : _Expression
     }
+    class "_Limit" <<case>> [[calculus.html]] {
+        e     : _Expression
+        v     : _Variable
+        point : _Expression
+        dir   : LimitDir
+    }
+
+    enum "LimitDir" [[calculus.html]] {
+        Both
+        FromRight
+        FromLeft
+    }
 
     "_Functional"  --|> "_Expression"
     "_Derivative"  --|> "_Functional"
     "_Integral"    --|> "_Functional"
     "_DefIntegral" --|> "_Functional"
+    "_Limit"       --|> "_Functional"
 
     ' -- Algorithm modules (package-level functions) -
+    class "Limit" <<utility>> [[calculus.html]] {
+        + evalLimit(e, v, point, dir, env): _Expression
+        __ tiers __
+        1. direct substitution
+        2. L'Hopital (0/0, inf/inf, c/0)
+        3. structural rules at +/-inf
+        4. one-sided epsilon fallback
+    }
     class "Derive" <<utility>> [[calculus.html]] {
         + derive(e, v): _Expression
         memoized (Memo)
@@ -235,6 +256,7 @@ package "scalar" {
     }
 
     ' Functional nodes call algorithm modules at eval time
+    "_Limit"       ..> "Limit"     : evalLimit() at eval
     "_Derivative"  ..> "Derive"    : derive() at eval
     "_Integral"    ..> "Integrate" : integrate() at eval
     "_DefIntegral" ..> "Compile"   : compile() fast path

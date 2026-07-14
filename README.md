@@ -1,4 +1,4 @@
-<div align="center"><img src="docs/src/Banner.svg" alt="Leonardo" width="80%"/></div>
+<div style="text-align: center"><img src="docs/src/Banner.svg" alt="Leonardo" width="80%"/></div>
 
 ## Introduction
 
@@ -27,11 +27,13 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
   - Binary operations (addition, subtraction, multiplication, division)
   - Unary functions (exponential, logarithm, trigonometric)
   - Power operations
-  - Higher-order operators (derivatives, definite integrals via Simpson's rule, and indefinite integrals via a symbolic rule table)
+  - Higher-order operators (derivatives, definite integrals via Simpson's rule, indefinite integrals via a symbolic rule table, and limits)
 
 - **Matrix Domain**: matrix literals parse as `[[1, 2], [3, 4]]` (a row vector is `[[1, 2]]`), with `transpose(...)` and the ordinary `+`, `-`, `*`, `/` operators — `M := [[1, 2], [3, 4]]` then `M * M` works in the REPL, and `:save`d sessions restore matrix bindings. Matrices are grids of arbitrary expressions — numbers, variables, functions, even functionals — evaluated element-wise. When every element reduces to a number, the matrix collapses to a dense row-major `Array[Double]` value (`_MatrixValue`), on which sum, product (block-tiled for cache locality, parallel over row blocks above a work threshold), transpose, and scalar multiplication run as array kernels; otherwise operations combine element-wise symbolically and stay symbolic until the free variables are bound. The calculus and structural algorithms (`derive`, `integrate`, `simplify`, `expand`) distribute element-wise over matrices, matrix sums, and transposes (d/dx [aᵢⱼ] = [daᵢⱼ/dx]); matrix products deliberately stay symbolic under differentiation, as they need the product rule.
 
 - **Equations**: `10 * x = 2 * x + 1` parses as a relation; once all variables are bound, it evaluates to `true`/`false` using tolerance-based equality tied to the configured precision (so `sin(pi) = 0` is true despite floating-point noise). Concrete matrices compare element-wise. `derive`, `simplify`, `expand`, and `integrate` apply to both sides. Equations are first-class values: `h := x^2 = 4` stores the relation, and `solve(h, x)` then works. `lhs == rhs` is an explicit equality check (same semantics, but not accepted by `solve()`). `solve(lhs = rhs, x)` — or equivalently `solve(h, x)` for a named equation — solves for a variable: linear equations exactly (symbolic coefficients included, `x = -b/a`), quadratics via the discriminant (0, 1, or 2 real roots, `±√Δ` closed forms when coefficients are symbolic), and transcendental or higher-degree forms numerically (sign-change scan plus bisection over [-100, 100], up to 8 roots). One solution prints as `x = 0.125`; several as `[[x = -2.0, x = 2.0]]`.
+
+- **Limits**: `limit(expr, var, point)` computes lim_{var → point} expr. Supports two-sided and one-sided limits (`limit(1/x, x, 0, +)` → `inf`; `limit(1/x, x, 0, -)` → `-inf`). Handles indeterminate forms via L'Hôpital's rule (0/0 and ∞/∞, up to 5 steps), and limits at ±∞ for polynomial/rational functions, `exp`, `ln`, `atan`, and elementary compositions. `inf` is a built-in constant equal to `+∞`; `-inf` follows from unary minus.
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
@@ -60,6 +62,9 @@ leonardo> solve(h, x)           -- pass a named equation to solve
 [[x = -2.0, x = 2.0]]
 leonardo> solve(10 * x = 2 * x + 1, x)  -- inline equation still works
 x = 0.125
+leonardo> limit(sin(x)/x, x, 0) -- L'Hôpital: 1.0
+leonardo> limit(1/x, x, 0, +)  -- one-sided: inf
+leonardo> limit(atan(x), x, inf) -- limit at ∞: π/2
 leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x
 leonardo> C := A * B           -- with A, B matrices: simplify C executes the

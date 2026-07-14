@@ -50,9 +50,16 @@ object _Number:
 
 case class _Number(d: Double) extends _Value:
   // toString rounds for display only (DefaultPrecision = 5); no rounding in eval.
-  override def toString: String = _Number.round(d, Environment.DefaultPrecision).toString
+  // Infinity is represented as "inf" / "-inf" so it round-trips through the parser.
+  override def toString: String =
+    if d.isPosInfinity then "inf"
+    else if d.isNegInfinity then "-inf"
+    else _Number.round(d, Environment.DefaultPrecision).toString
   // display(p) rounds to p decimal places — used by the REPL to respect session precision.
-  def display(precision: Int): String = _Number.round(d, precision).toString
+  def display(precision: Int): String =
+    if d.isPosInfinity then "inf"
+    else if d.isNegInfinity then "-inf"
+    else _Number.round(d, precision).toString
 
   // No rounding in eval: the stored Double is propagated as-is. Rounding is a
   // display concern only, handled at the boundary by toString / display(p).

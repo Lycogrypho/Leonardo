@@ -78,8 +78,8 @@ object Parser extends JavaTokenParsers:
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at",                             // functions
-    "derive", "integral", "solve", "solveSystem",           // functionals
-    "pi", "e", "i",                                       // constants (i = imaginary unit)
+    "derive", "integral", "solve", "solveSystem", "limit", // functionals
+    "pi", "e", "i", "inf",                               // constants (inf = +∞)
     "simplify", "expand", "eval", "env", "vars",
     "precision", "unset", "samples", "help", "quit", "exit" // REPL commands
   )
@@ -227,7 +227,17 @@ object Parser extends JavaTokenParsers:
     "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }            |
     "at("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case m ~ _ ~ r ~ _ ~ c => _MatrixIndex(m, r, c) }
 
+  // Direction token for limit(expr, var, point, +/-): consumed after the point comma.
+  private lazy val limitDir: Parser[LimitDir] = ("+" | "-") ^^ {
+    case "+" => LimitDir.FromRight
+    case "-" => LimitDir.FromLeft
+  }
+
   lazy val functional: Parser[_Expression] =
+    "limit("  ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ opt("," ~> limitDir) <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ pt ~ None      => _Limit(e, v, pt, LimitDir.Both)
+      case e ~ _ ~ v ~ _ ~ pt ~ Some(dir) => _Limit(e, v, pt, dir)
+    }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
@@ -251,9 +261,10 @@ object Parser extends JavaTokenParsers:
   // "i" is the imaginary unit; "3i" is implicit multiplication (3 * i) → _Complex(0, 3),
   // and "im"/"i1" stay ordinary variables (guarded like "e"/"pi").
   lazy val constant: Parser[_Value]     =
-    """pi(?![a-zA-Z0-9])""".r ^^^ _Number(math.Pi) |
-    """e(?![a-zA-Z0-9])""".r  ^^^ _Number(math.E)  |
-    """i(?![a-zA-Z0-9])""".r  ^^^ _Complex.of(0, 1)
+    """pi(?![a-zA-Z0-9])""".r  ^^^ _Number(math.Pi)                |
+    """e(?![a-zA-Z0-9])""".r   ^^^ _Number(math.E)                 |
+    """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)               |
+    """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity)
   // Reserved words are rejected wholesale — the regex is greedy, so "simplify"
   // cannot fall back to variable "simplif" times variable "y".
   lazy val variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9_]*""".r ^? (

@@ -91,4 +91,8 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case _Integral(inner, iv)     => if iv.variable == v.variable then inner
                                    else _Derivative(e, v)
   case _DefIntegral(_, _, _, _) => _Derivative(e, v)
+  // A limit is treated as opaque under differentiation (swapping d/dx and lim is
+  // valid under continuity, but the engine does not verify that condition, so we
+  // stay symbolic to be conservative).
+  case _: _Limit                => _Derivative(e, v)
   case other                    => _Derivative(other, v)
