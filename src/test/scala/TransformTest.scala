@@ -159,6 +159,14 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
     val r = parse("fourier(sin(t^2), t, w)").eval(emptyEnv).toExpression
     assert(r.isInstanceOf[_Fourier], s"expected symbolic _Fourier, got $r")
 
+  it should "not corrupt a free variable whose name matches the old hard-coded sentinel" in:
+    // _Variable("__lt_s__") is constructed via the API (the parser rejects names starting
+    // with '_'). fourierOf must pick a different internal variable, so __lt_s__ survives
+    // in the result: F{c} = c/(i*w), i.e. the result contains __lt_s__ unsubstituted.
+    val e      = _Variable("__lt_s__")
+    val result = fourierOf(e, _Variable("t"), _Variable("w"))
+    assert(result.toString.contains("__lt_s__"), s"__lt_s__ was corrupted: $result")
+
   // ─────────────────────────── reserved words ───────────────────────────────────
 
   "laplace and fourier" should "be reserved words (not parseable as variables)" in:
