@@ -123,6 +123,14 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
     val r = parse("laplace(exp(t^2), t, s)").eval(emptyEnv).toExpression
     assert(r.isInstanceOf[_Laplace], s"expected symbolic _Laplace, got $r")
 
+  it should "stay symbolic for L{t^n} when n > 20 (cap matches Expand/Normalize)" in:
+    val r = parse("laplace(t^21, t, s)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_Laplace], s"expected symbolic _Laplace, got $r")
+
+  it should "stay symbolic for L{t^n} with very large n (would overflow Double or stack)" in:
+    val r = parse("laplace(t^200, t, s)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_Laplace], s"expected symbolic _Laplace, got $r")
+
   // ─────────────────────────── Fourier: rule table ─────────────────────────────
 
   "fourier transform" should "evaluate F{1} = 1/(iw) — pure imaginary at w=2 → im=-0.5" in:

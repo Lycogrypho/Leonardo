@@ -14,14 +14,21 @@ import scalar.*
 //   Constant:    L{c}         = c/s                    (any expr free of t)
 //   Linearity:   L{a + b}     = L{a} + L{b}
 //                L{c * f}     = c * L{f}               (c free of t)
-//   Power:       L{t^n}       = n! / s^{n+1}           (n a non-negative integer)
+//   Power:       L{t^n}       = n! / s^{n+1}           (n a non-negative integer ≤ 20)
 //   Exponential: L{e^{ct}}    = 1 / (s - c)
 //   Sine:        L{sin(wt)}   = w / (s^2 + w^2)
 //   Cosine:      L{cos(wt)}   = s / (s^2 + w^2)
 //   First shift: L{e^{at}g(t)}= G(s-a)                (G = L{g}; recursive)
+//
+// The power rule is capped at n ≤ 20 (matching Expand.scala and Normalize.scala).
+// Larger exponents stay symbolic: n! overflows Double above n=170 and the recursive
+// implementation overflows the stack for large n.
 
+private val MaxLaplacePowerN = 20
+
+// Iterative factorial — avoids stack overflow and is safe for n up to MaxLaplacePowerN.
 private def factorial(n: Int): Double =
-  if n <= 1 then 1.0 else n * factorial(n - 1)
+  (2 to n).foldLeft(1.0)(_ * _)
 
 // Returns Some(c) when ex = c * t (or t alone → c = 1). c may be a symbolic expression.
 private def coeffOfT(ex: _Expression, tv: String): Option[_Expression] = ex match
@@ -52,9 +59,9 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
   case vv: _Variable if vv.variable == tv =>
     Ratio(_Number(1), Power(s, _Number(2)))
 
-  // L{t^n} = n! / s^{n+1} for non-negative integer n
+  // L{t^n} = n! / s^{n+1} for non-negative integer n ≤ MaxLaplacePowerN
   case Power(vv: _Variable, _Number(n))
-      if vv.variable == tv && n.toInt.toDouble == n && n >= 0 =>
+      if vv.variable == tv && n.toInt.toDouble == n && n >= 0 && n <= MaxLaplacePowerN =>
     Ratio(_Number(factorial(n.toInt)), Power(s, _Number(n + 1)))
 
   // L{e^{ct}} = 1 / (s - c)
