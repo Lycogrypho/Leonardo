@@ -40,59 +40,60 @@ private def coeffOfT(ex: _Expression, tv: String): Option[_Expression] = ex matc
 def laplaceOf(e: _Expression, t: _Variable, s: _Variable): _Expression =
   laplaceImpl(e, t, s, t.variable)
 
-private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String): _Expression = e match
+private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String): _Expression =
 
-  // Constant (free of t): L{c} = c/s
-  case _ if !dependsOn(e, t) => Ratio(e, s)
+  // First-shift theorem: L{e^{at}·g(t)} = G(s−a) where G(s) = L{g(t)}.
+  // Nested here to capture t, s, tv, e from the enclosing scope; shared by both
+  // Product orderings (Exp·g and g·Exp) to eliminate the duplicated body.
+  def firstShift(inner: _Expression, g: _Expression): _Expression =
+    coeffOfT(inner, tv) match
+      case Some(a) =>
+        val G = laplaceImpl(g, t, s, tv)
+        if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
+        else substitute(G, Map(s.variable -> Sum(s, Product(_Number(-1), a))))
+      case None => _Laplace(e, t, s)
 
-  // Linearity: L{a + b} = L{a} + L{b}
-  case Sum(a, b) =>
-    Sum(laplaceImpl(a, t, s, tv), laplaceImpl(b, t, s, tv))
+  e match
 
-  // Linearity: L{c * f} = c * L{f} when c is free of t (both orderings)
-  case Product(c, f) if !dependsOn(c, t) =>
-    Product(c, laplaceImpl(f, t, s, tv))
-  case Product(f, c) if !dependsOn(c, t) =>
-    Product(c, laplaceImpl(f, t, s, tv))
+    // Constant (free of t): L{c} = c/s
+    case _ if !dependsOn(e, t) => Ratio(e, s)
 
-  // L{t} = 1/s^2
-  case vv: _Variable if vv.variable == tv =>
-    Ratio(_Number(1), Power(s, _Number(2)))
+    // Linearity: L{a + b} = L{a} + L{b}
+    case Sum(a, b) =>
+      Sum(laplaceImpl(a, t, s, tv), laplaceImpl(b, t, s, tv))
 
-  // L{t^n} = n! / s^{n+1} for non-negative integer n ≤ MaxLaplacePowerN
-  case Power(vv: _Variable, _Number(n))
-      if vv.variable == tv && n.toInt.toDouble == n && n >= 0 && n <= MaxLaplacePowerN =>
-    Ratio(_Number(factorial(n.toInt)), Power(s, _Number(n + 1)))
+    // Linearity: L{c * f} = c * L{f} when c is free of t (both orderings)
+    case Product(c, f) if !dependsOn(c, t) =>
+      Product(c, laplaceImpl(f, t, s, tv))
+    case Product(f, c) if !dependsOn(c, t) =>
+      Product(c, laplaceImpl(f, t, s, tv))
 
-  // L{e^{ct}} = 1 / (s - c)
-  case Exp(inner) => coeffOfT(inner, tv) match
-    case Some(c) => Ratio(_Number(1), Sum(s, Product(_Number(-1), c)))
-    case None    => _Laplace(e, t, s)
+    // L{t} = 1/s^2
+    case vv: _Variable if vv.variable == tv =>
+      Ratio(_Number(1), Power(s, _Number(2)))
 
-  // L{sin(wt)} = w / (s^2 + w^2)
-  case Sin(inner) => coeffOfT(inner, tv) match
-    case Some(c) => Ratio(c, Sum(Power(s, _Number(2)), Power(c, _Number(2))))
-    case None    => _Laplace(e, t, s)
+    // L{t^n} = n! / s^{n+1} for non-negative integer n ≤ MaxLaplacePowerN
+    case Power(vv: _Variable, _Number(n))
+        if vv.variable == tv && n.toInt.toDouble == n && n >= 0 && n <= MaxLaplacePowerN =>
+      Ratio(_Number(factorial(n.toInt)), Power(s, _Number(n + 1)))
 
-  // L{cos(wt)} = s / (s^2 + w^2)
-  case Cos(inner) => coeffOfT(inner, tv) match
-    case Some(c) => Ratio(s, Sum(Power(s, _Number(2)), Power(c, _Number(2))))
-    case None    => _Laplace(e, t, s)
+    // L{e^{ct}} = 1 / (s - c)
+    case Exp(inner) => coeffOfT(inner, tv) match
+      case Some(c) => Ratio(_Number(1), Sum(s, Product(_Number(-1), c)))
+      case None    => _Laplace(e, t, s)
 
-  // First-shift theorem: L{e^{at} * g(t)} = G(s - a) where G(s) = L{g(t)}.
-  // Applied recursively — covers e^{at}*sin, e^{at}*cos, e^{at}*t^n, etc.
-  case Product(Exp(inner), g) => coeffOfT(inner, tv) match
-    case Some(a) =>
-      val G = laplaceImpl(g, t, s, tv)
-      if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
-      else substitute(G, Map(s.variable -> Sum(s, Product(_Number(-1), a))))
-    case None => _Laplace(e, t, s)
+    // L{sin(wt)} = w / (s^2 + w^2)
+    case Sin(inner) => coeffOfT(inner, tv) match
+      case Some(c) => Ratio(c, Sum(Power(s, _Number(2)), Power(c, _Number(2))))
+      case None    => _Laplace(e, t, s)
 
-  case Product(g, Exp(inner)) => coeffOfT(inner, tv) match
-    case Some(a) =>
-      val G = laplaceImpl(g, t, s, tv)
-      if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
-      else substitute(G, Map(s.variable -> Sum(s, Product(_Number(-1), a))))
-    case None => _Laplace(e, t, s)
+    // L{cos(wt)} = s / (s^2 + w^2)
+    case Cos(inner) => coeffOfT(inner, tv) match
+      case Some(c) => Ratio(s, Sum(Power(s, _Number(2)), Power(c, _Number(2))))
+      case None    => _Laplace(e, t, s)
 
-  case _ => _Laplace(e, t, s)
+    // First-shift theorem — both Product orderings delegate to the helper above.
+    case Product(Exp(inner), g) => firstShift(inner, g)
+    case Product(g, Exp(inner)) => firstShift(inner, g)
+
+    case _ => _Laplace(e, t, s)
