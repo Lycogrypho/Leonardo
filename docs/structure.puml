@@ -333,7 +333,7 @@ package "matrix" {
 }
 
 ' ===================================================
-' PACKAGE: transform - Laplace / Fourier (imports core + scalar)
+' PACKAGE: transform - Laplace / Fourier / inverse Laplace (imports core + scalar)
 ' ===================================================
 package "transform" {
 
@@ -349,6 +349,12 @@ package "transform" {
         w : _Variable
     }
 
+    class "_InverseLaplace" <<case>> [[calculus.html]] {
+        f : _Expression
+        s : _Variable
+        t : _Variable
+    }
+
     class "LaplaceTransform" <<utility>> [[calculus.html]] {
         + laplaceOf(e, t, s): _Expression
         __ rules __
@@ -362,14 +368,27 @@ package "transform" {
         unilateral: L{f} at s = i*w
     }
 
-    "_Laplace" --|> "_Functional"
-    "_Fourier" --|> "_Functional"
+    class "InverseLaplaceTransform" <<utility>> [[calculus.html]] {
+        + inverseLaplaceOf(f, s, t): _Expression
+        __ rational N(s)/D(s), deg D <= 2 __
+        linearity, b/(s-a) -> b*e^{at}
+        partial fractions (distinct roots)
+        repeated + complex poles
+        (complete the square)
+    }
 
-    "_Laplace"         ..> "LaplaceTransform" : laplaceOf() at eval
-    "_Fourier"         ..> "FourierTransform" : fourierOf() at eval
-    "FourierTransform" ..> "LaplaceTransform" : delegates, then s -> i*w
-    "FourierTransform" ..> "Substitute"       : s -> i*w substitution
-    "FourierTransform" ..> "_Complex"         : imaginary unit i
+    "_Laplace"        --|> "_Functional"
+    "_Fourier"        --|> "_Functional"
+    "_InverseLaplace" --|> "_Functional"
+
+    "_Laplace"                ..> "LaplaceTransform"        : laplaceOf() at eval
+    "_Fourier"                ..> "FourierTransform"        : fourierOf() at eval
+    "_InverseLaplace"         ..> "InverseLaplaceTransform" : inverseLaplaceOf() at eval
+    "FourierTransform"        ..> "LaplaceTransform"        : delegates, then s -> i*w
+    "FourierTransform"        ..> "Substitute"              : s -> i*w substitution
+    "FourierTransform"        ..> "_Complex"                : imaginary unit i
+    "InverseLaplaceTransform" ..> "Normalize"              : collect() poly coeffs
+    "InverseLaplaceTransform" ..> "Simplify"               : simplifyFully() output
 }
 
 ' ===================================================
@@ -452,6 +471,7 @@ package "parser" {
 "Parser" ..> "_MatrixIndex"    : at(A, i, j) element access
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
+"Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)

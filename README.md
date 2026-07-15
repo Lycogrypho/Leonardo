@@ -35,7 +35,9 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 - **Limits**: `limit(expr, var, point)` computes lim_{var → point} expr. Supports two-sided and one-sided limits (`limit(1/x, x, 0, +)` → `inf`; `limit(1/x, x, 0, -)` → `-inf`). Handles indeterminate forms via L'Hôpital's rule (0/0 and ∞/∞, up to 5 steps), and limits at ±∞ for polynomial/rational functions, `exp`, `ln`, `atan`, and elementary compositions. `inf` is a built-in constant equal to `+∞`; `-inf` follows from unary minus.
 
-- **Laplace & Fourier Transforms**: `laplace(f, t, s)` computes the Laplace transform L{f(t)} via a symbolic rule table — constants (`c → c/s`), powers (`t^n → n!/s^(n+1)`), exponentials (`e^(ct) → 1/(s−c)`), `sin(wt) → w/(s²+w²)`, `cos(wt) → s/(s²+w²)`, linearity, and the first-shift theorem `e^(at)·g(t) → G(s−a)` applied recursively — so `laplace(t*exp(-t), t, s)` yields `1/(s+1)²`. `fourier(f, t, w)` is the unilateral Fourier transform, computed as the Laplace transform evaluated at `s = i·w`; results are generally complex-valued, riding on the complex-number support (`fourier(exp(-2*t), t, w)` → `1/(2 + i·w)`). Shapes outside the table stay symbolic.
+- **Laplace & Fourier Transforms**: `laplace(f, t, s)` computes the Laplace transform L{f(t)} via a symbolic rule table — constants (`c → c/s`), powers (`t^n → n!/s^(n+1)`, capped at n ≤ 20), exponentials (`e^(ct) → 1/(s−c)`), `sin(wt) → w/(s²+w²)`, `cos(wt) → s/(s²+w²)`, linearity, and the first-shift theorem `e^(at)·g(t) → G(s−a)` applied recursively — so `laplace(t*exp(-t), t, s)` yields `1/(s+1)²`. `fourier(f, t, w)` is the unilateral Fourier transform, computed as the Laplace transform evaluated at `s = i·w`; results are generally complex-valued, riding on the complex-number support (`fourier(exp(-2*t), t, w)` → `1/(2 + i·w)`). Shapes outside the table stay symbolic.
+
+- **Inverse Laplace Transform**: `invlaplace(F, s, t)` recovers f(t) from a rational F(s) = N(s)/D(s) with deg N < deg D ≤ 2 — the dual of the forward table. Linearity peels sums and constant factors; the pole structure is read off by completing the square: linear denominators give `b/(s−a) → b·e^(at)`, distinct real roots split via partial fractions into `A·e^(r₁t) + B·e^(r₂t)`, a repeated root gives `e^(at)·(N₁ + (N₀+N₁a)·t)`, and a complex-conjugate pair gives `e^(at)·(N₁cos(wt) + …sin(wt))`. So `invlaplace(3/((s-2)^2+9), s, t)` returns `e^(2t)·sin(3t)`, and `invlaplace(laplace(f, t, s), s, t)` round-trips f. Denominators of degree ≥ 3, symbolic coefficients, and non-rational input stay symbolic.
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
@@ -69,6 +71,7 @@ leonardo> limit(1/x, x, 0, +)  -- one-sided: inf
 leonardo> limit(atan(x), x, inf) -- limit at ∞: π/2
 leonardo> laplace(sin(2*t), t, s) -- Laplace transform: 2/(s² + 4)
 leonardo> fourier(exp(-2*t), t, w) -- Fourier transform: 1/(2 + i·w)
+leonardo> invlaplace(2/(s^2+4), s, t) -- inverse Laplace: sin(2*t)
 leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x
 leonardo> C := A * B           -- with A, B matrices: simplify C executes the

@@ -167,10 +167,98 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
     val result = fourierOf(e, _Variable("t"), _Variable("w"))
     assert(result.toString.contains("__lt_s__"), s"__lt_s__ was corrupted: $result")
 
+  // ─────────────────────────── inverse Laplace: parser ─────────────────────────
+
+  "invlaplace parser" should "produce an _InverseLaplace node" in:
+    val e = parse("invlaplace(1/s, s, t)")
+    assert(e.isInstanceOf[_InverseLaplace])
+    val il = e.asInstanceOf[_InverseLaplace]
+    assert(il.s.variable == "s")
+    assert(il.t.variable == "t")
+
+  it should "round-trip through toString and re-parse" in:
+    val e  = parse("invlaplace(2/(s^2+4), s, t)")
+    val e2 = parse(e.toString)
+    assert(e == e2)
+
+  // ─────────────────────────── inverse Laplace: basic pairs ────────────────────
+
+  "inverse laplace transform" should "evaluate L⁻¹{1/s} = 1" in:
+    approxAt("invlaplace(1/s, s, t)", 1.0, 1e-6, "t" -> 3.7)
+
+  it should "evaluate L⁻¹{3/s} = 3" in:
+    approxAt("invlaplace(3/s, s, t)", 3.0, 1e-6, "t" -> 1.0)
+
+  it should "evaluate L⁻¹{1/s^2} = t (t=2.5 → 2.5)" in:
+    approxAt("invlaplace(1/s^2, s, t)", 2.5, 1e-6, "t" -> 2.5)
+
+  it should "evaluate L⁻¹{1/(s-3)} = e^{3t} (t=0.5 → e^1.5)" in:
+    approxAt("invlaplace(1/(s-3), s, t)", math.exp(1.5), 1e-5, "t" -> 0.5)
+
+  it should "evaluate L⁻¹{1/(s+1)} = e^{-t} (t=2 → e^-2)" in:
+    approxAt("invlaplace(1/(s+1), s, t)", math.exp(-2.0), 1e-5, "t" -> 2.0)
+
+  it should "evaluate L⁻¹{2/(s^2+4)} = sin(2t) (t=1.5 → sin 3)" in:
+    approxAt("invlaplace(2/(s^2+4), s, t)", math.sin(3.0), 1e-5, "t" -> 1.5)
+
+  it should "evaluate L⁻¹{s/(s^2+4)} = cos(2t) (t=1.5 → cos 3)" in:
+    approxAt("invlaplace(s/(s^2+4), s, t)", math.cos(3.0), 1e-5, "t" -> 1.5)
+
+  // ─────────────────────── inverse Laplace: quadratic poles ────────────────────
+
+  it should "handle complex poles L⁻¹{3/((s-2)^2+9)} = e^{2t}sin(3t) (t=0.5)" in:
+    approxAt("invlaplace(3/((s-2)^2+9), s, t)", math.exp(1.0) * math.sin(1.5), 1e-4, "t" -> 0.5)
+
+  it should "handle a shifted cosine L⁻¹{(s-2)/((s-2)^2+9)} = e^{2t}cos(3t) (t=0.5)" in:
+    approxAt("invlaplace((s-2)/((s-2)^2+9), s, t)", math.exp(1.0) * math.cos(1.5), 1e-4, "t" -> 0.5)
+
+  it should "handle distinct real poles L⁻¹{1/((s-1)*(s-2))} = e^{2t} - e^{t} (t=0.5)" in:
+    approxAt("invlaplace(1/((s-1)*(s-2)), s, t)", math.exp(1.0) - math.exp(0.5), 1e-4, "t" -> 0.5)
+
+  it should "handle a repeated real pole L⁻¹{1/(s-1)^2} = t*e^{t} (t=0.5)" in:
+    approxAt("invlaplace(1/(s-1)^2, s, t)", 0.5 * math.exp(0.5), 1e-4, "t" -> 0.5)
+
+  // ─────────────────────── inverse Laplace: linearity ──────────────────────────
+
+  it should "apply linearity L⁻¹{2/s + 1/(s-1)} = 2 + e^{t} (t=1 → 2+e)" in:
+    approxAt("invlaplace(2/s + 1/(s-1), s, t)", 2.0 + math.E, 1e-5, "t" -> 1.0)
+
+  // ─────────────────────── inverse Laplace: round-trip ──────────────────────────
+
+  it should "round-trip laplace then invlaplace for sin(2t) (t=1.2)" in:
+    val fwd = parse("laplace(sin(2*t), t, s)").eval(emptyEnv).toExpression
+    val back = inverseLaplaceOf(fwd, _Variable("s"), _Variable("t"))
+    back.eval(new Environment(5, Map("t" -> _Number(1.2)))).toExpression match
+      case _Number(d) => assert(math.abs(d - math.sin(2.4)) < 1e-5, s"got $d")
+      case other      => fail(s"expected number, got $other")
+
+  it should "round-trip laplace then invlaplace for exp(3t) (t=0.7)" in:
+    val fwd  = parse("laplace(exp(3*t), t, s)").eval(emptyEnv).toExpression
+    val back = inverseLaplaceOf(fwd, _Variable("s"), _Variable("t"))
+    back.eval(new Environment(5, Map("t" -> _Number(0.7)))).toExpression match
+      case _Number(d) => assert(math.abs(d - math.exp(2.1)) < 1e-4, s"got $d")
+      case other      => fail(s"expected number, got $other")
+
+  // ─────────────────────── inverse Laplace: symbolic fallback ──────────────────
+
+  it should "stay symbolic for deg D ≥ 3 (1/s^3)" in:
+    val r = parse("invlaplace(1/s^3, s, t)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
+
+  it should "stay symbolic for a non-rational input" in:
+    val r = parse("invlaplace(sin(s), s, t)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
+
+  it should "stay symbolic for symbolic coefficients (1/(s-a))" in:
+    val r = parse("invlaplace(1/(s-a), s, t)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
+
   // ─────────────────────────── reserved words ───────────────────────────────────
 
-  "laplace and fourier" should "be reserved words (not parseable as variables)" in:
+  "laplace, fourier and invlaplace" should "be reserved words (not parseable as variables)" in:
     assertThrows[Exception]:
       parse("laplace + 1")
     assertThrows[Exception]:
       parse("fourier + 1")
+    assertThrows[Exception]:
+      parse("invlaplace + 1")

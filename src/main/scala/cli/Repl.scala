@@ -390,6 +390,15 @@ object Session:
          |  fourier(1, t, w)             → 1/(i*w)
          |  fourier(exp(-t)*sin(t), t, w) → 1/((i*w+1)^2+1) via first-shift
          |Stays symbolic when the Laplace transform is not in the table.""".stripMargin,
+    "invlaplace" ->
+      """|Compute the inverse Laplace transform L⁻¹{f(s)} with output variable t.
+         |Rational f(s) = N(s)/D(s) with degree of D ≤ 2: linear, repeated, and complex
+         |poles (partial fractions / completing the square), plus linearity.
+         |  invlaplace(1/s^2, s, t)          → t
+         |  invlaplace(1/(s-3), s, t)        → exp(3*t)
+         |  invlaplace(2/(s^2+4), s, t)      → sin(2*t)
+         |  invlaplace(3/((s-2)^2+9), s, t)  → exp(2*t)*sin(3*t) via completing the square
+         |Stays symbolic for deg D ≥ 3, symbolic coefficients, or non-rational input.""".stripMargin,
     "solveSystem" ->
       """|Solve a square system of n linear equations in n unknowns.
          |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).

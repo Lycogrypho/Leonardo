@@ -79,7 +79,7 @@ object Parser extends JavaTokenParsers:
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at",                             // functions
-    "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", // functionals
+    "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", // functionals
     "pi", "e", "i", "inf",                               // constants (inf = +∞)
     "simplify", "expand", "eval", "env", "vars",
     "precision", "unset", "samples", "help", "quit", "exit" // REPL commands
@@ -244,6 +244,9 @@ object Parser extends JavaTokenParsers:
     }                                                                                             |
     "fourier(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
       case e ~ _ ~ t ~ _ ~ w              => _Fourier(e, t, w)
+    }                                                                                             |
+    "invlaplace(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case f ~ _ ~ s ~ _ ~ t              => _InverseLaplace(f, s, t)
     }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |

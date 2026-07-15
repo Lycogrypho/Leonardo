@@ -29,3 +29,16 @@ case class _Fourier(e: _Expression, t: _Variable, w: _Variable) extends _Functio
     val result = fourierOf(e, t, w)
     if result == this then Left(this)
     else result.eval(env)
+
+
+// L⁻¹{f(s)} with time variable t, computed by the rules in InverseLaplaceTransform.scala.
+// Dual of _Laplace: s is the frequency binder (excluded from children per the _Functional
+// convention), t names the output variable and appears free in the result.
+case class _InverseLaplace(f: _Expression, s: _Variable, t: _Variable) extends _Functional:
+  override def toString: String = s"invlaplace($f, $s, $t)"
+  override def children: List[_Expression] = List(f)
+  override def rebuild(c: List[_Expression]): _Expression = _InverseLaplace(c.head, s, t)
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val result = inverseLaplaceOf(f, s, t)
+    if result == this then Left(this)
+    else result.eval(env)
