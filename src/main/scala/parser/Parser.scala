@@ -6,6 +6,7 @@ import core.*
 import scalar.*
 import matrix.*
 import equation.*
+import transform.*
 
 
 /**
@@ -78,7 +79,7 @@ object Parser extends JavaTokenParsers:
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at",                             // functions
-    "derive", "integral", "solve", "solveSystem", "limit", // functionals
+    "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", // functionals
     "pi", "e", "i", "inf",                               // constants (inf = +∞)
     "simplify", "expand", "eval", "env", "vars",
     "precision", "unset", "samples", "help", "quit", "exit" // REPL commands
@@ -237,6 +238,12 @@ object Parser extends JavaTokenParsers:
     "limit("  ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ opt("," ~> limitDir) <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ pt ~ None      => _Limit(e, v, pt, LimitDir.Both)
       case e ~ _ ~ v ~ _ ~ pt ~ Some(dir) => _Limit(e, v, pt, dir)
+    }                                                                                             |
+    "laplace(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case e ~ _ ~ t ~ _ ~ s              => _Laplace(e, t, s)
+    }                                                                                             |
+    "fourier(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case e ~ _ ~ t ~ _ ~ w              => _Fourier(e, t, w)
     }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |

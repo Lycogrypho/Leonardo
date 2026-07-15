@@ -375,6 +375,21 @@ object Session:
          |  limit(1/x, x, 0, -)         → -inf
          |  limit(atan(x), x, inf)       → 1.5708 (π/2)
          |  limit(1/x, x, inf)           → 0.0""".stripMargin,
+    "laplace" ->
+      """|Compute the Laplace transform L{e(t)} with output variable s.
+         |Linearity, powers, exponentials, sin/cos, and the first-shift theorem e^{at}·g(t).
+         |  laplace(1, t, s)             → (1.0 / s)
+         |  laplace(t^2, t, s)           → (2.0 / (s ^ 3.0))
+         |  laplace(sin(3*t), t, s)      → 3/(s^2+9)
+         |  laplace(exp(2*t)*cos(t), t, s) → (s-2)/((s-2)^2+1) via first-shift
+         |Stays symbolic when no rule applies.""".stripMargin,
+    "fourier" ->
+      """|Compute the unilateral Fourier transform F{e(t)} = L{e(t)}|_{s=i·w}.
+         |Result is generally complex-valued (contains i, the imaginary unit).
+         |  fourier(exp(-2*t), t, w)     → 1/(2 + i*w)
+         |  fourier(1, t, w)             → 1/(i*w)
+         |  fourier(exp(-t)*sin(t), t, w) → 1/((i*w+1)^2+1) via first-shift
+         |Stays symbolic when the Laplace transform is not in the table.""".stripMargin,
     "solveSystem" ->
       """|Solve a square system of n linear equations in n unknowns.
          |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).

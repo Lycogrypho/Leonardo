@@ -84,7 +84,8 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
                                "unset", "help", "samples", "colors", "quit", "exit")
   private val Functions = Set("sin", "cos", "tan", "tg", "asin", "acos", "atan",
                                "exp", "ln", "log", "transpose", "pow",
-                               "integral", "derive", "solve", "solveSystem")
+                               "integral", "derive", "solve", "solveSystem",
+                               "limit", "laplace", "fourier")
   private val Constants = Set("pi", "e", "i")
 
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
@@ -134,7 +135,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
             put(style, buffer(pos).toString)
             pos += 1
 
-    sb.toAttributedString()
+    sb.toAttributedString
 
   // JLine may invoke these on error-marking paths; we do not use error highlighting.
   override def setErrorPattern(errorPattern: Pattern): Unit = ()

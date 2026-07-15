@@ -35,6 +35,8 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 - **Limits**: `limit(expr, var, point)` computes lim_{var → point} expr. Supports two-sided and one-sided limits (`limit(1/x, x, 0, +)` → `inf`; `limit(1/x, x, 0, -)` → `-inf`). Handles indeterminate forms via L'Hôpital's rule (0/0 and ∞/∞, up to 5 steps), and limits at ±∞ for polynomial/rational functions, `exp`, `ln`, `atan`, and elementary compositions. `inf` is a built-in constant equal to `+∞`; `-inf` follows from unary minus.
 
+- **Laplace & Fourier Transforms**: `laplace(f, t, s)` computes the Laplace transform L{f(t)} via a symbolic rule table — constants (`c → c/s`), powers (`t^n → n!/s^(n+1)`), exponentials (`e^(ct) → 1/(s−c)`), `sin(wt) → w/(s²+w²)`, `cos(wt) → s/(s²+w²)`, linearity, and the first-shift theorem `e^(at)·g(t) → G(s−a)` applied recursively — so `laplace(t*exp(-t), t, s)` yields `1/(s+1)²`. `fourier(f, t, w)` is the unilateral Fourier transform, computed as the Laplace transform evaluated at `s = i·w`; results are generally complex-valued, riding on the complex-number support (`fourier(exp(-2*t), t, w)` → `1/(2 + i·w)`). Shapes outside the table stay symbolic.
+
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
 - **Clean API**: Environment-aware evaluation with no implicit global state. Expressions are immutable and composable. `Environment` is immutable — `withBinding` returns a new instance, enabling safe concurrent evaluation.
@@ -65,6 +67,8 @@ x = 0.125
 leonardo> limit(sin(x)/x, x, 0) -- L'Hôpital: 1.0
 leonardo> limit(1/x, x, 0, +)  -- one-sided: inf
 leonardo> limit(atan(x), x, inf) -- limit at ∞: π/2
+leonardo> laplace(sin(2*t), t, s) -- Laplace transform: 2/(s² + 4)
+leonardo> fourier(exp(-2*t), t, w) -- Fourier transform: 1/(2 + i·w)
 leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x
 leonardo> C := A * B           -- with A, B matrices: simplify C executes the

@@ -333,6 +333,46 @@ package "matrix" {
 }
 
 ' ===================================================
+' PACKAGE: transform - Laplace / Fourier (imports core + scalar)
+' ===================================================
+package "transform" {
+
+    class "_Laplace" <<case>> [[calculus.html]] {
+        e : _Expression
+        t : _Variable
+        s : _Variable
+    }
+
+    class "_Fourier" <<case>> [[calculus.html]] {
+        e : _Expression
+        t : _Variable
+        w : _Variable
+    }
+
+    class "LaplaceTransform" <<utility>> [[calculus.html]] {
+        + laplaceOf(e, t, s): _Expression
+        __ rules __
+        constants, t^n, exp(ct)
+        sin(wt), cos(wt), linearity
+        first-shift e^{at}g(t) -> G(s-a)
+    }
+
+    class "FourierTransform" <<utility>> [[calculus.html]] {
+        + fourierOf(e, t, w): _Expression
+        unilateral: L{f} at s = i*w
+    }
+
+    "_Laplace" --|> "_Functional"
+    "_Fourier" --|> "_Functional"
+
+    "_Laplace"         ..> "LaplaceTransform" : laplaceOf() at eval
+    "_Fourier"         ..> "FourierTransform" : fourierOf() at eval
+    "FourierTransform" ..> "LaplaceTransform" : delegates, then s -> i*w
+    "FourierTransform" ..> "Substitute"       : s -> i*w substitution
+    "FourierTransform" ..> "_Complex"         : imaginary unit i
+}
+
+' ===================================================
 ' PACKAGE: equation - equation domain (imports core)
 ' ===================================================
 package "equation" {
@@ -410,6 +450,8 @@ package "parser" {
 "Parser" ..> "_Matrix"         : matrix row literals
 "Parser" ..> "_MatrixOperation": structural + - * dispatch
 "Parser" ..> "_MatrixIndex"    : at(A, i, j) element access
+"Parser" ..> "_Laplace"        : laplace(e, t, s)
+"Parser" ..> "_Fourier"        : fourier(e, t, w)
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)
