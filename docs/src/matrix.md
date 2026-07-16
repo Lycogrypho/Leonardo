@@ -66,8 +66,8 @@ symM.eval(envX)
 
 ## Arithmetic
 
-Standard `+`, `*`, scalar multiplication and transpose work on both symbolic
-and concrete matrices:
+Standard `+`, `*`, scalar multiplication, transpose, determinant and inverse
+work on both symbolic and concrete matrices:
 
 ```scala mdoc:silent
 val A = Parser.parse("[[1, 2], [3, 4]]").get
@@ -94,6 +94,22 @@ MatScale(_Number(2.0), A).eval(env)
 Transpose(A).eval(env)
 ```
 
+```scala mdoc
+// det(A) — a scalar result (LU with partial pivoting on dense values)
+Determinant(A).eval(env)
+```
+
+```scala mdoc
+// inv(A) — the inverse matrix (Gauss–Jordan); 1/A and M/N parse to this too
+Inverse(A).eval(env)
+```
+
+`det(A)` reduces to a scalar `_Number`; a non-square or (for the inverse) singular
+matrix has no result and stays symbolic, the same `x/0` contract used elsewhere.
+The reciprocal spellings `1 / A` and `M / N` (= `M · N⁻¹`) route through the same
+`Inverse` node. Small symbolic matrices expand by cofactors (determinant) and
+adjugate/det (inverse).
+
 ## Dense evaluation
 
 When all elements reduce to numbers the result is a `_MatrixValue` — a dense
@@ -101,9 +117,10 @@ row-major `Array[Double]`. The multiply kernel is block-tiled for cache
 efficiency and runs in parallel above a 2¹⁶-element work threshold:
 
 ```scala mdoc
-MatProduct(A, B).eval(env) match
+MatProduct(A, B).eval(env) match {
   case Right(m: _MatrixValue) => m.toVector
   case other                  => other
+}
 ```
 
 ## Calculus on matrices

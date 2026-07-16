@@ -81,6 +81,8 @@ package "core" {
         + multiply(that): _MatrixValue
         + transpose: _MatrixValue
         + scale(k: Double): _MatrixValue
+        + determinant: Option[Double]
+        + inverse: Option[_MatrixValue]
         + guarded(orElse): Either
         __ companion __
         + apply(rows, cols, data) : defensive copy
@@ -303,6 +305,18 @@ package "matrix" {
     class "Transpose" <<case>> [[matrix.html]] {
         m : _Expression
     }
+    class "Inverse" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ inv(A) ; drives 1/A __
+        dense: Gauss-Jordan; symbolic: adjugate/det
+    }
+
+    class "Determinant" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ det(A) : 1-based __
+        returns SCALAR, not matrix
+        dense: LU pivot; symbolic: cofactors
+    }
 
     class "_MatrixIndex" <<case>> [[matrix.html]] {
         matrix : _Expression
@@ -318,6 +332,8 @@ package "matrix" {
     "MatProduct"       --|> "_MatrixOperation"
     "MatScale"         --|> "_MatrixOperation"
     "Transpose"        --|> "_MatrixOperation"
+    "Inverse"          --|> "_MatrixOperation"
+    "Determinant"      --|> "_Expression"
     "_MatrixIndex"     --|> "_Expression"
 
     ' Linear containers: derive/simplify/expand/integrate distribute element-wise
@@ -330,6 +346,8 @@ package "matrix" {
     "_MatrixOperation" ..> "Sum"          : element-wise symbolic combine
     "_MatrixOperation" ..> "Product"      : element-wise symbolic combine
     "_MatrixIndex"     ..> "_MatrixValue" : extracts element at eval
+    "Determinant"      ..> "_MatrixValue" : det kernel at eval
+    "Inverse"          ..> "_MatrixValue" : inverse kernel at eval
 }
 
 ' ===================================================
@@ -469,6 +487,8 @@ package "parser" {
 "Parser" ..> "_Matrix"         : matrix row literals
 "Parser" ..> "_MatrixOperation": structural + - * dispatch
 "Parser" ..> "_MatrixIndex"    : at(A, i, j) element access
+"Parser" ..> "Determinant"     : det(A)
+"Parser" ..> "Inverse"         : inv(A)
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)

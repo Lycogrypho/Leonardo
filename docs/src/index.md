@@ -2,7 +2,7 @@
 title: Leonardo
 ---
 
-<p align="center"><img src="Banner.svg" alt="Leonardo" style="max-width:100%;width:100%"/></p>
+<p style="text-align:center"><img src="Banner.svg" alt="Leonardo" style="max-width:100%;width:100%"/></p>
 
 Leonardo is a Scala 3 symbolic mathematics library and Computer Algebra System (CAS).
 It parses mathematical expressions into an immutable AST and evaluates them either
@@ -42,7 +42,7 @@ d.eval(env)
 | **Algebra** | `+` `-` `*` `/` `^`; `sin cos tan asin acos atan exp log`; `pi` `e` `i` |
 | **Calculus** | Symbolic differentiation, indefinite integration (rule table), definite integration (Simpson's rule) |
 | **Simplification** | Single-pass structural reduction; fixpoint `simplifyFully` |
-| **Matrices** | Symbolic `_Matrix` + dense `_MatrixValue`; sum, product, transpose, scale |
+| **Matrices** | Symbolic `_Matrix` + dense `_MatrixValue`; sum, product, transpose, scale, determinant, inverse (`det`, `inv`, `1/A`) |
 | **Equations** | `_Equation` relation; `solve` (linear exact, quadratic, numeric bisection); `solveSystem` (Gaussian elimination) |
 | **Complex** | `_Complex(re, im)`; full field arithmetic; `exp log sin cos tan` on complex args; principal roots |
 | **Sampling** | `sample(e, v, lo, hi, n)` → `Vector[(Double, Double)]`; compiled `Double ⇒ Double` fast path |

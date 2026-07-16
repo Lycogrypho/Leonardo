@@ -29,7 +29,7 @@ import transform.*
  *   matrixRow   ::= "[" equationExpr ("," equationExpr)* "]"
  *   function    ::= "exp(" expr ")" | "log(" expr ")" | "ln(" expr ")" | "sin(" expr ")"
  *                 | "cos(" expr ")" | "tan(" expr ")" | "tg(" expr ")" | "asin(" expr ")" | "acos(" expr ")" | "atan(" expr ")"
- *                 | "transpose(" expr ")" | "pow(" expr "," expr ")"
+ *                 | "transpose(" expr ")" | "det(" expr ")" | "inv(" expr ")" | "pow(" expr "," expr ")"
  *   functional  ::= "derive(" expr "," variable ")"
  *                 | "integral(" expr "," variable ")"
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
@@ -78,7 +78,7 @@ object Parser extends JavaTokenParsers:
   // merely starting with a reserved word ("sina", "evalx") stay legal.
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
-    "pow", "transpose", "at",                             // functions
+    "pow", "transpose", "at", "det", "inv",              // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", // functionals
     "pi", "e", "i", "inf",                               // constants (inf = +∞)
     "simplify", "expand", "eval", "env", "vars",
@@ -225,6 +225,8 @@ object Parser extends JavaTokenParsers:
     "acos(" ~> guardedExpr <~ ")"                         ^^ Acos.apply                        |
     "atan(" ~> guardedExpr <~ ")"                         ^^ Atan.apply                        |
     "transpose(" ~> guardedExpr <~ ")"                    ^^ Transpose.apply                   |
+    "det(" ~> guardedExpr <~ ")"                          ^^ Determinant.apply                  |
+    "inv(" ~> guardedExpr <~ ")"                          ^^ Inverse.apply                      |
     "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }            |
     "at("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case m ~ _ ~ r ~ _ ~ c => _MatrixIndex(m, r, c) }
 

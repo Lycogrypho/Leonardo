@@ -93,6 +93,92 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       i += 1
     new _MatrixValue(cols, rows, out)
 
+  // Determinant via LU decomposition with partial pivoting, O(n³) — the numeric
+  // counterpart of the symbolic cofactor expansion in matrix.Determinant. None when
+  // the matrix is non-square (undefined); a zero pivot means a singular matrix and
+  // yields Some(0.0). Works on a defensive clone, so the value's storage is untouched.
+  def determinant: Option[Double] =
+    if rows != cols then None
+    else
+      val n   = rows
+      val a   = data.clone
+      var det = 1.0
+      var col = 0
+      while col < n do
+        var pivot  = col
+        var maxAbs = math.abs(a(col * n + col))
+        var r      = col + 1
+        while r < n do
+          val v = math.abs(a(r * n + col))
+          if v > maxAbs then { maxAbs = v; pivot = r }
+          r += 1
+        if a(pivot * n + col) == 0.0 then return Some(0.0)   // singular
+        if pivot != col then
+          var k = 0
+          while k < n do
+            val tmp = a(col * n + k); a(col * n + k) = a(pivot * n + k); a(pivot * n + k) = tmp
+            k += 1
+          det = -det
+        val diag = a(col * n + col)
+        det *= diag
+        var rr = col + 1
+        while rr < n do
+          val f = a(rr * n + col) / diag
+          var k = col
+          while k < n do
+            a(rr * n + k) -= f * a(col * n + k)
+            k += 1
+          rr += 1
+        col += 1
+      Some(det)
+
+  // Inverse via Gauss–Jordan elimination with partial pivoting, O(n³). None when the
+  // matrix is non-square or singular (a zero pivot) — the caller stays symbolic, the
+  // same contract as x/0 in scalar.Ratio. The augmented identity is reduced in lockstep
+  // with a clone of the data, so no live reference into the value's storage escapes.
+  def inverse: Option[_MatrixValue] =
+    if rows != cols then None
+    else
+      val n   = rows
+      val a   = data.clone
+      val inv = new Array[Double](n * n)
+      var d   = 0
+      while d < n do { inv(d * n + d) = 1.0; d += 1 }   // identity
+      var col = 0
+      while col < n do
+        var pivot  = col
+        var maxAbs = math.abs(a(col * n + col))
+        var r      = col + 1
+        while r < n do
+          val v = math.abs(a(r * n + col))
+          if v > maxAbs then { maxAbs = v; pivot = r }
+          r += 1
+        if a(pivot * n + col) == 0.0 then return None    // singular
+        if pivot != col then
+          var k = 0
+          while k < n do
+            val ta = a(col * n + k); a(col * n + k) = a(pivot * n + k); a(pivot * n + k) = ta
+            val ti = inv(col * n + k); inv(col * n + k) = inv(pivot * n + k); inv(pivot * n + k) = ti
+            k += 1
+        val diag = a(col * n + col)
+        var k = 0
+        while k < n do
+          a(col * n + k) /= diag
+          inv(col * n + k) /= diag
+          k += 1
+        var rr = 0
+        while rr < n do
+          if rr != col then
+            val f = a(rr * n + col)
+            var kk = 0
+            while kk < n do
+              a(rr * n + kk)   -= f * a(col * n + kk)
+              inv(rr * n + kk) -= f * inv(col * n + kk)
+              kk += 1
+          rr += 1
+        col += 1
+      Some(new _MatrixValue(n, n, inv))
+
   // (this: rows×n) * (that: n×that.cols). Block-tiled i-k-j: Tile×Tile blocks keep
   // the hot block of `that` (and of `out`) cache-resident across a whole row block,
   // instead of re-streaming all of `that` from memory for every output row. Within

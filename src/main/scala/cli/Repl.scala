@@ -175,6 +175,9 @@ final class Session:
       case Product(a, b) if isMatrixish(b)                   => MatScale(a, b).eval(env).toExpression
       case Product(a, b) if isMatrixish(a)                   => MatScale(b, a).eval(env).toExpression
       case Ratio(a, b) if isMatrixish(a) && !isMatrixish(b)  => MatScale(Ratio(_Number(1), b), a).eval(env).toExpression
+      case Ratio(a, b) if isMatrixish(a) && isMatrixish(b)   => MatProduct(a, Inverse(b)).eval(env).toExpression
+      case Ratio(a, b) if isMatrixish(b)                     => MatScale(a, Inverse(b)).eval(env).toExpression
+      case d @ Determinant(_)                                => d.eval(env).toExpression
       case m: _MatrixOperation                               => m.eval(env).toExpression
       case other                                             => other
 

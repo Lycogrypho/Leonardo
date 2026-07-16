@@ -18,7 +18,7 @@ title: Getting Started
 > To use it locally, clone the repository and run `sbt publishLocal`, then
 > add the following to your `build.sbt`:
 
-```sbt
+```scala
 libraryDependencies += "it.grypho.scala" %% "leonardo" % "@VERSION@"
 ```
 
@@ -29,7 +29,7 @@ Leonardo is split across focused packages. Import what you need:
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.core.*      // _Expression, _Value, _Number, _Variable, Environment
 import it.grypho.scala.leonardo.scalar.*    // Sum, Product, Power, Sin, derive, simplify, …
-import it.grypho.scala.leonardo.matrix.*    // _Matrix, MatSum, MatProduct, Transpose
+import it.grypho.scala.leonardo.matrix.*    // _Matrix, MatSum, MatProduct, Transpose, Determinant, Inverse
 import it.grypho.scala.leonardo.equation.*  // _Equation, solve, solveSystem
 import it.grypho.scala.leonardo.parser.Parser
 import it.grypho.scala.leonardo.cli.Session

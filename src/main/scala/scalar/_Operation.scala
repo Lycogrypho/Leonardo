@@ -66,6 +66,14 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
         if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
       // M / k = (1/k) · M; k = 0 yields non-finite elements → the guard stays symbolic
       case (Right(m: _MatrixValue), Right(_Number(k))) => m.scale(1.0 / k).guarded(this)
+      // k / M = k · M⁻¹ (scalar over matrix); singular/non-square → stays symbolic
+      case (Right(_Number(k)), Right(m: _MatrixValue)) =>
+        m.inverse.map(_.scale(k).guarded(this)).getOrElse(Left(this))
+      // M / N = M · N⁻¹ (matrix over matrix); non-invertible or shape mismatch → symbolic
+      case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
+        y.inverse match
+          case Some(yi) if x.cols == yi.rows => x.multiply(yi).guarded(this)
+          case _                             => Left(this)
       // Both operands are concrete: try complex field division; None on non-numeric or zero denominator.
       case (Right(av: _Value), Right(bv: _Value)) =>
         _Complex.div(av, bv).map(Right(_)).getOrElse(Left(Ratio(av, bv)))
