@@ -353,10 +353,12 @@ object Session:
     "solve" ->
       """|Solve an equation for a variable.
          |Linear and quadratic forms are solved exactly; other forms use numeric bisection.
-         |A matrix equation is solved for a scalar unknown cell-by-cell (intersection).
+         |A matrix equation is solved for a scalar unknown cell-by-cell (intersection),
+         |or for a matrix unknown A*X = B via the inverse (X = A^-1 B; bind A and B first).
          |  solve(10*x = 2*x + 1, x)   → x = 0.125
          |  solve(x^2 = 4, x)          → [[x = -2.0, x = 2.0]]
          |  solve([[x, 2*x]] = [[3, 6]], x)   → x = 3.0
+         |  solve(A * X = B, X)        matrix unknown (A, B bound) → X = [[…]]
          |  solve(h, x)                h is a named equation""".stripMargin,
     "derive" ->
       """|Differentiate an expression with respect to a variable or a defined function.

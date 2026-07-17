@@ -111,6 +111,23 @@ solution, so the node stays symbolic:
 Parser.parse("solve([[x, x]] = [[1, 2]], x)").get.eval(env)
 ```
 
+### Matrix equations (matrix unknown)
+
+When the unknown is itself a **matrix** in a linear equation `A·X = B` (or `X·A = B`),
+`solve` returns the unique solution `X = A⁻¹·B` via the inverse kernel. The known
+matrices must be bound so the parser sees a plain product (a bare `X` is a scalar
+variable syntactically):
+
+```scala mdoc
+val A = _MatrixValue(2, 2, Array(2.0, 0.0, 0.0, 2.0))
+val B = _MatrixValue(2, 2, Array(4.0, 6.0, 8.0, 10.0))
+val mEnv = new Environment(5, Map("A" -> A, "B" -> B))
+// A·X = B  →  X = A⁻¹·B = [[2, 3], [4, 5]]
+Parser.parse("solve(A * X = B, X)").get.eval(mEnv)
+```
+
+A singular (non-invertible) `A` has no unique solution and stays symbolic.
+
 ### Linear systems
 
 `solveSystem([[eq₁, eq₂, …]], v₁, v₂, …)` solves a square system via

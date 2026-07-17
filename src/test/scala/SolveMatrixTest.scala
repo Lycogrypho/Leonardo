@@ -15,6 +15,9 @@ class SolveMatrixTest extends AnyFlatSpec:
 
   val x = _Variable("x")
 
+  def dense(rows: Int, cols: Int, elems: Double*): _MatrixValue =
+    _MatrixValue(rows, cols, elems.toArray)
+
   def parseEq(input: String): _Equation =
     val result = Parser.parse(input)
     assert(result.successful, s"parse failed for \"$input\": $result")
@@ -115,4 +118,59 @@ class SolveMatrixTest extends AnyFlatSpec:
   {
     val s = Session()
     assert(s.execute("solve([[x, x]] = [[2, 2]], x)") == "x = 2.0")
+  }
+
+  // --- 4.3b: unknown MATRIX x (A·x = B) ---
+
+  "solve(A*x = B, x)" should "give x = A⁻¹·B" in
+  {
+    val a = dense(2, 2, 2, 0, 0, 2)          // 2·I  → A⁻¹ = 0.5·I
+    val b = dense(2, 2, 4, 6, 8, 10)
+    assert(solve(_Equation(Product(a, x), b), x) == List(_Equation(x, dense(2, 2, 2, 3, 4, 5))))
+  }
+
+  "solve(x*A = B, x)" should "give x = B·A⁻¹" in
+  {
+    val a = dense(2, 2, 2, 0, 0, 2)
+    val b = dense(2, 2, 2, 3, 4, 5)
+    assert(solve(_Equation(Product(x, a), b), x) == List(_Equation(x, dense(2, 2, 1, 1.5, 2, 2.5))))
+  }
+
+  "solve(x = B, x) for a matrix B" should "give x = B" in
+  {
+    val b = dense(2, 2, 1, 2, 3, 4)
+    assert(solve(_Equation(x, b), x) == List(_Equation(x, b)))
+  }
+
+  "the matrix-unknown solution" should "satisfy the original equation" in
+  {
+    val a = dense(2, 2, 1, 2, 3, 4)          // invertible (det = -2)
+    val b = dense(2, 2, 5, 6, 7, 8)
+    solve(_Equation(Product(a, x), b), x) match
+      case _Equation(_, sol: _MatrixValue) :: Nil =>
+        val prod = a.multiply(sol)
+        for i <- 0 until 2; j <- 0 until 2 do assert(math.abs(prod(i, j) - b(i, j)) < 1e-9)
+      case other => fail(s"expected one matrix solution but got: $other")
+  }
+
+  "solve(A*x = B, x) with a singular A" should "have no solution" in
+  {
+    val a = dense(2, 2, 1, 2, 2, 4)          // singular
+    val b = dense(2, 2, 1, 0, 0, 1)
+    assert(solve(_Equation(Product(a, x), b), x).isEmpty)
+  }
+
+  "solve(A*x = B, x) with nonconforming shapes" should "have no solution" in
+  {
+    val a = dense(2, 2, 2, 0, 0, 2)
+    val b = dense(3, 2, 1, 2, 3, 4, 5, 6)    // A⁻¹ is 2×2, cannot left-multiply a 3×2
+    assert(solve(_Equation(Product(a, x), b), x).isEmpty)
+  }
+
+  "the REPL" should "solve a matrix unknown A*X = B" in
+  {
+    val s = Session()
+    s.execute("A := [[2, 0], [0, 2]]")
+    s.execute("B := [[4, 6], [8, 10]]")
+    assert(s.execute("solve(A * X = B, X)") == "X = [[2.0, 3.0], [4.0, 5.0]]")
   }

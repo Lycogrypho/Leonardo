@@ -437,7 +437,8 @@ package "equation" {
     class "Solve" <<utility>> [[equations.html]] {
         + solve(eq, v, env): List
         __ scalar tiers + __
-        matrix eq: element-wise decompose
+        matrix unknown: A·X=B → A⁻¹·B
+        scalar in matrix eq: element-wise
     }
 
     class "_SolveSystem" <<case>> [[equations.html]] {
@@ -471,6 +472,7 @@ package "equation" {
     "Solve"     ..> "Normalize" : collect() linear/quadratic tiers
     "Solve"     ..> "Compile"   : numeric fallback
     "Solve"     ..> "_Matrix"   : element-wise matrix-equation decompose
+    "Solve"     ..> "_MatrixValue" : inverse kernel (matrix unknown)
 }
 
 ' ===================================================

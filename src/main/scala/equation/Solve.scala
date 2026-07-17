@@ -26,9 +26,10 @@ import matrix.*
 // Each solution's right-hand side is folded through env, so bound coefficients
 // produce numeric answers: with a := 2, solve(a·x = 4, x) yields x = 2.
 //
-// Matrix equations (both sides reduce to matrices) take a separate path: solve a
-// scalar unknown by decomposing element-wise and keeping the values that satisfy every
-// cell (solveElementwise). Solving for an unknown MATRIX is not covered here.
+// Matrix equations take two separate paths, tried before the scalar tiers:
+//   - unknown MATRIX v (A·v = B): v = A⁻¹·B via the inverse kernel (solveMatrixUnknown);
+//   - scalar v inside a matrix equation (both sides reduce to matrices): element-wise
+//     decomposition keeping the values that satisfy every cell (solveElementwise).
 
 private val SearchLo         = -100.0
 private val SearchHi         = 100.0
@@ -37,13 +38,19 @@ private val MaxNumericRoots  = 8
 private val BisectIterations = 200
 
 def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): List[_Equation] =
-  // A matrix equation (both sides reduce to matrices) is solved element-wise; a
-  // dimension mismatch cannot be satisfied by any scalar value, so it has no solution.
-  matrixSides(eq, env) match
-    case Some((lhs, rhs)) =>
-      if lhs.rows == rhs.rows && lhs.cols == rhs.cols then solveElementwise(eq, lhs, rhs, v, env)
-      else Nil
-    case None => solveScalar(eq, v, env)
+  // Tiers, most specific first:
+  //   4.3b — unknown MATRIX v (A·v = B): v = A⁻¹·B via the inverse kernel;
+  //   4.3a — scalar v inside a matrix equation (both sides reduce to matrices):
+  //          element-wise decomposition, a dimension mismatch has no solution;
+  //   otherwise the scalar linear/quadratic/numeric tiers.
+  solveMatrixUnknown(eq, v, env) match
+    case Some(solution) => solution
+    case None =>
+      matrixSides(eq, env) match
+        case Some((lhs, rhs)) =>
+          if lhs.rows == rhs.rows && lhs.cols == rhs.cols then solveElementwise(eq, lhs, rhs, v, env)
+          else Nil
+        case None => solveScalar(eq, v, env)
 
 private def solveScalar(eq: _Equation, v: _Variable, env: Environment): List[_Equation] =
   val difference = Sum(eq.lhs, Product(_Number(-1), eq.rhs))
@@ -84,6 +91,58 @@ private def asMatrix(r: Either[_Expression, _Value]): Option[_Matrix] = r match
   case Left(m: _Matrix)        => Some(m)
   case Right(mv: _MatrixValue) => Some(_Matrix.fromValue(mv))
   case _                       => None
+
+// Issue 4.3b — the unknown v is a MATRIX in a linear matrix equation. Recognises the
+// shapes A·v = B, v·A = B and v = B where the *known* operands (A and B) reduce to
+// concrete matrices, and returns the unique solution via 4.2's inverse kernel:
+//   A·v = B → v = A⁻¹·B      v·A = B → v = B·A⁻¹      v = B → v = B
+// Some(Nil) when A is singular / non-square or the shapes do not conform (no solution →
+// the _Solve node stays symbolic). None when the equation is not a matrix-unknown form,
+// so the element-wise (4.3a) and scalar tiers still run. Products are the scalar `Product`
+// node because a bare unknown parses as a scalar variable (`A * X` with A and B bound
+// matrices → `Product(A, X)`); the `MatProduct` shapes are accepted too for completeness.
+// Symbolic (non-dense) coefficients are out of scope and fall through as well.
+private def solveMatrixUnknown(eq: _Equation, v: _Variable, env: Environment): Option[List[_Equation]] =
+  for
+    (withV, constant) <- sideWith(v, eq)
+    b                 <- asMatrixValue(constant.eval(env))
+    solution          <- linearMatrixSolve(withV, b, v, env)
+  yield solution
+
+// withV is the side containing v; b is the known right-hand matrix. Returns None when
+// withV is not one of the recognised matrix-unknown shapes (fall through to other tiers).
+private def linearMatrixSolve(withV: _Expression, b: _MatrixValue, v: _Variable, env: Environment): Option[List[_Equation]] =
+  withV match
+    case Product(a, r)    if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
+    case MatProduct(a, r) if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
+    case Product(l, a)    if l == v => matrixDivide(a, b, v, env, aOnLeft = false)
+    case MatProduct(l, a) if l == v => matrixDivide(a, b, v, env, aOnLeft = false)
+    case r                if r == v => Some(List(_Equation(v, b)))   // v = B
+    case _                          => None
+
+// A·v = B → v = A⁻¹·B (A on the left of v); v·A = B → v = B·A⁻¹. None when A is not a
+// concrete matrix (not a matrix-unknown equation); Some(Nil) when A is singular/non-square
+// or the shapes do not conform.
+private def matrixDivide(a: _Expression, b: _MatrixValue, v: _Variable, env: Environment, aOnLeft: Boolean): Option[List[_Equation]] =
+  asMatrixValue(a.eval(env)).map { aMatrix =>
+    val solution = aMatrix.inverse.flatMap(aInv => if aOnLeft then matMul(aInv, b) else matMul(b, aInv))
+    solution.map(m => _Equation(v, m)).toList
+  }
+
+private def matMul(p: _MatrixValue, q: _MatrixValue): Option[_MatrixValue] =
+  if p.cols == q.rows then Some(p.multiply(q)) else None
+
+// The unique side of eq that contains v (with the other, v-free side), or None when v
+// occurs on both sides or neither.
+private def sideWith(v: _Variable, eq: _Equation): Option[(_Expression, _Expression)] =
+  (dependsOn(eq.lhs, v), dependsOn(eq.rhs, v)) match
+    case (true, false) => Some((eq.lhs, eq.rhs))
+    case (false, true) => Some((eq.rhs, eq.lhs))
+    case _             => None
+
+private def asMatrixValue(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
+  case Right(m: _MatrixValue) => Some(m)
+  case _                      => None
 
 // Collapse roots equal within the display tolerance (the same 0.5·10⁻ᵖ used by
 // _Equation) so ±√Δ duplicates and repeated element roots print once.
