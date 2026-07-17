@@ -92,6 +92,25 @@ over `[-100, 100]` followed by bisection (up to 8 roots):
 Parser.parse("solve(sin(x) = 0.5, x)").get.eval(env)
 ```
 
+### Matrix equations (scalar unknown)
+
+When both sides are matrices, `solve` finds a scalar unknown by decomposing the
+equation into its per-cell scalar equations and keeping the value that satisfies
+**every** cell (the intersection of the per-cell solution sets):
+
+```scala mdoc
+// each cell agrees on x = 3
+Parser.parse("solve([[x, 2*x]] = [[3, 6]], x)").get.eval(env)
+```
+
+An inconsistent system — where different cells demand different values — has no
+solution, so the node stays symbolic:
+
+```scala mdoc
+// cell 1 wants x = 1, cell 2 wants x = 2 → no common root
+Parser.parse("solve([[x, x]] = [[1, 2]], x)").get.eval(env)
+```
+
 ### Linear systems
 
 `solveSystem([[eq₁, eq₂, …]], v₁, v₂, …)` solves a square system via

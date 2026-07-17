@@ -3,6 +3,7 @@ package equation
 
 import core.*
 import scalar.*
+import matrix.*
 
 
 // Equation solver: solve(eq, v) returns the solutions of eq in v as a list of
@@ -24,6 +25,10 @@ import scalar.*
 //
 // Each solution's right-hand side is folded through env, so bound coefficients
 // produce numeric answers: with a := 2, solve(a·x = 4, x) yields x = 2.
+//
+// Matrix equations (both sides reduce to matrices) take a separate path: solve a
+// scalar unknown by decomposing element-wise and keeping the values that satisfy every
+// cell (solveElementwise). Solving for an unknown MATRIX is not covered here.
 
 private val SearchLo         = -100.0
 private val SearchHi         = 100.0
@@ -32,6 +37,15 @@ private val MaxNumericRoots  = 8
 private val BisectIterations = 200
 
 def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): List[_Equation] =
+  // A matrix equation (both sides reduce to matrices) is solved element-wise; a
+  // dimension mismatch cannot be satisfied by any scalar value, so it has no solution.
+  matrixSides(eq, env) match
+    case Some((lhs, rhs)) =>
+      if lhs.rows == rhs.rows && lhs.cols == rhs.cols then solveElementwise(eq, lhs, rhs, v, env)
+      else Nil
+    case None => solveScalar(eq, v, env)
+
+private def solveScalar(eq: _Equation, v: _Variable, env: Environment): List[_Equation] =
   val difference = Sum(eq.lhs, Product(_Number(-1), eq.rhs))
 
   val roots: List[_Expression] = collect(difference, v) match
@@ -42,6 +56,46 @@ def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): Li
     case _                        => numericRoots(difference, v, env)
 
   roots.map(r => _Equation(v, r.eval(env).toExpression))
+
+// Issue 4.3a — scalar unknown v inside a matrix equation lhs = rhs. The two sides are
+// reduced element-wise (a MatSum / matrix literal folds to an n×m grid of scalar
+// expressions), giving n·m scalar equations Aᵢⱼ = Bᵢⱼ in v. Their roots are pooled as
+// candidates, then each candidate is checked against the WHOLE matrix equation — a value
+// is a solution only when every element holds. Verification reuses _Equation.eval's
+// precision-tolerant matrix comparison, so a candidate that satisfies some elements but
+// not others is dropped: the reported [[1+x, 2+x], [1+2x, 3+3x]] = [[1,3],[3,6]] forces
+// x = 0 in cell (1,1) and x = 1 elsewhere, so no candidate verifies and the result is
+// empty (the solve node then stays symbolic). Symbolic roots that do not reduce to a
+// bindable value under env are conservatively skipped (no false positives).
+private def solveElementwise(eq: _Equation, lhs: _Matrix, rhs: _Matrix, v: _Variable, env: Environment): List[_Equation] =
+  val elementEqs: List[_Equation] = lhs.elems.toList.zip(rhs.elems).map((l, r) => _Equation(l, r))
+  val candidates: List[_Value]    =
+    elementEqs.flatMap(e => solve(e, v, env)).flatMap(sol => sol.rhs.eval(env).toOption)
+  val verified = candidates.filter(root => eq.eval(env.withBinding(v.variable, root)).contains(_Bool(true)))
+  dedupeRoots(verified, env).map(root => _Equation(v, root))
+
+// Both sides re-inflated to matrix literals, or None when either is not matrix-shaped.
+private def matrixSides(eq: _Equation, env: Environment): Option[(_Matrix, _Matrix)] =
+  (asMatrix(eq.lhs.eval(env)), asMatrix(eq.rhs.eval(env))) match
+    case (Some(l), Some(r)) => Some((l, r))
+    case _                  => None
+
+private def asMatrix(r: Either[_Expression, _Value]): Option[_Matrix] = r match
+  case Left(m: _Matrix)        => Some(m)
+  case Right(mv: _MatrixValue) => Some(_Matrix.fromValue(mv))
+  case _                       => None
+
+// Collapse roots equal within the display tolerance (the same 0.5·10⁻ᵖ used by
+// _Equation) so ±√Δ duplicates and repeated element roots print once.
+private def dedupeRoots(roots: List[_Value], env: Environment): List[_Value] =
+  val tol = 0.5 * math.pow(10, -env.precision)
+  roots.foldLeft(List.empty[_Value]) { (acc, r) =>
+    if acc.exists(a => sameValue(a, r, tol)) then acc else acc :+ r
+  }
+
+private def sameValue(a: _Value, b: _Value, tol: Double): Boolean = (a, b) match
+  case (_Number(x), _Number(y)) => math.abs(x - y) <= tol
+  case _                        => a == b
 
 private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): List[_Expression] =
   (c0, c1, c2) match

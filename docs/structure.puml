@@ -436,6 +436,8 @@ package "equation" {
 
     class "Solve" <<utility>> [[equations.html]] {
         + solve(eq, v, env): List
+        __ scalar tiers + __
+        matrix eq: element-wise decompose
     }
 
     class "_SolveSystem" <<case>> [[equations.html]] {
@@ -468,6 +470,7 @@ package "equation" {
     "_Solve"          ..> "Solve"     : solve() at eval (eq must be _Equation)
     "Solve"     ..> "Normalize" : collect() linear/quadratic tiers
     "Solve"     ..> "Compile"   : numeric fallback
+    "Solve"     ..> "_Matrix"   : element-wise matrix-equation decompose
 }
 
 ' ===================================================
