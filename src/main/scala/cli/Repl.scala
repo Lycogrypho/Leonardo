@@ -4,6 +4,7 @@ package cli
 import core.*
 import scalar.*
 import matrix.*
+import equation.{_Equation, _Solve}
 import parser.Parser
 
 import org.jline.reader.{EndOfFileException, LineReader, LineReaderBuilder, UserInterruptException}
@@ -142,15 +143,45 @@ final class Session:
         case Some(n) => s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'"
         case None    => base
 
+  private def formatResult(result: Either[_Expression, _Value]): String =
+    result.toExpression match
+      case n: _Number      => n.display(precision)
+      case c: _Complex     => c.display(precision)
+      case m: _MatrixValue => m.display(precision)
+      case other           => other.toString
+
+  // True iff the expression tree contains a _Solve functional node.
+  private def containsSolve(e: _Expression): Boolean = e match
+    case _: _Solve => true
+    case _         => e.children.exists(containsSolve)
+
+  // When solve produces a result at the REPL top level, auto-bind the solved
+  // variable so it is immediately available in subsequent expressions.
+  // Single solution v = rhs  → bind v (binding or definition, via assign).
+  // Multiple solutions       → bind v_1, v_2, … leaving v itself unbound.
+  // No solution              → None (falls back to formatResult).
+  private def tryAutoBindSolve(result: Either[_Expression, _Value]): Option[String] =
+    result match
+      case Left(_Equation(v: _Variable, rhs))
+          if !Session.ReservedConstants.contains(v.variable)
+          && !Parser.ReservedWords.contains(v.variable) =>
+        Some(assign(v.variable, rhs))
+      case Left(_Matrix(1, _, elems)) =>
+        val equations = elems.collect { case _Equation(v: _Variable, rhs) => (v.variable, rhs) }
+        if equations.size == elems.size && equations.map(_._1).distinct.size == 1 then
+          val name = equations.head._1
+          val lines = equations.zipWithIndex.map { case ((_, rhs), i) => assign(s"${name}_${i + 1}", rhs) }
+          Some(lines.mkString("\n"))
+        else None
+      case _ => None
+
   private def evaluate(e: _Expression): String =
     resolveDerivativeBinders(e) match
       case Left(message) => message
       case Right(resolved) =>
-        substitute(resolved, definitions).eval(env).toExpression match
-          case n: _Number      => n.display(precision)
-          case c: _Complex     => c.display(precision)
-          case m: _MatrixValue => m.display(precision)
-          case other           => other.toString
+        val result = substitute(resolved, definitions).eval(env)
+        if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
+        else formatResult(result)
 
   /**
    * Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes

@@ -812,3 +812,48 @@ class ReplSessionTest extends AnyFlatSpec:
       assert(s2.execute(":save foo.txt").contains("interactive"))
     finally tmp.delete()
   }
+
+  // --- auto-bind on solve ---
+
+  "a single-solution solve" should "auto-bind the variable" in
+  {
+    val s = session
+    assert(s.execute("solve(2*x + 4 = 0, x)") == "x := -2.0")
+    assert(s.execute("x") == "-2.0")
+  }
+
+  "a multiple-solution solve" should "auto-bind numbered variables and leave the original unbound" in
+  {
+    val s = session
+    val out = s.execute("solve(x^2 = 4, x)")
+    assert(out.contains("x_1 :=") && out.contains("x_2 :="), s"expected x_1/x_2 bindings but got: $out")
+    assert(s.execute("x_1") == "-2.0" || s.execute("x_1") == "2.0")
+    assert(s.execute("x_2") != s.execute("x_1"))
+    assert(s.execute("x") == "x", "original x must remain unbound")
+  }
+
+  "a solve with no solution" should "stay symbolic without binding anything" in
+  {
+    val s = session
+    val out = s.execute("solve(x^2 + 1 = 0, x)")
+    assert(out.startsWith("solve("), s"expected symbolic solve node but got: $out")
+    assert(s.execute("x") == "x")
+  }
+
+  "auto-bound solve result" should "be usable in the next expression" in
+  {
+    val s = session
+    s.execute("solve(3*x = 9, x)")
+    assert(s.execute("x * 2") == "6.0")
+  }
+
+  "a named equation passed to solve" should "also auto-bind numbered roots" in
+  {
+    val s = session
+    s.execute("h := x^2 - 9 = 0")
+    s.execute("solve(h, x)")
+    assert(s.execute("x") == "x", "x must remain unbound when there are two solutions")
+    val x1 = s.execute("x_1")
+    val x2 = s.execute("x_2")
+    assert(Set(x1, x2) == Set("-3.0", "3.0"), s"expected roots ±3 but got $x1, $x2")
+  }

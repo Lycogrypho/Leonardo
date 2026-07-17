@@ -151,14 +151,17 @@ class SolveTest extends AnyFlatSpec:
   {
     val s = Session()
     s.execute("h := 10 * x = 2 * x + 1")
-    assert(s.execute("solve(h, x)") == "x = 0.125")
+    assert(s.execute("solve(h, x)") == "x := 0.125")
+    assert(s.execute("x") == "0.125")
   }
 
   "solve with a named quadratic equation" should "work after binding h := lhs = rhs" in
   {
     val s = Session()
     s.execute("h := x^2 = 4")
-    assert(s.execute("solve(h, x)") == "[[x = -2.0, x = 2.0]]")
+    val out = s.execute("solve(h, x)")
+    assert(out.contains("x_1 :=") && out.contains("x_2 :="), s"expected numbered roots but got: $out")
+    assert(Set(s.execute("x_1"), s.execute("x_2")) == Set("-2.0", "2.0"))
   }
 
   "solve(h, x) where h is an _EqualityCheck (==)" should "stay symbolic" in
@@ -177,13 +180,25 @@ class SolveTest extends AnyFlatSpec:
 
   // --- REPL flow ---
 
-  "solve in the REPL" should "answer with the solution set" in
+  "solve in the REPL" should "auto-bind the single solution and keep numerics accessible" in
   {
     val s = Session()
-    assert(s.execute("solve(10 * x = 2 * x + 1, x)") == "x = 0.125")
-    assert(s.execute("solve(x^2 = 4, x)") == "[[x = -2.0, x = 2.0]]")
+    assert(s.execute("solve(10 * x = 2 * x + 1, x)") == "x := 0.125")
+    assert(s.execute("x") == "0.125")
+  }
+
+  "solve of a quadratic in the REPL" should "bind numbered roots" in
+  {
+    val s = Session()
+    val out = s.execute("solve(x^2 = 4, x)")
+    assert(out.contains("x_1 :=") && out.contains("x_2 :="), s"expected numbered roots but got: $out")
+  }
+
+  "solve with a bound coefficient in the REPL" should "substitute and yield a single root" in
+  {
+    val s = Session()
     s.execute("a := 2")
-    assert(s.execute("solve(a * x = 4, x)") == "x = 2.0")
+    assert(s.execute("solve(a * x = 4, x)") == "x := 2.0")
   }
 
   // --- issue 1.5: identity equations must return Nil, not MaxNumericRoots fake roots ---

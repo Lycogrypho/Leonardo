@@ -114,10 +114,11 @@ class SolveMatrixTest extends AnyFlatSpec:
     assert(s.execute("solve(eq, x)").startsWith("solve("))
   }
 
-  "a consistent matrix equation in the REPL" should "solve for the scalar" in
+  "a consistent matrix equation in the REPL" should "solve for the scalar and auto-bind it" in
   {
     val s = Session()
-    assert(s.execute("solve([[x, x]] = [[2, 2]], x)") == "x = 2.0")
+    assert(s.execute("solve([[x, x]] = [[2, 2]], x)") == "x := 2.0")
+    assert(s.execute("x") == "2.0")
   }
 
   // --- 4.3b: unknown MATRIX x (A·x = B) ---
@@ -167,10 +168,11 @@ class SolveMatrixTest extends AnyFlatSpec:
     assert(solve(_Equation(Product(a, x), b), x).isEmpty)
   }
 
-  "the REPL" should "solve a matrix unknown A*X = B" in
+  "the REPL" should "solve a matrix unknown A*X = B and auto-bind X" in
   {
     val s = Session()
     s.execute("A := [[2, 0], [0, 2]]")
     s.execute("B := [[4, 6], [8, 10]]")
-    assert(s.execute("solve(A * X = B, X)") == "X = [[2.0, 3.0], [4.0, 5.0]]")
+    assert(s.execute("solve(A * X = B, X)") == "X := [[2.0, 3.0], [4.0, 5.0]]")
+    assert(s.execute("X") == "[[2.0, 3.0], [4.0, 5.0]]")
   }
