@@ -347,6 +347,14 @@ package "matrix" {
         result: Left(_Matrix(1,2,...))
     }
 
+    class "_EigenDecomposition" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ eigen(A) → [[λ₁, λ₂, …, λₙ]] __
+        QR iteration + Wilkinson shifts
+        real → _Number; complex pair → _Complex
+        result: Left(_Matrix(1,n,...))
+    }
+
     class "_MatrixIndex" <<case>> [[matrix.html]] {
         matrix : _Expression
         row    : _Expression
@@ -366,8 +374,9 @@ package "matrix" {
     "ZeroMatrix"       --|> "_MatrixOperation"
     "Determinant"      --|> "_Expression"
     "_MatrixIndex"     --|> "_Expression"
-    "_LUDecomposition" --|> "_Expression"
-    "_QRDecomposition" --|> "_Expression"
+    "_LUDecomposition"    --|> "_Expression"
+    "_QRDecomposition"    --|> "_Expression"
+    "_EigenDecomposition" --|> "_Expression"
 
     ' Linear containers: derive/simplify/expand/integrate distribute element-wise
     "_Matrix"   ..|> "_ElementWise"
@@ -529,8 +538,9 @@ package "parser" {
 "Parser" ..> "Inverse"         : inv(A)
 "Parser" ..> "IdentityMatrix"  : eye(n)
 "Parser" ..> "ZeroMatrix"      : zeros(r,c)
-"Parser" ..> "_LUDecomposition" : lu(A)
-"Parser" ..> "_QRDecomposition" : qr(A)
+"Parser" ..> "_LUDecomposition"    : lu(A)
+"Parser" ..> "_QRDecomposition"    : qr(A)
+"Parser" ..> "_EigenDecomposition" : eigen(A)
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)

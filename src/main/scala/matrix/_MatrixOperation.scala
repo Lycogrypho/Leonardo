@@ -271,6 +271,28 @@ case class _QRDecomposition(m: _Expression) extends _Expression:
       case _          => Left(this)
 
 
+// Eigenvalue decomposition: eigen(A) → [[λ₁, λ₂, …, λₙ]] (1×n row of eigenvalues).
+// Eigenvalues are _Number for real results and _Complex for complex conjugate pairs.
+// Evaluates when A reduces to a square dense _MatrixValue via the QR iteration kernel;
+// stays symbolic for non-square operands or when the iteration doesn't converge.
+// Does NOT extend _MatrixOperation because the result is not a matrix of Doubles
+// (eigenvalues can be complex) — it stays as Left(_Matrix(1, n, …)) rather than
+// collapsing to a single _MatrixValue.
+case class _EigenDecomposition(m: _Expression) extends _Expression:
+  override def toString: String = s"eigen($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _EigenDecomposition(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    m.eval(env) match
+      case Right(mv: _MatrixValue) =>
+        mv.eigenDecompose match
+          case Some(eigs) => Left(_Matrix(1, eigs.size, eigs))
+          case None       => Left(this)
+      case Left(expr) => Left(_EigenDecomposition(expr))
+      case _          => Left(this)
+
+
 // Element access: at(A, i, j) returns the element at row i, column j (1-based).
 // Does NOT extend _MatrixOperation because the result is a scalar, not a matrix —
 // isMatrixShaped must not match it or the REPL would try to dispatch it as a matrix op.

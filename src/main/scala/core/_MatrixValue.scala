@@ -228,6 +228,114 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           else uData(i * n + j) = a(i * n + j)
       Some((_MatrixValue(n, n, lData), _MatrixValue(n, n, uData), _MatrixValue(n, n, pData)))
 
+  // Eigenvalue decomposition via QR iteration with Wilkinson shifts.
+  // Returns the n eigenvalues as a Vector[_Value] — each is a _Number (real) or
+  // _Complex (conjugate pair from a 2×2 block). None for non-square matrices or when
+  // the iteration does not converge within 300·n steps.
+  //
+  // Algorithm: maintain a shrinking active sub-matrix (sz×sz). Each step either
+  // deflates the bottom eigenvalue (sub-diagonal < tolerance) or applies a QR step
+  // with Wilkinson shift (eigenvalue of the bottom-right 2×2 closest to a[sz-1,sz-1]).
+  // 2×2 blocks are solved analytically, catching complex conjugate pairs without
+  // further iteration. When the Wilkinson shift causes rank deficiency (shift is an
+  // exact eigenvalue), a tiny perturbation is added to let Gram-Schmidt proceed.
+  def eigenDecompose: Option[Vector[_Value]] =
+    if rows != cols then None
+    else
+      val n = rows
+      if n == 1 then return Some(Vector(_Number(data(0))))
+      val tol     = 1e-12
+      val maxIter = 300 * n
+      val eigs    = scala.collection.mutable.ArrayBuffer[_Value]()
+
+      // Active sub-matrix: sz×sz, row-major in aArr(0 .. sz*sz-1).
+      // Replaced entirely on every deflation.
+      var sz   = n
+      var aArr = data.clone
+
+      @inline def aGet(r: Int, c: Int): Double = aArr(r * sz + c)
+
+      def shiftedMatrix(shift: Double): _MatrixValue =
+        val out = new Array[Double](sz * sz)
+        var k = 0
+        while k < sz * sz do
+          out(k) = aArr(k) - (if k / sz == k % sz then shift else 0.0)
+          k += 1
+        new _MatrixValue(sz, sz, out)
+
+      var iters = 0
+
+      while sz > 0 && iters < maxIter do
+        iters += 1
+        sz match
+          case 1 =>
+            eigs += _Number(aGet(0, 0))
+            sz = 0
+          case 2 =>
+            val tr   = aGet(0, 0) + aGet(1, 1)
+            val det  = aGet(0, 0) * aGet(1, 1) - aGet(0, 1) * aGet(1, 0)
+            val disc = tr * tr - 4 * det
+            if disc >= 0 then
+              eigs += _Number((tr + math.sqrt(disc)) / 2)
+              eigs += _Number((tr - math.sqrt(disc)) / 2)
+            else
+              val re = tr / 2
+              val im = math.sqrt(-disc) / 2
+              eigs += _Complex.of(re, im)
+              eigs += _Complex.of(re, -im)
+            sz = 0
+          case _ =>
+            val offDiag = math.abs(aGet(sz - 1, sz - 2))
+            val diagSum = math.abs(aGet(sz - 2, sz - 2)) + math.abs(aGet(sz - 1, sz - 1))
+            if offDiag <= tol * diagSum then
+              eigs += _Number(aGet(sz - 1, sz - 1))
+              val szNew  = sz - 1
+              val newArr = new Array[Double](szNew * szNew)
+              var r = 0
+              while r < szNew do
+                var c = 0
+                while c < szNew do
+                  newArr(r * szNew + c) = aArr(r * sz + c)
+                  c += 1
+                r += 1
+              sz   = szNew
+              aArr = newArr
+            else
+              // Wilkinson shift: eigenvalue of bottom-right 2×2 closest to a[sz-1,sz-1].
+              val b00   = aGet(sz - 2, sz - 2)
+              val b01   = aGet(sz - 2, sz - 1)
+              val b10   = aGet(sz - 1, sz - 2)
+              val b11   = aGet(sz - 1, sz - 1)
+              val tr2   = b00 + b11
+              val det2  = b00 * b11 - b01 * b10
+              val disc2 = tr2 * tr2 - 4 * det2
+              val shift =
+                if disc2 >= 0 then
+                  val e1 = (tr2 + math.sqrt(disc2)) / 2
+                  val e2 = (tr2 - math.sqrt(disc2)) / 2
+                  if math.abs(e1 - b11) <= math.abs(e2 - b11) then e1 else e2
+                else
+                  tr2 / 2   // complex pair: shift to centre avoids rank deficiency
+
+              val qrResult = shiftedMatrix(shift).qrDecompose.orElse {
+                // Shift hit an eigenvalue exactly; tiny perturbation breaks rank deficiency.
+                val eps = 1e-10 * (1.0 + math.abs(shift))
+                shiftedMatrix(shift + eps).qrDecompose
+              }
+              qrResult match
+                case None => return None
+                case Some((q, r)) =>
+                  val rq = r.multiply(q)
+                  var row = 0
+                  while row < sz do
+                    var col = 0
+                    while col < sz do
+                      aArr(row * sz + col) = rq(row, col) + (if row == col then shift else 0.0)
+                      col += 1
+                    row += 1
+
+      if sz == 0 && eigs.size == n then Some(eigs.toVector) else None
+
   // QR decomposition via modified Gram-Schmidt: A = Q·R (for square matrices; m ≥ n).
   // Q is m×n with orthonormal columns, R is n×n upper triangular.
   // None when rows < cols or the matrix is rank-deficient (column collapses to zero norm).

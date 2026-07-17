@@ -437,6 +437,13 @@ object Session:
          |  invlaplace(2/(s^2+4), s, t)      → sin(2*t)
          |  invlaplace(3/((s-2)^2+9), s, t)  → exp(2*t)*sin(3*t) via completing the square
          |Stays symbolic for deg D ≥ 3, symbolic coefficients, or non-rational input.""".stripMargin,
+    "eigen" ->
+      """|Compute the eigenvalues of a square matrix.
+         |Returns a 1×n row [[λ₁, …, λₙ]]; real eigenvalues are _Number, complex pairs are _Complex.
+         |Uses QR iteration with Wilkinson shifts; stays symbolic if the operand is not dense.
+         |  eigen([[4, 1], [1, 3]])          → [[4.61803, 2.38197]]
+         |  eigen([[0, -1], [1, 0]])         → [[(0.0 + 1.0i), (0.0 - 1.0i)]]
+         |Access element k (1-based): at(eigen(A), 1, k)""".stripMargin,
     "solveSystem" ->
       """|Solve a square system of n linear equations in n unknowns.
          |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).
