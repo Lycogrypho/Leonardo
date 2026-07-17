@@ -83,6 +83,8 @@ package "core" {
         + scale(k: Double): _MatrixValue
         + determinant: Option[Double]
         + inverse: Option[_MatrixValue]
+        + luDecompose: Option[(L, U, P)]
+        + qrDecompose: Option[(Q, R)]
         + guarded(orElse): Either
         __ companion __
         + apply(rows, cols, data) : defensive copy
@@ -318,6 +320,33 @@ package "matrix" {
         dense: LU pivot; symbolic: cofactors
     }
 
+    class "IdentityMatrix" <<case>> [[matrix.html]] {
+        n : _Expression
+        __ eye(n) __
+        n×n matrix with 1s on diagonal
+    }
+
+    class "ZeroMatrix" <<case>> [[matrix.html]] {
+        nRows : _Expression
+        nCols : _Expression
+        __ zeros(r, c) / zeros(n) __
+        r×c matrix of 0.0
+    }
+
+    class "_LUDecomposition" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ lu(A) → [[L, U, P]] __
+        P·A = L·U; partial pivoting
+        result: Left(_Matrix(1,3,...))
+    }
+
+    class "_QRDecomposition" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ qr(A) → [[Q, R]] __
+        A = Q·R; modified Gram-Schmidt
+        result: Left(_Matrix(1,2,...))
+    }
+
     class "_MatrixIndex" <<case>> [[matrix.html]] {
         matrix : _Expression
         row    : _Expression
@@ -333,8 +362,12 @@ package "matrix" {
     "MatScale"         --|> "_MatrixOperation"
     "Transpose"        --|> "_MatrixOperation"
     "Inverse"          --|> "_MatrixOperation"
+    "IdentityMatrix"   --|> "_MatrixOperation"
+    "ZeroMatrix"       --|> "_MatrixOperation"
     "Determinant"      --|> "_Expression"
     "_MatrixIndex"     --|> "_Expression"
+    "_LUDecomposition" --|> "_Expression"
+    "_QRDecomposition" --|> "_Expression"
 
     ' Linear containers: derive/simplify/expand/integrate distribute element-wise
     "_Matrix"   ..|> "_ElementWise"
@@ -494,6 +527,10 @@ package "parser" {
 "Parser" ..> "_MatrixIndex"    : at(A, i, j) element access
 "Parser" ..> "Determinant"     : det(A)
 "Parser" ..> "Inverse"         : inv(A)
+"Parser" ..> "IdentityMatrix"  : eye(n)
+"Parser" ..> "ZeroMatrix"      : zeros(r,c)
+"Parser" ..> "_LUDecomposition" : lu(A)
+"Parser" ..> "_QRDecomposition" : qr(A)
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)

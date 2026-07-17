@@ -199,6 +199,78 @@ case class Inverse(m: _Expression) extends _MatrixOperation:
         case None => Left(Inverse(r.toExpression))
 
 
+// Identity matrix: eye(n) → n×n matrix with 1s on the diagonal and 0s elsewhere.
+// Extends _MatrixOperation so isMatrixShaped matches it and the parser routes
+// "eye(3) + M" to MatSum rather than Sum.
+case class IdentityMatrix(n: _Expression) extends _MatrixOperation:
+  override def toString: String = s"eye($n)"
+  override def children: List[_Expression] = List(n)
+  override def rebuild(c: List[_Expression]): _Expression = IdentityMatrix(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    n.eval(env) match
+      case Right(_Number(d)) if d > 0 && d == d.toLong =>
+        val sz   = d.toInt
+        val data = Array.tabulate(sz * sz)(i => if i / sz == i % sz then 1.0 else 0.0)
+        Right(_MatrixValue(sz, sz, data))
+      case Left(expr) => Left(IdentityMatrix(expr))
+      case _          => Left(this)   // non-integer or non-positive dimension
+
+
+// Zero matrix: zeros(rows, cols) → rows×cols matrix of 0.0.
+// zeros(n) is shorthand for zeros(n, n) (square zero matrix).
+case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOperation:
+  override def toString: String = s"zeros($nRows, $nCols)"
+  override def children: List[_Expression] = List(nRows, nCols)
+  override def rebuild(c: List[_Expression]): _Expression = ZeroMatrix(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (nRows.eval(env), nCols.eval(env)) match
+      case (Right(_Number(r)), Right(_Number(c)))
+          if r > 0 && c > 0 && r == r.toLong && c == c.toLong =>
+        Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(0.0)))
+      case (rr, rc) => Left(ZeroMatrix(rr.toExpression, rc.toExpression))
+
+
+// LU decomposition: lu(A) — returns [[L, U, P]] where P·A = L·U.
+// L is unit lower triangular, U is upper triangular, P is the permutation matrix.
+// Evaluates when A reduces to a dense _MatrixValue; stays symbolic otherwise.
+// Singular or non-square matrices give no result (the node stays symbolic).
+// Result is Left(_Matrix(1, 3, …)) because a matrix of matrices is not a _Value.
+case class _LUDecomposition(m: _Expression) extends _Expression:
+  override def toString: String = s"lu($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _LUDecomposition(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    m.eval(env) match
+      case Right(mv: _MatrixValue) =>
+        mv.luDecompose match
+          case Some((l, u, p)) => Left(_Matrix(1, 3, Vector(l, u, p)))
+          case None            => Left(this)
+      case Left(expr) => Left(_LUDecomposition(expr))
+      case _          => Left(this)
+
+
+// QR decomposition: qr(A) — returns [[Q, R]] where A = Q·R.
+// Q is orthogonal (m×n, orthonormal columns), R is upper triangular (n×n).
+// Requires rows ≥ cols; stays symbolic when A is not yet a dense value.
+// Rank-deficient matrices give no result (the node stays symbolic).
+case class _QRDecomposition(m: _Expression) extends _Expression:
+  override def toString: String = s"qr($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _QRDecomposition(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    m.eval(env) match
+      case Right(mv: _MatrixValue) =>
+        mv.qrDecompose match
+          case Some((q, r)) => Left(_Matrix(1, 2, Vector(q, r)))
+          case None         => Left(this)
+      case Left(expr) => Left(_QRDecomposition(expr))
+      case _          => Left(this)
+
+
 // Element access: at(A, i, j) returns the element at row i, column j (1-based).
 // Does NOT extend _MatrixOperation because the result is a scalar, not a matrix —
 // isMatrixShaped must not match it or the REPL would try to dispatch it as a matrix op.

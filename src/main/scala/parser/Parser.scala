@@ -30,6 +30,10 @@ import transform.*
  *   function    ::= "exp(" expr ")" | "log(" expr ")" | "ln(" expr ")" | "sin(" expr ")"
  *                 | "cos(" expr ")" | "tan(" expr ")" | "tg(" expr ")" | "asin(" expr ")" | "acos(" expr ")" | "atan(" expr ")"
  *                 | "transpose(" expr ")" | "det(" expr ")" | "inv(" expr ")" | "pow(" expr "," expr ")"
+ *                 | "eye(" expr ")"                        -- n×n identity matrix
+ *                 | "zeros(" expr ["," expr] ")"           -- zero matrix (square or r×c)
+ *                 | "lu(" expr ")"                         -- LU decomp → [[L, U, P]]
+ *                 | "qr(" expr ")"                         -- QR decomp → [[Q, R]]
  *   functional  ::= "derive(" expr "," variable ")"
  *                 | "integral(" expr "," variable ")"
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
@@ -78,7 +82,7 @@ object Parser extends JavaTokenParsers:
   // merely starting with a reserved word ("sina", "evalx") stay legal.
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
-    "pow", "transpose", "at", "det", "inv",              // functions
+    "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", // functionals
     "pi", "e", "i", "inf",                               // constants (inf = +∞)
     "simplify", "expand", "eval", "env", "vars",
@@ -228,7 +232,14 @@ object Parser extends JavaTokenParsers:
     "det(" ~> guardedExpr <~ ")"                          ^^ Determinant.apply                  |
     "inv(" ~> guardedExpr <~ ")"                          ^^ Inverse.apply                      |
     "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }            |
-    "at("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case m ~ _ ~ r ~ _ ~ c => _MatrixIndex(m, r, c) }
+    "at("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case m ~ _ ~ r ~ _ ~ c => _MatrixIndex(m, r, c) } |
+    "eye("   ~> guardedExpr <~ ")"                                        ^^ IdentityMatrix.apply          |
+    "zeros(" ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ {
+      case n ~ None    => ZeroMatrix(n, n)
+      case r ~ Some(c) => ZeroMatrix(r, c)
+    }                                                                                                       |
+    "lu("  ~> guardedExpr <~ ")"                                          ^^ _LUDecomposition.apply        |
+    "qr("  ~> guardedExpr <~ ")"                                          ^^ _QRDecomposition.apply
 
   // Direction token for limit(expr, var, point, +/-): consumed after the point comma.
   private lazy val limitDir: Parser[LimitDir] = ("+" | "-") ^^ {

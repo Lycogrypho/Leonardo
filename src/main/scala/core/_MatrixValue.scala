@@ -179,6 +179,88 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         col += 1
       Some(new _MatrixValue(n, n, inv))
 
+  // LU decomposition with partial pivoting: P·A = L·U.
+  // L is unit lower triangular, U is upper triangular, P is the permutation matrix.
+  // None when non-square or singular (zero pivot encountered).
+  // The combined a array holds multipliers below the diagonal (L) and the elimination
+  // result above and on the diagonal (U), matching the standard compact LU storage.
+  def luDecompose: Option[(_MatrixValue, _MatrixValue, _MatrixValue)] =
+    if rows != cols then None
+    else
+      val n    = rows
+      val a    = data.clone
+      val perm = Array.tabulate(n)(identity)   // perm(i) = original row at position i
+      var col  = 0
+      while col < n do
+        var pivot  = col
+        var maxAbs = math.abs(a(col * n + col))
+        var r      = col + 1
+        while r < n do
+          val v = math.abs(a(r * n + col))
+          if v > maxAbs then { maxAbs = v; pivot = r }
+          r += 1
+        if a(pivot * n + col) == 0.0 then return None
+        if pivot != col then
+          val tmp = perm(col); perm(col) = perm(pivot); perm(pivot) = tmp
+          var k = 0
+          while k < n do
+            val tmp = a(col * n + k); a(col * n + k) = a(pivot * n + k); a(pivot * n + k) = tmp
+            k += 1
+        val diag = a(col * n + col)
+        var rr = col + 1
+        while rr < n do
+          val f = a(rr * n + col) / diag
+          a(rr * n + col) = f          // store L multiplier in place of the zeroed entry
+          var k = col + 1
+          while k < n do
+            a(rr * n + k) -= f * a(col * n + k)
+            k += 1
+          rr += 1
+        col += 1
+      val lData = Array.fill(n * n)(0.0)
+      val uData = Array.fill(n * n)(0.0)
+      val pData = Array.fill(n * n)(0.0)
+      for i <- 0 until n do
+        lData(i * n + i) = 1.0          // unit diagonal of L
+        pData(i * n + perm(i)) = 1.0   // P[i, perm(i)] = 1  →  (P·A)[i] = A[perm(i)]
+        for j <- 0 until n do
+          if j < i then lData(i * n + j) = a(i * n + j)
+          else uData(i * n + j) = a(i * n + j)
+      Some((_MatrixValue(n, n, lData), _MatrixValue(n, n, uData), _MatrixValue(n, n, pData)))
+
+  // QR decomposition via modified Gram-Schmidt: A = Q·R (for square matrices; m ≥ n).
+  // Q is m×n with orthonormal columns, R is n×n upper triangular.
+  // None when rows < cols or the matrix is rank-deficient (column collapses to zero norm).
+  def qrDecompose: Option[(_MatrixValue, _MatrixValue)] =
+    if rows < cols then None
+    else
+      val m = rows
+      val n = cols
+      val q = data.clone    // q[i*n+j] = row i, col j — will become Q
+      val r = Array.fill(n * n)(0.0)
+      var j = 0
+      while j < n do
+        // Modified Gram-Schmidt: orthogonalize column j against prior orthonormal columns.
+        var i = 0
+        while i < j do
+          var dot = 0.0
+          var k   = 0
+          while k < m do { dot += q(k * n + i) * q(k * n + j); k += 1 }
+          r(i * n + j) = dot
+          k = 0
+          while k < m do { q(k * n + j) -= dot * q(k * n + i); k += 1 }
+          i += 1
+        var norm = 0.0
+        var k    = 0
+        while k < m do { norm += q(k * n + j) * q(k * n + j); k += 1 }
+        norm = math.sqrt(norm)
+        if norm < 1e-14 then return None   // rank-deficient
+        r(j * n + j) = norm
+        k = 0
+        while k < m do { q(k * n + j) /= norm; k += 1 }
+        j += 1
+      Some((_MatrixValue(m, n, q), _MatrixValue(n, n, r)))
+
   // (this: rows×n) * (that: n×that.cols). Block-tiled i-k-j: Tile×Tile blocks keep
   // the hot block of `that` (and of `out`) cache-resident across a whole row block,
   // instead of re-streaming all of `that` from memory for every output row. Within
