@@ -85,6 +85,8 @@ package "core" {
         + inverse: Option[_MatrixValue]
         + luDecompose: Option[(L, U, P)]
         + qrDecompose: Option[(Q, R)]
+        + eigenDecompose: Option[Vector[_Value]]
+        + spectralDecompose: Option[(Vector[Vector[_Value]], Vector[_Value])]
         + guarded(orElse): Either
         __ companion __
         + apply(rows, cols, data) : defensive copy
@@ -355,6 +357,22 @@ package "matrix" {
         result: Left(_Matrix(1,n,...))
     }
 
+    class "_EigDecomposition" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ eig(A) → [[V, D]] __
+        spectralDecompose: eigenvectors + D diagonal
+        A·V = V·D; complex elems when needed
+        result: Left(_Matrix(1,2,...))
+    }
+
+    class "_JordanDecomposition" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ jordan(A) → [[P, J]] __
+        A = P·J·P⁻¹ (diagonalizable matrices)
+        defective → stays symbolic
+        result: Left(_Matrix(1,2,...))
+    }
+
     class "_MatrixIndex" <<case>> [[matrix.html]] {
         matrix : _Expression
         row    : _Expression
@@ -377,6 +395,8 @@ package "matrix" {
     "_LUDecomposition"    --|> "_Expression"
     "_QRDecomposition"    --|> "_Expression"
     "_EigenDecomposition" --|> "_Expression"
+    "_EigDecomposition"   --|> "_Expression"
+    "_JordanDecomposition" --|> "_Expression"
 
     ' Linear containers: derive/simplify/expand/integrate distribute element-wise
     "_Matrix"   ..|> "_ElementWise"
@@ -541,6 +561,8 @@ package "parser" {
 "Parser" ..> "_LUDecomposition"    : lu(A)
 "Parser" ..> "_QRDecomposition"    : qr(A)
 "Parser" ..> "_EigenDecomposition" : eigen(A)
+"Parser" ..> "_EigDecomposition"   : eig(A)
+"Parser" ..> "_JordanDecomposition" : jordan(A)
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)

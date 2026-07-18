@@ -293,6 +293,74 @@ case class _EigenDecomposition(m: _Expression) extends _Expression:
       case _          => Left(this)
 
 
+// Shared helper: build the symbolic V and D matrices from spectralDecompose output.
+// V is n×n with column j = eigenvector j (in column-major layout stored row-major).
+// D is n×n diagonal with eigenvalue j on the diagonal.
+// Both use _Matrix so they can hold _Complex elements.
+private def buildVD(mv: _MatrixValue): Option[(_Matrix, _Matrix)] =
+  mv.spectralDecompose.map { case (cols, eigs) =>
+    val n = mv.rows
+    // V[i,j] = cols(j)(i)
+    val vElems = for i <- 0 until n; j <- 0 until n yield cols(j)(i)
+    val vMat   = _Matrix(n, n, vElems.toVector)
+    // D[i,j] = eigs(i) when i==j else _Number(0)
+    val dElems = for i <- 0 until n; j <- 0 until n yield
+      if i == j then eigs(i).asInstanceOf[_Expression] else _Number(0.0)
+    val dMat   = _Matrix(n, n, dElems.toVector)
+    (vMat, dMat)
+  }
+
+
+// Eigenvalue/eigenvector decomposition: eig(A) → [[V, D]] where A·V = V·D.
+// V columns are right eigenvectors; D is diagonal with eigenvalues.
+// Evaluates when A reduces to a dense square _MatrixValue; stays symbolic otherwise.
+// Non-convergent or defective-detected cases also stay symbolic.
+case class _EigDecomposition(m: _Expression) extends _Expression:
+  override def toString: String = s"eig($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _EigDecomposition(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    m.eval(env) match
+      case Right(mv: _MatrixValue) =>
+        buildVD(mv) match
+          case Some((v, d)) => Left(_Matrix(1, 2, Vector(v, d)))
+          case None         => Left(this)
+      case Left(expr) => Left(_EigDecomposition(expr))
+      case _          => Left(this)
+
+
+// Jordan decomposition: jordan(A) → [[P, J]] where A = P·J·P⁻¹.
+// For diagonalizable matrices J is diagonal (identical to D in eig(A)); P = V.
+// Non-diagonalizable matrices (defective / repeated eigenvalues where V is singular)
+// stay symbolic — detecting that numerically is conservative but safe.
+case class _JordanDecomposition(m: _Expression) extends _Expression:
+  override def toString: String = s"jordan($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _JordanDecomposition(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    m.eval(env) match
+      case Right(mv: _MatrixValue) =>
+        buildVD(mv).flatMap { case (v, d) =>
+          // Verify that P is invertible (non-singular) so P·J·P⁻¹ = A is valid.
+          // For a dense V (all-real eigenvectors) we check det ≠ 0; for symbolic V
+          // (complex entries) we accept it — the caller can verify via at(…).
+          val allReal = v.elems.forall(_.isInstanceOf[_Number])
+          if allReal then
+            val vData = v.elems.collect { case _Number(d) => d }
+            val vDense = _MatrixValue(mv.rows, mv.cols, vData.toArray)
+            vDense.determinant match
+              case Some(det) if math.abs(det) > 1e-10 => Some((v, d))
+              case _                                    => None   // defective: stay symbolic
+          else Some((v, d))   // complex eigenvectors — accept
+        } match
+          case Some((p, j)) => Left(_Matrix(1, 2, Vector(p, j)))
+          case None         => Left(this)
+      case Left(expr) => Left(_JordanDecomposition(expr))
+      case _          => Left(this)
+
+
 // Element access: at(A, i, j) returns the element at row i, column j (1-based).
 // Does NOT extend _MatrixOperation because the result is a scalar, not a matrix —
 // isMatrixShaped must not match it or the REPL would try to dispatch it as a matrix op.

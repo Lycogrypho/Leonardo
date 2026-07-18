@@ -336,6 +336,160 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
 
       if sz == 0 && eigs.size == n then Some(eigs.toVector) else None
 
+  // Null vector of a real n×n matrix b via RREF + back-substitution.
+  // Assumes b has rank n-1; returns the normalised null vector, or None when the
+  // matrix has full rank or the null vector turns out to be zero.
+  private def realNullVec(b: Array[Double], n: Int): Option[Array[Double]] =
+    val a   = b.clone
+    val piv = Array.fill(n)(-1)
+    var row = 0; var col = 0
+    // Relative pivot threshold: ties the zero-detection to the matrix's own scale.
+    // The eigenvalue returned by QR iteration can have an absolute error several
+    // orders of magnitude larger than the deflation criterion (1e-12), so the
+    // near-zero diagonal entries of (A - λI) can be ≈ 1e-10 even for simple
+    // eigenvalues.  A relative tolerance of 1e-8 (of the largest entry in b)
+    // absorbs this without misclassifying genuine small pivots.
+    val scale = b.foldLeft(0.0)((m, v) => math.max(m, math.abs(v)))
+    val tol   = math.max(1e-12, scale * 1e-8)
+    while row < n && col < n do
+      var maxAbs = 0.0; var maxRow = row; var r = row
+      while r < n do
+        val v = math.abs(a(r * n + col))
+        if v > maxAbs then { maxAbs = v; maxRow = r }
+        r += 1
+      if maxAbs < tol then col += 1
+      else
+        if maxRow != row then
+          var k = 0
+          while k < n do
+            val t = a(row*n+k); a(row*n+k) = a(maxRow*n+k); a(maxRow*n+k) = t; k += 1
+        piv(row) = col
+        val d = a(row * n + col)
+        var k = 0; while k < n do { a(row*n+k) /= d; k += 1 }
+        var rr = 0
+        while rr < n do
+          if rr != row then
+            val f = a(rr * n + col)
+            if math.abs(f) > 1e-15 then
+              var k = 0; while k < n do { a(rr*n+k) -= f * a(row*n+k); k += 1 }
+          rr += 1
+        row += 1; col += 1
+    val pivSet = piv.filter(_ >= 0).toSet
+    (0 until n).find(!pivSet.contains(_)) match
+      case None => None
+      case Some(freeCol) =>
+        val vec = Array.fill(n)(0.0)
+        vec(freeCol) = 1.0
+        var r2 = 0
+        while r2 < row do
+          if piv(r2) >= 0 then vec(piv(r2)) = -a(r2 * n + freeCol)
+          r2 += 1
+        var norm = 0.0; var k = 0
+        while k < n do { norm += vec(k) * vec(k); k += 1 }
+        norm = math.sqrt(norm)
+        if norm < 1e-14 then None
+        else
+          k = 0; while k < n do { vec(k) /= norm; k += 1 }
+          Some(vec)
+
+  // Null vector of the complex n×n matrix (A - λI) where λ = (lRe + i·lIm),
+  // via complex RREF + back-substitution.
+  // Returns (re-part, im-part) of the normalised null vector, or None.
+  private def complexNullVec(n: Int, lRe: Double, lIm: Double): Option[(Array[Double], Array[Double])] =
+    val re = Array.tabulate(n * n)(k => data(k) - (if k/n == k%n then lRe else 0.0))
+    val im = Array.tabulate(n * n)(k =>                             if k/n == k%n then -lIm else 0.0)
+    val piv = Array.fill(n)(-1)
+    var row = 0; var col = 0
+    val scale = re.zip(im).foldLeft(0.0) { case (m, (r, i)) => math.max(m, math.hypot(r, i)) }
+    val tol   = math.max(1e-12, scale * 1e-8)
+    while row < n && col < n do
+      var maxMag = 0.0; var maxRow = row; var r = row
+      while r < n do
+        val m = math.hypot(re(r*n+col), im(r*n+col))
+        if m > maxMag then { maxMag = m; maxRow = r }
+        r += 1
+      if maxMag < tol then col += 1
+      else
+        if maxRow != row then
+          var k = 0
+          while k < n do
+            val tr = re(row*n+k); re(row*n+k) = re(maxRow*n+k); re(maxRow*n+k) = tr
+            val ti = im(row*n+k); im(row*n+k) = im(maxRow*n+k); im(maxRow*n+k) = ti
+            k += 1
+        piv(row) = col
+        val pRe = re(row*n+col); val pIm = im(row*n+col)
+        val den = pRe*pRe + pIm*pIm
+        var k = 0
+        while k < n do
+          val oRe = re(row*n+k); val oIm = im(row*n+k)
+          re(row*n+k) = (oRe*pRe + oIm*pIm) / den
+          im(row*n+k) = (oIm*pRe - oRe*pIm) / den
+          k += 1
+        var rr = 0
+        while rr < n do
+          if rr != row then
+            val fRe = re(rr*n+col); val fIm = im(rr*n+col)
+            if math.hypot(fRe, fIm) > 1e-15 then
+              var k = 0
+              while k < n do
+                re(rr*n+k) -= fRe*re(row*n+k) - fIm*im(row*n+k)
+                im(rr*n+k) -= fRe*im(row*n+k) + fIm*re(row*n+k)
+                k += 1
+          rr += 1
+        row += 1; col += 1
+    val pivSet = piv.filter(_ >= 0).toSet
+    (0 until n).find(!pivSet.contains(_)) match
+      case None => None
+      case Some(freeCol) =>
+        val vRe = Array.fill(n)(0.0); val vIm = Array.fill(n)(0.0)
+        vRe(freeCol) = 1.0
+        var r2 = 0
+        while r2 < row do
+          if piv(r2) >= 0 then
+            vRe(piv(r2)) = -re(r2*n+freeCol)
+            vIm(piv(r2)) = -im(r2*n+freeCol)
+          r2 += 1
+        var norm = 0.0; var k = 0
+        while k < n do { norm += vRe(k)*vRe(k) + vIm(k)*vIm(k); k += 1 }
+        norm = math.sqrt(norm)
+        if norm < 1e-14 then None
+        else
+          k = 0; while k < n do { vRe(k) /= norm; vIm(k) /= norm; k += 1 }
+          Some((vRe, vIm))
+
+  // Spectral decomposition: eigenvalues + eigenvectors.
+  // Returns (columns of V as Vector[Vector[_Value]], eigenvalues as Vector[_Value]).
+  // Eigenvector column j corresponds to eigenvalue j in the returned vector.
+  // Complex conjugate pairs (α ± βi) always occupy consecutive positions.
+  // None when non-square, QR iteration fails to converge, or an eigenvector
+  // cannot be extracted (numerically degenerate/defective matrix).
+  def spectralDecompose: Option[(Vector[Vector[_Value]], Vector[_Value])] =
+    if rows != cols then None
+    else eigenDecompose.flatMap { eigs =>
+      val n = rows
+      var i = 0
+      val evOpts = scala.collection.mutable.ArrayBuffer[Option[Vector[_Value]]]()
+      while i < n do
+        eigs(i) match
+          case _Number(lam) =>
+            val b = Array.tabulate(n * n)(k => data(k) - (if k/n == k%n then lam else 0.0))
+            evOpts += realNullVec(b, n).map(_.map(_Number(_)).toVector)
+            i += 1
+          case c: _Complex =>
+            complexNullVec(n, c.re, c.im) match
+              case None =>
+                evOpts += None; evOpts += None
+              case Some((vRe, vIm)) =>
+                evOpts += Some(vRe.zip(vIm).map { case (r, m) => _Complex.of(r, m) }.toVector)
+                evOpts += Some(vRe.zip(vIm).map { case (r, m) => _Complex.of(r, -m) }.toVector)
+            i += 2
+          case _ =>
+            evOpts += None; i += 1
+      val opts = evOpts.toVector
+      if opts.exists(_.isEmpty) then None
+      else Some((opts.map(_.get), eigs))
+    }
+
   // QR decomposition via modified Gram-Schmidt: A = Q·R (for square matrices; m ≥ n).
   // Q is m×n with orthonormal columns, R is n×n upper triangular.
   // None when rows < cols or the matrix is rank-deficient (column collapses to zero norm).
