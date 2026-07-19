@@ -127,11 +127,17 @@ object Parser extends JavaTokenParsers:
   private def mkSum(x: _Expression, y: _Expression): _Expression =
     if isMatrixShaped(x) || isMatrixShaped(y) then MatSum(x, y) else Sum(x, y)
 
+  // "M * y" with a non-literal y builds MatProduct(x, y) rather than MatScale(y, x):
+  // y may be a variable bound to a matrix at eval time, and swapping the operands
+  // into MatScale would silently commute a matrix product (issue 1.2). A literal
+  // number is the only right operand known to commute at parse time.
   private def mkMul(x: _Expression, y: _Expression): _Expression =
     (isMatrixShaped(x), isMatrixShaped(y)) match
       case (true, true)   => MatProduct(x, y)
       case (false, true)  => MatScale(x, y)
-      case (true, false)  => MatScale(y, x)
+      case (true, false)  => y match
+        case _Number(_) => MatScale(y, x)
+        case _          => MatProduct(x, y)
       case (false, false) => Product(x, y)
 
   private def mkNeg(e: _Expression): _Expression =

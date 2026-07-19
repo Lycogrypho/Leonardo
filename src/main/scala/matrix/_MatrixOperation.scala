@@ -104,27 +104,48 @@ case class MatSum(a: _Expression, b: _Expression) extends _MatrixOperation, _Ele
         case _                  => Left(MatSum(ra.toExpression, rb.toExpression))
 
 
+// Shared product reduction over two already-reduced operands. Parse-time dispatch
+// cannot always tell scalars from matrices (a bare variable may be bound to a
+// _MatrixValue only at eval time — issue 1.2), so both MatProduct and MatScale
+// route through here: matrix·matrix multiplies (dense or element-wise), a _Number
+// on either side scales, anything else stays symbolic as a MatProduct.
+private def reduceProduct(ra: Either[_Expression, _Value], rb: Either[_Expression, _Value],
+                          orElse: _Expression): Either[_Expression, _Value] =
+  (ra, rb) match
+    case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
+      if x.cols == y.rows then x.multiply(y).guarded(orElse) else Left(orElse)
+    case (Right(_Number(s)), Right(mv: _MatrixValue)) => mv.scale(s).guarded(orElse)
+    case (Right(mv: _MatrixValue), Right(_Number(s))) => mv.scale(s).guarded(orElse)
+    case _ => (asLiteral(ra), asLiteral(rb)) match
+      case (Some(x), Some(y)) if x.cols == y.rows =>
+        val elems =
+          for i <- 0 until x.rows; j <- 0 until y.cols yield
+            (0 until x.cols).map(k => productOf(x(i, k), y(k, j))).reduce(sumOf)
+        collapse(_Matrix(x.rows, y.cols, elems.toVector), orElse)
+      case (Some(_), Some(_)) => Left(orElse)   // dimension mismatch
+      case (Some(lit), None) if rb.exists(_.isInstanceOf[_Number]) =>
+        collapse(_Matrix(lit.rows, lit.cols, lit.elems.map(productOf(_, rb.toExpression))), orElse)
+      case (None, Some(lit)) if ra.exists(_.isInstanceOf[_Number]) =>
+        collapse(_Matrix(lit.rows, lit.cols, lit.elems.map(productOf(ra.toExpression, _))), orElse)
+      case _ => Left(MatProduct(ra.toExpression, rb.toExpression))
+
+
 // Matrix product: (A · B)ᵢⱼ = Σₖ Aᵢₖ · Bₖⱼ, for A: r×n and B: n×c.
+// A _Number operand scales instead — the parser builds MatProduct(M, y) for "M * y"
+// with a non-literal y, because y may be either a scalar or a matrix at eval time.
 case class MatProduct(a: _Expression, b: _Expression) extends _MatrixOperation:
   override def toString: String = s"($a * $b)"
   override def children: List[_Expression] = List(a, b)
   override def rebuild(c: List[_Expression]): _Expression = MatProduct(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), b.eval(env)) match
-      case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
-        if x.cols == y.rows then x.multiply(y).guarded(this) else Left(this)
-      case (ra, rb) => (asLiteral(ra), asLiteral(rb)) match
-        case (Some(x), Some(y)) if x.cols == y.rows =>
-          val elems =
-            for i <- 0 until x.rows; j <- 0 until y.cols yield
-              (0 until x.cols).map(k => productOf(x(i, k), y(k, j))).reduce(sumOf)
-          collapse(_Matrix(x.rows, y.cols, elems.toVector), this)
-        case (Some(_), Some(_)) => Left(this)   // dimension mismatch
-        case _                  => Left(MatProduct(ra.toExpression, rb.toExpression))
+    reduceProduct(a.eval(env), b.eval(env), this)
 
 
 // Scalar multiple: (k · A)ᵢⱼ = k · Aᵢⱼ, where k is any scalar expression.
+// When k turns out to be matrix-valued at eval time (a variable bound to a
+// _MatrixValue, or a scalar Product that reduced to one — issue 1.2), the node is
+// really a matrix product k · m and is reduced as such, preserving operand order.
 case class MatScale(k: _Expression, m: _Expression) extends _MatrixOperation:
   override def toString: String = s"($k * $m)"
   override def children: List[_Expression] = List(k, m)
@@ -133,6 +154,7 @@ case class MatScale(k: _Expression, m: _Expression) extends _MatrixOperation:
   override def eval(env: Environment): Either[_Expression, _Value] =
     (k.eval(env), m.eval(env)) match
       case (Right(_Number(s)), Right(mv: _MatrixValue)) => mv.scale(s).guarded(this)
+      case (rk, rm) if asLiteral(rk).isDefined          => reduceProduct(rk, rm, this)
       case (rk, rm) => asLiteral(rm) match
         case Some(lit) =>
           collapse(_Matrix(lit.rows, lit.cols, lit.elems.map(productOf(rk.toExpression, _))), this)

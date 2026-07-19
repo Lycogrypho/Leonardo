@@ -144,11 +144,20 @@ final class Session:
         case None    => base
 
   private def formatResult(result: Either[_Expression, _Value]): String =
-    result.toExpression match
-      case n: _Number      => n.display(precision)
-      case c: _Complex     => c.display(precision)
-      case m: _MatrixValue => m.display(precision)
-      case other           => other.toString
+    formatExpression(result.toExpression)
+
+  // Recursive so the session precision reaches values nested inside a symbolic
+  // _Matrix — decomposition results (lu/qr/eig/jordan) are Left(_Matrix(…)) whose
+  // elements are dense _MatrixValues, which _Matrix.toString would otherwise
+  // render at DefaultPrecision (issue 1.1).
+  private def formatExpression(e: _Expression): String = e match
+    case n: _Number      => n.display(precision)
+    case c: _Complex     => c.display(precision)
+    case m: _MatrixValue => m.display(precision)
+    case m: _Matrix      =>
+      (0 until m.rows).map(i => (0 until m.cols).map(j => formatExpression(m(i, j)))
+        .mkString("[", ", ", "]")).mkString("[", ", ", "]")
+    case other           => other.toString
 
   // True iff the expression tree contains a _Solve functional node.
   private def containsSolve(e: _Expression): Boolean = e match

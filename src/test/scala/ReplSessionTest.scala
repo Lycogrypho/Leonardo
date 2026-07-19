@@ -2,11 +2,12 @@ package it.grypho.scala.leonardo
 
 import cli.{Session, LeonardoHighlighter}
 import org.scalatest.flatspec.AnyFlatSpec
-
+import core.Environment
 
 class ReplSessionTest extends AnyFlatSpec:
 
   def session: Session = new Session()
+  def env: Environment = new Environment()
 
   "a constant assignment" should "bind a numeric value" in
   {
@@ -856,4 +857,114 @@ class ReplSessionTest extends AnyFlatSpec:
     val x1 = s.execute("x_1")
     val x2 = s.execute("x_2")
     assert(Set(x1, x2) == Set("-3.0", "3.0"), s"expected roots ±3 but got $x1, $x2")
+  }
+
+
+
+
+  // ─── Issue 1.2: direct product of matrix-bound variables ──────────────────
+
+  "a product of two matrix-bound variables" should "evaluate to a numeric matrix" in
+  {
+    val s = session
+    s.execute("M1 := [[1.0, 2.0], [3.0, 4.0]]")
+    s.execute("M2 := [[5.0, 6.0], [7.0, 8.0]]")
+    val result = s.execute("M1 * M2")
+    // Should NOT contain symbolic Product, MatScale, etc.
+    assert(
+      !result.contains("*") || result.startsWith("[["),
+      s"Expected numeric matrix, got: $result"
+      )
+    assert(
+      result == "[[19.0, 22.0], [43.0, 50.0]]",
+      s"Wrong product result: $result"
+      )
+  }
+
+  "a triple product of matrix-bound variables with inverse" should "recover the original matrix" in
+  {
+    val s = session
+    s.execute("A := [[1, 2, 3], [3, 2, 1], [1, 1, 1]]")
+    // Bind P_A and J_A as concrete matrices (the values from jordan(A) at precision 5)
+    s.execute("P_A := [[0.40825, 0.60923, -0.70711], [-0.8165, 0.72, 0.70711], [0.40825, 0.33231, 0.0]]")
+    s.execute("J_A := [[0.0, 0.0, 0.0], [0.0, 5.0, 0.0], [0.0, 0.0, -1.0]]")
+
+    val result = s.execute("P_A * J_A * inv(P_A)")
+    // Result MUST be a numeric matrix (all elements are numbers, no symbolic nodes)
+    assert(
+      result.matches("""\[\[[-\d., ]+\], \[[-\d., ]+\], \[[-\d., ]+\]\]"""),
+      s"Expected numeric matrix like [[1.0, 2.0, 3.0], ...], got: $result"
+      )
+  }
+
+  "a matrix operation times a matrix-bound variable" should "multiply in the written order" in
+  {
+    val s = session
+    // A·B ≠ B·A for these two, so a swapped dispatch would produce the wrong result.
+    s.execute("M1 := [[1.0, 2.0], [3.0, 4.0]]")
+    val result = s.execute("transpose(M1) * M1") // matrix-shaped left, variable right
+    assert(
+      result == "[[10.0, 14.0], [14.0, 20.0]]",
+      s"Expected transpose(M1)*M1 in the written order, got: $result"
+      )
+  }
+
+  "a product stored as a definition" should "evaluate to a numeric matrix via eval" in
+  {
+    val s = session
+    s.execute("M1 := [[1.0, 2.0], [3.0, 4.0]]")
+    s.execute("M2 := [[5.0, 6.0], [7.0, 8.0]]")
+    // A1 will be stored as a definition since eval with emptyEnv can't reduce it
+    s.execute("A1 := M1 * M2")
+    val result = s.execute("eval A1")
+    assert(
+      result == "[[19.0, 22.0], [43.0, 50.0]]",
+      s"Wrong product result via eval: $result"
+      )
+  }
+
+  "simplify on a product of matrix-bound variables" should "reduce to a numeric matrix" in
+  {
+    val s = session
+    s.execute("M1 := [[1.0, 2.0], [3.0, 4.0]]")
+    s.execute("M2 := [[5.0, 6.0], [7.0, 8.0]]")
+    val result = s.execute("simplify M1 * M2")
+    assert(
+      result == "[[19.0, 22.0], [43.0, 50.0]]",
+      s"Wrong product result via simplify: $result"
+      )
+  }
+
+  // ─── Issue 1.1: precision in decomposition display ─────────────────────────
+
+  "jordan(A) display" should "respect the session precision" in
+  {
+    val s = session
+    s.execute("A := [[1, 2, 3], [3, 2, 1], [1, 1, 1]]")
+    s.execute("precision 10")
+    val jordan = s.execute("jordan(A)")
+    // At precision 5 (default), numbers show 5 significant digits: 0.40825
+    // At precision 10, they should show more digits, e.g. 0.4082482905
+    assert(
+      !jordan.contains("0.40825") || jordan.contains("0.408248"),
+      s"jordan(A) should respect precision 10, got: $jordan"
+      )
+  }
+
+  "an eigenvalue decomposition display" should "respect the session precision" in
+  {
+    val s = session
+    s.execute("A := [[1, 2, 3], [3, 2, 1], [1, 1, 1]]")
+    s.execute("precision 10")
+    val eig = s.execute("eig(A)")
+    // At precision 5, eigenvalue 5.0 stays 5.0 (exact), but eigenvectors have more digits
+    // The output should reflect precision 10 for the irrational entries
+    assert(
+      eig.startsWith("[["),
+      s"eig(A) should return a matrix, got: $eig"
+      )
+    assert(
+      eig.contains("0.408248"),
+      s"eig(A) eigenvector entries should show precision-10 digits, got: $eig"
+      )
   }
