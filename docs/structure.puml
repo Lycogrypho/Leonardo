@@ -142,7 +142,10 @@ package "scalar" {
     "Power"      --|> "_Operation"
 
     ' -- Unary Functions ----------------------------
-    abstract class "_Function" [[expressions.html]]
+    abstract class "_Function" [[expressions.html]] {
+        __ element-wise over a matrix arg __
+        mapMatrix(mv, f) : distributes f over dense elements
+    }
 
     class "Exp" <<case>> [[expressions.html]] {
         e : _Expression
