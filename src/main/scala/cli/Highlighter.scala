@@ -76,7 +76,7 @@ object ColorScheme:
  * and brackets. The active scheme is fetched via `schemeName` on every keystroke, so
  * `colors dark` / `colors light` / `colors none` takes effect immediately.
  *
- * `reader` is never used inside `highlight`; passing `null` in unit tests is safe.
+ * `reader` is never used; call `highlightBuffer` directly in tests and tooling.
  */
 class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
 
@@ -91,7 +91,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
   private val WordPat = raw"[a-zA-Z][a-zA-Z0-9_]*".r
 
-  override def highlight(reader: LineReader, buffer: String): AttributedString =
+  def highlightBuffer(buffer: String): AttributedString =
     val cs         = ColorScheme.named(schemeName())
     val sb         = new AttributedStringBuilder()
     val firstNonWs = buffer.indexWhere(!_.isWhitespace)
@@ -136,6 +136,9 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
             pos += 1
 
     sb.toAttributedString
+
+  override def highlight(reader: LineReader, buffer: String): AttributedString =
+    highlightBuffer(buffer)
 
   // JLine may invoke these on error-marking paths; we do not use error highlighting.
   override def setErrorPattern(errorPattern: Pattern): Unit = ()
