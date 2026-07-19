@@ -223,3 +223,72 @@ class SolveMatrixTest extends AnyFlatSpec:
     val numeric = s.execute("X")
     assert(numeric == "[[1.5, 3.0]]", s"with b=3 expected [[1.5, 3.0]] but got: $numeric")
   }
+
+  // --- 4.5: General linear matrix equations (affine term + two-sided product) ---
+
+  val X = _Variable("X")
+
+  "solve(A*X + C = B, X)" should "peel the constant term (X = A^-1(B - C))" in
+  {
+    val A = dense(2, 2, 2, 0, 0, 2)      // 2I
+    val C = dense(2, 2, 1, 1, 1, 1)
+    val B = dense(2, 2, 5, 7, 9, 11)     // B - C = [[4,6],[8,10]] ; X = 0.5(B - C)
+    assert(solve(_Equation(Sum(Product(A, X), C), B), X)
+      == List(_Equation(X, dense(2, 2, 2, 3, 4, 5))))
+  }
+
+  "solve(C + A*X = B, X)" should "peel a leading constant term" in
+  {
+    val A = dense(2, 2, 2, 0, 0, 2)
+    val C = dense(2, 2, 1, 1, 1, 1)
+    val B = dense(2, 2, 5, 7, 9, 11)
+    assert(solve(_Equation(Sum(C, Product(A, X)), B), X)
+      == List(_Equation(X, dense(2, 2, 2, 3, 4, 5))))
+  }
+
+  "solve(A*X*D = B, X)" should "invert both flanks (X = A^-1 B D^-1)" in
+  {
+    val A = dense(2, 2, 2, 0, 0, 2)      // 2I
+    val D = dense(2, 2, 5, 0, 0, 5)      // 5I ; A X D = 10 X
+    val B = dense(2, 2, 10, 20, 30, 40)  // X = B / 10
+    assert(solve(_Equation(Product(Product(A, X), D), B), X)
+      == List(_Equation(X, dense(2, 2, 1, 2, 3, 4))))
+  }
+
+  "solve(A*X*D = B, X) with a non-diagonal A" should "recover X" in
+  {
+    val A = dense(2, 2, 1, 2, 3, 4)      // det = -2
+    val D = dense(2, 2, 2, 0, 0, 1)
+    val B = dense(2, 2, 2, 2, 6, 4)      // A · I · D
+    solve(_Equation(Product(Product(A, X), D), B), X) match
+      case _Equation(_, sol: _MatrixValue) :: Nil =>
+        val expected = dense(2, 2, 1, 0, 0, 1)
+        for i <- 0 until 2; j <- 0 until 2 do assert(math.abs(sol(i, j) - expected(i, j)) < 1e-9)
+      case other => fail(s"expected one matrix solution but got: $other")
+  }
+
+  "solve(A*X*D = B, X) with a singular A" should "have no solution" in
+  {
+    val A = dense(2, 2, 1, 2, 2, 4)      // singular
+    val D = dense(2, 2, 5, 0, 0, 5)
+    val B = dense(2, 2, 1, 0, 0, 1)
+    assert(solve(_Equation(Product(Product(A, X), D), B), X).isEmpty)
+  }
+
+  "the REPL" should "solve an affine matrix equation A*X + C = B" in
+  {
+    val s = Session()
+    s.execute("A := [[2, 0], [0, 2]]")
+    s.execute("C := [[1, 1], [1, 1]]")
+    s.execute("B := [[5, 7], [9, 11]]")
+    assert(s.execute("solve(A * X + C = B, X)") == "X := [[2.0, 3.0], [4.0, 5.0]]")
+  }
+
+  "the REPL" should "solve a two-sided matrix equation A*X*D = B" in
+  {
+    val s = Session()
+    s.execute("A := [[2, 0], [0, 2]]")
+    s.execute("D := [[5, 0], [0, 5]]")
+    s.execute("B := [[10, 20], [30, 40]]")
+    assert(s.execute("solve(A * X * D = B, X)") == "X := [[1.0, 2.0], [3.0, 4.0]]")
+  }

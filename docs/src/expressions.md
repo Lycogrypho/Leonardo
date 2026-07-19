@@ -109,7 +109,7 @@ simplify(Sum(_Number(3.0), _Number(4.0))).toString
 
 ```scala mdoc
 // Inverse function pairs
-simplify(Log(Exp(x))).toString
+simplify(Ln(Exp(x))).toString
 ```
 
 ## Expansion

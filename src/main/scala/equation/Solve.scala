@@ -5,6 +5,8 @@ import core.*
 import scalar.*
 import matrix.*
 
+import scala.annotation.tailrec
+
 
 // Equation solver: solve(eq, v) returns the solutions of eq in v as a list of
 // equations in the shape "v = expr" — a solution set does not fit eval's
@@ -92,11 +94,13 @@ private def asMatrix(r: Either[_Expression, _Value]): Option[_Matrix] = r match
   case Right(mv: _MatrixValue) => Some(_Matrix.fromValue(mv))
   case _                       => None
 
-// Issue 4.3b — the unknown v is a MATRIX in a linear matrix equation. Recognises the
-// shapes A·v = B, v·A = B and v = B where the *known* operands (A and B) are either
-// concrete matrices (dense fast path: A⁻¹ via LU kernel) or symbolic matrix literals
-// (symbolic path: A⁻¹ via cofactor expansion, capped at MaxSymbolicDim = 6):
-//   A·v = B → v = A⁻¹·B      v·A = B → v = B·A⁻¹      v = B → v = B
+// Issue 4.3b / 4.5 — the unknown v is a MATRIX in a linear matrix equation. Recognises
+// the shapes A·v = B, v·A = B, A·v·D = B, A·v + C = B (and permutations) and v = B where
+// the *known* operands (A, C, D, B) are either concrete matrices (dense fast path: A⁻¹ via
+// LU kernel) or symbolic matrix literals (symbolic path: A⁻¹ via cofactor expansion, capped
+// at MaxSymbolicDim = 6):
+//   A·v = B → v = A⁻¹·B   v·A = B → v = B·A⁻¹   A·v·D = B → v = A⁻¹·B·D⁻¹   v = B → v = B
+// An affine v-free term is peeled to the constant side first (A·v + C = B → A·v = B − C).
 // Some(Nil) when A is singular / non-square or the shapes do not conform (no solution →
 // the _Solve node stays symbolic). None when the equation is not a matrix-unknown form,
 // so the element-wise (4.3a) and scalar tiers still run. Products are the scalar `Product`
@@ -111,13 +115,38 @@ private def solveMatrixUnknown(eq: _Equation, v: _Variable, env: Environment): O
 
 // withV is the side containing v; b is the known right-hand matrix expression (concrete
 // or symbolic). Returns None when withV is not one of the recognised matrix-unknown shapes.
+//
+// Shapes handled (4.3b + 4.5), most specific first:
+//   - affine term      A·X + C = B → recurse on A·X with B − C   (issue 4.5)
+//   - two-sided        A·X·D = B   → X = A⁻¹·B·D⁻¹                (issue 4.5)
+//   - one-sided        A·X = B     → X = A⁻¹·B ;  X·A = B → X = B·A⁻¹
+//   - bare unknown     X = B       → X = B
+// The additive-peel and two-sided cases accept both the scalar Sum/Product nodes (a
+// bound-variable operand parses as a scalar node) and the MatSum/MatProduct nodes (a
+// matrix-literal operand parses as a matrix node).
+@tailrec
 private def linearMatrixSolve(withV: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
   withV match
+    // Affine: peel a v-free additive operand across (A·X + C = B → A·X = B − C).
+    case MatSum(l, r) if !dependsOn(l, v) => linearMatrixSolve(r, matSub(b, l), v, env)
+    case MatSum(l, r) if !dependsOn(r, v) => linearMatrixSolve(l, matSub(b, r), v, env)
+    case Sum(l, r)    if !dependsOn(l, v) => linearMatrixSolve(r, matSub(b, l), v, env)
+    case Sum(l, r)    if !dependsOn(r, v) => linearMatrixSolve(l, matSub(b, r), v, env)
+    // Two-sided product: A·X·D = B → X = A⁻¹·B·D⁻¹.
+    case MatProduct(MatProduct(a, m), d) if m == v => twoSidedSolve(a, d, b, v, env)
+    case MatProduct(a, MatProduct(m, d)) if m == v => twoSidedSolve(a, d, b, v, env)
+    case Product(Product(a, m), d)       if m == v => twoSidedSolve(a, d, b, v, env)
+    case Product(a, Product(m, d))       if m == v => twoSidedSolve(a, d, b, v, env)
+    // One-sided product: A·X = B → X = A⁻¹·B ;  X·A = B → X = B·A⁻¹.
     case Product(a, r)    if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
     case MatProduct(a, r) if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
     case Product(l, a)    if l == v => matrixDivide(a, b, v, env, aOnLeft = false)
     case MatProduct(l, a) if l == v => matrixDivide(a, b, v, env, aOnLeft = false)
-    case r                if r == v => Some(List(_Equation(v, b)))   // v = B
+    case r                if r == v =>                                   // v = B (or B − C)
+      val sol = b.eval(env) match
+        case Right(value) => value
+        case Left(expr)   => simplifyFully(expr)
+      Some(List(_Equation(v, sol)))
     case _                          => None
 
 // A·v = B → v = A⁻¹·B; v·A = B → v = B·A⁻¹.
@@ -143,6 +172,30 @@ private def matrixDivide(a: _Expression, b: _Expression, v: _Variable, env: Envi
             case Left(_: MatProduct) => None   // dimensions don't conform — fall through
             case Left(expr)          => Some(List(_Equation(v, simplifyFully(expr))))
             case Right(mv)           => Some(List(_Equation(v, mv)))
+
+// Two-sided linear matrix equation A·X·D = B → X = A⁻¹·B·D⁻¹ (issue 4.5). Both flanks
+// are inverted via the Inverse node (dense LU kernel for concrete operands, cofactor
+// expansion for symbolic ones capped at MaxSymbolicDim), then the triple product is
+// evaluated. This is a recognised matrix-unknown shape, so it always answers Some:
+// Some(Nil) when either inverse cannot be determined (singular / non-square / above the
+// cofactor cap / non-conforming) — no solution — never falling through to the scalar
+// tiers (which cannot solve for a matrix unknown).
+private def twoSidedSolve(a: _Expression, d: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
+  Some(finalizeSolution(MatProduct(MatProduct(Inverse(a), b), Inverse(d)).eval(env), v).getOrElse(Nil))
+
+// B − C as a matrix expression, used to peel a v-free additive term to the constant
+// side. Kept symbolic; the caller's matrixDivide / finalizeSolution evaluates it.
+private def matSub(b: _Expression, c: _Expression): _Expression =
+  MatSum(b, MatScale(_Number(-1), c))
+
+// A reduced right-hand side as the single matrix solution v = <matrix>, or None when it
+// did not collapse to a matrix shape (an unreduced MatProduct/MatSum/Inverse means a
+// singular or non-conforming operand).
+private def finalizeSolution(result: Either[_Expression, _Value], v: _Variable): Option[List[_Equation]] =
+  result match
+    case Right(mv: _MatrixValue) => Some(List(_Equation(v, mv)))
+    case Left(m: _Matrix)        => Some(List(_Equation(v, simplifyFully(m))))
+    case _                       => None
 
 private def matMul(p: _MatrixValue, q: _MatrixValue): Option[_MatrixValue] =
   if p.cols == q.rows then Some(p.multiply(q)) else None

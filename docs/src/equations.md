@@ -128,6 +128,24 @@ Parser.parse("solve(A * X = B, X)").get.eval(mEnv)
 
 A singular (non-invertible) `A` has no unique solution and stays symbolic.
 
+Beyond the one-sided shapes, `solve` also recognises an **affine term** and a
+**two-sided product**. A constant matrix added on the unknown's side is peeled to
+the right (`A·X + C = B` → `A·X = B − C`), and a matrix on each flank is handled by
+inverting both (`A·X·D = B` → `X = A⁻¹·B·D⁻¹`):
+
+```scala mdoc
+val D = _MatrixValue(2, 2, Array(5.0, 0.0, 0.0, 5.0))
+val B2 = _MatrixValue(2, 2, Array(10.0, 20.0, 30.0, 40.0))
+val twoSidedEnv = new Environment(5, Map("A" -> A, "D" -> D, "B" -> B2))
+// A·X·D = B  →  X = A⁻¹·B·D⁻¹ = [[1, 2], [3, 4]]
+Parser.parse("solve(A * X * D = B, X)").get.eval(twoSidedEnv)
+```
+
+The coefficients may be symbolic `_Matrix` literals with free variables, in which
+case the solution is a symbolic matrix expression (via cofactor expansion, capped at
+6×6). The fully general case where the unknown appears on both sides with different
+flanks (the Sylvester equation `A·X + X·B = C`) is not yet handled.
+
 ### Linear systems
 
 `solveSystem([[eq₁, eq₂, …]], v₁, v₂, …)` solves a square system via
@@ -176,8 +194,8 @@ Power(_Number(-2.0), _Number(0.5)).eval(env)
 ```
 
 ```scala mdoc
-// log(-1) = iπ
-Log(_Number(-1.0)).eval(env)
+// ln(-1) = iπ
+Ln(_Number(-1.0)).eval(env)
 ```
 
 ### Parsing complex literals
