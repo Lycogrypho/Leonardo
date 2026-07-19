@@ -440,3 +440,53 @@ class MatrixTest extends AnyFlatSpec:
     assert(s.execute("at(A, 2, 1)") == "3.0")
     assert(s.execute("at(A, 1, 2)") == "2.0")
   }
+
+  // --- Kronecker / vec / unvec / identity kernels (issue 4.5 prerequisites) ---
+
+  "kronecker" should "produce the block matrix of scaled copies" in
+  {
+    // [[1,2],[3,4]] kron [[0,1],[1,0]]
+    val k = dense(2, 2, 1, 2, 3, 4).kronecker(dense(2, 2, 0, 1, 1, 0))
+    val expected = dense(4, 4,
+      0, 1, 0, 2,
+      1, 0, 2, 0,
+      0, 3, 0, 4,
+      3, 0, 4, 0)
+    assert(k == expected)
+  }
+
+  "kronecker" should "satisfy the vec identity vec(A*X*B) = (Bt kron A)*vec(X)" in
+  {
+    val a  = dense(2, 2, 1, 2, 0, 3)
+    val b  = dense(2, 2, 4, 1, 0, 5)
+    val x0 = dense(2, 2, 1, 0, 2, 1)
+    val lhs = a.multiply(x0).multiply(b).vec
+    val rhs = b.transpose.kronecker(a).multiply(x0.vec)
+    for i <- 0 until 4 do assert(math.abs(lhs(i, 0) - rhs(i, 0)) < 1e-12)
+  }
+
+  "vec" should "stack columns into a column vector" in
+  {
+    // [[1,2],[3,4]] -> columns (1,3) then (2,4)
+    val v = dense(2, 2, 1, 2, 3, 4).vec
+    assert(v.rows == 4 && v.cols == 1)
+    assert(v.toVector == Vector(1.0, 3.0, 2.0, 4.0))
+  }
+
+  "unvec" should "invert vec" in
+  {
+    val m = dense(2, 3, 1, 2, 3, 4, 5, 6)
+    assert(_MatrixValue.unvec(m.vec, 2, 3).contains(m))
+  }
+
+  "unvec with non-conforming dimensions" should "be None" in
+  {
+    assert(_MatrixValue.unvec(dense(3, 1, 1, 2, 3), 2, 2).isEmpty)
+  }
+
+  "_MatrixValue.identity" should "be the multiplicative identity" in
+  {
+    val a = dense(2, 2, 1, 2, 3, 4)
+    assert(_MatrixValue.identity(2).multiply(a) == a)
+    assert(a.multiply(_MatrixValue.identity(2)) == a)
+  }

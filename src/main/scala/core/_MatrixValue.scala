@@ -28,6 +28,31 @@ object _MatrixValue:
   def apply(rows: Int, cols: Int, data: Array[Double]): _MatrixValue =
     new _MatrixValue(rows, cols, data.clone)
 
+  // n×n identity — the dense counterpart of the matrix.IdentityMatrix node. Used by the
+  // vectorized (Sylvester) solver tier for absent left/right coefficients (issue 4.5).
+  def identity(n: Int): _MatrixValue =
+    val out = new Array[Double](n * n)
+    var i = 0
+    while i < n do
+      out(i * n + i) = 1.0
+      i += 1
+    new _MatrixValue(n, n, out)
+
+  // Inverse of `vec`: reshape a (rows·cols)×1 column vector back into a rows×cols
+  // matrix, column-major (matching vec's stacking). None when v does not conform.
+  def unvec(v: _MatrixValue, rows: Int, cols: Int): Option[_MatrixValue] =
+    if v.cols != 1 || v.rows != rows * cols then None
+    else
+      val out = new Array[Double](rows * cols)
+      var j = 0
+      while j < cols do
+        var i = 0
+        while i < rows do
+          out(i * cols + j) = v(j * rows + i, 0)
+          i += 1
+        j += 1
+      Some(new _MatrixValue(rows, cols, out))
+
 
 final class _MatrixValue private (val rows: Int, val cols: Int, private val data: Array[Double]) extends _Value:
   require(rows > 0 && cols > 0, s"matrix dimensions must be positive: ${rows}x$cols")
@@ -92,6 +117,42 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         j += 1
       i += 1
     new _MatrixValue(cols, rows, out)
+
+  // Kronecker product: (this ⊗ that) — the (rows·that.rows)×(cols·that.cols) block
+  // matrix whose (i, j) block is this(i, j) · that. The kernel behind the vectorized
+  // matrix-equation tier (issue 4.5): vec(A·X·B) = (Bᵀ ⊗ A) · vec(X).
+  def kronecker(that: _MatrixValue): _MatrixValue =
+    val kc  = cols * that.cols
+    val out = new Array[Double](rows * that.rows * kc)
+    var i = 0
+    while i < rows do
+      var j = 0
+      while j < cols do
+        val f = data(i * cols + j)
+        if f != 0.0 then
+          var k = 0
+          while k < that.rows do
+            var l = 0
+            while l < that.cols do
+              out((i * that.rows + k) * kc + (j * that.cols + l)) = f * that(k, l)
+              l += 1
+            k += 1
+        j += 1
+      i += 1
+    new _MatrixValue(rows * that.rows, kc, out)
+
+  // Column-stacking vectorization: the (rows·cols)×1 column vector with
+  // vec[j·rows + i] = this(i, j) — the vec(·) of the Kronecker identity above.
+  def vec: _MatrixValue =
+    val out = new Array[Double](rows * cols)
+    var j = 0
+    while j < cols do
+      var i = 0
+      while i < rows do
+        out(j * rows + i) = data(i * cols + j)
+        i += 1
+      j += 1
+    new _MatrixValue(rows * cols, 1, out)
 
   // Determinant via LU decomposition with partial pivoting, O(n³) — the numeric
   // counterpart of the symbolic cofactor expansion in matrix.Determinant. None when

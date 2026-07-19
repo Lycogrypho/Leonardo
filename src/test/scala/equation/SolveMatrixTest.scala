@@ -292,3 +292,73 @@ class SolveMatrixTest extends AnyFlatSpec:
     s.execute("B := [[10, 20], [30, 40]]")
     assert(s.execute("solve(A * X * D = B, X)") == "X := [[1.0, 2.0], [3.0, 4.0]]")
   }
+
+  // --- 4.5: general linear matrix equations (Sylvester tier, Kronecker vectorization) ---
+
+  def assertMatrixNear(sol: List[_Equation], expected: _MatrixValue): Unit = sol match
+    case _Equation(_, m: _MatrixValue) :: Nil =>
+      for i <- 0 until expected.rows; j <- 0 until expected.cols do
+        assert(math.abs(m(i, j) - expected(i, j)) < 1e-9, s"cell ($i,$j): ${m(i, j)} vs ${expected(i, j)}")
+    case other => fail(s"expected one matrix solution but got: $other")
+
+  "solve(A*X + X*B = C, X) (Sylvester)" should "recover the unique X" in
+  {
+    // A eigs {1,3}, B eigs {4,5}: no shared eigenvalue with -B → unique solution.
+    val a  = dense(2, 2, 1, 2, 0, 3)
+    val bm = dense(2, 2, 4, 1, 0, 5)
+    val x0 = dense(2, 2, 1, 0, 2, 1)
+    val c  = a.multiply(x0).add(x0.multiply(bm))
+    assertMatrixNear(solve(_Equation(Sum(Product(a, x), Product(x, bm)), c), x), x0)
+  }
+
+  "solve(k*X = B, X) with a scalar coefficient" should "give X = B / k" in
+  {
+    val b = dense(2, 2, 4, 6, 8, 10)
+    assertMatrixNear(solve(_Equation(Product(_Number(2), x), b), x), dense(2, 2, 2, 3, 4, 5))
+  }
+
+  "solve(A*X + X*B + D = C, X) (Sylvester with an affine term)" should "move D to the constant side" in
+  {
+    val a  = dense(2, 2, 1, 2, 0, 3)
+    val bm = dense(2, 2, 4, 1, 0, 5)
+    val d  = dense(2, 2, 1, 1, 1, 1)
+    val x0 = dense(2, 2, 1, 0, 2, 1)
+    val c  = a.multiply(x0).add(x0.multiply(bm)).add(d)
+    val lhs = Sum(Sum(Product(a, x), Product(x, bm)), d)
+    assertMatrixNear(solve(_Equation(lhs, c), x), x0)
+  }
+
+  "solve(X - X = 0, X) (singular Sylvester)" should "have no solution" in
+  {
+    // A = I, B = -I: A·X + X·B ≡ 0 → M = (I ⊗ I) − (I ⊗ I) is singular.
+    val i2  = dense(2, 2, 1, 0, 0, 1)
+    val mi2 = dense(2, 2, -1, 0, 0, -1)
+    val z   = dense(2, 2, 0, 0, 0, 0)
+    assert(solve(_Equation(Sum(Product(i2, x), Product(x, mi2)), z), x).isEmpty)
+  }
+
+  "the REPL" should "solve a Sylvester equation A*X + X*B = C" in
+  {
+    // X0 = [[1,0],[2,1]] → C = A·X0 + X0·B = [[9,3],[14,10]]
+    val s = Session()
+    s.execute("A := [[1, 2], [0, 3]]")
+    s.execute("B := [[4, 1], [0, 5]]")
+    s.execute("C := [[9, 3], [14, 10]]")
+    assert(s.execute("solve(A * X + X * B = C, X)") == "X := [[1.0, 0.0], [2.0, 1.0]]")
+  }
+
+  "the REPL" should "solve a Lyapunov equation A*X + X*transpose(A) = C" in
+  {
+    // A eigs {2,3}: no eigenvalue shared with -Aᵀ → unique; X = I satisfies A + Aᵀ = C.
+    val s = Session()
+    s.execute("A := [[2, 1], [0, 3]]")
+    s.execute("C := [[4, 1], [1, 6]]")
+    assert(s.execute("solve(A * X + X * transpose(A) = C, X)") == "X := [[1.0, 0.0], [0.0, 1.0]]")
+  }
+
+  "the REPL" should "solve a scalar-coefficient matrix equation 2*X = B" in
+  {
+    val s = Session()
+    s.execute("B := [[4, 6], [8, 10]]")
+    assert(s.execute("solve(2 * X = B, X)") == "X := [[2.0, 3.0], [4.0, 5.0]]")
+  }

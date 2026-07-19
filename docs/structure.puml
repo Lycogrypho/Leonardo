@@ -48,6 +48,11 @@ package "core" {
 
     interface "_ElementWise" <<trait>> [[expressions.html]]
 
+    interface "_MatrixShaped" <<trait>> [[matrix.html]] {
+        + rows: Int
+        + cols: Int
+    }
+
     class "_Number" <<case>> [[expressions.html]] {
         + d: Double
         + display(precision: Int): String
@@ -87,9 +92,13 @@ package "core" {
         + qrDecompose: Option[(Q, R)]
         + eigenDecompose: Option[Vector[_Value]]
         + spectralDecompose: Option[(Vector[Vector[_Value]], Vector[_Value])]
+        + kronecker(that): _MatrixValue
+        + vec: _MatrixValue
         + guarded(orElse): Either
         __ companion __
         + apply(rows, cols, data) : defensive copy
+        + identity(n): _MatrixValue
+        + unvec(v, rows, cols): Option[_MatrixValue]
     }
 
     class "Environment" [[expressions.html]] {
@@ -100,8 +109,9 @@ package "core" {
         DefaultPrecision: Int = 5
     }
 
-    "_Value"       --|> "_Expression"
-    "_ElementWise" --|> "_Expression"
+    "_Value"        --|> "_Expression"
+    "_ElementWise"  --|> "_Expression"
+    "_MatrixShaped" --|> "_Expression"
     "_Number"      ..|> "_Value"
     "_Bool"        ..|> "_Value"
     "_Complex"     ..|> "_Value"
@@ -405,6 +415,8 @@ package "matrix" {
     "_Matrix"   ..|> "_ElementWise"
     "MatSum"    ..|> "_ElementWise"
     "Transpose" ..|> "_ElementWise"
+    ' Symbolic matrix marker: scalar functions distribute element-wise (exp(A), sin(A), ...)
+    "_Matrix"   ..|> "_MatrixShaped"
 
     "_Matrix"          ..> "_MatrixValue" : collapses to at eval
     "_MatrixOperation" ..> "_MatrixValue" : dense kernels (fast path)
@@ -537,7 +549,7 @@ package "equation" {
     "Solve"     ..> "Normalize" : collect() linear/quadratic tiers
     "Solve"     ..> "Compile"   : numeric fallback
     "Solve"     ..> "_Matrix"   : element-wise matrix-equation decompose
-    "Solve"     ..> "_MatrixValue" : inverse kernel (matrix unknown)
+    "Solve"     ..> "_MatrixValue" : inverse kernel (matrix unknown);\nkronecker/vec/unvec (Sylvester tier)
 }
 
 ' ===================================================

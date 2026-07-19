@@ -111,6 +111,7 @@ private def solveMatrixUnknown(eq: _Equation, v: _Variable, env: Environment): O
     (withV, constant) <- sideWith(v, eq)
     b                 <- asMatrixExpr(constant.eval(env))
     solution          <- linearMatrixSolve(withV, b, v, env)
+                           .orElse(vectorizedMatrixSolve(withV, b, v, env))
   yield solution
 
 // withV is the side containing v; b is the known right-hand matrix expression (concrete
@@ -196,6 +197,106 @@ private def finalizeSolution(result: Either[_Expression, _Value], v: _Variable):
     case Right(mv: _MatrixValue) => Some(List(_Equation(v, mv)))
     case Left(m: _Matrix)        => Some(List(_Equation(v, simplifyFully(m))))
     case _                       => None
+
+// ── 4.5 vectorized tier: general linear matrix equations (Sylvester shapes) ──────
+//
+// When the unknown matrix v appears in SEVERAL additive terms — A·v + v·B = C
+// (Sylvester), A·v + v·Aᵀ = C (Lyapunov), k·v + A·v·D = C, … — no single-inverse
+// closed form exists. Each v-term is classified as  s · L · v · R  (absent L/R =
+// identity, s a scalar factor) and the equation is vectorized with the Kronecker
+// identity  vec(L·v·R) = (Rᵀ ⊗ L) · vec(v),  assembling the (p·q)×(p·q) dense system
+//   M · vec(v) = vec(C′)    with  M = Σ sᵢ·(Rᵢᵀ ⊗ Lᵢ)   and  C′ = C − (v-free terms).
+// Solved via the inverse kernel and reshaped back with unvec. Dense-only: every
+// coefficient must reduce to a _MatrixValue or _Number under env — a symbolic
+// coefficient yields None so the equation stays symbolic. Some(Nil) when the shape is
+// recognised but singular / non-conforming (no solution). This tier also covers the
+// single-term scalar coefficient (k·v = B → v = B/k), which the one-sided tier cannot
+// invert as a matrix.
+
+// M is (p·q)×(p·q): cap the vectorized dimension so the Kronecker system stays small.
+private val MaxVectorizedSize = 400   // up to a 20×20 unknown
+
+// One additive term linear in v: scale · left · v · right (absent side = identity).
+private final case class LinearTerm(scale: Double, left: Option[_MatrixValue], right: Option[_MatrixValue])
+
+// Additive operands of a Sum/MatSum tree, in order.
+private def flattenSum(e: _Expression): List[_Expression] = e match
+  case Sum(a, b)    => flattenSum(a) ++ flattenSum(b)
+  case MatSum(a, b) => flattenSum(a) ++ flattenSum(b)
+  case other        => List(other)
+
+// Classify one additive term as s·L·v·R; None when the term is not linear in v or a
+// coefficient does not reduce to a dense matrix / number under env.
+private def classifyTerm(t: _Expression, v: _Variable, env: Environment): Option[LinearTerm] = t match
+  case x if x == v      => Some(LinearTerm(1.0, None, None))
+  case Product(a, b)    => classifyFactor(a, b, v, env)
+  case MatProduct(a, b) => classifyFactor(a, b, v, env)
+  case MatScale(k, m)   => classifyFactor(k, m, v, env)
+  case _                => None
+
+// A binary product with v on exactly one side: the v-free factor composes into the
+// inner term's left/right coefficient (l · (L·v·R) = (l·L)·v·R and mirror) or into
+// its scalar factor when it reduces to a _Number.
+private def classifyFactor(l: _Expression, r: _Expression, v: _Variable, env: Environment): Option[LinearTerm] =
+  (dependsOn(l, v), dependsOn(r, v)) match
+    case (false, true) =>
+      classifyTerm(r, v, env).flatMap(inner => l.eval(env) match
+        case Right(_Number(k))      => Some(inner.copy(scale = inner.scale * k))
+        case Right(a: _MatrixValue) => inner.left match
+          case None                          => Some(inner.copy(left = Some(a)))
+          case Some(li) if a.cols == li.rows => Some(inner.copy(left = Some(a.multiply(li))))
+          case _                             => None
+        case _ => None)
+    case (true, false) =>
+      classifyTerm(l, v, env).flatMap(inner => r.eval(env) match
+        case Right(_Number(k))      => Some(inner.copy(scale = inner.scale * k))
+        case Right(d: _MatrixValue) => inner.right match
+          case None                          => Some(inner.copy(right = Some(d)))
+          case Some(ri) if ri.cols == d.rows => Some(inner.copy(right = Some(ri.multiply(d))))
+          case _                             => None
+        case _ => None)
+    case _ => None   // v on both sides (nonlinear in v) — not classifiable
+
+// Entry point of the tier: None when the equation is not a recognisable dense linear
+// matrix equation (later tiers run); Some(Nil) when recognised but unsolvable.
+private def vectorizedMatrixSolve(withV: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
+  val (vTerms, cTerms) = flattenSum(withV).partition(dependsOn(_, v))
+  for
+    bDense    <- asMatrixValue(b.eval(env))
+    constants <- allOpt(cTerms.map(t => asMatrixValue(t.eval(env))))
+    terms     <- allOpt(vTerms.map(classifyTerm(_, v, env)))
+    if terms.nonEmpty
+  yield solveVectorized(terms, bDense, constants, v).getOrElse(Nil)
+
+// Assemble and solve M·vec(v) = vec(C′); None → no solution (singular/non-conforming).
+private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
+                            constants: Vector[_MatrixValue], v: _Variable): Option[List[_Equation]] =
+  val p = b.rows
+  val q = b.cols
+  if constants.exists(c => c.rows != p || c.cols != q) then None
+  else
+    val cPrime = constants.foldLeft(b)((acc, c) => acc.add(c.scale(-1.0)))
+    // Unknown dimensions: L is p×rX and R is cX×q; absent coefficients imply rX = p / cX = q.
+    val rX = terms.collectFirst { case LinearTerm(_, Some(l), _) => l.cols }.getOrElse(p)
+    val cX = terms.collectFirst { case LinearTerm(_, _, Some(r)) => r.rows }.getOrElse(q)
+    val conforming = terms.forall { t =>
+      t.left.forall(l => l.rows == p && l.cols == rX)  && (t.left.nonEmpty  || rX == p) &&
+      t.right.forall(r => r.rows == cX && r.cols == q) && (t.right.nonEmpty || cX == q)
+    }
+    val n = p * q
+    if !conforming || rX * cX != n || n > MaxVectorizedSize then None
+    else
+      val m = terms
+        .map { t =>
+          val lm = t.left.getOrElse(_MatrixValue.identity(p))
+          val rm = t.right.getOrElse(_MatrixValue.identity(q))
+          rm.transpose.kronecker(lm).scale(t.scale)
+        }
+        .reduce(_.add(_))
+      for
+        mInv <- m.inverse
+        x    <- _MatrixValue.unvec(mInv.multiply(cPrime.vec), rX, cX)
+      yield List(_Equation(v, x))
 
 private def matMul(p: _MatrixValue, q: _MatrixValue): Option[_MatrixValue] =
   if p.cols == q.rows then Some(p.multiply(q)) else None

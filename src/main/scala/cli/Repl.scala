@@ -459,11 +459,15 @@ object Session:
       """|Solve an equation for a variable.
          |Linear and quadratic forms are solved exactly; other forms use numeric bisection.
          |A matrix equation is solved for a scalar unknown cell-by-cell (intersection),
-         |or for a matrix unknown A*X = B via the inverse (X = A^-1 B; bind A and B first).
+         |or for a matrix unknown via the inverse / Kronecker vectorization (bind the
+         |known matrices first; symbolic coefficients give a symbolic solution).
          |  solve(10*x = 2*x + 1, x)   → x = 0.125
          |  solve(x^2 = 4, x)          → [[x = -2.0, x = 2.0]]
          |  solve([[x, 2*x]] = [[3, 6]], x)   → x = 3.0
-         |  solve(A * X = B, X)        matrix unknown (A, B bound) → X = [[…]]
+         |  solve(A * X = B, X)        → X = A⁻¹·B     (X * A = B → X = B·A⁻¹)
+         |  solve(A * X + C = B, X)    affine term: → A·X = B − C
+         |  solve(A * X * D = B, X)    two-sided: → X = A⁻¹·B·D⁻¹
+         |  solve(A * X + X * B = C, X)   Sylvester/Lyapunov, via vec/Kronecker
          |  solve(h, x)                h is a named equation""".stripMargin,
     "derive" ->
       """|Differentiate an expression with respect to a variable or a defined function.

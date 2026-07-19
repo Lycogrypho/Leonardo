@@ -143,8 +143,26 @@ Parser.parse("solve(A * X * D = B, X)").get.eval(twoSidedEnv)
 
 The coefficients may be symbolic `_Matrix` literals with free variables, in which
 case the solution is a symbolic matrix expression (via cofactor expansion, capped at
-6×6). The fully general case where the unknown appears on both sides with different
-flanks (the Sylvester equation `A·X + X·B = C`) is not yet handled.
+6×6).
+
+**General linear matrix equations** — the unknown appearing in several terms with
+coefficients on different sides — are solved by Kronecker vectorization: each term
+`s·L·X·R` contributes `s·(Rᵀ ⊗ L)` to a dense system over `vec(X)`. This covers the
+Sylvester equation `A·X + X·B = C`, the Lyapunov equation `A·X + X·Aᵀ = C`, and
+scalar coefficients like `2·X = B`:
+
+```scala mdoc
+// Sylvester: A·X + X·B = C with X = [[1, 0], [2, 1]] → C = [[9, 3], [14, 10]]
+val sA = _MatrixValue(2, 2, Array(1.0, 2.0, 0.0, 3.0))
+val sB = _MatrixValue(2, 2, Array(4.0, 1.0, 0.0, 5.0))
+val sC = _MatrixValue(2, 2, Array(9.0, 3.0, 14.0, 10.0))
+val sylvesterEnv = new Environment(5, Map("A" -> sA, "B" -> sB, "C" -> sC))
+Parser.parse("solve(A * X + X * B = C, X)").get.eval(sylvesterEnv)
+```
+
+The system is solvable only when it is non-singular — for Sylvester, when `A` and
+`−B` share no eigenvalue; otherwise the equation has no (unique) solution and the
+solve node stays symbolic. Coefficients must reduce to dense matrices for this tier.
 
 ### Linear systems
 
