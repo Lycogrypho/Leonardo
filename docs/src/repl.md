@@ -100,6 +100,24 @@ Reset to default:
 s.execute("precision 5")
 ```
 
+## Matrix display
+
+Matrices with two or more rows can be shown multi-line with right-aligned columns
+(`pretty on`; `pretty off` restores the single-line form). Single-row matrices and
+decomposition results stay on one line. The setting is persisted by `:save` / `:load`.
+
+```scala mdoc
+s.execute("pretty on")
+```
+
+```scala mdoc
+s.execute("[[1, 200], [30, 4]]")
+```
+
+```scala mdoc
+s.execute("pretty off")
+```
+
 ## Range sampling
 
 ```scala mdoc
@@ -167,6 +185,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `eval <expr>` | Force numeric evaluation |
 | `samples e v lo hi [n]` | Sample function over range |
 | `precision <n>` | Set decimal digits |
+| `pretty on` / `off` | Multi-line, column-aligned matrix display |
 | `env` | Show session state |
 | `unset <name>` | Remove binding or definition |
 | `:save <file>` | Write replayable script |

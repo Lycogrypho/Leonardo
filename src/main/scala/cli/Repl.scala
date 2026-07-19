@@ -35,6 +35,7 @@ import org.jline.terminal.TerminalBuilder
  *   simplify <expr>      structural simplification, no numeric evaluation
  *   expand <expr>        distribute products over sums
  *   precision <n>        set decimal precision
+ *   pretty on | off      multi-line, column-aligned matrix display (default: off)
  *   env                  list precision, bindings, and definitions
  *   unset <name>         remove a binding or definition
  *   :load <file>         run a session script (file IO handled by the read loop)
@@ -46,6 +47,10 @@ final class Session:
   private val MaxPrecision = 15
   private var precision: Int = Environment.DefaultPrecision
   private var colorSchemeName: String = "dark"
+  // Multi-line, column-aligned matrix display (issue 4.6). Off by default so the
+  // single-line `[[…], […]]` form (which tests and :save scripts rely on) is unchanged;
+  // `pretty on` opts in, mirroring the `colors` toggle.
+  private var prettyMatrix: Boolean = false
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
 
@@ -82,6 +87,8 @@ final class Session:
     case s"unset $name"         => unset(name.trim)
     case "colors"               => s"colors = $colorSchemeName"
     case s"colors $name"        => setColors(name.trim)
+    case "pretty"               => s"pretty = ${if prettyMatrix then "on" else "off"}"
+    case s"pretty $mode"        => setPretty(mode.trim)
     case s"simplify $rest"      => withParsed(rest)(e => simplify(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"expand $rest"        => withParsed(rest)(e => expand(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
@@ -117,7 +124,9 @@ final class Session:
    * through `load` (or line by line through `execute`) reconstructs the session.
    * Pure: this is what the REPL writes to a `:save` file.
    */
-  def script: String = buildLines(List(s"precision $precision", s"colors $colorSchemeName"), serializeValue)
+  def script: String = buildLines(
+    List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}"),
+    serializeValue)
 
   /**
    * Execute a whole script body (e.g. the contents of a `:load` file), returning the
@@ -147,20 +156,43 @@ final class Session:
         case None    => base
 
   private def formatResult(result: Either[_Expression, _Value]): String =
-    formatExpression(result.toExpression)
+    formatExpression(result.toExpression, prettyMatrix)
 
   // Recursive so the session precision reaches values nested inside a symbolic
   // _Matrix — decomposition results (lu/qr/eig/jordan) are Left(_Matrix(…)) whose
   // elements are dense _MatrixValues, which _Matrix.toString would otherwise
-  // render at DefaultPrecision (issue 1.1).
-  private def formatExpression(e: _Expression): String = e match
+  // render at DefaultPrecision (issue 1.1). The `pretty` flag threads the multi-line
+  // toggle top-down: it is forced off when recursing into a matrix's cells, so a
+  // matrix-of-matrices (a decomposition result) keeps its inner matrices single-line
+  // and only the outermost matrix is ever stacked (issue 4.6).
+  private def formatExpression(e: _Expression, pretty: Boolean): String = e match
     case n: _Number      => n.display(precision)
     case c: _Complex     => c.display(precision)
-    case m: _MatrixValue => m.display(precision)
+    case m: _MatrixValue =>
+      renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => _Number(m(i, j)).display(precision)), pretty)
     case m: _Matrix      =>
-      (0 until m.rows).map(i => (0 until m.cols).map(j => formatExpression(m(i, j)))
-        .mkString("[", ", ", "]")).mkString("[", ", ", "]")
+      renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => formatExpression(m(i, j), pretty = false)), pretty)
     case other           => other.toString
+
+  // Render a grid of already-formatted cell strings. Single-line `[[…], […]]` unless
+  // pretty is on and the matrix has at least two rows — then columns are right-aligned
+  // and rows are stacked on separate lines (issue 4.6).
+  private def renderMatrix(cells: Vector[Vector[String]], pretty: Boolean): String =
+    if pretty && cells.sizeIs >= 2 then prettyMatrixString(cells)
+    else cells.map(_.mkString("[", ", ", "]")).mkString("[", ", ", "]")
+
+  // Multi-line matrix: each column padded to its widest cell (right-aligned), each row
+  // bracketed, rows stacked with the opening `[` on the first line and closing `]` on
+  // the last so the whole matrix stays a balanced `[[…]…[…]]`.
+  private def prettyMatrixString(cells: Vector[Vector[String]]): String =
+    val widths = cells.head.indices.map(j => cells.map(_(j).length).max)
+    val rows   = cells.map(row =>
+      row.zip(widths).map((c, w) => " " * (w - c.length) + c).mkString("[", ", ", "]"))
+    rows.zipWithIndex.map { (r, i) =>
+      val open  = if i == 0 then "[" else " "
+      val close = if i == rows.size - 1 then "]" else ""
+      s"$open$r$close"
+    }.mkString("\n")
 
   // True iff the expression tree contains a _Solve functional node.
   private def containsSolve(e: _Expression): Boolean = e match
@@ -335,6 +367,11 @@ final class Session:
       val available = ColorScheme.All.keys.toList.sorted.mkString(", ")
       s"unknown color scheme '$name'; available: $available"
 
+  private def setPretty(text: String): String = text.toLowerCase match
+    case "on"  | "true"  => prettyMatrix = true;  "pretty = on"
+    case "off" | "false" => prettyMatrix = false; "pretty = off"
+    case _               => s"pretty expects 'on' or 'off', got: $text"
+
   private def unset(name: String): String =
     if bindings.contains(name) || definitions.contains(name) then
       bindings = bindings - name
@@ -392,6 +429,12 @@ object Session:
          |  colors light        bold blue commands, green functions, magenta constants, red numbers
          |  colors none         disable highlighting
          |  colors              show the active scheme""".stripMargin,
+    "pretty" ->
+      """|Toggle multi-line, column-aligned display of matrices with 2+ rows.
+         |Off by default; the setting is persisted by :save / :load.
+         |  pretty on           stack rows on separate lines, right-align columns
+         |  pretty off          single-line [[…], […]] form (default)
+         |  pretty              show the current setting""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -499,6 +542,7 @@ object Session:
       |expand <expr>        distribute products over sums (matrix algebra as above)
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
+      |pretty on | off      multi-line, column-aligned matrix display (default: off)
       |env                  list precision, bindings, and definitions
       |unset <name>         remove a binding or definition
       |:load <file>         run a session script (bindings/definitions/commands)

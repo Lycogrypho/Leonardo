@@ -727,6 +727,94 @@ class ReplSessionTest extends AnyFlatSpec:
     finally tmp.delete()
   }
 
+  // --- issue 4.6: pretty-print matrices (multi-line, column-aligned) ---
+
+  "pretty on" should "enable multi-line matrix display and report it" in
+  {
+    val s = session
+    assert(s.execute("pretty on") == "pretty = on")
+  }
+
+  "pretty off" should "report the disabled state" in
+  {
+    val s = session
+    s.execute("pretty on")
+    assert(s.execute("pretty off") == "pretty = off")
+  }
+
+  "bare pretty" should "show the current setting without changing it" in
+  {
+    val s = session
+    assert(s.execute("pretty") == "pretty = off")
+    s.execute("pretty on")
+    assert(s.execute("pretty") == "pretty = on")
+  }
+
+  "pretty with an invalid argument" should "report an error and stay off" in
+  {
+    val s = session
+    val out = s.execute("pretty maybe")
+    assert(out.contains("maybe"), s"error must echo the bad value; got: $out")
+    assert(s.execute("pretty") == "pretty = off")
+  }
+
+  "a 2x2 matrix with pretty on" should "display multi-line, right-aligned" in
+  {
+    val s = session
+    s.execute("M := [[1, 2], [3, 4]]")
+    s.execute("pretty on")
+    assert(s.execute("M") == "[[1.0, 2.0]\n [3.0, 4.0]]")
+  }
+
+  "pretty display" should "right-align columns of differing widths" in
+  {
+    val s = session
+    s.execute("M := [[1, 200], [30, 4]]")
+    s.execute("pretty on")
+    assert(s.execute("M") == "[[ 1.0, 200.0]\n [30.0,   4.0]]")
+  }
+
+  "a single-row matrix with pretty on" should "stay on one line (no line breaks needed)" in
+  {
+    val s = session
+    s.execute("M := [[1, 2, 3]]")
+    s.execute("pretty on")
+    assert(s.execute("M") == "[[1.0, 2.0, 3.0]]")
+  }
+
+  "a matrix with pretty off (the default)" should "keep the single-line form" in
+  {
+    val s = session
+    s.execute("M := [[1, 2], [3, 4]]")
+    assert(s.execute("M") == "[[1.0, 2.0], [3.0, 4.0]]")
+  }
+
+  "a decomposition result (matrix of matrices) with pretty on" should "stay single-line" in
+  {
+    val s = session
+    s.execute("pretty on")
+    // lu(A) evaluates to a 1x3 row [[L, U, P]]; its cells are themselves matrices, so it
+    // must not be stacked (that would break the grid). It stays the single-line form.
+    val out = s.execute("lu([[4, 3], [6, 3]])")
+    assert(!out.contains("\n"), s"nested matrix result must stay single-line; got:\n$out")
+  }
+
+  "session.script" should "persist the pretty setting" in
+  {
+    val s = session
+    s.execute("pretty on")
+    assert(s.script.contains("pretty on"), s"script must persist pretty; got:\n${s.script}")
+  }
+
+  "pretty setting" should "round-trip through script / load" in
+  {
+    val s1 = session
+    s1.execute("pretty on")
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("pretty") == "pretty = on")
+  }
+
   // LeonardoHighlighter -- verify content is preserved for all three schemes.
 
   "LeonardoHighlighter with none scheme" should "preserve buffer content unchanged" in
