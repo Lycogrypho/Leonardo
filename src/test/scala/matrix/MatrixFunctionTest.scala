@@ -113,3 +113,63 @@ class MatrixFunctionTest extends AnyFlatSpec:
       case Right(m: _MatrixValue) => assert(m == dense(2, 2, sin(0), sin(1), sin(2), sin(3)))
       case other                  => fail(s"expected a dense matrix value but got: $other")
   }
+
+  // --- SYMBOLIC matrix argument: distribute element-wise, keeping each cell symbolic ---
+
+  val x = _Variable("x")
+  val y = _Variable("y")
+
+  "exp of a symbolic matrix" should "distribute element-wise, staying symbolic per cell" in
+  {
+    // Free-variable cells stay exp(cell); numeric cells fold (exp(1), exp(0)).
+    val m = _Matrix(2, 2, Vector(x, _Number(1.0), y, _Number(0.0)))
+    Exp(m).eval(env) match
+      case Left(_Matrix(2, 2, elems)) =>
+        assert(elems(0) == Exp(x))
+        assert(elems(1) == _Number(exp(1.0)))
+        assert(elems(2) == Exp(y))
+        assert(elems(3) == _Number(exp(0.0)))
+      case other => fail(s"expected a symbolic matrix but got: $other")
+  }
+
+  "sin of a symbolic matrix" should "distribute element-wise" in
+  {
+    val m = _Matrix(1, 2, Vector(x, Product(_Number(2.0), x)))
+    Sin(m).eval(env) match
+      case Left(_Matrix(1, 2, elems)) =>
+        assert(elems(0) == Sin(x))
+        assert(elems(1) == Sin(Product(_Number(2.0), x)))
+      case other => fail(s"expected a symbolic matrix but got: $other")
+  }
+
+  "log(A) of a symbolic matrix" should "distribute log base 10 element-wise" in
+  {
+    // log(x) is LogBase(x, 10); over a matrix it distributes, folding the constant cell.
+    val m = _Matrix(1, 2, Vector(x, _Number(100.0)))
+    LogBase(m, _Number(10.0)).eval(env) match
+      case Left(_Matrix(1, 2, elems)) =>
+        assert(elems(0) == LogBase(x, _Number(10.0)))
+        assert(elems(1) == _Number(2.0))   // log10(100) = 2
+      case other => fail(s"expected a symbolic matrix but got: $other")
+  }
+
+  "a symbolic matrix function with all variables bound" should "collapse to a dense matrix" in
+  {
+    val m = _Matrix(2, 1, Vector(x, y))
+    val bound = new Environment().withBinding("x", _Number(0.0)).withBinding("y", _Number(1.0))
+    Exp(m).eval(bound) match
+      case Right(mv: _MatrixValue) => assert(mv == dense(2, 1, exp(0.0), exp(1.0)))
+      case other                   => fail(s"expected a dense matrix but got: $other")
+  }
+
+  "exp of a symbolic matrix via the REPL (the reported bug)" should "propagate element-wise" in
+  {
+    val s = new Session()
+    s.execute("A := [[x, 2*x], [3*y, 1]]")
+    s.execute("B := exp(A)")
+    val out = s.execute("eval B")
+    assert(out.contains("exp(x)"),         s"expected exp(x) cell; got: $out")
+    assert(out.contains("exp((2.0 * x))"), s"expected exp(2x) cell; got: $out")
+    assert(out.contains("2.71828"),        s"expected exp(1) folded to a number; got: $out")
+    assert(!out.startsWith("exp("),        s"must not stay a single exp(matrix); got: $out")
+  }

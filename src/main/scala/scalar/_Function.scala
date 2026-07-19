@@ -16,6 +16,17 @@ abstract class _Function extends _Expression:
   protected def mapMatrix(mv: _MatrixValue, f: Double => Double): Either[_Expression, _Value] =
     _MatrixValue(mv.rows, mv.cols, mv.toVector.map(f).toArray).guarded(this)
 
+  // Element-wise application over a SYMBOLIC matrix argument (a _MatrixShaped whose
+  // entries have free variables, so it did not collapse to a dense _MatrixValue). The
+  // matrix is rebuilt with this single-argument function wrapped around each element and
+  // re-evaluated: numeric cells fold, symbolic cells stay as f(cell). Unlike mapMatrix,
+  // each cell degrades independently — an out-of-domain entry becomes its own complex or
+  // symbolic result instead of dropping the whole matrix. For a single-argument function,
+  // `rebuild(List(el))` reconstructs the function around one cell. (Multi-argument
+  // functions like LogBase override the matrix handling in their own eval.)
+  protected def mapMatrixExpr(m: _MatrixShaped, env: Environment): Either[_Expression, _Value] =
+    m.rebuild(m.children.map(el => rebuild(List(el)))).eval(env)
+
 
 case class Exp(e: _Expression) extends _Function:
   override def toString: String = s"exp($e)"
@@ -27,6 +38,7 @@ case class Exp(e: _Expression) extends _Function:
       case Right(_Number(x)) => Right(_Number(exp(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, exp)
       case Right(c: _Complex) => _Complex.expc(c).map(Right(_)).getOrElse(Left(Exp(c)))
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Exp(other.toExpression))
 
 
@@ -47,6 +59,7 @@ case class Ln(e: _Expression) extends _Function:
         else Right(_Number(r))
       case Right(mv: _MatrixValue) => mapMatrix(mv, log)
       case Right(c: _Complex) => _Complex.logc(c).map(Right(_)).getOrElse(Left(Ln(c)))
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Ln(other.toExpression))
 
 
@@ -66,6 +79,9 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function:
       case (Right(mv: _MatrixValue), Right(_Number(b))) =>
         val lb = log(b)
         if lb.isNaN || lb.isInfinite then Left(this) else mapMatrix(mv, x => log(x) / lb)
+      // Symbolic matrix argument (any base): distribute log_base element-wise.
+      case (Left(m: _MatrixShaped), rb) =>
+        m.rebuild(m.children.map(el => LogBase(el, rb.toExpression))).eval(env)
       case (Right(ev: _Value), Right(bv: _Value)) =>
         (_Complex.logc(ev), _Complex.logc(bv)) match
           case (Some(le), Some(lb)) =>
@@ -84,6 +100,7 @@ case class Sin(e: _Expression) extends _Function:
       case Right(_Number(x)) => Right(_Number(sin(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, sin)
       case Right(c: _Complex) => _Complex.sinc(c).map(Right(_)).getOrElse(Left(Sin(c)))
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Sin(other.toExpression))
 
 
@@ -97,6 +114,7 @@ case class Cos(e: _Expression) extends _Function:
       case Right(_Number(x)) => Right(_Number(cos(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, cos)
       case Right(c: _Complex) => _Complex.cosc(c).map(Right(_)).getOrElse(Left(Cos(c)))
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Cos(other.toExpression))
 
 
@@ -112,6 +130,7 @@ case class Tg(e: _Expression) extends _Function:
         if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
       case Right(mv: _MatrixValue) => mapMatrix(mv, tan)
       case Right(c: _Complex) => _Complex.tanc(c).map(Right(_)).getOrElse(Left(Tg(c)))
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Tg(other.toExpression))
 
 
@@ -126,6 +145,7 @@ case class Asin(e: _Expression) extends _Function:
         val r = asin(x)
         if r.isNaN then Left(this) else Right(_Number(r))
       case Right(mv: _MatrixValue) => mapMatrix(mv, asin)
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Asin(other.toExpression))
 
 
@@ -140,6 +160,7 @@ case class Acos(e: _Expression) extends _Function:
         val r = acos(x)
         if r.isNaN then Left(this) else Right(_Number(r))
       case Right(mv: _MatrixValue) => mapMatrix(mv, acos)
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Acos(other.toExpression))
 
 
@@ -152,4 +173,5 @@ case class Atan(e: _Expression) extends _Function:
     e.eval(env) match
       case Right(_Number(x)) => Right(_Number(atan(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, atan)
+      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Atan(other.toExpression))

@@ -141,3 +141,26 @@ derive(exprM, x).toString
 
 Matrix products do **not** distribute automatically under differentiation —
 they need the product rule applied explicitly.
+
+## Functions on matrices
+
+Scalar functions (`sin`, `exp`, `ln`, …) applied to a matrix distribute
+element-wise. This works for a dense value and for a symbolic matrix alike —
+numeric cells fold, free-variable cells stay as `f(cell)` until bound:
+
+```scala mdoc
+// exp over a symbolic matrix: exp(x) stays symbolic, exp(0) folds to 1.0
+Exp(_Matrix.ofRows(Vector(x, _Number(0.0)))).eval(env) match {
+  case Left(m)  => m.toString
+  case Right(v) => v.toString
+}
+```
+
+Binding the free variables lets the whole matrix collapse to a dense value:
+
+```scala mdoc
+Exp(_Matrix.ofRows(Vector(x, _Number(0.0)))).eval(envX) match {
+  case Right(v) => v.toString
+  case Left(m)  => m.toString
+}
+```

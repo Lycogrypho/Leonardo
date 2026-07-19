@@ -36,6 +36,20 @@ trait _Value extends _Expression
 trait _ElementWise extends _Expression
 
 
+// Marker for a symbolic matrix node (matrix._Matrix) whose `children` are its cells in
+// row-major order and whose `rebuild` preserves the rows×cols shape. It exists so that
+// core/scalar algorithms can distribute a scalar function element-wise over a symbolic
+// matrix argument (exp(A), sin(A), … over a matrix with free-variable entries) without
+// importing the matrix package — scalar sees only this core marker and the generic
+// children/rebuild. Narrower than _ElementWise on purpose: distributing a function over
+// the children of, say, an equation or a matrix sum would be meaningless, so only the
+// matrix literal opts in. The dense counterpart (_MatrixValue) is handled numerically
+// and is not marked.
+trait _MatrixShaped extends _Expression:
+  def rows: Int
+  def cols: Int
+
+
 object _Number:
   private val factorTable: Array[Double] = Array.tabulate(16)(i => scala.math.pow(10.0, i))
 
