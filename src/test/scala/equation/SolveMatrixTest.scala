@@ -177,3 +177,49 @@ class SolveMatrixTest extends AnyFlatSpec:
     assert(s.execute("solve(A * X = B, X)") == "X := [[2.0, 3.0], [4.0, 5.0]]")
     assert(s.execute("X") == "[[2.0, 3.0], [4.0, 5.0]]")
   }
+
+  // --- 4.4: Symbolic matrix coefficients ---
+
+  "solve(A*X = B, X) with concrete A and symbolic B" should "give a symbolic expression for X" in
+  {
+    // A = diag(2, 3), B has free variables b and c -> X = [[b/2], [c/3]]
+    val X = _Variable("X")
+    val b = _Variable("b")
+    val c = _Variable("c")
+    val A = _MatrixValue(2, 2, Array(2.0, 0.0, 0.0, 3.0))
+    val B = _Matrix(2, 1, Vector(b, c))
+    val sol = solve(_Equation(MatProduct(A, X), B), X)
+    assert(sol.size == 1, s"expected one solution but got: $sol")
+    // bind b=4, c=6: X should reduce to [[2], [2]]
+    val envBC = new Environment().withBinding("b", _Number(4)).withBinding("c", _Number(6))
+    val evaluated = sol.head.rhs.eval(envBC) match
+      case Right(mv: _MatrixValue) => mv
+      case Left(m: _Matrix)        => m.eval(envBC) match
+        case Right(mv: _MatrixValue) => mv
+        case other => fail(s"expected numeric matrix after binding b=4,c=6 but got: $other")
+      case other => fail(s"expected a matrix solution but got: $other")
+    assert(math.abs(evaluated(0, 0) - 2.0) < 1e-9)
+    assert(math.abs(evaluated(1, 0) - 2.0) < 1e-9)
+  }
+
+  "solve([[a, 0], [0, a]] * X = [[1], [2]], X)" should "give a symbolic solution and evaluate when a is bound" in
+  {
+    val s = Session()
+    val result = s.execute("solve([[a, 0], [0, a]] * X = [[1], [2]], X)")
+    assert(result.startsWith("X :="), s"expected 'X := ...' but got: $result")
+    s.execute("a := 2")
+    val numeric = s.execute("X")
+    assert(numeric == "[[0.5], [1.0]]", s"with a=2 expected [[0.5], [1.0]] but got: $numeric")
+  }
+
+  "solve(X * A = B, X) with concrete A and symbolic B row" should "give X = B * A^-1 symbolically" in
+  {
+    // A = diag(2, 2), B = [[b, 2*b]] (row, free variable) -> X = [[b/2, b]]
+    val s = Session()
+    s.execute("A := [[2, 0], [0, 2]]")
+    val result = s.execute("solve(X * A = [[b, 2*b]], X)")
+    assert(result.startsWith("X :="), s"expected 'X := ...' but got: $result")
+    s.execute("b := 3")
+    val numeric = s.execute("X")
+    assert(numeric == "[[1.5, 3.0]]", s"with b=3 expected [[1.5, 3.0]] but got: $numeric")
+  }

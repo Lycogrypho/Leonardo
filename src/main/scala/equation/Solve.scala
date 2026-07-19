@@ -93,25 +93,25 @@ private def asMatrix(r: Either[_Expression, _Value]): Option[_Matrix] = r match
   case _                       => None
 
 // Issue 4.3b — the unknown v is a MATRIX in a linear matrix equation. Recognises the
-// shapes A·v = B, v·A = B and v = B where the *known* operands (A and B) reduce to
-// concrete matrices, and returns the unique solution via 4.2's inverse kernel:
+// shapes A·v = B, v·A = B and v = B where the *known* operands (A and B) are either
+// concrete matrices (dense fast path: A⁻¹ via LU kernel) or symbolic matrix literals
+// (symbolic path: A⁻¹ via cofactor expansion, capped at MaxSymbolicDim = 6):
 //   A·v = B → v = A⁻¹·B      v·A = B → v = B·A⁻¹      v = B → v = B
 // Some(Nil) when A is singular / non-square or the shapes do not conform (no solution →
 // the _Solve node stays symbolic). None when the equation is not a matrix-unknown form,
 // so the element-wise (4.3a) and scalar tiers still run. Products are the scalar `Product`
 // node because a bare unknown parses as a scalar variable (`A * X` with A and B bound
 // matrices → `Product(A, X)`); the `MatProduct` shapes are accepted too for completeness.
-// Symbolic (non-dense) coefficients are out of scope and fall through as well.
 private def solveMatrixUnknown(eq: _Equation, v: _Variable, env: Environment): Option[List[_Equation]] =
   for
     (withV, constant) <- sideWith(v, eq)
-    b                 <- asMatrixValue(constant.eval(env))
+    b                 <- asMatrixExpr(constant.eval(env))
     solution          <- linearMatrixSolve(withV, b, v, env)
   yield solution
 
-// withV is the side containing v; b is the known right-hand matrix. Returns None when
-// withV is not one of the recognised matrix-unknown shapes (fall through to other tiers).
-private def linearMatrixSolve(withV: _Expression, b: _MatrixValue, v: _Variable, env: Environment): Option[List[_Equation]] =
+// withV is the side containing v; b is the known right-hand matrix expression (concrete
+// or symbolic). Returns None when withV is not one of the recognised matrix-unknown shapes.
+private def linearMatrixSolve(withV: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
   withV match
     case Product(a, r)    if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
     case MatProduct(a, r) if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
@@ -120,14 +120,29 @@ private def linearMatrixSolve(withV: _Expression, b: _MatrixValue, v: _Variable,
     case r                if r == v => Some(List(_Equation(v, b)))   // v = B
     case _                          => None
 
-// A·v = B → v = A⁻¹·B (A on the left of v); v·A = B → v = B·A⁻¹. None when A is not a
-// concrete matrix (not a matrix-unknown equation); Some(Nil) when A is singular/non-square
-// or the shapes do not conform.
-private def matrixDivide(a: _Expression, b: _MatrixValue, v: _Variable, env: Environment, aOnLeft: Boolean): Option[List[_Equation]] =
-  asMatrixValue(a.eval(env)).map { aMatrix =>
-    val solution = aMatrix.inverse.flatMap(aInv => if aOnLeft then matMul(aInv, b) else matMul(b, aInv))
-    solution.map(m => _Equation(v, m)).toList
-  }
+// A·v = B → v = A⁻¹·B; v·A = B → v = B·A⁻¹.
+// Dense fast path: both A and B reduce to _MatrixValue — uses the LU inverse kernel;
+// Some(Nil) when singular/non-square or dimensions do not conform.
+// Symbolic path: A or B is a _Matrix literal — uses the Inverse node (cofactor expansion,
+// capped at MaxSymbolicDim); the product is computed via MatProduct. Returns None when the
+// inverse cannot be determined (so element-wise/scalar tiers still get a chance).
+private def matrixDivide(a: _Expression, b: _Expression, v: _Variable, env: Environment, aOnLeft: Boolean): Option[List[_Equation]] =
+  (asMatrixValue(a.eval(env)), asMatrixValue(b.eval(env))) match
+    case (Some(aMatrix), Some(bMatrix)) =>
+      val solution = aMatrix.inverse.flatMap(aInv =>
+        if aOnLeft then matMul(aInv, bMatrix) else matMul(bMatrix, aInv))
+      Some(solution.map(m => _Equation(v, m)).toList)
+    case _ =>
+      Inverse(a).eval(env) match
+        case Left(_: Inverse) => None   // singular, non-square, or above symbolic cap
+        case aInvResult =>
+          val product =
+            if aOnLeft then MatProduct(aInvResult.toExpression, b).eval(env)
+            else MatProduct(b, aInvResult.toExpression).eval(env)
+          product match
+            case Left(_: MatProduct) => None   // dimensions don't conform — fall through
+            case Left(expr)          => Some(List(_Equation(v, simplifyFully(expr))))
+            case Right(mv)           => Some(List(_Equation(v, mv)))
 
 private def matMul(p: _MatrixValue, q: _MatrixValue): Option[_MatrixValue] =
   if p.cols == q.rows then Some(p.multiply(q)) else None
@@ -143,6 +158,12 @@ private def sideWith(v: _Variable, eq: _Equation): Option[(_Expression, _Express
 private def asMatrixValue(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
   case Right(m: _MatrixValue) => Some(m)
   case _                      => None
+
+// Accepts both a fully reduced _MatrixValue and a partially-symbolic _Matrix literal.
+private def asMatrixExpr(r: Either[_Expression, _Value]): Option[_Expression] = r match
+  case Right(mv: _MatrixValue) => Some(mv)
+  case Left(m: _Matrix)        => Some(m)
+  case _                       => None
 
 // Collapse roots equal within the display tolerance (the same 0.5·10⁻ᵖ used by
 // _Equation) so ±√Δ duplicates and repeated element roots print once.
