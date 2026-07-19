@@ -968,3 +968,79 @@ class ReplSessionTest extends AnyFlatSpec:
       s"eig(A) eigenvector entries should show precision-10 digits, got: $eig"
       )
   }
+
+  // --- 4.1: tuple assignment (L, U, P := lu(A)) ---
+
+  "tuple assignment L, U, P := lu(A)" should "bind three matrices" in
+  {
+    val s = session
+    s.execute("A := [[1, 2, 3], [3, 2, 1], [1, 1, 1]]")
+    val out = s.execute("L, U, P := lu(A)")
+    assert(out.contains("L :="), s"expected L bound, got: $out")
+    assert(out.contains("U :="), s"expected U bound, got: $out")
+    assert(out.contains("P :="), s"expected P bound, got: $out")
+    // L must be available as a matrix in subsequent expressions
+    val lVal = s.execute("L")
+    assert(lVal.startsWith("[["), s"L should be a matrix, got: $lVal")
+  }
+
+  "tuple assignment Q, R := qr(A)" should "bind two matrices" in
+  {
+    val s = session
+    s.execute("A := [[1, 2], [3, 4], [5, 6]]")
+    val out = s.execute("Q, R := qr(A)")
+    assert(out.contains("Q :="), s"expected Q bound, got: $out")
+    assert(out.contains("R :="), s"expected R bound, got: $out")
+    val qVal = s.execute("Q")
+    assert(qVal.startsWith("[["), s"Q should be a matrix, got: $qVal")
+  }
+
+  "tuple assignment P, J := jordan(A)" should "bind two matrices" in
+  {
+    val s = session
+    s.execute("A := [[1, 2, 3], [3, 2, 1], [1, 1, 1]]")
+    val out = s.execute("P, J := jordan(A)")
+    assert(out.contains("P :="), s"expected P bound, got: $out")
+    assert(out.contains("J :="), s"expected J bound, got: $out")
+  }
+
+  "tuple assignment V, D := eig(A)" should "bind two matrices" in
+  {
+    val s = session
+    s.execute("A := [[4, 1], [1, 3]]")
+    val out = s.execute("V, D := eig(A)")
+    assert(out.contains("V :="), s"expected V bound, got: $out")
+    assert(out.contains("D :="), s"expected D bound, got: $out")
+  }
+
+  "tuple assignment with wrong name count" should "report the mismatch" in
+  {
+    val s = session
+    s.execute("A := [[1, 2], [3, 4]]")
+    val out = s.execute("L, U := lu(A)")
+    assert(out.contains("2 names") && out.contains("3 elements"), s"expected mismatch message, got: $out")
+  }
+
+  "tuple assignment to a reserved constant" should "be rejected" in
+  {
+    val s = session
+    s.execute("A := [[1, 2, 3], [3, 2, 1], [1, 1, 1]]")
+    val out = s.execute("e, U, P := lu(A)")
+    assert(out.contains("cannot assign to 'e'"), s"expected reserved-constant rejection, got: $out")
+  }
+
+  "tuple assignment to a reserved word" should "be rejected" in
+  {
+    val s = session
+    s.execute("A := [[1, 2], [3, 4]]")
+    val out = s.execute("Q, sin := qr(A)")
+    assert(out.contains("cannot assign to 'sin'"), s"expected reserved-word rejection, got: $out")
+  }
+
+  "tuple assignment when RHS is not a 1xn matrix" should "report an error" in
+  {
+    val s = session
+    s.execute("x := 3")
+    val out = s.execute("a, b := x + 1")
+    assert(out.contains("tuple assignment"), s"expected tuple-assignment error, got: $out")
+  }

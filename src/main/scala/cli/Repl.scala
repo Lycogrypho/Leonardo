@@ -56,7 +56,8 @@ final class Session:
 
   private val emptyEnv = new Environment()
 
-  private val assignment   = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=(.+)""".r
+  private val assignment      = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=(.+)""".r
+  private val multiAssignment = """([a-zA-Z][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]*)+)\s*:=(.+)""".r
   // Lazy first group lets the regex engine find the shortest expression that still
   // leaves valid tokens for <var> <lo> <hi> and an optional <n> at the tail.
   private val samplesRegex = """^(.+?)\s+([a-zA-Z][a-zA-Z0-9_]*)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)(?:\s+(\d+))?$""".r
@@ -86,6 +87,8 @@ final class Session:
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
+    case multiAssignment(namesStr, rhs) =>
+      withParsed(rhs)(multiAssign(namesStr.split(",").map(_.trim).toList, _))
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
     case expression             => withParsed(expression)(evaluate)
 
@@ -281,6 +284,24 @@ final class Session:
             bindings = bindings - name
             s"$name := $rhs"
 
+  private def multiAssign(names: List[String], rhs: _Expression): String =
+    names.find(Session.ReservedConstants.contains) match
+      case Some(bad) => s"cannot assign to '$bad': it is a built-in constant"
+      case None =>
+        names.find(Parser.ReservedWords.contains) match
+          case Some(bad) => s"cannot assign to '$bad': it is a reserved word"
+          case None =>
+            resolveDerivativeBinders(rhs) match
+              case Left(message) => message
+              case Right(resolved) =>
+                substitute(resolved, definitions).eval(env) match
+                  case Left(_Matrix(1, n, elems)) if n == names.size =>
+                    names.zip(elems).map((name, elem) => assign(name, elem)).mkString("\n")
+                  case Left(_Matrix(1, n, _)) =>
+                    s"tuple assignment: ${names.size} names on the left but $n elements on the right"
+                  case _ =>
+                    s"tuple assignment: right-hand side must evaluate to a 1×n row (use lu, qr, eig, jordan, eigen)"
+
   private def doSamples(rest: String): String = rest.trim match
     case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
       val lo = loStr.toDouble
@@ -335,7 +356,8 @@ object Session:
          |Constant RHS → numeric value; RHS with free variables → late-bound definition.
          |  x := 3.001          bind a numeric value
          |  f := sin(x) + x     define a function (late-bound: redefining f updates g := f^2)
-         |  h := x^2 = 4        bind a named equation (pass to solve(h, x))""".stripMargin,
+         |  h := x^2 = 4        bind a named equation (pass to solve(h, x))
+         |  L, U, P := lu(A)    bind multiple names to elements of a 1×n result (any decomposition)""".stripMargin,
     "=" ->
       """|Equation relation: true/false when both sides are concrete, symbolic otherwise.
          |Solvable via solve().  Use ":=" for assignment — "=" is never a binding.
@@ -467,6 +489,7 @@ object Session:
     """x := 3.001           bind a value (constant right-hand side)
       |f := sin(x) + x      define a function (right-hand side with free variables)
       |h := lhs = rhs       bind a named equation (use with solve(h, x))
+      |L, U, P := lu(A)     bind multiple names to a decomposition result (1×n row)
       |lhs = rhs            equation: true/false once both sides are concrete; stays
       |                     symbolic with free variables; solvable via solve()
       |lhs == rhs           equality check: same as "=" but not accepted by solve()
