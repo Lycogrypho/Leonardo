@@ -4,6 +4,8 @@ package equation
 import core.*
 import scalar.*
 
+import scala.util.boundary, boundary.break
+
 
 // Linear system solver: solveSystem(equations, variables, env) returns the unique
 // solution of a square n×n linear system as a list of "v = expr" equations,
@@ -91,52 +93,57 @@ private def allOpt[A](xs: Iterable[Option[A]]): Option[Vector[A]] =
 // Gaussian elimination with partial pivoting on Double arrays.
 // Solves A·x = b in-place on an augmented [A|b] matrix.
 // Returns None when any pivot is near-zero (singular / near-singular system).
+// The early exits use boundary/break: a `return` inside a `for … do` body would be a
+// non-local return (the body desugars to a lambda), which Scala 3 deprecates.
 private def gaussDense(A: Vector[Vector[Double]], b: Vector[Double]): Option[Vector[Double]] =
   val n   = A.size
   val aug = Array.tabulate(n)(i => A(i).toArray :+ b(i))
 
-  for pivot <- 0 until n do
-    // Partial pivoting: swap the row with the largest absolute value in this column
-    val maxRow = (pivot until n).maxBy(r => math.abs(aug(r)(pivot)))
-    val tmp = aug(pivot); aug(pivot) = aug(maxRow); aug(maxRow) = tmp
-    if math.abs(aug(pivot)(pivot)) < 1e-12 then return None
-    for row <- pivot + 1 until n do
-      val factor = aug(row)(pivot) / aug(pivot)(pivot)
-      for col <- pivot to n do aug(row)(col) -= factor * aug(pivot)(col)
+  boundary:
+    for pivot <- 0 until n do
+      // Partial pivoting: swap the row with the largest absolute value in this column
+      val maxRow = (pivot until n).maxBy(r => math.abs(aug(r)(pivot)))
+      val tmp = aug(pivot); aug(pivot) = aug(maxRow); aug(maxRow) = tmp
+      if math.abs(aug(pivot)(pivot)) < 1e-12 then break(None)
+      for row <- pivot + 1 until n do
+        val factor = aug(row)(pivot) / aug(pivot)(pivot)
+        for col <- pivot to n do aug(row)(col) -= factor * aug(pivot)(col)
 
-  // Back substitution
-  val x = new Array[Double](n)
-  for i <- n - 1 to 0 by -1 do
-    x(i) = aug(i)(n)
-    for j <- i + 1 until n do x(i) -= aug(i)(j) * x(j)
-    x(i) /= aug(i)(i)
-    if x(i).isNaN || x(i).isInfinite then return None
-  Some(x.toVector)
+    // Back substitution
+    val x = new Array[Double](n)
+    for i <- n - 1 to 0 by -1 do
+      x(i) = aug(i)(n)
+      for j <- i + 1 until n do x(i) -= aug(i)(j) * x(j)
+      x(i) /= aug(i)(i)
+      if x(i).isNaN || x(i).isInfinite then break(None)
+    Some(x.toVector)
 
 
 // Symbolic Gaussian elimination using _Expression arithmetic and simplifyFully.
 // Returns None when any pivot simplifies to _Number(0) (structurally singular).
+// Early exits via boundary/break, like gaussDense.
 private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]): Option[Vector[_Expression]] =
   val n   = A.size
   val aug = Array.tabulate(n)(i => (A(i) :+ b(i)).toArray)
 
-  for pivot <- 0 until n do
-    val pivVal = simplifyFully(aug(pivot)(pivot))
-    if pivVal == _Number(0) then return None
-    for row <- pivot + 1 until n do
-      val factor = simplifyFully(Ratio(aug(row)(pivot), pivVal))
-      for col <- pivot to n do
-        aug(row)(col) = simplifyFully(
-          Sum(aug(row)(col), Product(_Number(-1), Product(factor, aug(pivot)(col))))
-        )
+  boundary:
+    for pivot <- 0 until n do
+      val pivVal = simplifyFully(aug(pivot)(pivot))
+      if pivVal == _Number(0) then break(None)
+      for row <- pivot + 1 until n do
+        val factor = simplifyFully(Ratio(aug(row)(pivot), pivVal))
+        for col <- pivot to n do
+          aug(row)(col) = simplifyFully(
+            Sum(aug(row)(col), Product(_Number(-1), Product(factor, aug(pivot)(col))))
+          )
 
-  // Back substitution
-  val x = new Array[_Expression](n)
-  for i <- n - 1 to 0 by -1 do
-    var rhs: _Expression = aug(i)(n)
-    for j <- i + 1 until n do
-      rhs = simplifyFully(Sum(rhs, Product(_Number(-1), Product(aug(i)(j), x(j)))))
-    val denom = simplifyFully(aug(i)(i))
-    if denom == _Number(0) then return None
-    x(i) = simplifyFully(Ratio(rhs, denom))
-  Some(x.toVector)
+    // Back substitution
+    val x = new Array[_Expression](n)
+    for i <- n - 1 to 0 by -1 do
+      var rhs: _Expression = aug(i)(n)
+      for j <- i + 1 until n do
+        rhs = simplifyFully(Sum(rhs, Product(_Number(-1), Product(aug(i)(j), x(j)))))
+      val denom = simplifyFully(aug(i)(i))
+      if denom == _Number(0) then break(None)
+      x(i) = simplifyFully(Ratio(rhs, denom))
+    Some(x.toVector)

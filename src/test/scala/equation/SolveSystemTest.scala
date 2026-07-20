@@ -76,6 +76,14 @@ class SolveSystemTest extends AnyFlatSpec:
     assert(solveSystem(List(eq1, eq2), List(x, y)).isEmpty)
   }
 
+  "a system whose back-substitution overflows" should "give None (non-finite guard)" in
+  {
+    // Pivot 1e-11 passes the 1e-12 singularity threshold, but x = 1e300 / 1e-11
+    // overflows to Infinity during back-substitution — the non-finite guard rejects it.
+    val eq1 = _Equation(Product(_Number(1e-11), x), _Number(1e300))
+    assert(solveSystem(List(eq1), List(x)).isEmpty)
+  }
+
   // --- size mismatch ---
 
   "more equations than variables" should "give None" in
