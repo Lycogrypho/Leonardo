@@ -408,3 +408,55 @@ class ParserTest extends AnyFlatSpec:
   {
     assert(!Parser.parse("ln").successful)
   }
+
+  // --- step / _Heaviside parser support ---
+
+  "step(t)" should "parse to _Heaviside(_Variable(\"t\"))" in
+  {
+    assert(parse("step(t)") == _Heaviside(_Variable("t")))
+  }
+
+  "step(t-2)" should "parse to _Heaviside of a Sum expression" in
+  {
+    val e = parse("step(t-2)")
+    assert(e.isInstanceOf[_Heaviside], s"expected _Heaviside, got $e")
+  }
+
+  "step(t) round-trip" should "be a toString fixpoint" in
+  {
+    val parsed = parse("step(t)")
+    assert(parsed.toString == "step(t)")
+    assert(parse(parsed.toString) == parsed)
+  }
+
+  "step(t-2) round-trip" should "be a toString fixpoint" in
+  {
+    val parsed = parse("step(t-2)")
+    assert(parse(parsed.toString) == parsed)
+  }
+
+  "bare \"step\"" should "fail to parse as a variable (reserved word)" in
+  {
+    assert(!Parser.parse("step").successful)
+  }
+
+  "step(1)" should "evaluate to 1.0 (unit step at positive arg)" in
+  {
+    parse("step(1)").eval(new Environment()) match
+      case Right(_Number(v)) => assert(v == 1.0)
+      case other             => fail(s"expected _Number(1.0), got $other")
+  }
+
+  "step(-1)" should "evaluate to 0.0 (unit step at negative arg)" in
+  {
+    parse("step(-1)").eval(new Environment()) match
+      case Right(_Number(v)) => assert(v == 0.0)
+      case other             => fail(s"expected _Number(0.0), got $other")
+  }
+
+  "step(0)" should "evaluate to 1.0 (unit step at zero, by convention >= 0)" in
+  {
+    parse("step(0)").eval(new Environment()) match
+      case Right(_Number(v)) => assert(v == 1.0)
+      case other             => fail(s"expected _Number(1.0), got $other")
+  }

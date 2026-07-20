@@ -113,6 +113,23 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
   it should "apply first-shift: L{e^{-t}*cos(2t)} = (s+1)/((s+1)^2+4) (s=2 â†’ 3/13)" in:
     // (s+1)/((s+1)^2+4) at s=2: 3/(9+4) = 3/13
     approxAt("laplace(exp(-t)*cos(2*t), t, s)", 3.0 / 13.0, 1e-5, "s" -> 2.0)
+  // --- Laplace: second-shift theorem -------------------------------------------
+
+  it should "evaluate L{u(t)} = 1/s (s=2 -> 0.5)" in:
+    approxAt("laplace(step(t), t, s)", 0.5, 1e-6, "s" -> 2.0)
+
+  it should "evaluate L{u(t-1)} = e^(-s)/s (s=2 -> e^(-2)/2)" in:
+    approxAt("laplace(step(t-1), t, s)", math.exp(-2.0) / 2.0, 1e-6, "s" -> 2.0)
+
+  it should "evaluate L{u(t-2)*sin(t-2)} = e^(-2s)/(s^2+1) (s=3 -> e^(-6)/10)" in:
+    approxAt("laplace(step(t-2)*sin(t-2), t, s)", math.exp(-6.0) / 10.0, 1e-8, "s" -> 3.0)
+
+  it should "evaluate L{u(t-2)*sin(t-2)} in commuted product order" in:
+    approxAt("laplace(sin(t-2)*step(t-2), t, s)", math.exp(-6.0) / 10.0, 1e-8, "s" -> 3.0)
+
+  it should "stay symbolic for step(t+1) with positive shift arg (shift not extractable)" in:
+    val r = parse("laplace(step(t+1), t, s)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_Laplace], s"expected symbolic _Laplace, got $r")
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Laplace: symbolic fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

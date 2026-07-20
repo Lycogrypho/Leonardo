@@ -117,6 +117,14 @@ package "core" {
     "_Complex"     ..|> "_Value"
     "_MatrixValue" ..|> "_Value"
     "_Variable"    ..|> "_Expression"
+
+    class "_Heaviside" <<case>> [[expressions.html]] {
+        + arg: _Expression
+        + eval: 0 or 1 when arg is _Number; symbolic otherwise
+        + toString: "step(arg)"
+    }
+    "_Heaviside"   ..|> "_Expression"
+
     "_Expression"  --> "Environment" : eval(env)
 }
 

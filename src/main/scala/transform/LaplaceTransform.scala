@@ -11,14 +11,17 @@ import scalar.*
 // (fixpoint / stay-symbolic convention, matching Integrate and Derive).
 //
 // Rules implemented:
-//   Constant:    L{c}         = c/s                    (any expr free of t)
-//   Linearity:   L{a + b}     = L{a} + L{b}
-//                L{c * f}     = c * L{f}               (c free of t)
-//   Power:       L{t^n}       = n! / s^{n+1}           (n a non-negative integer ≤ 20)
-//   Exponential: L{e^{ct}}    = 1 / (s - c)
-//   Sine:        L{sin(wt)}   = w / (s^2 + w^2)
-//   Cosine:      L{cos(wt)}   = s / (s^2 + w^2)
-//   First shift: L{e^{at}g(t)}= G(s-a)                (G = L{g}; recursive)
+//   Constant:    L{c}              = c/s                    (any expr free of t)
+//   Linearity:   L{a + b}          = L{a} + L{b}
+//                L{c * f}          = c * L{f}               (c free of t)
+//   Power:       L{t^n}            = n! / s^{n+1}           (n a non-negative integer ≤ 20)
+//   Exponential: L{e^{ct}}         = 1 / (s - c)
+//   Sine:        L{sin(wt)}        = w / (s^2 + w^2)
+//   Cosine:      L{cos(wt)}        = s / (s^2 + w^2)
+//   First shift: L{e^{at}g(t)}     = G(s-a)                (G = L{g}; recursive)
+//   Step:        L{u(t)}           = 1/s
+//   2nd shift:   L{u(t-a)}         = e^{-as}/s             (a > 0)
+//                L{u(t-a)·g(t-a)}  = e^{-as}·G(s)          (a > 0; full second-shift)
 //
 // The power rule is capped at n ≤ 20 (matching Expand.scala and Normalize.scala).
 // Larger exponents stay symbolic: n! overflows Double above n=170 and the recursive
@@ -37,6 +40,13 @@ private def coeffOfT(ex: _Expression, tv: String): Option[_Expression] = ex matc
   case Product(vv: _Variable, c) if vv.variable == tv     => Some(c)
   case _                                                   => None
 
+// Returns Some(a) for a positive numeric a when inner matches tv - a.
+// Handles both the parser-native form Sum(tv, Product(-1, a)) and the folded Sum(tv, _Number(-a)).
+private def shiftOf(inner: _Expression, tv: String): Option[Double] = inner match
+  case Sum(vv: _Variable, _Number(a)) if vv.variable == tv && a < 0                          => Some(-a)
+  case Sum(vv: _Variable, Product(_Number(c), _Number(a))) if vv.variable == tv && c * a < 0 => Some(-(c * a))
+  case _                                                                                       => None
+
 def laplaceOf(e: _Expression, t: _Variable, s: _Variable): _Expression =
   laplaceImpl(e, t, s, t.variable)
 
@@ -51,6 +61,18 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
         val G = laplaceImpl(g, t, s, tv)
         if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
         else substitute(G, Map(s.variable -> Sum(s, Product(_Number(-1), a))))
+      case None => _Laplace(e, t, s)
+
+  // Full second-shift: L{u(t-a)·g(t-a)} = e^{-as}·G(s). Substitutes t→t+a in g,
+  // simplifies the result (so that e.g. sin(t+a-a) reduces to sin(t) before matching),
+  // computes G = L{g(t+a)}, and multiplies by e^{-as}. Stays symbolic if G stays symbolic.
+  def secondShift(inner: _Expression, g: _Expression): _Expression =
+    shiftOf(inner, tv) match
+      case Some(a) =>
+        val gShifted = simplifyFully(substitute(g, Map(tv -> Sum(t, _Number(a)))))
+        val G        = laplaceImpl(gShifted, t, s, tv)
+        if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
+        else Product(Exp(Product(_Number(-a), s)), G)
       case None => _Laplace(e, t, s)
 
   e match
@@ -95,5 +117,17 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
     // First-shift theorem — both Product orderings delegate to the helper above.
     case Product(Exp(inner), g) => firstShift(inner, g)
     case Product(g, Exp(inner)) => firstShift(inner, g)
+
+    // L{u(t)} = 1/s  (unit step at origin)
+    case _Heaviside(vv: _Variable) if vv.variable == tv => Ratio(_Number(1), s)
+
+    // L{u(t-a)} = e^{-as}/s  (second-shift: shifted unit step, a > 0)
+    case _Heaviside(inner) => shiftOf(inner, tv) match
+      case Some(a) => Ratio(Exp(Product(_Number(-a), s)), s)
+      case None    => _Laplace(e, t, s)
+
+    // L{u(t-a)·g(t-a)} = e^{-as}·G(s)  (full second-shift theorem, both Product orderings)
+    case Product(_Heaviside(inner), g) => secondShift(inner, g)
+    case Product(g, _Heaviside(inner)) => secondShift(inner, g)
 
     case _ => _Laplace(e, t, s)

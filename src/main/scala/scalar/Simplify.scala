@@ -38,6 +38,11 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (x, y) if x == y            => simplify(Product(_Number(2), x))
       case (x, Product(_Number(d), y)) if d == -1.0 && x == y => _Number(0)
       case (Product(_Number(d), x), y) if d == -1.0 && x == y => _Number(0)
+      // Constant folding in nested sums: (x + c1) + c2 → x + (c1+c2)
+      case (Sum(x, _Number(c1)), _Number(c2)) => simplify(Sum(x, _Number(c1 + c2)))
+      case (Sum(_Number(c1), x), _Number(c2)) => simplify(Sum(x, _Number(c1 + c2)))
+      case (_Number(c1), Sum(x, _Number(c2))) => simplify(Sum(x, _Number(c1 + c2)))
+      case (_Number(c1), Sum(_Number(c2), x)) => simplify(Sum(x, _Number(c1 + c2)))
       case (x, y)                      => Sum(x, y)
 
   case Product(a, b) =>

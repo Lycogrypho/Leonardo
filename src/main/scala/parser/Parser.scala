@@ -37,6 +37,7 @@ import transform.*
  *                 | "eigen(" expr ")"                      -- eigenvalue decomp → [[l1, l2, ...]]
  *                 | "eig(" expr ")"                        -- spectral decomp → [[V, D]] (A·V = V·D)
  *                 | "jordan(" expr ")"                     -- Jordan decomp → [[P, J]] (A = P·J·P^-1)
+ *                 | "step(" expr ")"                       -- Heaviside unit step: 0 for arg<0, 1 for arg>=0
  *   functional  ::= "derive(" expr "," variable ")"
  *                 | "integral(" expr "," variable ")"
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
@@ -85,7 +86,7 @@ object Parser extends JavaTokenParsers:
   // merely starting with a reserved word ("sina", "evalx") stay legal.
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
-    "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan",  // functions
+    "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", // functionals
     "pi", "e", "i", "inf",                               // constants (inf = +∞)
     "simplify", "expand", "eval", "env", "vars", "precision",
@@ -251,7 +252,8 @@ object Parser extends JavaTokenParsers:
     "qr("     ~> guardedExpr <~ ")"                                       ^^ _QRDecomposition.apply        |
     "eigen("  ~> guardedExpr <~ ")"                                       ^^ _EigenDecomposition.apply     |
     "eig("    ~> guardedExpr <~ ")"                                       ^^ _EigDecomposition.apply       |
-    "jordan(" ~> guardedExpr <~ ")"                                       ^^ _JordanDecomposition.apply
+    "jordan(" ~> guardedExpr <~ ")"                                       ^^ _JordanDecomposition.apply    |
+    "step("   ~> guardedExpr <~ ")"                                       ^^ _Heaviside.apply
 
   // Direction token for limit(expr, var, point, +/-): consumed after the point comma.
   private lazy val limitDir: Parser[LimitDir] = ("+" | "-") ^^ {
