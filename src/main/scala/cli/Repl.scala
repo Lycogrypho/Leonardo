@@ -143,17 +143,18 @@ final class Session:
       .mkString("\n")
 
   private def withParsed(input: String)(f: _Expression => String): String =
-    val result =
-      try Parser.parse(input)
-      catch case e: Exception => return s"parse error: ${e.getMessage}"
-    if result.successful then f(result.get)
-    else
-      val base = s"parse error: ${result.toString.linesIterator.next()}"
-      // "g(x)"-style call syntax on a defined name is a common spelling of issue
-      // 1.1's derive(g(x), f(x)); the grammar has bare variables only, so hint.
-      definitions.keys.find(n => input.matches(s".*\\b$n\\s*\\(.*")) match
-        case Some(n) => s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'"
-        case None    => base
+    scala.util.Try(Parser.parse(input)).fold(
+      e => s"parse error: ${e.getMessage}",
+      result =>
+        if result.successful then f(result.get)
+        else
+          val base = s"parse error: ${result.toString.linesIterator.next()}"
+          // "g(x)"-style call syntax on a defined name is a common spelling of issue
+          // 1.1's derive(g(x), f(x)); the grammar has bare variables only, so hint.
+          definitions.keys.find(n => input.matches(s".*\\b$n\\s*\\(.*")) match
+            case Some(n) => s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'"
+            case None    => base
+    )
 
   private def formatResult(result: Either[_Expression, _Value]): String =
     formatExpression(result.toExpression, prettyMatrix)

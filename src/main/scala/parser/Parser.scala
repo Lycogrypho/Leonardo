@@ -34,9 +34,9 @@ import transform.*
  *                 | "zeros(" expr ["," expr] ")"           -- zero matrix (square or r×c)
  *                 | "lu(" expr ")"                         -- LU decomp → [[L, U, P]]
  *                 | "qr(" expr ")"                         -- QR decomp → [[Q, R]]
- *                 | "eigen(" expr ")"                      -- eigenvalue decomp → [[λ₁, λ₂, …]]
-    *                 | "eig(" expr ")"                        -- spectral decomp → [[V, D]] (A·V = V·D)
-    *                 | "jordan(" expr ")"                     -- Jordan decomp → [[P, J]] (A = P·J·P⁻¹)
+ *                 | "eigen(" expr ")"                      -- eigenvalue decomp → [[l1, l2, ...]]
+ *                 | "eig(" expr ")"                        -- spectral decomp → [[V, D]] (A·V = V·D)
+ *                 | "jordan(" expr ")"                     -- Jordan decomp → [[P, J]] (A = P·J·P^-1)
  *   functional  ::= "derive(" expr "," variable ")"
  *                 | "integral(" expr "," variable ")"
  *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
