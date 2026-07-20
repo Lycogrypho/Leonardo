@@ -168,6 +168,14 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
     val result = fourierOf(e, _Variable("t"), _Variable("w"))
     assert(result.toString.contains("__lt_s__"), s"__lt_s__ was corrupted: $result")
 
+  it should "skip past a free variable named like the generated candidates (__lts0)" in:
+    // e contains __lts0, so the fresh-name search must move on to __lts1: the __lts0
+    // in e must survive unsubstituted in F{__lts0} = __lts0/(i*w).
+    val e      = _Variable("__lts0")
+    val result = fourierOf(e, _Variable("t"), _Variable("w"))
+    assert(result.toString.contains("__lts0"), s"__lts0 was corrupted: $result")
+    assert(!result.toString.contains("__lts1"), s"internal variable leaked: $result")
+
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ inverse Laplace: parser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   "invlaplace parser" should "produce an _InverseLaplace node" in:

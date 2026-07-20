@@ -546,9 +546,11 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
             i += 2
           case _ =>
             evOpts += None; i += 1
+      // Sequence the per-eigenvalue options: all defined → Some(vectors), else None
+      // (flatten drops the Nones, so equal sizes means none were dropped).
       val opts = evOpts.toVector
-      if opts.exists(_.isEmpty) then None
-      else Some((opts.map(_.get), eigs))
+      val cols = opts.flatten
+      if cols.size == opts.size then Some((cols, eigs)) else None
     }
 
   // QR decomposition via modified Gram-Schmidt: A = Q·R (for square matrices; m ≥ n).

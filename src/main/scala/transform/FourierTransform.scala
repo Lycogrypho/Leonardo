@@ -15,9 +15,12 @@ import scalar.*
 def fourierOf(e: _Expression, t: _Variable, w: _Variable): _Expression =
   // Pick an internal name for the Laplace frequency variable that cannot collide with
   // any free variable already present in e (or with the user's t and w binders).
-  // Iterator.from(0) is infinite, so find always terminates in at most |freeVars|+1 steps.
+  // Pigeonhole: among the |reserved|+1 candidates __lts0 … __lts|reserved| at least one
+  // is free, so find always succeeds and the getOrElse default is unreachable.
   val reserved = e.freeVars + t.variable + w.variable
-  val sName    = Iterator.from(0).map(i => s"__lts$i").find(!reserved.contains(_)).get
+  val sName    = (0 to reserved.size).iterator.map(i => s"__lts$i")
+    .find(!reserved.contains(_))
+    .getOrElse(s"__lts${reserved.size + 1}")
   val s        = _Variable(sName)
   val L        = laplaceOf(e, t, s)
   L match
