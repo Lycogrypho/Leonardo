@@ -11,16 +11,16 @@ import scalar.*
 // convention, matching the forward transform and derive/integrate).
 //
 // Strategy: linearity peels sums and s-free constant factors; the core is a rational
-// matcher for F(s) = N(s)/D(s) with deg N < deg D ≤ 2. The denominator's numeric
-// coefficients (via scalar.collect) decide the pole structure by completing the square:
+// matcher for F(s) = N(s)/D(s) with deg N < deg D. The denominator's numeric coefficients
+// (via scalar.collect) decide the pole structure:
 //   deg D = 1:  b/(s − a)                → b·e^{a·t}
-//   deg D = 2, distinct real roots r₁,r₂ → A·e^{r₁·t} + B·e^{r₂·t}   (partial fractions)
+//   deg D = 2, distinct real roots r₁,r₂ → A·e^{r₁·t} + B·e^{r₂·t}
 //   deg D = 2, repeated real root a      → e^{a·t}·(N₁ + (N₀ + N₁·a)·t)
-//   deg D = 2, complex roots a ± i·w     → e^{a·t}·(N₁·cos(w·t) + ((N₀ + N₁·a)/w)·sin(w·t))
-// These cover the images of the forward table (constants, t, e^{a·t}, sin, cos, and
-// their damped / first-shift products). Symbolic coefficients (the sign of the
-// discriminant is then unknown) and denominators of degree ≥ 3 (general factoring
-// required) stay symbolic.
+//   deg D = 2, complex roots a ± i·w     → e^{a·t}·(N₁·cos(w·t) + ((N₀+N₁·a)/w)·sin(w·t))
+//   deg D ≥ 3, distinct roots only       → residue partial fractions via companion-matrix
+//                                           root-finding (eigenDecompose); repeated roots
+//                                           detected by near-zero D'(root) → stay symbolic.
+// Symbolic-coefficient denominators always stay symbolic (numericCoeffs returns None).
 
 def inverseLaplaceOf(f: _Expression, s: _Variable, t: _Variable): _Expression =
   val result = inverseImpl(f, s, t)
@@ -73,7 +73,7 @@ private def invRational(num: _Expression, den: _Expression, s: _Variable, t: _Va
     result <- ds.size match
       case 2 => Some(invLinear(ns, ds, t))
       case 3 => invQuadratic(ns, ds, t)
-      case _ => None               // deg D = 0 (no pole) or ≥ 3 (needs factoring): symbolic
+      case _ => invHigherDegree(ns, ds, s, t)   // deg D ≥ 3: residue partial fractions
   yield result
 
 // b / (d₁·s + d₀)  →  (n₀/d₁) · e^{a·t},  a = −d₀/d₁.
@@ -88,7 +88,7 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
   val p  = ds(1) / d2
   val q  = ds(0) / d2
   val n1 = ns.lift(1).getOrElse(0.0) / d2
-  val n0 = ns.lift(0).getOrElse(0.0) / d2
+  val n0 = ns.headOption.getOrElse(0.0) / d2
   val a  = -p / 2.0
   val w2 = q - p * p / 4.0        // (s − a)² + w²  with  w² = q − p²/4
   if w2 > 0.0 then
@@ -106,6 +106,95 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
     val a1 = (n1 * r1 + n0) / (r1 - r2)
     val a2 = (n1 * r2 + n0) / (r2 - r1)
     Some(sum(scaleExp(a1, r1, t), scaleExp(a2, r2, t)))
+
+// ── high-degree rational inverse: companion-matrix root-finding + residue partial fractions ──
+
+// [c₀, c₁, …, cₙ] → [c₁, 2c₂, …, n·cₙ]  (differentiate polynomial coefficient vector).
+private def derivPoly(coeffs: Vector[Double]): Vector[Double] =
+  coeffs.zipWithIndex.tail.map { (c, i) => i.toDouble * c }
+
+// Horner evaluation of a real-coefficient polynomial at a complex point r = (rRe, rIm).
+private def evalPolyAt(coeffs: Vector[Double], r: (Double, Double)): (Double, Double) =
+  val (rre, rim) = r
+  coeffs.foldRight((0.0, 0.0)) { (c, acc) =>
+    val (are, aim) = acc
+    (are * rre - aim * rim + c, are * rim + aim * rre)
+  }
+
+// Roots of a polynomial (coeffs(i) = coefficient of sⁱ) via its companion matrix.
+// Builds the n×n Frobenius companion and calls _MatrixValue.eigenDecompose.
+private def polyRoots(coeffs: Vector[Double]): Option[Vector[_Value]] =
+  if coeffs.isEmpty then None
+  else
+    val n  = coeffs.size - 1
+    val cn = coeffs(n)
+    if n < 1 || math.abs(cn) < 1e-12 then None
+    else
+      val mat = Array.fill(n * n)(0.0)
+      for i <- 0 until n do mat(i * n + (n - 1)) = -coeffs(i) / cn  // last column
+      for i <- 1 until n do mat(i * n + (i - 1)) = 1.0              // sub-diagonal
+      _MatrixValue(n, n, mat).eigenDecompose
+
+// Pair complex roots into conjugate pairs (positive-im, negative-im).
+// None when any root cannot be matched (implies repeated or defective).
+private def pairConjugates(cs: Vector[_Complex]): Option[Vector[(_Complex, _Complex)]] =
+  val pos = cs.filter(_.im > 0)
+  val neg = cs.filter(_.im < 0)
+  if pos.size != neg.size then None
+  else
+    val pairs = pos.flatMap { p =>
+      neg.find(n => math.abs(n.re - p.re) < 1e-8 && math.abs(n.im + p.im) < 1e-8)
+         .map(n => (p, n))
+    }
+    if pairs.size == pos.size then Some(pairs) else None
+
+// Inverse Laplace for strictly proper N(s)/D(s) with deg D ≥ 3, distinct roots only.
+// Residue formula: A_r = N(r)/D'(r) for each root r.  For complex conjugate pairs
+// (α ± βi) the combined term is  2·Re(A)·e^{αt}·cos(βt) − 2·Im(A)·e^{αt}·sin(βt).
+// Returns None when root-finding fails or any root is repeated (|D'(root)| < 1e-12).
+private def invHigherDegree(
+    ns: Vector[Double], ds: Vector[Double], s: _Variable, t: _Variable
+): Option[_Expression] =
+  val dp = derivPoly(ds)
+  polyRoots(ds).flatMap { roots =>
+    val realRoots    = roots.collect { case _Number(re) => re }
+    val complexRoots = roots.collect { case c: _Complex => c }
+    if realRoots.size + complexRoots.size != roots.size then None
+    else
+      val realTermsOpt: Option[Vector[_Expression]] =
+        realRoots.foldLeft(Option(Vector.empty[_Expression])) { (accOpt, re) =>
+          accOpt.flatMap { acc =>
+            val (nv, _) = evalPolyAt(ns, (re, 0.0))
+            val (dv, _) = evalPolyAt(dp, (re, 0.0))
+            if math.abs(dv) < 1e-12 then None
+            else Some(acc :+ scaleExp(nv / dv, re, t))
+          }
+        }
+      pairConjugates(complexRoots).flatMap { pairs =>
+        val complexTermsOpt: Option[Vector[_Expression]] =
+          pairs.foldLeft(Option(Vector.empty[_Expression])) { (accOpt, pair) =>
+            val (c, _) = pair
+            accOpt.flatMap { acc =>
+              val (nnRe, nnIm) = evalPolyAt(ns, (c.re, c.im))
+              val (ddRe, ddIm) = evalPolyAt(dp, (c.re, c.im))
+              val denom = ddRe * ddRe + ddIm * ddIm
+              if denom < 1e-24 then None
+              else
+                val aRe   = (nnRe * ddRe + nnIm * ddIm) / denom
+                val aIm   = (nnIm * ddRe - nnRe * ddIm) / denom
+                val inner = sum(mul(2.0 * aRe, Cos(mulNum(c.im, t))),
+                                mul(-2.0 * aIm, Sin(mulNum(c.im, t))))
+                Some(acc :+ damped(c.re, t, inner))
+            }
+          }
+        for
+          rTerms <- realTermsOpt
+          cTerms <- complexTermsOpt
+          all     = rTerms ++ cTerms
+          if all.nonEmpty
+        yield all.reduce(sum)
+      }
+  }
 
 // ── expression builders (fold trivial 0/1 coefficients so output stays readable) ──
 

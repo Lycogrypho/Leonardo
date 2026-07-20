@@ -465,11 +465,13 @@ package "transform" {
 
     class "InverseLaplaceTransform" <<utility>> [[calculus.html]] {
         + inverseLaplaceOf(f, s, t): _Expression
-        __ rational N(s)/D(s), deg D <= 2 __
+        __ rational N(s)/D(s), deg D = 1 or 2 __
         linearity, b/(s-a) -> b*e^{at}
         partial fractions (distinct roots)
-        repeated + complex poles
-        (complete the square)
+        repeated + complex poles (complete the square)
+        __ deg D >= 3, distinct roots only __
+        companion-matrix root-finding (eigenDecompose)
+        residue partial fractions: real + conjugate pairs
     }
 
     "_Laplace"        --|> "_Functional"
@@ -484,6 +486,7 @@ package "transform" {
     "FourierTransform"        ..> "_Complex"                : imaginary unit i
     "InverseLaplaceTransform" ..> "Normalize"              : collect() poly coeffs
     "InverseLaplaceTransform" ..> "Simplify"               : simplifyFully() output
+    "InverseLaplaceTransform" ..> "_MatrixValue"           : eigenDecompose() root-finding
 }
 
 ' ===================================================

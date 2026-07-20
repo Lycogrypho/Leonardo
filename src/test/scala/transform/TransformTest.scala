@@ -262,6 +262,24 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
     val r = parse("invlaplace(1/(s-a), s, t)").eval(emptyEnv).toExpression
     assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
 
+  // ── inverse Laplace: deg D >= 3 via companion-matrix partial fractions ──
+
+  it should "invert 3 distinct real poles L-1{1/((s+1)(s+2)(s+3))} at t=0.5" in:
+    // Partial fractions: (1/2)/(s+1) - 1/(s+2) + (1/2)/(s+3)
+    // -> (1/2)e^{-t} - e^{-2t} + (1/2)e^{-3t}
+    val expected = 0.5 * math.exp(-0.5) - math.exp(-1.0) + 0.5 * math.exp(-1.5)
+    approxAt("invlaplace(1/((s+1)*(s+2)*(s+3)), s, t)", expected, 1e-4, "t" -> 0.5)
+
+  it should "invert a real pole + complex pair L-1{1/((s+1)(s^2+4))} at t=1.0" in:
+    // Partial fractions: (1/5)/(s+1) + (-s/5 + 1/5)/(s^2+4)
+    // -> (1/5)e^{-t} - (1/5)cos(2t) + (1/10)sin(2t)
+    val expected = 0.2 * math.exp(-1.0) - 0.2 * math.cos(2.0) + 0.1 * math.sin(2.0)
+    approxAt("invlaplace(1/((s+1)*(s^2+4)), s, t)", expected, 1e-4, "t" -> 1.0)
+
+  it should "stay symbolic for a repeated pole (1/s^3 -- triple root, D'(0)=0)" in:
+    val r = parse("invlaplace(1/s^3, s, t)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
+
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ reserved words â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   "laplace, fourier and invlaplace" should "be reserved words (not parseable as variables)" in:
