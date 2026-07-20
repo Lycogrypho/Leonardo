@@ -88,8 +88,8 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", // functionals
     "pi", "e", "i", "inf",                               // constants (inf = +∞)
-    "simplify", "expand", "eval", "env", "vars",
-    "precision", "unset", "samples", "help", "quit", "exit" // REPL commands
+    "simplify", "expand", "eval", "env", "vars", "precision",
+    "unset", "samples", "colors", "pretty", "help", "quit", "exit" // REPL commands
   )
 
   private val MaxDepth = 500

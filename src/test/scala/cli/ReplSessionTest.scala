@@ -117,7 +117,8 @@ class ReplSessionTest extends AnyFlatSpec:
   "assigning to a reserved word" should "be rejected before the command vocabulary is shadowed" in
   {
     val s = session
-    for name <- List("simplify", "eval", "env", "sin", "derive", "precision", "quit") do
+    for name <- List("simplify", "eval", "env", "sin", "derive", "precision", "quit",
+                     "colors", "pretty") do
       assert(s.execute(s"$name := 3") == s"cannot assign to '$name': it is a reserved word",
         s"'$name' must be rejected as an assignment target")
     // commands still work afterwards

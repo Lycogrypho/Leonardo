@@ -81,7 +81,7 @@ object ColorScheme:
 class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
 
   private val Commands  = Set("simplify", "expand", "eval", "precision", "env",
-                               "unset", "help", "samples", "colors", "quit", "exit")
+                               "unset", "help", "samples", "colors", "pretty", "quit", "exit")
   private val Functions = Set("sin", "cos", "tan", "tg", "asin", "acos", "atan",
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",

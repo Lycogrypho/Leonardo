@@ -87,7 +87,7 @@ class ParserTest extends AnyFlatSpec:
     for w <- List("sin", "cos", "exp", "log", "tan", "tg", "asin", "acos", "atan",
                   "pow", "transpose", "derive", "integral",
                   "simplify", "expand", "eval", "env", "vars",
-                  "precision", "unset", "help", "quit", "exit") do
+                  "precision", "unset", "colors", "pretty", "help", "quit", "exit") do
       assert(!Parser.parse(w).successful, s"'$w' must not parse as a variable")
   }
 
