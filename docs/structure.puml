@@ -464,6 +464,8 @@ package "transform" {
         constants, t^n, exp(ct)
         sin(wt), cos(wt), linearity
         first-shift e^{at}g(t) -> G(s-a)
+        step u(t) -> 1/s
+        2nd-shift u(t-a)g(t-a) -> e^{-as}G(s)
     }
 
     class "FourierTransform" <<utility>> [[calculus.html]] {
@@ -480,6 +482,8 @@ package "transform" {
         __ deg D >= 3, distinct roots only __
         companion-matrix root-finding (eigenDecompose)
         residue partial fractions: real + conjugate pairs
+        __ second-shift __
+        e^{-as}*F(s) -> u(t-a)*f(t-a)
     }
 
     "_Laplace"        --|> "_Functional"
@@ -495,6 +499,9 @@ package "transform" {
     "InverseLaplaceTransform" ..> "Normalize"              : collect() poly coeffs
     "InverseLaplaceTransform" ..> "Simplify"               : simplifyFully() output
     "InverseLaplaceTransform" ..> "_MatrixValue"           : eigenDecompose() root-finding
+    "LaplaceTransform"        ..> "_Heaviside"             : matches step(t) / u(t-a)
+    "InverseLaplaceTransform" ..> "_Heaviside"             : wraps result in u(t-a)
+    "InverseLaplaceTransform" ..> "Substitute"             : t -> t-a shift substitution
 }
 
 ' ===================================================
@@ -592,6 +599,7 @@ package "parser" {
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
+"Parser" ..> "_Heaviside"      : step(expr)
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)

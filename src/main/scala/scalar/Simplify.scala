@@ -130,6 +130,7 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case _Number(d) if d == 0.0 => _Number(0)
       case x                      => Atan(x)
 
+  case _Heaviside(a)              => _Heaviside(simplify(a))
   case _Derivative(f, v)          => _Derivative(simplify(f), v)
   case _Integral(f, v)            => _Integral(simplify(f), v)
   case _DefIntegral(f, v, lo, hi) => _DefIntegral(simplify(f), v, simplify(lo), simplify(hi))

@@ -20,11 +20,33 @@ import scalar.*
 //   deg D ≥ 3, distinct roots only       → residue partial fractions via companion-matrix
 //                                           root-finding (eigenDecompose); repeated roots
 //                                           detected by near-zero D'(root) → stay symbolic.
+//   Second-shift: L⁻¹{e^{-as}·F(s)} = u(t-a)·f(t-a)  where f = L⁻¹{F}; matched for
+//                 Product(Exp(-as), F), Product(F, Exp(-as)), and Ratio(Exp(-as), D(s)).
 // Symbolic-coefficient denominators always stay symbolic (numericCoeffs returns None).
 
 def inverseLaplaceOf(f: _Expression, s: _Variable, t: _Variable): _Expression =
   val result = inverseImpl(f, s, t)
   if result.isInstanceOf[_InverseLaplace] then result else simplifyFully(result)
+
+// Returns Some(a) for a positive numeric a when inner matches -a*sv
+// (the exponent of e^{-as} in the second-shift factor).
+private def negShiftOf(inner: _Expression, sv: String): Option[Double] = inner match
+  case Product(_Number(c), vv: _Variable) if vv.variable == sv && c < 0 => Some(-c)
+  case Product(vv: _Variable, _Number(c)) if vv.variable == sv && c < 0 => Some(-c)
+  case _                                                                  => None
+
+// L⁻¹{e^{-as}·F(s)} = u(t-a)·f(t-a) where f = L⁻¹{F}.
+// Returns None when a cannot be extracted or F cannot be inverted.
+private def inverseSecondShift(
+    inner: _Expression, F: _Expression, s: _Variable, t: _Variable
+): Option[_Expression] =
+  negShiftOf(inner, s.variable).flatMap { a =>
+    val ft = inverseImpl(F, s, t)
+    if ft.isInstanceOf[_InverseLaplace] then None
+    else
+      val ftShifted = simplifyFully(substitute(ft, Map(t.variable -> Sum(t, _Number(-a)))))
+      Some(Product(_Heaviside(Sum(t, _Number(-a))), ftShifted))
+  }
 
 private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression = f match
 
@@ -43,6 +65,14 @@ private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression
   case Product(g, c) if !dependsOn(c, s) =>
     val ig = inverseImpl(g, s, t)
     if ig.isInstanceOf[_InverseLaplace] then _InverseLaplace(f, s, t) else Product(c, ig)
+
+  // Second-shift theorem: L⁻¹{e^{-as}·F(s)} = u(t-a)·f(t-a).
+  // Matched in three forms that arise in practice.
+  case Product(Exp(inner), g)   => inverseSecondShift(inner, g, s, t).getOrElse(_InverseLaplace(f, s, t))
+  case Product(g, Exp(inner))   => inverseSecondShift(inner, g, s, t).getOrElse(_InverseLaplace(f, s, t))
+  case Ratio(Exp(inner), den)   => inverseSecondShift(inner, Ratio(_Number(1), den), s, t)
+                                     .getOrElse(invRational(_Number(1), den, s, t)
+                                     .getOrElse(_InverseLaplace(f, s, t)))
 
   // Rational core: N(s) / D(s).
   case Ratio(num, den) =>

@@ -251,6 +251,23 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ inverse Laplace: round-trip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+  // --- inverse Laplace: second-shift theorem -------------------------------------------
+
+  it should "evaluate L-1{exp(-s)/s} = step(t-1): 0 at t=0.5, 1 at t=2" in:
+    approxAt("invlaplace(exp(-s)/s, s, t)", 0.0, 1e-9, "t" -> 0.5)
+    approxAt("invlaplace(exp(-s)/s, s, t)", 1.0, 1e-9, "t" -> 2.0)
+
+  it should "evaluate L-1{exp(-2*s)/s} = step(t-2): 0 at t=1, 1 at t=3" in:
+    approxAt("invlaplace(exp(-2*s)/s, s, t)", 0.0, 1e-9, "t" -> 1.0)
+    approxAt("invlaplace(exp(-2*s)/s, s, t)", 1.0, 1e-9, "t" -> 3.0)
+
+  it should "evaluate L-1{exp(-s)/(s^2+1)} = step(t-1)*sin(t-1) at t=2" in:
+    // L{u(t-1)*sin(t-1)} = e^{-s}/(s^2+1); at t=2: sin(2-1) = sin(1)
+    approxAt("invlaplace(exp(-s)/(s^2+1), s, t)", math.sin(1.0), 1e-5, "t" -> 2.0)
+
+  it should "stay symbolic for exp(-s) alone (no invertible F factor)" in:
+    val r = parse("invlaplace(exp(-s), s, t)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
   it should "round-trip laplace then invlaplace for sin(2t) (t=1.2)" in:
     val fwd = parse("laplace(sin(2*t), t, s)").eval(emptyEnv).toExpression
     val back = inverseLaplaceOf(fwd, _Variable("s"), _Variable("t"))
