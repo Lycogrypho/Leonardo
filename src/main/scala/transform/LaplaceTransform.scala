@@ -11,21 +11,21 @@ import scalar.*
 // (fixpoint / stay-symbolic convention, matching Integrate and Derive).
 //
 // Rules implemented:
-//   Constant:    L{c}              = c/s                    (any expr free of t)
-//   Linearity:   L{a + b}          = L{a} + L{b}
-//                L{c * f}          = c * L{f}               (c free of t)
-//   Power:       L{t^n}            = n! / s^{n+1}           (n a non-negative integer ≤ 20)
-//   Exponential: L{e^{ct}}         = 1 / (s - c)
-//   Sine:        L{sin(wt)}        = w / (s^2 + w^2)
-//   Cosine:      L{cos(wt)}        = s / (s^2 + w^2)
-//   First shift: L{e^{at}g(t)}     = G(s-a)                (G = L{g}; recursive)
-//   Step:        L{u(t)}           = 1/s
-//   2nd shift:   L{u(t-a)}         = e^{-as}/s             (a > 0)
-//                L{u(t-a)·g(t-a)}  = e^{-as}·G(s)          (a > 0; full second-shift)
+//   Constant:      L{c}              = c/s                    (any expr free of t)
+//   Linearity:     L{a + b}          = L{a} + L{b}
+//                  L{c * f}          = c * L{f}               (c free of t)
+//   Power:         L{t^n}            = n! / s^{n+1}           (n a non-negative integer ≤ 20)
+//   Exponential:   L{e^{ct}}         = 1 / (s - c)
+//   Sine:          L{sin(wt)}        = w / (s^2 + w^2)
+//   Cosine:        L{cos(wt)}        = s / (s^2 + w^2)
+//   First shift:   L{e^{at}g(t)}     = G(s-a)                (G = L{g}; recursive)
+//   Step:          L{u(t)}           = 1/s
+//   2nd shift:     L{u(t-a)}         = e^{-as}/s             (a > 0)
+//                  L{u(t-a)·g(t-a)}  = e^{-as}·G(s)          (a > 0; full second-shift)
+//   Deriv-of-xfm:  L{tⁿ·g(t)}       = (−1)ⁿ · dⁿG/dsⁿ      (G = L{g}; n ≤ 20)
 //
-// The power rule is capped at n ≤ 20 (matching Expand.scala and Normalize.scala).
-// Larger exponents stay symbolic: n! overflows Double above n=170 and the recursive
-// implementation overflows the stack for large n.
+// The power rule and derivative-of-transform rule are both capped at n ≤ 20
+// (matching Expand.scala and Normalize.scala).
 
 private val MaxLaplacePowerN = 20
 
@@ -45,6 +45,18 @@ private def coeffOfT(ex: _Expression, tv: String): Option[_Expression] = ex matc
 private def shiftOf(inner: _Expression, tv: String): Option[Double] = inner match
   case Sum(vv: _Variable, _Number(a)) if vv.variable == tv && a < 0                          => Some(-a)
   case Sum(vv: _Variable, Product(_Number(c), _Number(a))) if vv.variable == tv && c * a < 0 => Some(-(c * a))
+  case _                                                                                       => None
+
+// Returns Some((n, g)) when e = tⁿ * g or g * tⁿ (n a positive integer ≤ MaxLaplacePowerN).
+// Used for L{tⁿ·g(t)} = (−1)ⁿ · dⁿG/dsⁿ. Bare tⁿ (no other factor) is excluded —
+// it is already covered by the dedicated Power rule in laplaceImpl.
+private def tPowerFactor(e: _Expression, tv: String): Option[(Int, _Expression)] = e match
+  case Product(vv: _Variable, g) if vv.variable == tv                                         => Some((1, g))
+  case Product(g, vv: _Variable) if vv.variable == tv                                         => Some((1, g))
+  case Product(Power(vv: _Variable, _Number(n)), g)
+      if vv.variable == tv && n.toInt.toDouble == n && n >= 1 && n <= MaxLaplacePowerN        => Some((n.toInt, g))
+  case Product(g, Power(vv: _Variable, _Number(n)))
+      if vv.variable == tv && n.toInt.toDouble == n && n >= 1 && n <= MaxLaplacePowerN        => Some((n.toInt, g))
   case _                                                                                       => None
 
 def laplaceOf(e: _Expression, t: _Variable, s: _Variable): _Expression =
@@ -130,4 +142,15 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
     case Product(_Heaviside(inner), g) => secondShift(inner, g)
     case Product(g, _Heaviside(inner)) => secondShift(inner, g)
 
-    case _ => _Laplace(e, t, s)
+    // Derivative-of-transform: L{tⁿ·g(t)} = (−1)ⁿ · dⁿG(s)/dsⁿ  where G = L{g(t)}.
+    // Applies to Product nodes not already dispatched (constant-multiple / first-shift / step).
+    // Stays symbolic when G cannot be resolved.
+    case other =>
+      tPowerFactor(other, tv) match
+        case Some((n, g)) =>
+          val G = laplaceImpl(g, t, s, tv)
+          if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
+          else
+            val dG = (1 to n).foldLeft(G)((acc, _) => simplifyFully(derive(acc, s)))
+            if n % 2 == 0 then dG else Product(_Number(-1), dG)
+        case None => _Laplace(e, t, s)

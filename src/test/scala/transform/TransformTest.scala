@@ -127,6 +127,26 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
   it should "evaluate L{u(t-2)*sin(t-2)} in commuted product order" in:
     approxAt("laplace(sin(t-2)*step(t-2), t, s)", math.exp(-6.0) / 10.0, 1e-8, "s" -> 3.0)
 
+  // --- Laplace: derivative-of-transform rule ---------------------------------------
+
+  it should "evaluate L{t*sin(t)} = 2s/(s^2+1)^2 (s=3 -> 0.06)" in:
+    approxAt("laplace(t*sin(t), t, s)", 0.06, 1e-5, "s" -> 3.0)
+
+  it should "evaluate L{t*cos(t)} = (s^2-1)/(s^2+1)^2 (s=3 -> 0.08)" in:
+    approxAt("laplace(t*cos(t), t, s)", 0.08, 1e-5, "s" -> 3.0)
+
+  it should "evaluate L{t*exp(-t)} = 1/(s+1)^2 (s=2 -> 1/9)" in:
+    approxAt("laplace(t*exp(-t), t, s)", 1.0 / 9.0, 1e-5, "s" -> 2.0)
+
+  it should "evaluate L{t^2*sin(t)} = (6s^2-2)/(s^2+1)^3 (s=3 -> 0.052)" in:
+    approxAt("laplace(t^2*sin(t), t, s)", 0.052, 1e-5, "s" -> 3.0)
+
+  it should "evaluate L{sin(t)*t} (commuted) same as L{t*sin(t)} (s=3 -> 0.06)" in:
+    approxAt("laplace(sin(t)*t, t, s)", 0.06, 1e-5, "s" -> 3.0)
+
+  it should "stay symbolic for L{t*sin(t^2)} (inner arg not linear in t)" in:
+    val r = parse("laplace(t*sin(t^2), t, s)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_Laplace], s"expected symbolic _Laplace, got $r")
   it should "stay symbolic for step(t+1) with positive shift arg (shift not extractable)" in:
     val r = parse("laplace(step(t+1), t, s)").eval(emptyEnv).toExpression
     assert(r.isInstanceOf[_Laplace], s"expected symbolic _Laplace, got $r")

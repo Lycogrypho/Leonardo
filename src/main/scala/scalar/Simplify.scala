@@ -61,6 +61,11 @@ private def simplifyImpl(e: _Expression): _Expression = e match
         if da == -1.0 && db == -1.0                 => x
       case (Product(x, _Number(da)), _Number(db))
         if da == -1.0 && db == -1.0                 => x
+      // Constant folding in nested products: (c1 * x) * c2 → (c1·c2) * x and mirrors
+      case (Product(_Number(c1), x), _Number(c2)) => simplify(Product(_Number(c1 * c2), x))
+      case (Product(x, _Number(c1)), _Number(c2)) => simplify(Product(_Number(c1 * c2), x))
+      case (_Number(c1), Product(_Number(c2), x)) => simplify(Product(_Number(c1 * c2), x))
+      case (_Number(c1), Product(x, _Number(c2))) => simplify(Product(_Number(c1 * c2), x))
       case (x, y) if x == y                         => simplify(Power(x, _Number(2)))
       case (x, y)                                   => Product(x, y)
 
