@@ -327,7 +327,7 @@ private def buildVD(mv: _MatrixValue): Option[(_Matrix, _Matrix)] =
     val vMat   = _Matrix(n, n, vElems.toVector)
     // D[i,j] = eigs(i) when i==j else _Number(0)
     val dElems = for i <- 0 until n; j <- 0 until n yield
-      if i == j then eigs(i).asInstanceOf[_Expression] else _Number(0.0)
+      if i == j then (eigs(i): _Expression) else _Number(0.0)
     val dMat   = _Matrix(n, n, dElems.toVector)
     (vMat, dMat)
   }
