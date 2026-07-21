@@ -327,6 +327,29 @@ case class _EigenDecomposition(m: _Expression) extends _Expression:
       case _          => Left(this)
 
 
+// Scale-relative cutoff for the Jordan invertibility test, matching the 1e-8 relative
+// tolerance used by _MatrixValue's null-space RREF (realNullVec / complexNullVec).
+private val JordanRelTol = 1e-8
+
+// Product of the Euclidean norms of the columns of `m` — the Hadamard bound on |det m|
+// (|det m| ≤ ∏‖colⱼ‖, with equality iff the columns are orthogonal). It is the natural
+// scale reference for a determinant: dividing |det m| by it gives a value in [0, 1].
+private def columnNormProduct(m: _MatrixValue): Double =
+  (0 until m.cols).foldLeft(1.0) { (prod, j) =>
+    prod * math.sqrt((0 until m.rows).foldLeft(0.0)((s, i) => s + m(i, j) * m(i, j)))
+  }
+
+// Scale-relative invertibility test for the Jordan eigenvector matrix P = V: |det V|
+// compared to the Hadamard bound ∏‖colⱼ‖ rather than an absolute threshold. The ratio
+// ∈ [0, 1] is ~1 for well-separated eigenvectors and → 0 as they become linearly
+// dependent (a defective matrix), so the classification is independent of the
+// eigenvectors' overall magnitude — an absolute |det| < tol test would wrongly flag a
+// well-conditioned but small-magnitude V as singular (and pass a badly scaled one).
+private[matrix] def isJordanInvertible(v: _MatrixValue): Boolean =
+  v.determinant match
+    case Some(det) => math.abs(det) > JordanRelTol * columnNormProduct(v)
+    case None      => false   // non-square — cannot be an invertible P
+
 // Shared helper: build the symbolic V and D matrices from spectralDecompose output.
 // V is n×n with column j = eigenvector j (in column-major layout stored row-major).
 // D is n×n diagonal with eigenvalue j on the diagonal.
@@ -378,15 +401,14 @@ case class _JordanDecomposition(m: _Expression) extends _Expression:
       case Right(mv: _MatrixValue) =>
         buildVD(mv).flatMap { case (v, d) =>
           // Verify that P is invertible (non-singular) so P·J·P⁻¹ = A is valid.
-          // For a dense V (all-real eigenvectors) we check det ≠ 0; for symbolic V
-          // (complex entries) we accept it — the caller can verify via at(…).
+          // For a dense V (all-real eigenvectors) we test invertibility scale-relatively
+          // (isJordanInvertible); for symbolic V (complex entries) we accept it — the
+          // caller can verify via at(…).
           val allReal = v.elems.forall(_.isInstanceOf[_Number])
           if allReal then
-            val vData = v.elems.collect { case _Number(d) => d }
+            val vData  = v.elems.collect { case _Number(d) => d }
             val vDense = _MatrixValue(mv.rows, mv.cols, vData.toArray)
-            vDense.determinant match
-              case Some(det) if math.abs(det) > 1e-10 => Some((v, d))
-              case _                                    => None   // defective: stay symbolic
+            if isJordanInvertible(vDense) then Some((v, d)) else None   // defective: stay symbolic
           else Some((v, d))   // complex eigenvectors — accept
         } match
           case Some((p, j)) => Left(_Matrix(1, 2, Vector(p, j)))

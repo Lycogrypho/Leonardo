@@ -182,6 +182,37 @@ class EigDecompositionTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
+  // ---- issue 2.4: scale-relative Jordan invertibility test ----
+
+  "isJordanInvertible on an orthogonal V" should "accept it" in
+  {
+    assert(isJordanInvertible(dense(2, 2, 1, 0, 0, 1)))
+  }
+
+  "isJordanInvertible on a well-conditioned but tiny-magnitude V" should "accept it" in
+  {
+    // Columns (1e-6, 0) and (0, 1e-6): perfectly orthogonal, so genuinely invertible.
+    // |det| = 1e-12 fails the OLD absolute `|det| > 1e-10` test (wrongly "defective");
+    // the scale-relative ratio |det| / ∏‖colⱼ‖ = 1e-12 / 1e-12 = 1 correctly accepts it.
+    assert(isJordanInvertible(dense(2, 2, 1e-6, 0, 0, 1e-6)))
+  }
+
+  "isJordanInvertible on a well-conditioned but huge-magnitude V" should "accept it" in
+  {
+    assert(isJordanInvertible(dense(2, 2, 1e6, 0, 0, 1e6)))
+  }
+
+  "isJordanInvertible on near-parallel columns" should "reject it" in
+  {
+    // Columns (1, 0) and (1, 1e-12): almost linearly dependent → ratio ≈ 1e-12 < tol.
+    assert(!isJordanInvertible(dense(2, 2, 1, 1, 0, 1e-12)))
+  }
+
+  "isJordanInvertible on identical columns" should "reject it (exactly singular)" in
+  {
+    assert(!isJordanInvertible(dense(2, 2, 1, 1, 0, 0)))
+  }
+
   "jordan toString" should "round-trip through the parser" in
   {
     val e        = _JordanDecomposition(_Variable("A"))
