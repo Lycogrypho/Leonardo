@@ -250,7 +250,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
     else
       val n    = rows
       val a    = data.clone
-      val perm = Array.tabulate(n)(identity)   // perm(i) = original row at position i
+      val perm = Array.tabulate(n)(i => i)   // perm(i) = original row at position i
       var col  = 0
       while col < n do
         var pivot  = col
