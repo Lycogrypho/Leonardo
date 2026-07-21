@@ -90,13 +90,62 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
                     _Number(3), _Number(7), _Number(3))
     approxSolve(node, 7.0, 1e-12)
 
-  it should "stay symbolic when rhs is not numerically evaluable" in:
-    // rhs references an unbound variable k (neither t nor y), so f(t, y) can't reduce.
-    val node = _ODE(Product(_Variable("k"), _Variable("y")), _Variable("y"), _Variable("t"),
-                    _Number(0), _Number(1), _Number(1))
+  it should "stay symbolic when the shape is unrecognised and the target is symbolic" in:
+    // sin(y) is nonlinear (collect → None), so the symbolic tier declines; a free target
+    // means RK4 cannot run either → the node stays fully symbolic.
+    val node = _ODE(Sin(_Variable("y")), _Variable("y"), _Variable("t"),
+                    _Number(0), _Number(1), _Variable("T"))
     assert(node.eval(emptyEnv) == Left(node))
 
-  it should "stay symbolic when the initial condition is symbolic" in:
+  it should "stay symbolic for a t-dependent coefficient with a symbolic target" in:
+    // y' = t*y is linear in y but the coefficient depends on t → not constant-coefficient,
+    // so the symbolic tier declines; a free target blocks RK4 → fully symbolic.
+    val node = _ODE(Product(_Variable("t"), _Variable("y")), _Variable("y"), _Variable("t"),
+                    _Number(0), _Number(1), _Variable("T"))
+    assert(node.eval(emptyEnv) == Left(node))
+
+  // ───────────────────────────── symbolic (closed-form) tier ─────────────────────────────
+
+  it should "return a symbolic closed form when the target is free (y' = y → e^{tau})" in:
+    val node = _ODE(_Variable("y"), _Variable("y"), _Variable("t"),
+                    _Number(0), _Number(1), _Variable("tau"))
+    // free target → symbolic result
+    assert(node.eval(emptyEnv).isLeft, s"expected symbolic closed form, got ${node.eval(emptyEnv)}")
+    // …that folds to e once tau is bound to 1
+    node.eval(new Environment(5, Map("tau" -> _Number(1)))).toExpression match
+      case _Number(d) => assert(math.abs(d - math.E) <= 1e-9)
+      case other      => fail(s"expected _Number ≈ e, got $other")
+
+  it should "solve the affine ODE y' = 2y + 3, y(0)=1 at t=1 in closed form" in:
+    // analytic: (1 + 3/2)e^2 − 3/2 = 2.5·e^2 − 1.5
+    val expected = 2.5 * math.exp(2) - 1.5
+    val node = _ODE(Sum(Product(_Number(2), _Variable("y")), _Number(3)),
+                    _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1))
+    approxSolve(node, expected, 1e-9)
+
+  it should "carry a free parameter through the closed form (y' = k*y → e^k)" in:
+    val node = _ODE(Product(_Variable("k"), _Variable("y")), _Variable("y"), _Variable("t"),
+                    _Number(0), _Number(1), _Number(1))
+    assert(node.eval(emptyEnv).isLeft)   // k free → symbolic
+    node.eval(new Environment(5, Map("k" -> _Number(-2)))).toExpression match
+      case _Number(d) => assert(math.abs(d - math.exp(-2)) <= 1e-9)
+      case other      => fail(s"expected _Number ≈ e^-2, got $other")
+
+  it should "carry a symbolic initial condition through the closed form (y' = y, y(0)=c → c*e)" in:
     val node = _ODE(_Variable("y"), _Variable("y"), _Variable("t"),
                     _Number(0), _Variable("c"), _Number(1))
-    assert(node.eval(emptyEnv) == Left(node))
+    assert(node.eval(emptyEnv).isLeft)   // c free → symbolic
+    node.eval(new Environment(5, Map("c" -> _Number(4)))).toExpression match
+      case _Number(d) => assert(math.abs(d - 4 * math.E) <= 1e-9)
+      case other      => fail(s"expected _Number ≈ 4e, got $other")
+
+  it should "produce a closed form that matches RK4 numerically (y' = 2y + 3)" in:
+    val rhs  = Sum(Product(_Number(2), _Variable("y")), _Number(3))
+    val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1))
+    val symbolic = node.eval(emptyEnv).toExpression match
+      case _Number(d) => d
+      case other      => fail(s"expected numeric closed form, got $other")
+    val rk4 = solveODE(rhs, _Variable("y"), _Variable("t"), 0.0, 1.0, 1.0, emptyEnv) match
+      case Some(d) => d
+      case None    => fail("RK4 unexpectedly failed")
+    assert(math.abs(symbolic - rk4) <= 1e-4, s"closed form $symbolic vs RK4 $rk4")
