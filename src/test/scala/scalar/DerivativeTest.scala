@@ -204,3 +204,62 @@ class DerivativeTest extends AnyFlatSpec:
     val expr = _Derivative(result.get, x)
     assert(math.abs(evalNum(expr, "x" -> 3.0) - 6.0) < 1e-4)
   }
+
+  // --- deriveN: higher-order single-variable derivatives ---
+
+  // d2/dx2(x^3) = 6x; at x=2 -> 12
+  "deriveN(x^3, x, 2) at x=2" should "be 12.0" in:
+    assert(math.abs(evalNum(deriveN(Power(x, _Number(3)), x, 2), "x" -> 2.0) - 12.0) < 1e-4)
+
+  // d2/dx2(sin x) = -sin x; at x=pi/2 -> -1
+  "deriveN(sin(x), x, 2) at x=pi/2" should "be -1.0" in:
+    assert(math.abs(evalNum(deriveN(Sin(x), x, 2), "x" -> math.Pi / 2) + 1.0) < 1e-4)
+
+  // d3/dx3(e^x) = e^x; at x=0 -> 1
+  "deriveN(exp(x), x, 3) at x=0" should "be 1.0" in:
+    assert(math.abs(evalNum(deriveN(Exp(x), x, 3), "x" -> 0.0) - 1.0) < 1e-4)
+
+  // 0th derivative is the identity
+  "deriveN(x^2, x, 0)" should "return x^2 unchanged" in:
+    assert(deriveN(Power(x, _Number(2)), x, 0) == Power(x, _Number(2)))
+
+  // deriveN result matches iterated _Derivative nesting numerically
+  "deriveN(x^3, x, 2)" should "match nested _Derivative at x=1.5" in:
+    val nested = _Derivative(_Derivative(Power(x, _Number(3)), x), x)
+    val flat   = deriveN(Power(x, _Number(3)), x, 2)
+    assert(math.abs(evalNum(nested, "x" -> 1.5) - evalNum(flat, "x" -> 1.5)) < 1e-8)
+
+  // --- derive varargs: mixed / repeated partial derivatives ---
+
+  // d2(x*y^2)/dx dy = d/dy(y^2) = 2y; at y=3 -> 6
+  "derive(x*y^2, x, y) at y=3" should "be 6.0" in:
+    assert(math.abs(evalNum(derive(Product(x, Power(y, _Number(2))), x, y), "y" -> 3.0) - 6.0) < 1e-4)
+
+  // d2(x^2*y)/dx dx = d/dx(2xy) = 2y; at y=5 -> 10
+  "derive(x^2*y, x, x) at y=5" should "be 10.0" in:
+    assert(math.abs(evalNum(derive(Product(Power(x, _Number(2)), y), x, x), "y" -> 5.0) - 10.0) < 1e-4)
+
+  // three-variable: d3(x^2*y*z)/dx dx dy = d/dy(2yz) = 2z; at z=4 -> 8
+  "derive(x^2*y*z, x, x, y) at z=4" should "be 8.0" in:
+    val z = _Variable("z")
+    val f = Product(Product(Power(x, _Number(2)), y), z)
+    assert(math.abs(evalNum(derive(f, x, x, y), "z" -> 4.0) - 8.0) < 1e-4)
+
+  // varargs with two equal vars matches deriveN(_, _, 2) numerically
+  "derive(f, x, x)" should "equal deriveN(f, x, 2) at x=2.7" in:
+    val f   = Sum(Power(x, _Number(3)), Product(_Number(2), x))
+    val v2a = derive(f, x, x)
+    val v2b = deriveN(f, x, 2)
+    assert(math.abs(evalNum(v2a, "x" -> 2.7) - evalNum(v2b, "x" -> 2.7)) < 1e-8)
+
+  // --- Syntax sugar ---
+
+  "Syntax e.derive(x, y)" should "compute the mixed partial" in:
+    import scalar.Syntax.*
+    val f = Product(x, Power(y, _Number(2)))
+    assert(math.abs(evalNum(f.derive(x, y), "y" -> 3.0) - 6.0) < 1e-4)
+
+  "Syntax e.deriveN(x, 2)" should "compute the second derivative" in:
+    import scalar.Syntax.*
+    val f = Power(x, _Number(3))
+    assert(math.abs(evalNum(f.deriveN(x, 2), "x" -> 2.0) - 12.0) < 1e-4)

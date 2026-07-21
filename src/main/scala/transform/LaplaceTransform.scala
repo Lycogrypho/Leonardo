@@ -151,6 +151,6 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
           val G = laplaceImpl(g, t, s, tv)
           if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
           else
-            val dG = (1 to n).foldLeft(G)((acc, _) => simplifyFully(derive(acc, s)))
+            val dG = simplifyFully(deriveN(G, s, n))
             if n % 2 == 0 then dG else Product(_Number(-1), dG)
         case None => _Laplace(e, t, s)

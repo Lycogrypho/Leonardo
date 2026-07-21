@@ -38,6 +38,17 @@ private val deriveMemo = new Memo[(_Expression, String), _Expression](10000)
 def derive(e: _Expression, v: _Variable): _Expression =
   deriveMemo.getOrElseUpdate((e, v.variable))(deriveImpl(e, v))
 
+// n-th derivative of e with respect to v.  n = 0 returns e unchanged; n < 0 is rejected.
+def deriveN(e: _Expression, v: _Variable, n: Int): _Expression =
+  require(n >= 0, s"derivative order must be non-negative, got $n")
+  (1 to n).foldLeft(e)((acc, _) => derive(acc, v))
+
+// Mixed / higher-order derivative: applies derive left-to-right across the variable list.
+// Requires ≥ 2 variables so the signature is unambiguous with the single-variable overload.
+// derive(f, x, x) = d²f/dx²;  derive(f, x, y) = ∂/∂y(∂f/∂x).
+def derive(e: _Expression, v1: _Variable, v2: _Variable, rest: _Variable*): _Expression =
+  (v1 +: v2 +: rest).foldLeft(e)((acc, v) => derive(acc, v))
+
 private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case _Number(_)           => _Number(0)
   case _: _Complex          => _Number(0)    // a complex constant, like any number
