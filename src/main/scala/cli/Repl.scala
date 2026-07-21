@@ -7,6 +7,8 @@ import matrix.*
 import equation.{_Equation, _Solve}
 import parser.Parser
 
+import scala.util.control.NonFatal
+
 import org.jline.reader.{EndOfFileException, LineReader, LineReaderBuilder, UserInterruptException}
 import org.jline.terminal.TerminalBuilder
 
@@ -146,7 +148,16 @@ final class Session:
     scala.util.Try(Parser.parse(input)).fold(
       e => s"parse error: ${e.getMessage}",
       result =>
-        if result.successful then f(result.get)
+        if result.successful then
+          // Evaluation runs OUTSIDE the parse Try, so a failure inside f (an unbounded
+          // matrix allocation, an arithmetic overflow, a compiled-closure error, …)
+          // would otherwise propagate through Session.step and kill the REPL loop. Catch
+          // every recoverable (NonFatal) error and report it, keeping the session alive.
+          // Fatal errors (OutOfMemoryError, StackOverflowError) are deliberately NOT
+          // caught — the dimension caps in the matrix constructors prevent the allocation
+          // ones up front; catching a fatal error would leave the JVM in an unknown state.
+          try f(result.get)
+          catch case NonFatal(e) => s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}"
         else
           val base = s"parse error: ${result.toString.linesIterator.next()}"
           // "g(x)"-style call syntax on a defined name is a common spelling of issue
@@ -337,20 +348,24 @@ final class Session:
 
   private def doSamples(rest: String): String = rest.trim match
     case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
-      val lo = loStr.toDouble
-      val hi = hiStr.toDouble
-      if lo >= hi then "samples: lo must be strictly less than hi"
-      else
-        val n = Option(nStr).flatMap(_.toIntOption).getOrElse(200)
-        withParsed(exprStr.trim) { e =>
-          val v      = _Variable(varStr)
-          val points = sample(substitute(e, definitions), v, lo, hi, n, env)
-          if points.isEmpty then "(no finite values in range)"
-          else
-            points.map((x, y) =>
-              s"${_Number(x).display(precision)}\t${_Number(y).display(precision)}"
-            ).mkString("\n")
-        }
+      // The samples regex admits malformed literals like "1..2" (its [\d.]+ class allows
+      // several dots), so parse the bounds with toDoubleOption rather than toDouble, which
+      // would throw a NumberFormatException and — this path runs outside withParsed — crash
+      // the REPL loop.
+      (loStr.toDoubleOption, hiStr.toDoubleOption) match
+        case (Some(lo), Some(hi)) if lo >= hi => "samples: lo must be strictly less than hi"
+        case (Some(lo), Some(hi)) =>
+          val n = Option(nStr).flatMap(_.toIntOption).getOrElse(200)
+          withParsed(exprStr.trim) { e =>
+            val v      = _Variable(varStr)
+            val points = sample(substitute(e, definitions), v, lo, hi, n, env)
+            if points.isEmpty then "(no finite values in range)"
+            else
+              points.map((x, y) =>
+                s"${_Number(x).display(precision)}\t${_Number(y).display(precision)}"
+              ).mkString("\n")
+          }
+        case _ => "samples: <lo> and <hi> must be numbers"
     case _ => "usage: samples <expr> <var> <lo> <hi> [<n>]"
 
   private def setPrecision(text: String): String =

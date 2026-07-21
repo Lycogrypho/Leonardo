@@ -880,6 +880,38 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("r") == "2.71828")
   }
 
+  // --- issue 1.4: evaluation errors are reported, never crash the session ---
+
+  "an evaluation that throws (Int-overflow matrix dimension)" should "be reported, not crash" in
+  {
+    val s = session
+    // eye(50000): 50000*50000 overflows Int to a negative size → NegativeArraySizeException
+    // during eval. Without the guard this propagates through Session.step and kills the loop;
+    // the withParsed Try must turn it into a graceful, non-empty message instead.
+    val out = s.execute("eye(50000)")
+    assert(out.nonEmpty, "overflowing constructor must return gracefully, not throw")
+    // the session is still usable afterwards
+    assert(s.execute("1 + 1") == "2.0")
+  }
+
+  "samples with a malformed number literal" should "report an error, not throw" in
+  {
+    val s = session
+    // "1..2" satisfies the samples regex's [\d.]+ class but is not a valid Double; the bound
+    // parse runs outside withParsed, so toDouble would crash the loop — toDoubleOption reports.
+    val out = s.execute("samples x x 1..2 3")
+    assert(out.startsWith("samples:"), s"expected a samples error message, got: $out")
+    assert(s.execute("2 * 3") == "6.0")   // session survives
+  }
+
+  "samples with valid bounds" should "still produce sampled pairs (regression)" in
+  {
+    val s   = session
+    val out = s.execute("samples x x 0 2 3")
+    // three points at x = 0, 1, 2 for f(x) = x
+    assert(out.linesIterator.size == 3, s"expected 3 sample rows, got: $out")
+  }
+
   // --- issue 4.5: REPL read-loop dispatch (Session.step) ---
   // The JLine line-editing / persistent-history plumbing in repl() itself is
   // interactive-only and not unit-testable, but the loop's dispatch logic is
