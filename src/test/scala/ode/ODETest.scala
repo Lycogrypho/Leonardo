@@ -6,11 +6,14 @@ import org.scalatest.BeforeAndAfter
 import core.*
 import scalar.*
 import ode.*
+import parser.Parser
 
 
 class ODETest extends AnyFlatSpec with BeforeAndAfter:
 
   private val emptyEnv = new Environment()
+
+  private def parse(s: String): _Expression = Parser.parse(s).get
 
   // y' = y, y(0) = 1, evaluated at t = 1  (solution y(1) = e).
   private def sample: _ODE =
@@ -149,3 +152,29 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
       case Some(d) => d
       case None    => fail("RK4 unexpectedly failed")
     assert(math.abs(symbolic - rk4) <= 1e-4, s"closed form $symbolic vs RK4 $rk4")
+
+  // ───────────────────────────── parser ─────────────────────────────
+
+  "the ode parser" should "build an _ODE node with the fields in order" in:
+    parse("ode(t*y, y, t, 0, 1, 2)") match
+      case o: _ODE =>
+        assert(o.rhs == Product(_Variable("t"), _Variable("y")))
+        assert(o.depVar.variable == "y")
+        assert(o.indepVar.variable == "t")
+        assert(o.t0 == _Number(0))
+        assert(o.y0 == _Number(1))
+        assert(o.target == _Number(2))
+      case other => fail(s"expected _ODE, got $other")
+
+  it should "round-trip through toString and re-parse" in:
+    val e  = parse("ode(2*y + 3, y, t, 0, 1, 1)")
+    val e2 = parse(e.toString)
+    assert(e == e2)
+
+  it should "reject a bare 'ode' as a variable (reserved word)" in:
+    assert(Parser.parse("ode + 1").successful == false)
+
+  it should "evaluate ode(y, y, t, 0, 1, 1) end-to-end to ≈ e" in:
+    parse("ode(y, y, t, 0, 1, 1)").eval(emptyEnv).toExpression match
+      case _Number(d) => assert(math.abs(d - math.E) <= 1e-6)
+      case other      => fail(s"expected _Number ≈ e, got $other")

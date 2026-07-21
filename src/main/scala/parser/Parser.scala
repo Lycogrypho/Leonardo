@@ -7,6 +7,7 @@ import scalar.*
 import matrix.*
 import equation.*
 import transform.*
+import ode.*
 
 
 /**
@@ -87,7 +88,7 @@ object Parser extends JavaTokenParsers:
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
-    "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", // functionals
+    "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "pi", "e", "i", "inf",                               // constants (inf = +∞)
     "simplify", "expand", "eval", "env", "vars", "precision",
     "unset", "samples", "colors", "pretty", "help", "quit", "exit" // REPL commands
@@ -274,6 +275,11 @@ object Parser extends JavaTokenParsers:
     }                                                                                             |
     "invlaplace(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
       case f ~ _ ~ s ~ _ ~ t              => _InverseLaplace(f, s, t)
+    }                                                                                             |
+    // ode(rhs, depVar, indepVar, t0, y0, target): first-order IVP y' = rhs, y(t0) = y0,
+    // evaluated at target.  depVar/indepVar are variables; rhs/t0/y0/target are expressions.
+    "ode(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case rhs ~ _ ~ y ~ _ ~ t ~ _ ~ t0 ~ _ ~ y0 ~ _ ~ tgt => _ODE(rhs, y, t, t0, y0, tgt)
     }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
