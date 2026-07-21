@@ -93,6 +93,44 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
                     _Number(3), _Number(7), _Number(3))
     approxSolve(node, 7.0, 1e-12)
 
+  // ───────────────────────────── step-count policy (issue 2.3) ─────────────────────────────
+
+  it should "floor the step count at BaseSteps for a short interval" in:
+    // span = 1 at default precision → the BaseSteps floor (1000).
+    assert(stepCount(1.0, 5) == 1000)
+
+  it should "scale the step count with the interval length" in:
+    // span = 100 → ~100× the floor, so h stays ≈ 1e-3 instead of ballooning to 0.1.
+    assert(stepCount(100.0, 5) == 100000)
+
+  it should "keep the floor for a tiny interval" in:
+    assert(stepCount(0.001, 5) == 1000)
+
+  it should "not collapse to a single step at precision 0" in:
+    // The old formula (BaseSteps * precision / DefaultPrecision) gave 0 → 1 step here.
+    assert(stepCount(1.0, 0) == 1000)
+
+  it should "refine further at higher precision" in:
+    assert(stepCount(1.0, 10) == 2000)
+
+  it should "cap the step count for a very long interval" in:
+    assert(stepCount(1e9, 5) == 1000000)
+
+  it should "stay accurate over a long interval (y' = -y/(1+t) at t=1000 → 1/1001)" in:
+    // Nonlinear-coefficient rhs (collect coefficient depends on t) → forced through RK4, not
+    // the closed-form tier. With the old span-independent count h would be ~1 here.
+    val rhs  = Ratio(Product(_Number(-1), _Variable("y")), Sum(_Number(1), _Variable("t")))
+    val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1000))
+    approxSolve(node, 1.0 / 1001.0, 1e-9)   // exact solution y = 1/(1+t)
+
+  it should "not degrade at precision 0 (interval step count is precision-independent floor)" in:
+    // y' = t*y forces RK4; at precision 0 the old code used 1 step (large error).
+    val rhs  = Product(_Variable("t"), _Variable("y"))
+    val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1))
+    node.eval(new Environment(0)).toExpression match
+      case _Number(d) => assert(math.abs(d - math.exp(0.5)) <= 1e-6, s"got $d")
+      case other      => fail(s"expected _Number ≈ e^{1/2}, got $other")
+
   it should "stay symbolic when the shape is unrecognised and the target is symbolic" in:
     // sin(y) is nonlinear (collect → None), so the symbolic tier declines; a free target
     // means RK4 cannot run either → the node stays fully symbolic.

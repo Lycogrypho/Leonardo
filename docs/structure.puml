@@ -523,8 +523,9 @@ package "ode" {
 
     class "SolveODE" <<utility>> [[calculus.html]] {
         + solveODE(rhs, y, t, t0, y0, target, env): Option[Double]
+        + stepCount(span, precision): Int
         __ RK4 __
-        step count scales with precision
+        steps: floor + interval-scaled + precision, capped
         signed h -> backward integration
         tree-eval f(t, y) per stage
     }
