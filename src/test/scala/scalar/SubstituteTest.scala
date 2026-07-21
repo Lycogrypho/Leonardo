@@ -76,6 +76,23 @@ class SubstituteTest extends AnyFlatSpec:
         == _DefIntegral(Product(x, x), x, _Number(0), _Number(2)))
   }
 
+  it should "substitute the integrand but not the indefinite-integral variable" in
+  {
+    val defs = Map("f" -> Product(x, x))
+    assert(substitute(_Integral(f, x), defs) == _Integral(Product(x, x), x))
+  }
+
+  // A binder node with NO explicit case in substitute (handled purely by the generic
+  // rebuild-over-children path, like _Laplace/_ODE/etc.): the point is a use position and
+  // is substituted, while the binder variable is carried through untouched.
+  it should "substitute a limit's point but preserve its binder" in
+  {
+    val defs = Map("p" -> _Number(0))
+    val p    = _Variable("p")
+    assert(substitute(_Limit(Ratio(Sin(x), x), x, p), defs)
+        == _Limit(Ratio(Sin(x), x), x, _Number(0)))
+  }
+
   // --- composition with the other algorithms ---
 
   it should "compose with derive so definitions differentiate correctly" in
