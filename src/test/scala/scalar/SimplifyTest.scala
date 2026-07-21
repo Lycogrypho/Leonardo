@@ -83,9 +83,13 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Power(_Number(1), x).simplify() == _Number(1))
   }
 
-  "simplify(0 ^ 0)" should "remain 0^0 (undefined, not 1)" in
+  // Issue 2.5: 0^0 folds to 1, consistently with Power.eval (pow(0, 0) = 1.0) and the
+  // common CAS/IEEE convention — the two must not disagree.
+  "simplify(0 ^ 0)" should "fold to 1 (matching eval)" in
   {
-    assert(Power(_Number(0), _Number(0)).simplify() == Power(_Number(0), _Number(0)))
+    assert(Power(_Number(0), _Number(0)).simplify() == _Number(1))
+    // consistency: eval agrees
+    assert(Power(_Number(0), _Number(0)).eval(new Environment()) == Right(_Number(1)))
   }
 
   "simplify(0 ^ 2)" should "still fold to 0" in

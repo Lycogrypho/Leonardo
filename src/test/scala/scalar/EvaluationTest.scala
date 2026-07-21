@@ -57,6 +57,15 @@ class EvaluationTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
+  // Issue 2.5: 0^0 evaluates to 1 (Java pow / IEEE / common CAS convention), and simplify
+  // folds it the same way — the two are pinned together so they cannot drift apart.
+  "zero to the zero power" should "evaluate to 1 (matching simplify)" in
+  {
+    val e = Power(_Number(0), _Number(0))
+    assert(e.eval(env) == Right(_Number(1.0)))
+    assert(simplify(e) == _Number(1))
+  }
+
   // Complex closure: ln/sqrt of a negative real now yield the principal complex
   // value rather than staying symbolic (see ComplexTest for the full behaviour).
   "ln of a negative number" should "yield the principal complex value ln|x| + iÏ€" in

@@ -79,10 +79,13 @@ private def simplifyImpl(e: _Expression): _Expression = e match
 
   case Power(a, b) =>
     (simplify(a), simplify(b)) match
-      case (x, _Number(d)) if d == 0.0 && x != _Number(0) => _Number(1)
+      // x^0 = 1, including 0^0 = 1 — the common CAS/IEEE convention, and consistent with
+      // Power.eval (Java pow(0, 0) = 1.0). Both places must agree so simplify then eval
+      // (and vice versa) never disagree on 0^0.
+      case (x, _Number(d)) if d == 0.0 => _Number(1)
       case (x, _Number(d)) if d == 1.0 => x
       case (_Number(d), _) if d == 1.0 => _Number(1)
-      case (_Number(da), _Number(db)) if !(da == 0.0 && db == 0.0) =>
+      case (_Number(da), _Number(db))  =>
         val r = pow(da, db)
         if r.isFinite then _Number(r) else Power(_Number(da), _Number(db))
       case (x, y)                      => Power(x, y)
