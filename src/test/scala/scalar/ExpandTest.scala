@@ -153,3 +153,17 @@ class ExpandTest extends AnyFlatSpec:
     val expr = Asin(Power(Sum(x, _Number(1)), _Number(2))).expand()
     assert(math.abs(evalNum(expr, "x" -> 0.0) - math.asin(1.0)) < 1e-5)
   }
+
+  // --- _Heaviside: argument must be expanded (issue 3.3) ---
+
+  "expand(step(x * (y + z)))" should "distribute inside the argument" in
+  {
+    val result = _Heaviside(Product(x, Sum(y, z))).expand()
+    assert(result == _Heaviside(Sum(Product(x, y), Product(x, z))))
+  }
+
+  "expand(step((x+1)^2)) at x=-1" should "evaluate to step(0) = 1" in
+  {
+    val expr = _Heaviside(Power(Sum(x, _Number(1)), _Number(2))).expand()
+    assert(math.abs(evalNum(expr, "x" -> -1.0) - 1.0) < 1e-5)
+  }
