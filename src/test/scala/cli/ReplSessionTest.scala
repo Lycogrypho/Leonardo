@@ -852,6 +852,34 @@ class ReplSessionTest extends AnyFlatSpec:
         s"light scheme must not alter content for: $input")
   }
 
+  "LeonardoHighlighter" should "colour 'ode' as a function like the other functionals" in
+  {
+    val h        = LeonardoHighlighter(() => "dark")
+    val odeStyle = h.highlightBuffer("ode(y, y, t, 0, 1, 1)").styleAt(0)
+    val sinStyle = h.highlightBuffer("sin(x)").styleAt(0)
+    val varStyle = h.highlightBuffer("abc").styleAt(0)
+    assert(odeStyle == sinStyle, "'ode' should share the function colour")
+    assert(odeStyle != varStyle, "'ode' should not be coloured as a plain variable")
+    // and content must still be preserved
+    assert(h.highlightBuffer("ode(y, y, t, 0, 1, 1)").toString == "ode(y, y, t, 0, 1, 1)")
+  }
+
+  // --- ode: end-to-end evaluation and assignment through Session ---
+
+  "an ode expression" should "evaluate numerically at the session precision" in
+  {
+    val s = session
+    // y' = y, y(0) = 1 at t = 1 → e (closed-form tier), displayed at precision 5
+    assert(s.execute("ode(y, y, t, 0, 1, 1)") == "2.71828")
+  }
+
+  "an ode result" should "be assignable to a name and reused" in
+  {
+    val s = session
+    assert(s.execute("r := ode(y, y, t, 0, 1, 1)").startsWith("r :="))
+    assert(s.execute("r") == "2.71828")
+  }
+
   // --- issue 4.5: REPL read-loop dispatch (Session.step) ---
   // The JLine line-editing / persistent-history plumbing in repl() itself is
   // interactive-only and not unit-testable, but the loop's dispatch logic is

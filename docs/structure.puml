@@ -506,6 +506,46 @@ package "transform" {
 }
 
 ' ===================================================
+' PACKAGE: ode - ordinary differential equations (imports core + scalar)
+' ===================================================
+package "ode" {
+
+    class "_ODE" <<case>> [[calculus.html]] {
+        rhs      : _Expression
+        depVar   : _Variable
+        indepVar : _Variable
+        t0       : _Expression
+        y0       : _Expression
+        target   : _Expression
+        __ ode(rhs, y, t, t0, y0, target) __
+        y' = rhs(t, y), y(t0) = y0 ; value y(target)
+    }
+
+    class "SolveODE" <<utility>> [[calculus.html]] {
+        + solveODE(rhs, y, t, t0, y0, target, env): Option[Double]
+        __ RK4 __
+        step count scales with precision
+        signed h -> backward integration
+        tree-eval f(t, y) per stage
+    }
+
+    class "SolveODESymbolic" <<utility>> [[calculus.html]] {
+        + solveODESymbolic(...): Option[_Expression]
+        __ constant-coeff linear y' = a*y + b __
+        a*y      -> y0*e^{a(t-t0)}
+        b        -> y0 + b*(t-t0)
+        a*y + b  -> (y0 + b/a)*e^{a(t-t0)} - b/a
+    }
+
+    "_ODE" --|> "_Functional"
+
+    "_ODE" ..> "SolveODESymbolic" : closed-form tier first
+    "_ODE" ..> "SolveODE"         : RK4 fallback at eval
+    "SolveODESymbolic" ..> "Normalize" : collect() linear-in-y coeffs
+    "SolveODESymbolic" ..> "Simplify"  : simplifyFully() output
+}
+
+' ===================================================
 ' PACKAGE: equation - equation domain (imports core)
 ' ===================================================
 package "equation" {
@@ -600,6 +640,7 @@ package "parser" {
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
+"Parser" ..> "_ODE"            : ode(rhs, y, t, t0, y0, target)
 "Parser" ..> "_Heaviside"      : step(expr)
 
 ' ===================================================

@@ -39,6 +39,8 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 - **Inverse Laplace Transform**: `invlaplace(F, s, t)` recovers f(t) from a rational F(s) = N(s)/D(s) with deg N < deg D ≤ 2 — the dual of the forward table. Linearity peels sums and constant factors; the pole structure is read off by completing the square: linear denominators give `b/(s−a) → b·e^(at)`, distinct real roots split via partial fractions into `A·e^(r₁t) + B·e^(r₂t)`, a repeated root gives `e^(at)·(N₁ + (N₀+N₁a)·t)`, and a complex-conjugate pair gives `e^(at)·(N₁cos(wt) + …sin(wt))`. So `invlaplace(3/((s-2)^2+9), s, t)` returns `e^(2t)·sin(3t)`, and `invlaplace(laplace(f, t, s), s, t)` round-trips f. Denominators of degree ≥ 3, symbolic coefficients, and non-rational input stay symbolic.
 
+- **Differential Equations**: `ode(rhs, y, t, t0, y0, target)` solves the first-order initial-value problem `y' = rhs(t, y)`, `y(t₀) = y₀`, and returns the solution value `y(target)`. Constant-coefficient linear equations `y' = a·y + b` are solved in closed form (`y' = y, y(0)=1` gives `e` exactly at `t = 1`; `y' = 2y + 3` gives the affine-plus-exponential form), so a free `target`, a free initial condition, or a symbolic coefficient yields a symbolic solution (`ode(k*y, y, t, 0, 1, 1)` → `e^k`). Every other shape — `y' = t·y`, `y' = sin(y)`, … — is integrated numerically with a fourth-order Runge–Kutta scheme (backward integration when `target < t₀`); a non-evaluable right-hand side or a symbolic target with no closed form stays symbolic.
+
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
 - **Clean API**: Environment-aware evaluation with no implicit global state. Expressions are immutable and composable. `Environment` is immutable — `withBinding` returns a new instance, enabling safe concurrent evaluation.
@@ -72,6 +74,7 @@ leonardo> limit(atan(x), x, inf) -- limit at ∞: π/2
 leonardo> laplace(sin(2*t), t, s) -- Laplace transform: 2/(s² + 4)
 leonardo> fourier(exp(-2*t), t, w) -- Fourier transform: 1/(2 + i·w)
 leonardo> invlaplace(2/(s^2+4), s, t) -- inverse Laplace: sin(2*t)
+leonardo> ode(y, y, t, 0, 1, 1)   -- solve y'=y, y(0)=1 at t=1: 2.71828 (e)
 leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x
 leonardo> C := A * B           -- with A, B matrices: simplify C executes the
