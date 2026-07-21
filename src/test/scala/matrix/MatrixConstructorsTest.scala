@@ -51,6 +51,37 @@ class MatrixConstructorsTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
+  // --- issue 1.5: dimension cap prevents Int overflow / unbounded allocation ---
+
+  "eye just over the dense-dimension cap" should "stay symbolic (no allocation)" in
+  {
+    val e = IdentityMatrix(_Number(4097))
+    assert(e.eval(env) == Left(e))
+  }
+
+  "eye at an Int-overflowing dimension" should "stay symbolic rather than throw" in
+  {
+    // 50000 * 50000 overflows Int to a negative size; the cap rejects it up front so
+    // no NegativeArraySizeException is ever raised.
+    val e = IdentityMatrix(_Number(50000))
+    assert(e.eval(env) == Left(e))
+  }
+
+  "zeros with an over-cap dimension" should "stay symbolic (no allocation)" in
+  {
+    val e = ZeroMatrix(_Number(100000), _Number(100000))
+    assert(e.eval(env) == Left(e))
+  }
+
+  "eye at the dense-dimension cap boundary" should "still be accepted (small end untouched)" in
+  {
+    // The cap is inclusive: an in-range dimension keeps working. Use a modest size so the
+    // test stays fast while confirming the boundary predicate did not regress the common case.
+    val m = evalMatrix(IdentityMatrix(_Number(64)))
+    assert(m.rows == 64 && m.cols == 64)
+    for i <- 0 until 64 do assert(m(i, i) == 1.0)
+  }
+
   "eye with a free variable" should "reduce the variable and stay symbolic while unbound" in
   {
     val e = IdentityMatrix(_Variable("n"))

@@ -51,6 +51,19 @@ private def collapse(m: _Matrix, orElse: _Expression): Either[_Expression, _Valu
 // only its concrete form (via the dense kernels) is reducible.
 private val MaxSymbolicDim = 6
 
+// Upper bound on a single dimension of a dense matrix produced by a constructor
+// (eye/zeros). Two reasons: the element count rows·cols must not overflow Int (a
+// dimension ≥ 46341 already does, silently yielding a negative array size), and the
+// dense Array[Double] allocation must stay bounded (4096² doubles ≈ 128 MB — the
+// practical ceiling for the in-memory dense representation). A dimension must be a
+// positive integer ≤ MaxDenseDim; anything else keeps the constructor symbolic, the
+// same domain-error convention as a singular inverse. Any future dense constructor
+// should reuse validDenseDim.
+private val MaxDenseDim = 4096
+
+private def validDenseDim(d: Double): Boolean =
+  d >= 1.0 && d == d.toLong && d <= MaxDenseDim
+
 // The (rows-1)×(cols-1) matrix with row `si` and column `sj` removed.
 private def minorOf(m: _Matrix, si: Int, sj: Int): _Matrix =
   val elems =
@@ -231,12 +244,12 @@ case class IdentityMatrix(n: _Expression) extends _MatrixOperation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     n.eval(env) match
-      case Right(_Number(d)) if d > 0 && d == d.toLong =>
+      case Right(_Number(d)) if validDenseDim(d) =>
         val sz   = d.toInt
         val data = Array.tabulate(sz * sz)(i => if i / sz == i % sz then 1.0 else 0.0)
         Right(_MatrixValue(sz, sz, data))
       case Left(expr) => Left(IdentityMatrix(expr))
-      case _          => Left(this)   // non-integer or non-positive dimension
+      case _          => Left(this)   // non-integer, non-positive, or over MaxDenseDim
 
 
 // Zero matrix: zeros(rows, cols) → rows×cols matrix of 0.0.
@@ -248,8 +261,7 @@ case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOpe
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (nRows.eval(env), nCols.eval(env)) match
-      case (Right(_Number(r)), Right(_Number(c)))
-          if r > 0 && c > 0 && r == r.toLong && c == c.toLong =>
+      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r) && validDenseDim(c) =>
         Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(0.0)))
       case (rr, rc) => Left(ZeroMatrix(rr.toExpression, rc.toExpression))
 
