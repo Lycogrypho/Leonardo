@@ -85,7 +85,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
   private val Functions = Set("sin", "cos", "tan", "tg", "asin", "acos", "atan",
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",
-                               "limit", "laplace", "fourier", "invlaplace")
+                               "limit", "laplace", "fourier", "invlaplace", "ode")
   private val Constants = Set("pi", "e", "i")
 
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
