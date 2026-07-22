@@ -1193,3 +1193,76 @@ class ReplSessionTest extends AnyFlatSpec:
     val out = s.execute("a, b := x + 1")
     assert(out.contains("tuple assignment"), s"expected tuple-assignment error, got: $out")
   }
+
+  // --- issue 4.9: consolidate freezes the simplified + evaluated result ---
+
+  "consolidate with a fully numeric result" should "bind the frozen value" in
+  {
+    val s = session
+    s.execute("x := 2")
+    s.execute("f := x + 1")
+    assert(s.execute("g := consolidate(f + f)") == "g := 6.0")
+    assert(s.execute("g") == "6.0")
+  }
+
+  "a consolidated value" should "not change when a dependency is redefined" in
+  {
+    val s = session
+    s.execute("x := 2")
+    s.execute("f := x + 1")
+    s.execute("g := consolidate(f + f)")
+    // g is frozen at 6.0; a plain definition g := f + f would follow x here
+    s.execute("x := 100")
+    assert(s.execute("g") == "6.0")
+  }
+
+  "consolidate with a free variable remaining" should "store a frozen simplified definition" in
+  {
+    val s = session
+    s.execute("a := 3")
+    // a folds in (eval uses current bindings); y stays free → frozen definition
+    assert(s.execute("h := consolidate(a * y)") == "h := (3.0 * y)")
+    assert(s.execute("h") == "(3.0 * y)")
+  }
+
+  "a consolidated symbolic definition" should "ignore later redefinition of the folded dependency" in
+  {
+    val s = session
+    s.execute("a := 3")
+    s.execute("h := consolidate(a * y)")
+    s.execute("a := 9")
+    // frozen: still 3.0 * y, unlike a late-bound definition which would become 9.0 * y
+    assert(s.execute("h") == "(3.0 * y)")
+    s.execute("y := 2")
+    assert(s.execute("h") == "6.0")
+  }
+
+  "consolidate over a matrix product" should "execute the multiplication and freeze" in
+  {
+    val s = session
+    s.execute("A := [[1, 2], [3, 4]]")
+    s.execute("B := [[5, 6], [7, 8]]")
+    s.execute("C := consolidate(A * B)")
+    assert(s.execute("C") == "[[19.0, 22.0], [43.0, 50.0]]")
+  }
+
+  "consolidate to a reserved constant" should "be rejected" in
+  {
+    val s = session
+    val out = s.execute("e := consolidate(1 + 1)")
+    assert(out.contains("cannot assign to 'e'"), s"expected reserved-constant rejection, got: $out")
+  }
+
+  "a consolidated definition" should "survive a script round-trip" in
+  {
+    val s = session
+    s.execute("a := 3")
+    s.execute("h := consolidate(a * y)")
+    // reload the serialized script into a fresh session
+    val restored = session
+    restored.load(s.script)
+    assert(restored.execute("h") == "(3.0 * y)")
+    // still frozen after reload: redefining a does not disturb h
+    restored.execute("a := 9")
+    assert(restored.execute("h") == "(3.0 * y)")
+  }

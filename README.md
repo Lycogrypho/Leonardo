@@ -79,6 +79,7 @@ leonardo> simplify x + 0       -- structural simplification (ignores bindings)
 x
 leonardo> C := A * B           -- with A, B matrices: simplify C executes the
 leonardo> simplify C           -- multiplication and simplifies each element
+leonardo> g := consolidate(f + f)  -- freeze the simplified+evaluated result (not late-bound)
 leonardo> precision 8          -- set decimal precision
 leonardo> env                  -- list precision, bindings, definitions
 leonardo> :save session.txt    -- write current state to a replayable script
@@ -124,7 +125,13 @@ old `=`-style `:save` files are not accepted and must be re-created.
 Definitions are late-bound: redefining `f` also changes any `g` defined in terms
 of `f`. Whether an assignment binds a value or defines a function is decided by the
 right-hand side alone — constant expressions fold to a numeric binding, expressions
-with free variables become definitions. Differentiating *with respect to a defined
+with free variables become definitions. `name := consolidate(expr)` is the opposite of a
+late-bound definition: it *freezes* the result. The expression is simplified and evaluated
+against the current bindings right away, and the snapshot is stored — so with `x := 2` and
+`f := x + 1`, `g := consolidate(f + f)` binds `g` to `6.0` and it stays `6.0` even after
+`x := 100`. If free variables remain, the frozen simplified form is kept instead (with
+`a := 3`, `h := consolidate(a * y)` stores `h := (3.0 * y)`, unaffected by a later `a := 9`).
+Differentiating *with respect to a defined
 function* applies the chain rule: with `f := sin(x)` and `g := f^2`, `derive(g, f)`
 computes dg/df as `derive(g, x) / derive(f, x)` over the definition's single free
 variable (definitions with several free variables are rejected with a message). `:save` serializes the session (precision,

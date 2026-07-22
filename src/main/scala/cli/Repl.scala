@@ -31,6 +31,7 @@ import org.jline.terminal.TerminalBuilder
  *   x := 3.001           bind a value (constant right-hand side)
  *   f := sin(x) + x      define a function (right-hand side with free variables)
  *   h := lhs = rhs       bind a named equation (can be passed to solve(h, x))
+ *   g := consolidate(e)  freeze the simplified+evaluated result of e into g (not late-bound)
  *   lhs = rhs            equation: true/false when concrete; solvable via solve()
  *   lhs == rhs           equality check: evaluates to bool but not solvable
  *   <expression>         evaluate, e.g.  f + 1  or  derive(f, x)
@@ -65,6 +66,10 @@ final class Session:
 
   private val assignment      = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=(.+)""".r
   private val multiAssignment = """([a-zA-Z][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]*)+)\s*:=(.+)""".r
+  // "name := consolidate(expr)" — freeze the simplified + evaluated result into `name`
+  // (issue 4.9). consolidate(...) is NOT a grammar function; it is recognised here on the
+  // whole RHS so the inner text is handed to the ordinary expression parser via withParsed.
+  private val consolidation   = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=\s*consolidate\((.+)\)""".r
   // Lazy first group lets the regex engine find the shortest expression that still
   // leaves valid tokens for <var> <lo> <hi> and an optional <n> at the tail.
   private val samplesRegex = """^(.+?)\s+([a-zA-Z][a-zA-Z0-9_]*)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)(?:\s+(\d+))?$""".r
@@ -96,6 +101,10 @@ final class Session:
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
+    // Precedes the generic assignment: the reserved-name guards above already matched the
+    // broader `assignment` pattern for this input, so `name` is validated by the time we
+    // get here. consolidate freezes; plain `:=` (below) stays late-bound.
+    case consolidation(name, inner) => withParsed(inner)(consolidate(name, _))
     case multiAssignment(namesStr, rhs) =>
       withParsed(rhs)(multiAssign(namesStr.split(",").map(_.trim).toList, _))
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
@@ -328,6 +337,33 @@ final class Session:
             bindings = bindings - name
             s"$name := $rhs"
 
+  /**
+   * "name := consolidate(expr)" (issue 4.9): snapshot the simplified + evaluated result
+   * into `name`, breaking the late-binding that a plain `:=` definition keeps. The body is
+   * substituted, matrix algebra is carried out, simplified, then evaluated WITH the current
+   * bindings (unlike `assign`, which uses an empty env so a free-variable RHS stays a
+   * late-bound definition). A fully numeric result becomes a value binding; a residual
+   * symbolic result is stored as a FROZEN definition — the simplified expression as it
+   * stands now, not the raw body. Because that stored body is already fully substituted, no
+   * definition name survives in it, so a later redefinition of a dependency cannot change it
+   * (and a :save/:load round-trip reproduces the identical definition entry).
+   */
+  private def consolidate(name: String, rhs: _Expression): String =
+    resolveDerivativeBinders(rhs) match
+      case Left(message) => message
+      case Right(resolved) =>
+        val prepared = simplify(resolveMatrixOps(substitute(resolved, definitions)))
+        prepared.eval(env) match
+          case Right(value) =>
+            bindings = bindings + (name -> value)
+            definitions = definitions - name
+            s"$name := $value"
+          case Left(expr) =>
+            val frozen = simplify(expr)
+            definitions = definitions + (name -> frozen)
+            bindings = bindings - name
+            s"$name := $frozen"
+
   private def multiAssign(names: List[String], rhs: _Expression): String =
     names.find(Session.ReservedConstants.contains) match
       case Some(bad) => s"cannot assign to '$bad': it is a built-in constant"
@@ -434,6 +470,17 @@ object Session:
     "eval" ->
       """|Evaluate an expression substituting current bindings and returning a numeric result.
          |  eval sin(pi/2)      → 1.0""".stripMargin,
+    "consolidate" ->
+      """|Freeze the simplified + evaluated result of an expression into a new variable.
+         |Unlike ":=", which keeps a definition late-bound, consolidate snapshots the value
+         |NOW using the current bindings — redefining a dependency later does not change it.
+         |A fully numeric result becomes a value binding; a residual symbolic result is stored
+         |as a frozen (already-simplified) definition.
+         |  x := 2
+         |  f := x + 1
+         |  g := consolidate(f + f)   → g := 6.0   (stays 6.0 even after x := 100)
+         |  a := 3
+         |  h := consolidate(a * y)   → h := (3.0 * y)   (a folded in and frozen; h ignores later a := 9)""".stripMargin,
     "precision" ->
       """|Set the decimal precision for display and numeric comparisons.
          |  precision 8         8 significant decimal digits
@@ -552,6 +599,7 @@ object Session:
     """x := 3.001           bind a value (constant right-hand side)
       |f := sin(x) + x      define a function (right-hand side with free variables)
       |h := lhs = rhs       bind a named equation (use with solve(h, x))
+      |g := consolidate(e)  freeze the simplified+evaluated result of e into g (not late-bound)
       |L, U, P := lu(A)     bind multiple names to a decomposition result (1×n row)
       |lhs = rhs            equation: true/false once both sides are concrete; stays
       |                     symbolic with free variables; solvable via solve()
