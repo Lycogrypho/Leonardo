@@ -5,14 +5,22 @@ import core.*
 import scala.math.{pow, exp, log, sin, cos, tan, asin, acos, atan}
 
 
-// Attempts to compile an expression into a raw Double => Double closure over v,
-// resolving any other variables from env. Returns None for expressions that contain
-// unbound symbolic nodes (_Derivative, _Integral, unresolvable variables, etc.).
-//
-// When Some(f) is returned, f(x) evaluates e with v bound to x at full Double
-// precision, with no per-step allocation, no tree traversal, and no environment
-// lookup — O(1) per sample after compilation. This is the basis of the fast path
-// in _DefIntegral.eval (Simpson's rule) and future Monte-Carlo / matrix-fill loops.
+/** Attempts to compile expression `e` into a raw `Double => Double` closure over `v`,
+ *  resolving any other free variables from `env`.
+ *
+ *  When `Some(f)` is returned, `f(x)` evaluates `e` with `v` bound to `x` at full
+ *  `Double` precision with no per-sample allocation, no tree traversal, and no environment
+ *  lookup — O(1) per sample after compilation.  This is the fast path in `_DefIntegral.eval`
+ *  (Simpson's rule) and in [[sample]].
+ *
+ *  `None` is returned for expressions that contain unresolvable symbolic nodes
+ *  (`_Derivative`, `_Integral`, unbound variables, complex values, etc.).
+ *
+ *  @param e   the expression to compile
+ *  @param v   the free variable that maps to the closure argument `x`
+ *  @param env environment for resolving any other free variables
+ *  @return `Some(f)` when the expression is fully compilable, `None` otherwise
+ */
 def compile(e: _Expression, v: _Variable, env: Environment): Option[Double => Double] = e match
   case _Number(d)    => Some(_ => d)
   case _: _Complex   => None    // a complex value has no Double => Double closure

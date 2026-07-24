@@ -5,20 +5,33 @@ import core.*
 import scala.math
 
 
-// Limit evaluation: lim_{v → point[dir]} e
-//
-// Tier 1 — direct substitution: works for continuous functions at non-singular points.
-// Tier 2 — L'Hôpital's rule (≤ 5 steps): applied when a Ratio evaluates to the 0/0
-//           or ∞/∞ indeterminate form. Also detects the c/0 form and returns ±∞ based
-//           on the direction of approach of the denominator.
-// Tier 3 — structural rules at ±∞: polynomial rationals via collect (Normalize.scala),
-//           elementary functions (exp, ln, atan, sin/cos) handled by shape.
-// Tier 4 — epsilon perturbation for one-sided limits that survived all other tiers.
-//
-// Returns _Limit(e, v, point, dir) unchanged when no rule applies (fixpoint convention).
-
+/** Four-tier limit engine: lim_{`v` → `point`[`dir`]} `e`.
+ *
+ *  - Tier 1 — **direct substitution**: works for continuous functions at non-singular points.
+ *  - Tier 2 — **L'Hôpital's rule** (≤ 5 steps): applied when a `Ratio` evaluates to the
+ *    `0/0` or `∞/∞` indeterminate form.  Also detects the `c/0` form and returns `±∞`
+ *    based on the direction of approach of the denominator.
+ *  - Tier 3 — **structural rules at ±∞**: polynomial rationals via [[collect]]
+ *    (`Normalize.scala`), elementary functions (`exp`, `ln`, `atan`, `sin`/`cos`)
+ *    handled by shape.
+ *  - Tier 4 — **epsilon perturbation** for one-sided limits that survived all other tiers.
+ *
+ *  Returns `_Limit(e, v, point, dir)` unchanged when no rule applies (fixpoint convention).
+ */
 private val MaxHopitalSteps = 5
 
+/** Evaluates lim_{`v` → `point`[`dir`]} `e`, returning the limit as an expression.
+ *
+ *  When `point` folds to a concrete `_Number`, the four-tier engine is applied.
+ *  When `point` is symbolic the node stays symbolic.
+ *
+ *  @param e     the expression whose limit to evaluate
+ *  @param v     the approach variable
+ *  @param point the limit point (may be finite or `±∞`)
+ *  @param dir   the direction of approach (`Both`, `FromRight`, or `FromLeft`)
+ *  @param env   environment for resolving free variables other than `v`
+ *  @return the limit value as a `_Number`, or the unchanged `_Limit` node when it cannot be determined
+ */
 def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, env: Environment): _Expression =
   point.eval(env) match
     case Right(_Number(p)) =>
@@ -26,8 +39,7 @@ def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, e
       else limitFinite(e, v, p, dir, env, MaxHopitalSteps)
     case _ => _Limit(e, v, point, dir)   // symbolic point — stay symbolic
 
-// Evaluate e with v bound to p; return Some(d) iff the result is a concrete _Number.
-// Ratio.eval / Power.eval return Left for NaN / infinite, so this returns None there.
+/** Evaluates `e` with `v` bound to `p`; returns `Some(d)` iff the result is a concrete `_Number`. */
 private def numericAt(e: _Expression, v: _Variable, p: Double, env: Environment): Option[Double] =
   e.eval(env.withBinding(v.variable, _Number(p))) match
     case Right(_Number(d)) => Some(d)
@@ -57,7 +69,7 @@ private def limitFinite(
             limitEpsilon(e, v, p, dir, env)
         case _ => limitEpsilon(e, v, p, dir, env)
 
-// c / (something→0): return signN * sign(den near p) * ∞, checking direction.
+/** Handles `c / (something→0)`: returns `signN * sign(den near p) * ∞`, checking direction. */
 private def cOverZero(
   e: _Expression, den: _Expression, v: _Variable, p: Double,
   dir: LimitDir, env: Environment, signN: Double
@@ -77,8 +89,9 @@ private def cOverZero(
         case (Some(l), Some(r)) if l == r => _Number(signN * l * Double.PositiveInfinity)
         case _                            => _Limit(e, v, _Number(p), dir)   // sign flip → DNE
 
-// Tier 4: evaluate at two points close to p from the requested direction.
-// Reports the average if they converge; stays symbolic otherwise.
+/** Tier 4: evaluates at two points close to `p` from the requested direction.
+ *  Reports the average when they converge; stays symbolic otherwise.
+ */
 private def limitEpsilon(
   e: _Expression, v: _Variable, p: Double, dir: LimitDir, env: Environment
 ): _Expression =
@@ -96,7 +109,7 @@ private def limitEpsilon(
           _Number((y1 + y2) / 2)
         case _ => _Limit(e, v, _Number(p), dir)
 
-// Structural evaluation at ±∞: recurse over the AST shape.
+/** Tier 3: structural evaluation at ±∞ by recursing over the AST shape. */
 private def limitInfinity(e: _Expression, v: _Variable, p: Double, env: Environment): _Expression =
   val posInf = p.isPosInfinity
 
@@ -178,7 +191,7 @@ private def limitInfinity(e: _Expression, v: _Variable, p: Double, env: Environm
 
   go(e)
 
-// Numeric fallback at ∞: evaluate at two large values and check convergence.
+/** Numeric fallback at ∞: evaluates at two large values and checks convergence. */
 private def numericInfFallback(e: _Expression, v: _Variable, p: Double, env: Environment): _Expression =
   val sign = if p.isPosInfinity then 1 else -1
   (numericAt(e, v, sign * 1e10, env), numericAt(e, v, sign * 1e15, env)) match

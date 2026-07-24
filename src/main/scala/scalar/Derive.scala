@@ -4,13 +4,20 @@ package scalar
 import core.*
 
 
-// Symbolic differentiation. derive(e, v) returns d(e)/d(v) as a new expression,
-// implemented as a rule table over expression shapes (the dual of the planned
-// integration table). Powers the _Derivative node's eval.
+/** Symbolic differentiation.
+ *
+ *  [[derive]] returns d(`e`)/d(`v`) as a new expression, implemented as a rule table
+ *  over expression shapes (the dual of the integration table in `Integrate.scala`).
+ *  Powers the [[_Derivative]] node's `eval`.
+ *
+ *  Results are memoised (pure in `(e, v)`): the definite-integral tree-eval fallback
+ *  re-derives its integrand at every Simpson sample point, and shared sub-trees across
+ *  all callers hit the same cache instead of re-walking the rule table.
+ */
 
-// Algebraic helpers used only inside derive to keep the output compact.
-// Without these, terms like 0*x or 1*f remain symbolic and block numeric eval.
-
+/** Compact helpers for constructing derivative results without noise terms.
+ *  Without these, terms like `0*x` or `1*f` would remain symbolic and block numeric eval.
+ */
 private def dmul(a: _Expression, b: _Expression): _Expression = (a, b) match
   case (_Number(0.0), _) | (_, _Number(0.0)) => _Number(0)
   case (_Number(1.0), x)                      => x
@@ -22,30 +29,53 @@ private def dadd(a: _Expression, b: _Expression): _Expression = (a, b) match
   case (x, _Number(0.0)) => x
   case _                 => Sum(a, b)
 
-// Avoids Power(a, 0) = 1 and Power(a, 1) = a blowing up when a is 0.
+/** Avoids `Power(a, 0) = 1` and `Power(a, 1) = a` blowing up when `a` is `0`. */
 private def dpow(a: _Expression, b: _Expression): _Expression = b match
   case _Number(0.0) => _Number(1)
   case _Number(1.0) => a
   case _            => Power(a, b)
 
 
-// Memoized entry point: derive is pure in (e, v), so results are cached across
-// calls. This pays off heavily where the same derivative is requested repeatedly —
-// e.g. _DefIntegral's tree-eval fallback re-derives its integrand at every Simpson
-// sample point — and across shared subtrees, since every recursive call lands here.
 private val deriveMemo = new Memo[(_Expression, String), _Expression](10000)
 
+/** Returns the symbolic derivative of `e` with respect to `v`.
+ *
+ *  The result is memoised: calling `derive(e, v)` multiple times with the same
+ *  arguments returns the cached result without re-walking the rule table.
+ *
+ *  @param e the expression to differentiate
+ *  @param v the differentiation variable
+ *  @return d(`e`)/d(`v`) as a new expression (never [[_Derivative]] for rules that fire)
+ */
 def derive(e: _Expression, v: _Variable): _Expression =
   deriveMemo.getOrElseUpdate((e, v.variable))(deriveImpl(e, v))
 
-// n-th derivative of e with respect to v.  n = 0 returns e unchanged; n < 0 is rejected.
+/** Returns the n-th derivative of `e` with respect to `v`.
+ *
+ *  `n = 0` returns `e` unchanged; `n < 0` is rejected.
+ *
+ *  @param e the expression to differentiate
+ *  @param v the differentiation variable
+ *  @param n the derivative order (non-negative)
+ *  @return d^n(`e`)/d(`v`)^n
+ */
 def deriveN(e: _Expression, v: _Variable, n: Int): _Expression =
   require(n >= 0, s"derivative order must be non-negative, got $n")
   (1 to n).foldLeft(e)((acc, _) => derive(acc, v))
 
-// Mixed / higher-order derivative: applies derive left-to-right across the variable list.
-// Requires ≥ 2 variables so the signature is unambiguous with the single-variable overload.
-// derive(f, x, x) = d²f/dx²;  derive(f, x, y) = ∂/∂y(∂f/∂x).
+/** Returns the mixed or higher-order derivative of `e` obtained by differentiating
+ *  left-to-right across `v1`, `v2`, and `rest`.
+ *
+ *  Requires at least two variables so the signature is unambiguous with the
+ *  single-variable overload.  Examples: `derive(f, x, x)` = d²f/dx²;
+ *  `derive(f, x, y)` = ∂/∂y(∂f/∂x).
+ *
+ *  @param e    the expression to differentiate
+ *  @param v1   first variable in the differentiation sequence
+ *  @param v2   second variable in the differentiation sequence
+ *  @param rest additional variables, applied left-to-right
+ *  @return the result of differentiating with respect to `v1`, then `v2`, then `rest`
+ */
 def derive(e: _Expression, v1: _Variable, v2: _Variable, rest: _Variable*): _Expression =
   (v1 +: v2 +: rest).foldLeft(e)((acc, v) => derive(acc, v))
 

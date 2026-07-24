@@ -5,17 +5,19 @@ import core.*
 import scala.math.pow
 
 
+/** Marker trait for the four scalar binary operations: [[Sum]], [[Product]], [[Ratio]], and [[Power]]. */
 trait _Operation extends _Expression
 
 
-// The scalar operations also evaluate CONCRETE matrix operands: _MatrixValue and its
-// dense kernels live in core, so no scalar → matrix dependency is created. This is
-// what makes "M + N" / "2 * M" work through the ordinary + and * nodes when the
-// operands reduce to matrix values (e.g. REPL bindings, matrix literals). Symbolic
-// element-wise combination remains the job of the matrix package's own nodes
-// (MatSum/MatProduct/MatScale) — a scalar op over a partially-symbolic matrix stays
-// symbolic. Dimension mismatches and non-finite results stay symbolic, like x/0.
-
+/** Addition of two expressions: `a + b`.
+ *
+ *  Also evaluates concrete matrix operands via `_MatrixValue.add` (conforming dimensions)
+ *  and concrete complex-valued operands via `_Complex.add`.  Dimension mismatches stay
+ *  symbolic.
+ *
+ *  @param a left operand
+ *  @param b right operand
+ */
 case class Sum(a: _Expression, b: _Expression) extends _Operation:
   override def toString: String = s"($a + $b)"
   override def children: List[_Expression] = List(a, b)
@@ -32,6 +34,16 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
       case (ra, rb)                               => Left(Sum(ra.toExpression, rb.toExpression))
 
 
+/** Multiplication of two expressions: `a * b`.
+ *
+ *  Matrix cases are evaluated before the scalar zero short-circuit (`0 * M` yields the
+ *  zero matrix, not `_Number(0)`).  Matrix–matrix uses `_MatrixValue.multiply`;
+ *  scalar–matrix uses `_MatrixValue.scale`.  Complex closure is applied when both
+ *  operands are concrete values.
+ *
+ *  @param a left operand
+ *  @param b right operand
+ */
 case class Product(a: _Expression, b: _Expression) extends _Operation:
   override def toString: String = s"($a * $b)"
   override def children: List[_Expression] = List(a, b)
@@ -53,6 +65,15 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
       case (ra, rb) => Left(Product(ra.toExpression, rb.toExpression))
 
 
+/** Division of two expressions: `a / b`.
+ *
+ *  `x/0` and `0/0` stay symbolic.  `M / k` scales the matrix; `k / M` computes
+ *  `k · M⁻¹`; `M / N` computes `M · N⁻¹` (non-invertible or non-conforming → symbolic).
+ *  Complex closure applied when both operands are concrete.
+ *
+ *  @param a numerator
+ *  @param b denominator
+ */
 case class Ratio(a: _Expression, b: _Expression) extends _Operation:
   override def toString: String = s"($a / $b)"
   override def children: List[_Expression] = List(a, b)
@@ -80,8 +101,19 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
       case (ra, rb)                               => Left(Ratio(ra.toExpression, rb.toExpression))
 
 
-// Exponentiation is a binary operation like the others; the parser keeps it
-// right-associative (2 ^ 3 ^ 2 = 2 ^ (3 ^ 2)).
+/** Exponentiation: `base ^ exp`.
+ *
+ *  The parser keeps `^` right-associative (`2^3^2 = 2^(3^2)`).  When the real power is
+ *  undefined (NaN / infinite), falls back to the principal complex value — so
+ *  `(-2)^0.5 = i√2` and `(-8)^(1/3)` is the principal complex cube root.
+ *
+ *  For a square dense `_MatrixValue` base with an integer exponent, uses binary
+ *  exponentiation (`A^0 = I`, `A^-n = (A⁻¹)^n`).  Non-square, non-integer, or negative
+ *  power of singular matrix → stays symbolic.
+ *
+ *  @param base the base expression
+ *  @param exp  the exponent expression
+ */
 case class Power(base: _Expression, exp: _Expression) extends _Operation:
   override def toString: String = s"($base ^ $exp)"
   override def children: List[_Expression] = List(base, exp)
@@ -108,8 +140,15 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
         _Complex.pow(bv, ev).map(Right(_)).getOrElse(Left(Power(bv, ev)))
       case (rb, re)                               => Left(Power(rb.toExpression, re.toExpression))
 
-  // A^e for a square dense matrix and an integer exponent e. None (→ stay symbolic) when
-  // the base is non-square, e is not a whole number, or e < 0 with a singular base.
+  /** Raises a square dense matrix to an integer power `e`.
+   *
+   *  Returns `None` (→ stay symbolic) when the base is non-square, `e` is not a whole
+   *  number, or `e < 0` with a singular base.
+   *
+   *  @param m the square dense matrix base
+   *  @param e the exponent (must be an integer when this is called)
+   *  @return `Some(Right(_MatrixValue))` on success, `None` to stay symbolic
+   */
   private def matrixPower(m: _MatrixValue, e: Double): Option[Either[_Expression, _Value]] =
     if m.rows != m.cols || e.isInfinite || e != math.floor(e) then None
     else
@@ -117,7 +156,12 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       if k >= 0 then Some(powInt(m, k).guarded(this))
       else m.inverse.map(inv => powInt(inv, -k).guarded(this))
 
-  // Binary exponentiation for a positive/zero integer power; k = 0 yields the identity.
+  /** Binary exponentiation for a positive or zero integer power; `k = 0` yields the identity.
+   *
+   *  @param m the matrix to raise to the power
+   *  @param k the non-negative integer exponent
+   *  @return `m^k` computed via repeated squaring
+   */
   private def powInt(m: _MatrixValue, k: Long): _MatrixValue =
     var result = _MatrixValue.identity(m.rows)
     var factor = m

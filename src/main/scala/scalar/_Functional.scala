@@ -4,22 +4,40 @@ package scalar
 import core.*
 
 
-// Direction of approach for a limit.
+/** Direction of approach for a limit expression. */
 enum LimitDir:
-  case Both, FromRight, FromLeft
+  /** Two-sided limit (default). */
+  case Both
+  /** One-sided limit approaching from the right (`x -> p+`). */
+  case FromRight
+  /** One-sided limit approaching from the left (`x -> p-`). */
+  case FromLeft
 
 
-// Higher-order operators that take an expression (and a variable) and produce a new
-// one: differentiation and integration. The algorithms live in their own files
-// (Derive.scala, Integrate.scala, Compile.scala); these classes are just the AST nodes.
-//
-// children / rebuild: the binder variable (v) is excluded from children — it names
-// the variable of differentiation/integration, not a use — so traversals (Substitute,
-// Analysis) never recurse into it. _DefIntegral's children include lo and hi because
-// they are regular expression positions subject to substitution and dependsOn checks.
+/** Base class for higher-order operators that take an expression and a variable and
+ *  produce a new expression: differentiation, integration, and limits.
+ *
+ *  The algorithms live in their own files (`Derive.scala`, `Integrate.scala`,
+ *  `Limit.scala`); subclasses here are the AST nodes that carry the unevaluated form.
+ *
+ *  `children` / `rebuild` convention: the binder variable (`v` in `derive(e, v)`,
+ *  `integral(e, v)`, `limit(e, v, point)`) is excluded from `children` -- it names the
+ *  variable of differentiation/integration, not a use-site occurrence -- so traversals
+ *  ([[substitute]], [[dependsOn]]) never recurse into it.
+ *  `_DefIntegral`'s `children` include `low_limit` and `up_limit` because they are
+ *  regular expression positions subject to substitution and `dependsOn` checks.
+ */
 abstract class _Functional extends _Expression
 
 
+/** AST node for symbolic differentiation: `derive(e, v)` in the grammar.
+ *
+ *  `eval` delegates to [[derive]], and guards against the fixpoint case where [[derive]]
+ *  returns `this` (would loop forever): if the algorithm cannot reduce, stays symbolic.
+ *
+ *  @param e the expression to differentiate
+ *  @param v the differentiation variable (binder -- excluded from `children`)
+ */
 case class _Derivative(e: _Expression, v: _Variable) extends _Functional:
   override def toString: String = s"derive($e, $v)"
   override def children: List[_Expression] = List(e)
@@ -34,6 +52,14 @@ case class _Derivative(e: _Expression, v: _Variable) extends _Functional:
     else derivative.eval(env)
 
 
+/** AST node for symbolic indefinite integration: `integral(e, v)` in the grammar.
+ *
+ *  `eval` delegates to [[integrate]], guarded against the fixpoint where [[integrate]]
+ *  returns `this` (mirrors `_Derivative.eval`'s termination guard).
+ *
+ *  @param e the integrand
+ *  @param v the integration variable (binder -- excluded from `children`)
+ */
 case class _Integral(e: _Expression, v: _Variable) extends _Functional:
   override def toString: String = s"integral($e, $v)"
   override def children: List[_Expression] = List(e)
@@ -48,6 +74,18 @@ case class _Integral(e: _Expression, v: _Variable) extends _Functional:
     else antiderivative.eval(env)
 
 
+/** AST node for a definite integral: `integral(e, v, lo, hi)` in the grammar.
+ *
+ *  `eval` numerically integrates with composite Simpson's rule when `low_limit` and
+ *  `up_limit` fold to concrete numbers.  Step count is scaled by the interval length
+ *  and the session precision.  The fast path [[compile]]s the integrand to a
+ *  `Double => Double` closure; the fallback evaluates the tree per step.
+ *
+ *  @param e         the integrand
+ *  @param v         the integration variable (binder -- excluded from `children`)
+ *  @param low_limit lower bound of integration
+ *  @param up_limit  upper bound of integration
+ */
 case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up_limit: _Expression) extends _Functional:
   override def toString: String = s"integral($e, $v, $low_limit, $up_limit)"
   override def children: List[_Expression] = List(e, low_limit, up_limit)
@@ -62,7 +100,7 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
 
         compile(e, v, env) match
           case Some(f) =>
-            // Fast path: compiled closure — no per-step tree traversal or env allocation.
+            // Fast path: compiled closure -- no per-step tree traversal or env allocation.
             @annotation.tailrec
             def fastLoop(i: Int, acc: Double): Double =
               if i > n then acc
@@ -97,10 +135,17 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
       case _ => Left(this)
 
 
-// lim_{v → point[dir]} e
-// dir defaults to Both (two-sided). The limit algorithm lives in Limit.scala.
-// The binder variable v is excluded from children — same convention as _Derivative.
-// point IS in children because it may contain other free variables.
+/** AST node for a limit expression: `limit(e, v, point)` or `limit(e, v, point, +/-)`.
+ *
+ *  `eval` delegates to [[evalLimit]], guarded against the fixpoint where it returns
+ *  `this` (stays symbolic).  The binder variable `v` is excluded from `children`;
+ *  `point` is included because it may contain other free variables.
+ *
+ *  @param e     the expression whose limit to compute
+ *  @param v     the approach variable (binder -- excluded from `children`)
+ *  @param point the limit point
+ *  @param dir   the direction of approach (default: [[LimitDir.Both]])
+ */
 case class _Limit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir = LimitDir.Both) extends _Functional:
   override def toString: String = dir match
     case LimitDir.Both      => s"limit($e, $v, $point)"

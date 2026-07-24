@@ -5,29 +5,47 @@ import core.*
 import scala.math.{exp, log, log10, sin, cos, tan, asin, acos, atan}
 
 
+/** Base class for unary elementary functions (`exp`, `ln`, `sin`, `cos`, etc.).
+ *
+ *  Concrete subclasses share two helpers for distributing the function over a
+ *  matrix argument without importing the `matrix` package: `_MatrixValue` is a
+ *  `core` type, so these helpers stay within the `core -> scalar` layering.
+ */
 abstract class _Function extends _Expression:
-  // Element-wise application of a real scalar function over a dense matrix argument
-  // (issue 1.3: sin(A), exp(A), … distribute over the elements of A). _MatrixValue
-  // is a core type, so this stays within the core → scalar layering — no matrix
-  // package dependency. Reuses _MatrixValue.guarded so an out-of-domain element
-  // (e.g. ln of a negative entry → NaN) leaves the whole node symbolic rather than
-  // emitting a matrix with holes — the dense carrier cannot hold the complex value a
-  // per-element scalar fallback would produce.
+  /** Applies a real scalar function element-wise over a dense matrix argument.
+   *
+   *  An out-of-domain element (e.g. `ln` of a negative entry yields NaN) leaves the
+   *  whole node symbolic: the dense `_MatrixValue` carrier cannot hold the complex
+   *  fallback value that a per-element scalar result would produce.
+   *
+   *  @param mv the dense matrix to map over
+   *  @param f  the scalar function to apply to each element
+   *  @return `Right(_MatrixValue)` when all elements are finite, `Left(this)` otherwise
+   */
   protected def mapMatrix(mv: _MatrixValue, f: Double => Double): Either[_Expression, _Value] =
     _MatrixValue(mv.rows, mv.cols, mv.toVector.map(f).toArray).guarded(this)
 
-  // Element-wise application over a SYMBOLIC matrix argument (a _MatrixShaped whose
-  // entries have free variables, so it did not collapse to a dense _MatrixValue). The
-  // matrix is rebuilt with this single-argument function wrapped around each element and
-  // re-evaluated: numeric cells fold, symbolic cells stay as f(cell). Unlike mapMatrix,
-  // each cell degrades independently — an out-of-domain entry becomes its own complex or
-  // symbolic result instead of dropping the whole matrix. For a single-argument function,
-  // `rebuild(List(el))` reconstructs the function around one cell. (Multi-argument
-  // functions like LogBase override the matrix handling in their own eval.)
+  /** Applies this single-argument function element-wise over a symbolic matrix argument.
+   *
+   *  Rebuilds the matrix with this function wrapped around each cell and re-evaluates.
+   *  Unlike [[mapMatrix]], each cell degrades independently -- an out-of-domain cell
+   *  becomes its own complex or symbolic result rather than dropping the whole matrix.
+   *
+   *  @param m   the symbolic matrix (`_MatrixShaped`) whose cells are not yet concrete
+   *  @param env the evaluation environment
+   *  @return the element-wise result, with numeric cells folded and symbolic cells kept
+   */
   protected def mapMatrixExpr(m: _MatrixShaped, env: Environment): Either[_Expression, _Value] =
     m.rebuild(m.children.map(el => rebuild(List(el)))).eval(env)
 
 
+/** The natural exponential function `exp(e)`.
+ *
+ *  Accepts `_Number`, `_MatrixValue` (element-wise), and `_Complex` arguments.
+ *  Delegates to `_Complex.expc` for complex inputs.
+ *
+ *  @param e the exponent expression
+ */
 case class Exp(e: _Expression) extends _Function:
   override def toString: String = s"exp($e)"
   override def children: List[_Expression] = List(e)
@@ -42,7 +60,14 @@ case class Exp(e: _Expression) extends _Function:
       case other             => Left(Exp(other.toExpression))
 
 
-// Natural logarithm (base e). ln(x) in the grammar.
+/** The natural logarithm `ln(e)`.
+ *
+ *  For a negative real argument returns the principal complex value `ln|x| + i*pi`
+ *  via `_Complex.logc`; `ln(0)` stays symbolic.  Accepts `_MatrixValue` (element-wise)
+ *  and `_Complex` arguments.
+ *
+ *  @param e the argument expression
+ */
 case class Ln(e: _Expression) extends _Function:
   override def toString: String = s"ln($e)"
   override def children: List[_Expression] = List(e)
@@ -52,8 +77,8 @@ case class Ln(e: _Expression) extends _Function:
     e.eval(env) match
       case Right(_Number(x)) =>
         val r = log(x)
-        // ln of a negative number is now the principal complex value ln|x| + iπ;
-        // ln(0) is still undefined (_Complex.logc returns None) → stays symbolic.
+        // ln of a negative number is now the principal complex value ln|x| + i*pi;
+        // ln(0) is still undefined (_Complex.logc returns None) -> stays symbolic.
         if r.isNaN || r.isInfinite then
           _Complex.logc(_Number(x)).map(Right(_)).getOrElse(Left(this))
         else Right(_Number(r))
@@ -63,11 +88,16 @@ case class Ln(e: _Expression) extends _Function:
       case other             => Left(Ln(other.toExpression))
 
 
-// General-base logarithm. log(x, b) in the grammar; log(x) redirects to log(x, 10).
-// Evaluated via the change-of-base formula: log_b(x) = ln(x) / ln(b).
-// Complex closure is inherited: both ln(x) and ln(b) use _Complex.logc, so
-// log(-1, 10) = iπ / ln(10) and log(i, e) = iπ/2 are computed correctly.
-// Undefined forms (log(0, b), log(x, 1), log(x, 0)) stay symbolic.
+/** The general-base logarithm `log(e, base)`.
+ *
+ *  `log(x)` in the grammar is syntactic sugar for `LogBase(x, 10)`; `log(x, b)` for
+ *  `LogBase(x, b)`.  Evaluated via the change-of-base formula `ln(x) / ln(base)`.
+ *  Complex closure: `log(-1, 10) = i*pi / ln(10)` and similar are computed correctly.
+ *  Undefined forms (`log(0, b)`, `log(x, 1)`, `log(x, 0)`) stay symbolic.
+ *
+ *  @param e    the argument expression
+ *  @param base the logarithm base
+ */
 case class LogBase(e: _Expression, base: _Expression) extends _Function:
   override def toString: String = s"log($e, $base)"
   override def children: List[_Expression] = List(e, base)
@@ -90,6 +120,12 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function:
       case (re, rb) => Left(LogBase(re.toExpression, rb.toExpression))
 
 
+/** The sine function `sin(e)`.
+ *
+ *  Accepts `_Number`, `_MatrixValue` (element-wise), and `_Complex` arguments.
+ *
+ *  @param e the argument expression
+ */
 case class Sin(e: _Expression) extends _Function:
   override def toString: String = s"sin($e)"
   override def children: List[_Expression] = List(e)
@@ -104,6 +140,12 @@ case class Sin(e: _Expression) extends _Function:
       case other             => Left(Sin(other.toExpression))
 
 
+/** The cosine function `cos(e)`.
+ *
+ *  Accepts `_Number`, `_MatrixValue` (element-wise), and `_Complex` arguments.
+ *
+ *  @param e the argument expression
+ */
 case class Cos(e: _Expression) extends _Function:
   override def toString: String = s"cos($e)"
   override def children: List[_Expression] = List(e)
@@ -118,6 +160,13 @@ case class Cos(e: _Expression) extends _Function:
       case other             => Left(Cos(other.toExpression))
 
 
+/** The tangent function `tan(e)` (also parsed as `tg(e)`).
+ *
+ *  A real result that is NaN or infinite (at multiples of `pi/2`) stays symbolic.
+ *  Accepts `_MatrixValue` (element-wise) and `_Complex` arguments.
+ *
+ *  @param e the argument expression
+ */
 case class Tg(e: _Expression) extends _Function:
   override def toString: String = s"tan($e)"
   override def children: List[_Expression] = List(e)
@@ -134,6 +183,14 @@ case class Tg(e: _Expression) extends _Function:
       case other             => Left(Tg(other.toExpression))
 
 
+/** The arcsine function `asin(e)`.
+ *
+ *  Out-of-domain real arguments (`|x| > 1`) stay symbolic.  Complex inputs stay symbolic
+ *  (the "Asin convention" -- no complex extension is applied).
+ *  Accepts `_MatrixValue` (element-wise).
+ *
+ *  @param e the argument expression
+ */
 case class Asin(e: _Expression) extends _Function:
   override def toString: String = s"asin($e)"
   override def children: List[_Expression] = List(e)
@@ -149,6 +206,13 @@ case class Asin(e: _Expression) extends _Function:
       case other             => Left(Asin(other.toExpression))
 
 
+/** The arccosine function `acos(e)`.
+ *
+ *  Out-of-domain real arguments (`|x| > 1`) stay symbolic.  Complex inputs stay symbolic.
+ *  Accepts `_MatrixValue` (element-wise).
+ *
+ *  @param e the argument expression
+ */
 case class Acos(e: _Expression) extends _Function:
   override def toString: String = s"acos($e)"
   override def children: List[_Expression] = List(e)
@@ -164,6 +228,13 @@ case class Acos(e: _Expression) extends _Function:
       case other             => Left(Acos(other.toExpression))
 
 
+/** The arctangent function `atan(e)`.
+ *
+ *  Defined on all real inputs; accepts `_MatrixValue` (element-wise).
+ *  Complex inputs stay symbolic.
+ *
+ *  @param e the argument expression
+ */
 case class Atan(e: _Expression) extends _Function:
   override def toString: String = s"atan($e)"
   override def children: List[_Expression] = List(e)

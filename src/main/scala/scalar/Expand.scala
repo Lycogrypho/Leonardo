@@ -4,13 +4,15 @@ package scalar
 import core.*
 
 
-/**
- * Expand an expression by distributing multiplication over addition and
- * expanding (a+b)^n for positive integer exponents (capped at 20 to avoid
- * combinatorial blowup).
+/** Distributes `*` over `+` and expands `(a+b)^n` for positive integer exponents.
  *
- * Like terms are NOT combined; call simplify() afterwards to fold constants
- * and remove identity elements.
+ *  The power cap is 20 to avoid combinatorial blowup.  Like terms are NOT combined;
+ *  call [[simplify]] or [[simplifyFully]] afterwards to fold constants and remove
+ *  identity elements.  `_ElementWise` containers (matrices, equations) are
+ *  expanded element-wise.
+ *
+ *  @param e the expression to expand
+ *  @return the expanded expression (no like-term folding)
  */
 def expand(e: _Expression): _Expression = e match
   case _: _Number   => e
@@ -29,7 +31,7 @@ def expand(e: _Expression): _Expression = e match
 
   case Ratio(a, b) => Ratio(expand(a), expand(b))
 
-  // (sum)^n  via repeated multiplication — (sum)^k * (sum) at each step.
+  // (sum)^n  via repeated multiplication -- (sum)^k * (sum) at each step.
   case Power(base, _Number(n)) =>
     val ni = n.toLong
     val eb = expand(base)

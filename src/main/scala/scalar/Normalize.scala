@@ -4,28 +4,41 @@ package scalar
 import core.*
 
 
-// Polynomial normalization in a single variable — the like-term collection that
-// simplify deliberately does not attempt (see Simplify.scala). This is the
-// prerequisite of the equation solver: a linear equation is solvable exactly when
-// its lhs − rhs collects to a degree-1 coefficient vector.
-//
-// collect(e, v) extracts the dense coefficient list of e as a polynomial in v:
-// Some(Vector(c₀, c₁, …, cₙ)) with e = c₀ + c₁·v + … + cₙ·vⁿ, each cᵢ free of v
-// and simplified. Sums zip-add coefficient vectors, products convolve them,
-// constant denominators divide through, and positive literal integer powers
-// (capped like Expand at 20) expand by repeated convolution. Forms that are not
-// polynomial in v — sin(v), 1/v, 2^v, a non-integer power — yield None.
-//
-// Coefficients are normalized in v only: a coefficient like (a + 2a) stays as
-// simplify leaves it; recursive multivariate normal form is out of scope.
-//
-// normalize(e, v) rebuilds the collected polynomial as c₀ + c₁·v + c₂·v² + …
-// (zero terms dropped, unit coefficients elided), so 10x − 2x becomes 8x
-// regardless of tree shape. Non-polynomial expressions are returned unchanged,
-// and _ElementWise containers (matrices, equations) normalize per element/side.
-
+/** Polynomial normalization in a single variable.
+ *
+ *  This is the like-term collection that [[simplify]] deliberately does not attempt
+ *  (see `Simplify.scala`).  It is the prerequisite of the equation solver: a linear
+ *  equation is solvable exactly when its lhs - rhs collects to a degree-1 coefficient
+ *  vector.
+ *
+ *  [[collect]] extracts the dense coefficient list of `e` as a polynomial in `v`,
+ *  returning `Some(Vector(c0, c1, ..., cn))` with `e = c0 + c1*v + ... + cn*v^n`, each
+ *  `ci` free of `v` and simplified.  Sums zip-add coefficient vectors, products
+ *  convolve them, constant denominators divide through, and positive literal integer
+ *  powers (capped at 20 like [[expand]]) are expanded by repeated convolution.
+ *  Forms that are not polynomial in `v` -- `sin(v)`, `1/v`, `2^v`, a non-integer
+ *  power -- yield `None`.
+ *
+ *  Coefficients are normalized in `v` only: a coefficient like `(a + 2a)` stays as
+ *  [[simplify]] leaves it; recursive multivariate normal form is out of scope.
+ *
+ *  [[normalize]] rebuilds the collected polynomial as `c0 + c1*v + c2*v^2 + ...`
+ *  (zero terms dropped, unit coefficients elided), so `10x - 2x` becomes `8x`
+ *  regardless of tree shape.  Non-polynomial expressions are returned unchanged,
+ *  and `_ElementWise` containers (matrices, equations) normalize per element/side.
+ */
 private val MaxPowerExpansion = 20
 
+/** Extracts the dense coefficient vector of `e` as a polynomial in `v`.
+ *
+ *  Returns `Some(Vector(c0, c1, ..., cn))` where `e = c0 + c1*v + ... + cn*v^n` and
+ *  every `ci` is free of `v`.  Returns `None` when `e` is not polynomial in `v`
+ *  (e.g. `sin(v)`, `1/v`, `2^v`, a fractional power).
+ *
+ *  @param e the expression to analyse
+ *  @param v the polynomial variable
+ *  @return `Some` coefficient vector (length = degree + 1) or `None` for non-polynomial shapes
+ */
 def collect(e: _Expression, v: _Variable): Option[Vector[_Expression]] =
   val zero: _Expression = _Number(0)
 
@@ -47,14 +60,24 @@ def collect(e: _Expression, v: _Variable): Option[Vector[_Expression]] =
     case Power(_, _Number(0.0))                   => Some(Vector(_Number(1)))
     case Power(a, _Number(n)) if n >= 1 && n == n.toInt && n <= MaxPowerExpansion =>
       loop(a).map(ca => (1 until n.toInt).foldLeft(ca)((acc, _) => mul(acc, ca)))
-    case _                                        => None   // sin(v), 1/v, 2^v, v^2.5, …
+    case _                                        => None   // sin(v), 1/v, 2^v, v^2.5, ...
 
   loop(e).map(cs => trimTrailingZeros(cs.map(simplifyFully)))
 
+/** Drops trailing zero coefficients; always returns at least `Vector(_Number(0))`. */
 private def trimTrailingZeros(cs: Vector[_Expression]): Vector[_Expression] =
   val trimmed = cs.reverse.dropWhile(_ == _Number(0)).reverse
   if trimmed.isEmpty then Vector(_Number(0)) else trimmed
 
+/** Rebuilds `e` as a sum of like terms collected as a polynomial in `v`.
+ *
+ *  Non-polynomial expressions (where [[collect]] returns `None`) are returned unchanged.
+ *  `_ElementWise` containers (matrix literals, equations) are processed element-wise.
+ *
+ *  @param e the expression to normalise
+ *  @param v the polynomial variable
+ *  @return the equivalent expression with like terms folded (e.g. `10x - 2x` becomes `8x`)
+ */
 def normalize(e: _Expression, v: _Variable): _Expression = e match
   // element-wise containers (matrices, matrix sums, transpose, equations):
   // normalize each element / each side
