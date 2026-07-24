@@ -5,24 +5,34 @@ import core.*
 import scalar.*
 
 
-// Symbolic (closed-form) tier for the first-order IVP  y' = rhs(t, y),  y(t₀) = y₀.
-// Recognises the constant-coefficient linear shape  y' = a·y + b  where a and b are
-// free of the independent variable t (they may hold other free parameters). This
-// subsumes the pure-exponential case y' = a·y (b = 0) and the trivial y' = b (a = 0):
-//
-//   y' = a·y      →  y(t) = y₀·e^{a(t−t₀)}
-//   y' = b        →  y(t) = y₀ + b·(t−t₀)
-//   y' = a·y + b  →  y(t) = (y₀ + b/a)·e^{a(t−t₀)} − b/a        (a ≠ 0)
-//
-// The independent-variable slot t is filled with `target`, so the result is y(target)
-// directly (τ = target − t₀). Returns Some(expr) — numeric once target/y₀/t₀ fold,
-// symbolic (e.g. in a free target or a parameter) otherwise — or None when the shape
-// is not recognised, so the caller falls back to RK4.
-//
-// Linearity in y comes from `collect` (dense coefficients of rhs in y): a degree ≤ 1
-// result gives (b, a) directly, and a degree ≥ 2 result (or a form collect cannot
-// expand, e.g. sin(y)) yields None. The constant-coefficient requirement is enforced
-// by rejecting any a or b that depends on the independent variable.
+/** Closed-form tier for constant-coefficient linear first-order IVPs.
+ *
+ *  Recognises `y' = a*y + b` where `a` and `b` are free of the independent
+ *  variable `t` (they may hold other free parameters).  The three sub-cases are:
+ *
+ *  - `y' = a*y`      (b = 0): `y(t) = y0 * exp(a * (t - t0))`
+ *  - `y' = b`        (a = 0): `y(t) = y0 + b * (t - t0)`
+ *  - `y' = a*y + b`  (general): `y(t) = (y0 + b/a) * exp(a * (t - t0)) - b/a`
+ *
+ *  Returns `Some(expr)` where `expr` is the closed-form solution evaluated at
+ *  `target`.  When `target`, `y0`, and `t0` are concrete numbers the result folds
+ *  to a `_Number`; when they contain free variables the result stays symbolic.
+ *  Returns `None` when the shape is not recognised (caller falls back to RK4).
+ *
+ *  Linearity in `depVar` is checked via `scalar.collect`: a degree-1 result gives
+ *  the pair `(b, a)` directly; degree >= 2 or unrecognised forms (e.g. `sin(y)`)
+ *  return `None`.  The constant-coefficient requirement rejects any `a` or `b` that
+ *  `scalar.dependsOn` finds to depend on `indepVar`.
+ *
+ *  @param rhs      the right-hand side of the ODE `y' = rhs`
+ *  @param depVar   the dependent variable (`y`)
+ *  @param indepVar the independent variable (`t`)
+ *  @param t0       the initial time (may be symbolic)
+ *  @param y0       the initial value (may be symbolic)
+ *  @param target   the evaluation point (may be symbolic)
+ *  @param env      the evaluation environment
+ *  @return `Some(closed-form expression for y(target))`, or `None` if not recognised
+ */
 def solveODESymbolic(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
                      t0: _Expression, y0: _Expression, target: _Expression,
                      env: Environment): Option[_Expression] =
@@ -36,11 +46,11 @@ def solveODESymbolic(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
       else
         val aZero = simplifyFully(a) == _Number(0.0)
         val bZero = simplifyFully(b) == _Number(0.0)
-        val tau   = Sum(target, Product(_Number(-1), t0))       // target − t₀
+        val tau   = Sum(target, Product(_Number(-1), t0))       // target - t0
         val sol =
-          if bZero then Product(y0, Exp(Product(a, tau)))        // y₀·e^{a·τ}
-          else if aZero then Sum(y0, Product(b, tau))            // y₀ + b·τ
-          else                                                   // (y₀ + b/a)·e^{a·τ} − b/a
+          if bZero then Product(y0, Exp(Product(a, tau)))        // y0 * exp(a * tau)
+          else if aZero then Sum(y0, Product(b, tau))            // y0 + b * tau
+          else                                                   // (y0 + b/a) * exp(a * tau) - b/a
             val boa = Ratio(b, a)
             Sum(Product(Sum(y0, boa), Exp(Product(a, tau))), Product(_Number(-1), boa))
         Some(simplifyFully(sol))

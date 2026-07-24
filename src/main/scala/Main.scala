@@ -3,6 +3,12 @@ package it.grypho.scala.leonardo
 import parser.Parser
 
 
+/** Demo entry point: parses a fixed list of expressions and prints each parse result.
+ *
+ *  Run with `sbt run` (selects this main when prompted) or
+ *  `sbt "runMain it.grypho.scala.leonardo.main"`.  For the interactive REPL use
+ *  `sbt "runMain it.grypho.scala.leonardo.cli.repl"` instead.
+ */
 @main def main(): Unit =
   val expressions = List(
     "1",

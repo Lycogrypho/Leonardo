@@ -10,86 +10,57 @@ import transform.*
 import ode.*
 
 
-/**
- * Recursive descent parser for mathematical expressions.
+/** Recursive-descent parser for Leonardo mathematical expressions.
  *
- * Grammar:
- *   topLevel      ::= equationExpr
- *   equationExpr  ::= expr ["=" expr | "==" expr]  -- non-associative; "=" → _Equation,
- *                                                   -- "==" → _EqualityCheck (always _Bool).
- *                                                   -- "(a = b)" is now valid; "a = b = c" is not.
- *   expr          ::= ["+" | "-"] simpleExpr
- *   simpleExpr  ::= term (("+"|"-") term)*
- *   term        ::= signedPower (("*"|"/") signedPower | "" power)*
- *                                                    -- "" enables implicit multiplication;
- *                                                    -- its operand is UNSIGNED (see below)
- *   signedPower ::= ["+" | "-"] power                -- signed operand after an explicit operator
- *   power       ::= factor ["^" signedPower]         -- right-associative; binds tighter than * /
- *   factor      ::= function | functional | matrix | value | "(" equationExpr ")"
- *   matrix      ::= "[" matrixRow ("," matrixRow)* "]"   -- rows must be equally long
- *   matrixRow   ::= "[" equationExpr ("," equationExpr)* "]"
- *   function    ::= "exp(" expr ")" | "log(" expr ")" | "ln(" expr ")" | "sin(" expr ")"
- *                 | "cos(" expr ")" | "tan(" expr ")" | "tg(" expr ")" | "asin(" expr ")" | "acos(" expr ")" | "atan(" expr ")"
- *                 | "transpose(" expr ")" | "det(" expr ")" | "inv(" expr ")" | "pow(" expr "," expr ")"
- *                 | "eye(" expr ")"                        -- n×n identity matrix
- *                 | "zeros(" expr ["," expr] ")"           -- zero matrix (square or r×c)
- *                 | "lu(" expr ")"                         -- LU decomp → [[L, U, P]]
- *                 | "qr(" expr ")"                         -- QR decomp → [[Q, R]]
- *                 | "eigen(" expr ")"                      -- eigenvalue decomp → [[l1, l2, ...]]
- *                 | "eig(" expr ")"                        -- spectral decomp → [[V, D]] (A·V = V·D)
- *                 | "jordan(" expr ")"                     -- Jordan decomp → [[P, J]] (A = P·J·P^-1)
- *                 | "step(" expr ")"                       -- Heaviside unit step: 0 for arg<0, 1 for arg>=0
- *   functional  ::= "derive(" expr "," variable ")"
- *                 | "integral(" expr "," variable ")"
- *                 | "integral(" expr "," variable "," signedValue "," signedValue ")"
- *                 | "solve(" equationExpr "," variable ")"   -- equationExpr may be an inline
- *                                                            -- "lhs = rhs" or a named variable
- *                 | "solveSystem(" equationExpr "," variable ("," variable)* ")"
- *                                                            -- equationExpr is a matrix of
- *                                                            -- equations [[eq1, eq2, …]]
- *   signedValue ::= ["+" | "-"] value
- *   value       ::= number | constant | variable
- *   number      ::= unsigned floating literal       -- a '-' is ALWAYS an operator, never
- *                                                    -- part of the token; scientific-notation
- *                                                    -- exponent signs ("3E-5") are unaffected
- *   constant    ::= "pi" | "e" | "i"      -- built-in literals (word-boundary guarded);
- *                                         -- "i" is the imaginary unit → _Complex(0, 1)
- *   variable    ::= [a-zA-Z][a-zA-Z0-9_]*  -- except ReservedWords (functions, functionals,
- *                                         -- constants, REPL commands); exact match only;
- *                                         -- underscore allowed after the first char (x_1, alpha_hat)
+ *  All grammar productions are `lazy val` so the combinator graph and compiled
+ *  regexes are built once on first access and reused for every subsequent
+ *  `parse` call.  Only `guardedExpr` and `guardedSignedPower` remain `def`
+ *  because they capture per-call depth state via a `ThreadLocal` counter.
  *
- * Sign handling: a signed literal token would let implicit multiplication swallow
- * "3-2" as 3 * (-2) instead of subtraction (and "e-3" as e * (-3)). So the number
- * token is unsigned, and the sign is grammar: allowed where an explicit operator
- * precedes (start of expression, after "+ - * / ^" and in integral limits), and
- * deliberately NOT allowed as the operand of implicit multiplication.
+ *  Grammar summary:
+ *  {{{
+ *  topLevel     ::= equationExpr
+ *  equationExpr ::= expr [("==" | "=") expr]   -- "==" -> _EqualityCheck; "=" -> _Equation
+ *  expr         ::= ["+" | "-"] simpleExpr
+ *  simpleExpr   ::= term (("+" | "-") term)*
+ *  term         ::= signedPower (("*" | "/") signedPower | "" power)*
+ *  signedPower  ::= ["+" | "-"] power
+ *  power        ::= factor ["^" signedPower]    -- right-associative
+ *  factor       ::= function | functional | matrix | value | "(" equationExpr ")"
+ *  matrix       ::= "[" matrixRow ("," matrixRow)* "]"
+ *  matrixRow    ::= "[" equationExpr ("," equationExpr)* "]"
+ *  }}}
  *
- * Matrix dispatch: operand types are unknown at parse time, so + and * normally
- * build the scalar Sum/Product nodes (whose eval also computes CONCRETE matrix
- * values — see scalar._Operation). But when a matrix is syntactically visible
- * (a matrix literal, transpose(...), or a node built from one), the fold dispatches
- * structurally: + → MatSum, matrix*matrix → MatProduct, scalar*matrix → MatScale,
- * -M → MatScale(-1, M). This keeps the round-trip invariant: the matrix nodes print
- * as "(a + b)" / "(a * b)", and re-parsing recovers the same node type from the
- * shape of the operands.
+ *  Sign handling: the number token is unsigned so that implicit multiplication
+ *  does not swallow `3-2` as `3 * (-2)`.  A sign is allowed where an explicit
+ *  operator precedes (start of expression, after `+`, `-`, `*`, `/`, `^`, and
+ *  in `integral` limits) but deliberately not in the operand of implicit `*`.
  *
- * Performance: all grammar productions are `lazy val` so the combinator graph and
- * compiled regexes are built once on first access and reused for every subsequent
- * `parse` call. Only `guardedExpr` and `guardedSignedPower` remain `def` because
- * they capture per-call depth state via a ThreadLocal counter.
+ *  Matrix dispatch: when a syntactically visible matrix operand appears, `+`/`-`/`*`
+ *  build `MatSum`/`MatProduct`/`MatScale` rather than `Sum`/`Product`.  `M * y`
+ *  with a non-literal `y` builds `MatProduct(M, y)` (not `MatScale(y, M)`) because
+ *  `y` may be a variable bound to a matrix at eval time, and swapping would silently
+ *  commute the product.  Only a literal `_Number` right operand is known to commute.
+ *
+ *  Nesting guard: a `ThreadLocal` depth counter is incremented at every parenthesised
+ *  sub-expression and at every `^` exponent; the parser returns a failure rather than
+ *  blowing the JVM stack when the depth reaches `MaxDepth`.
  */
 object Parser extends JavaTokenParsers:
 
-  // Words that can never be parsed as a variable name: the function/functional
-  // vocabulary and constants of the grammar itself, plus the REPL command words —
-  // reserved here too so a session binding can never shadow (or be shadowed by)
-  // a command. Bare "sin" or "simplify" is a parse error, not a variable; names
-  // merely starting with a reserved word ("sina", "evalx") stay legal.
+  /** Words that can never be used as a variable name.
+   *
+   *  Includes every function and functional keyword of the grammar, the built-in
+   *  constants (`pi`, `e`, `i`, `inf`), and the REPL command words, so a session
+   *  binding can never shadow or be shadowed by a command.  Bare `sin` or `simplify`
+   *  is a parse error, not a variable; names merely starting with a reserved word
+   *  (`sina`, `evalx`) stay legal.
+   */
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
-    "pi", "e", "i", "inf",                               // constants (inf = +∞)
+    "pi", "e", "i", "inf",                               // constants (inf = +inf)
     "simplify", "expand", "eval", "env", "vars", "precision",
     "unset", "samples", "colors", "pretty", "help", "quit", "exit" // REPL commands
   )
@@ -98,6 +69,7 @@ object Parser extends JavaTokenParsers:
   private val depth = new ThreadLocal[Int]:
     override def initialValue(): Int = 0
 
+  /** Guards `equationExpr` against unbounded parenthesis nesting. */
   private def guardedExpr: Parser[_Expression] = Parser { in =>
     val d = depth.get()
     if d >= MaxDepth then Failure(s"expression exceeds maximum nesting depth of $MaxDepth", in)
@@ -107,10 +79,12 @@ object Parser extends JavaTokenParsers:
       finally depth.set(d)
   }
 
-  // The power → signedPower → power right-recursion never passes through guardedExpr
-  // (which is only entered via explicit parentheses and function argument lists), so
-  // 2^-2^-2^-… bypasses the MaxDepth check and blows the JVM stack. This wrapper
-  // increments the depth counter at every ^ so the same cap applies to both paths.
+  /** Guards `signedPower` against unbounded `^` chaining.
+   *
+   *  The `power -> signedPower -> power` right-recursion bypasses `guardedExpr`
+   *  (which is only entered via explicit parentheses and function argument lists),
+   *  so `2^-2^-2^-...` would blow the JVM stack without this wrapper.
+   */
   private def guardedSignedPower: Parser[_Expression] = Parser { in =>
     val d = depth.get()
     if d >= MaxDepth then Failure(s"expression exceeds maximum nesting depth of $MaxDepth", in)
@@ -120,19 +94,20 @@ object Parser extends JavaTokenParsers:
       finally depth.set(d)
   }
 
-  // A node is matrix-shaped when a matrix is syntactically visible in it: a matrix
-  // literal or one of the matrix operation nodes (MatSum, MatProduct, MatScale,
-  // Transpose). Drives the structural dispatch of + - * and unary minus.
+  /** Returns `true` when `e` is syntactically a matrix (literal or matrix operation). */
   private def isMatrixShaped(e: _Expression): Boolean =
     e.isInstanceOf[_Matrix] || e.isInstanceOf[_MatrixOperation]
 
+  /** Builds a sum node, choosing `MatSum` when either operand is matrix-shaped. */
   private def mkSum(x: _Expression, y: _Expression): _Expression =
     if isMatrixShaped(x) || isMatrixShaped(y) then MatSum(x, y) else Sum(x, y)
 
-  // "M * y" with a non-literal y builds MatProduct(x, y) rather than MatScale(y, x):
-  // y may be a variable bound to a matrix at eval time, and swapping the operands
-  // into MatScale would silently commute a matrix product (issue 1.2). A literal
-  // number is the only right operand known to commute at parse time.
+  /** Builds a product node, dispatching to `MatProduct` / `MatScale` / `Product`.
+   *
+   *  `M * y` with a non-literal `y` builds `MatProduct(M, y)` rather than
+   *  `MatScale(y, M)`: `y` may be a variable bound to a matrix at eval time,
+   *  and swapping the operands would silently commute the product.
+   */
   private def mkMul(x: _Expression, y: _Expression): _Expression =
     (isMatrixShaped(x), isMatrixShaped(y)) match
       case (true, true)   => MatProduct(x, y)
@@ -142,14 +117,16 @@ object Parser extends JavaTokenParsers:
         case _          => MatProduct(x, y)
       case (false, false) => Product(x, y)
 
+  /** Negates `e`, choosing `MatScale(-1, e)` when `e` is matrix-shaped. */
   private def mkNeg(e: _Expression): _Expression =
     if isMatrixShaped(e) then MatScale(_Number(-1), e) else Product(_Number(-1), e)
 
-  // A negated literal folds to a negative _Number, so "-2".toString is "-2.0"
-  // (a re-parsable fixpoint) rather than "(-1.0 * 2.0)". Likewise the sign folds
-  // into an existing leading numeric coefficient — "-3k" is (-3.0 * k), and
-  // "(-1.0 * M)" re-parses to MatScale(-1, M) rather than a doubly-wrapped
-  // MatScale(-1, MatScale(1, M)) — keeping negated products round-trip stable.
+  /** Applies `sign` to `e`, folding negation into leading numeric coefficients.
+   *
+   *  A negated literal folds to a negative `_Number` (`"-2"` -> `_Number(-2.0)`),
+   *  and the sign folds into an existing leading coefficient (`"-3k"` -> `(-3.0 * k)`),
+   *  keeping negated products round-trip stable.
+   */
   private def applySign(sign: Option[String], e: _Expression): _Expression = (sign, e) match
     case (Some("-"), _Number(n))                => _Number(-n)
     case (Some("-"), Product(_Number(k), rest)) => Product(_Number(-k), rest)
@@ -157,11 +134,13 @@ object Parser extends JavaTokenParsers:
     case (Some("-"), _)                         => mkNeg(e)
     case _                                      => e
 
-  // "==" is tried before "=" so that the two-character operator is not shadowed by the
-  // one-character one. Non-associative: only one optional relation per expression, so
-  // "a = b = c" is a parse error (the trailing "= c" is rejected by parseAll / the
-  // surrounding rule). "(a = b)" is now a valid sub-expression — use it to bind a
-  // named equation: "h := x = 5", then "solve(h, x)".
+  /** Top-level grammar: an optional equation or equality relation.
+   *
+   *  `==` is tried before `=` so the two-character operator is not shadowed.
+   *  Non-associative: only one optional relation per expression, so `a = b = c`
+   *  is a parse error.  `(a = b)` is valid as a sub-expression so a named
+   *  equation can be bound: `h := x = 5`, then `solve(h, x)`.
+   */
   lazy val equationExpr: Parser[_Expression] = expr ~ opt(("==" | "=") ~ expr) ^^
     {
       case l ~ Some("==" ~ r) => _EqualityCheck(l, r)
@@ -169,11 +148,13 @@ object Parser extends JavaTokenParsers:
       case l ~ None           => l
     }
 
+  /** An expression with an optional leading sign. */
   lazy val expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
     {
       case sign ~ e => applySign(sign, e)
     }
 
+  /** A sequence of additive terms. */
   lazy val simpleExpr: Parser[_Expression] = term ~ rep(("+" | "-") ~ term) ^^
     {
       case left ~ rights => rights.foldLeft(left)
@@ -183,8 +164,10 @@ object Parser extends JavaTokenParsers:
         }
     }
 
-  // Explicit * and / take a signed right operand (3 * -x); implicit multiplication
-  // takes an unsigned one, so that "3-2" binds as subtraction, never as 3 * (-2).
+  /** Explicit `*` and `/` take a signed right operand; implicit multiplication takes an unsigned one.
+   *
+   *  This keeps `3-2` binding as subtraction rather than `3 * (-2)`.
+   */
   lazy val term: Parser[_Expression] = signedPower ~ rep(("*" | "/") ~ signedPower | "" ~ power) ^^
     {
       case left ~ rights => rights.foldLeft(left)
@@ -195,27 +178,23 @@ object Parser extends JavaTokenParsers:
         }
     }
 
-  // Signed operand for explicit-operator positions: start of a term, after * / ^
-  // and after binary + -. Enables 3 * -x, 3 + -x, 2^-x, 3 - -2.
+  /** A signed operand for positions after an explicit operator (`3 * -x`, `2^-x`). */
   lazy val signedPower: Parser[_Expression] = opt("+" | "-") ~ power ^^
     {
       case sign ~ e => applySign(sign, e)
     }
 
-  // Right-associative exponentiation: 2 ^ 3 ^ 2 parses as 2 ^ (3 ^ 2).
-  // Binds tighter than * and /; use parentheses for a compound base or exponent.
-  // The exponent uses guardedSignedPower so that deep ^ chains are caught by the same
-  // MaxDepth cap as deeply parenthesised expressions.
+  /** Right-associative exponentiation: `2 ^ 3 ^ 2` parses as `2 ^ (3 ^ 2)`. */
   lazy val power: Parser[_Expression] = factor ~ opt("^" ~> guardedSignedPower) ^^
     {
       case b ~ Some(e) => Power(b, e)
       case b ~ None    => b
     }
 
+  /** A grammar factor: function, functional, matrix literal, value, or parenthesised expression. */
   lazy val factor: Parser[_Expression] = function | functional | matrixLiteral | value | "(" ~> guardedExpr <~ ")"
 
-  // Matrix literal: [[a, b], [c, d]] — rows of full expressions, all equally long
-  // (a row vector is [[1, 2]]). Ragged rows are a parse error, not an exception.
+  /** A matrix literal: `[[a, b], [c, d]]`.  All rows must have the same length. */
   lazy val matrixLiteral: Parser[_Expression] =
     "[" ~> rep1sep(matrixRow, ",") <~ "]" ^? (
       { case rows if rows.forall(_.size == rows.head.size) =>
@@ -223,8 +202,10 @@ object Parser extends JavaTokenParsers:
       _ => "matrix rows must all have the same length"
     )
 
+  /** A single row of a matrix literal. */
   lazy val matrixRow: Parser[List[_Expression]] = "[" ~> rep1sep(guardedExpr, ",") <~ "]"
 
+  /** All mathematical function keywords and their AST mappings. */
   lazy val function: Parser[_Expression] =
     "exp(" ~> guardedExpr <~ ")"                                              ^^ Exp.apply      |
     "ln("  ~> guardedExpr <~ ")"                                              ^^ Ln.apply       |
@@ -256,12 +237,13 @@ object Parser extends JavaTokenParsers:
     "jordan(" ~> guardedExpr <~ ")"                                       ^^ _JordanDecomposition.apply    |
     "step("   ~> guardedExpr <~ ")"                                       ^^ _Heaviside.apply
 
-  // Direction token for limit(expr, var, point, +/-): consumed after the point comma.
+  /** Direction token for `limit(expr, var, point, +/-)`. */
   private lazy val limitDir: Parser[LimitDir] = ("+" | "-") ^^ {
     case "+" => LimitDir.FromRight
     case "-" => LimitDir.FromLeft
   }
 
+  /** All functional keywords (operators over bound variables) and their AST mappings. */
   lazy val functional: Parser[_Expression] =
     "limit("  ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ opt("," ~> limitDir) <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ pt ~ None      => _Limit(e, v, pt, LimitDir.Both)
@@ -284,37 +266,54 @@ object Parser extends JavaTokenParsers:
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
-    // guardedExpr here calls equationExpr, so "solve(x = 5, x)" and "solve(h, x)" both work
+    // guardedExpr calls equationExpr, so "solve(x = 5, x)" and "solve(h, x)" both work.
     "solve("    ~> guardedExpr ~ "," ~ variable <~ ")"                                            ^^ { case e ~ _ ~ v             => _Solve(e, v)                 } |
-    // equations is a matrix of _Equation nodes; variables are listed after the first comma
+    // equations is a matrix of _Equation nodes; variables are listed after the first comma.
     "solveSystem(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")"                          ^^ { case eqs ~ _ ~ vars         => _SolveSystem(eqs, vars)      }
 
-  // Integral limits accept a sign ("integral(x, x, -1, 1)", lower limit "-pi")
-  // without opening the limit position to full sub-expressions.
+  /** A signed value for integral-limit positions (`integral(x, x, -1, 1)`). */
   lazy val signedValue: Parser[_Expression] = opt("+" | "-") ~ value ^^
     {
       case sign ~ e => applySign(sign, e)
     }
 
+  /** A bare value: number, constant, or variable. */
   lazy val value:    Parser[_Expression] = number | constant | variable
-  // Unsigned by design — see the sign-handling note in the header. The [eE][+-]?
-  // exponent keeps scientific notation ("3E-5", "2e-3") intact.
+
+  /** An unsigned floating-point literal.
+   *
+   *  Unsigned by design — a `-` is always a grammar operator, never part of the token.
+   *  Scientific notation exponent signs (`3E-5`) are handled by the regex and are unaffected.
+   */
   lazy val number:   Parser[_Number]    = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s => _Number(s.toDouble) }
-  // Negative lookahead prevents "pine" from matching as pi + ne, or "exp" as e + xp.
-  // "i" is the imaginary unit; "3i" is implicit multiplication (3 * i) → _Complex(0, 3),
-  // and "im"/"i1" stay ordinary variables (guarded like "e"/"pi").
+
+  /** The built-in constants `pi`, `e`, `i`, and `inf`, all word-boundary guarded.
+   *
+   *  `i` is the imaginary unit (`_Complex(0, 1)`); `3i` is implicit multiplication
+   *  yielding `_Complex(0, 3)`, while `im` or `i1` stay ordinary variables.
+   */
   lazy val constant: Parser[_Value]     =
     """pi(?![a-zA-Z0-9])""".r  ^^^ _Number(math.Pi)                |
     """e(?![a-zA-Z0-9])""".r   ^^^ _Number(math.E)                 |
     """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)               |
     """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity)
-  // Reserved words are rejected wholesale — the regex is greedy, so "simplify"
-  // cannot fall back to variable "simplif" times variable "y".
+
+  /** A user-defined variable name.
+   *
+   *  Matches `[a-zA-Z][a-zA-Z0-9_]*` and rejects any string in `ReservedWords`.
+   *  The regex is greedy so `simplify` cannot fall back to variable `simplif` times `y`.
+   */
   lazy val variable: Parser[_Variable]  = """[a-zA-Z][a-zA-Z0-9_]*""".r ^? (
     { case s if !ReservedWords.contains(s) => _Variable(s) },
     s => s"'$s' is a reserved word and cannot be used as a variable"
   )
 
+  /** The top-level production: a full equation expression. */
   lazy val topLevel: Parser[_Expression] = equationExpr
 
+  /** Parses `str` and returns a `ParseResult` containing the AST or an error message.
+   *
+   *  @param str the input string to parse
+   *  @return `Success(expr)` on success, or `Failure`/`Error` with a description
+   */
   def parse(str: String): ParseResult[_Expression] = parseAll(topLevel, str)

@@ -6,19 +6,30 @@ import org.jline.utils.{AttributedString, AttributedStringBuilder, AttributedSty
 
 import java.util.regex.Pattern
 
-/**
- * Colour mapping for one syntactic role in the Leonardo prompt.
- * `Plain` sets every field to `AttributedStyle.DEFAULT`, disabling all colouring.
+/** Colour mapping for one syntactic role in the Leonardo prompt.
+ *
+ *  Each field is an `AttributedStyle` applied to a matching token class during
+ *  highlighting.  `Plain` sets every field to `AttributedStyle.DEFAULT`, disabling
+ *  all colouring.
+ *
+ *  @param command  REPL command keywords (`simplify`, `derive`, `colors`, ...)
+ *  @param function mathematical function names (`sin`, `cos`, `exp`, ...)
+ *  @param constant named constants (`pi`, `e`, `i`)
+ *  @param number   numeric literals
+ *  @param operator arithmetic operators and `:=`
+ *  @param equation bare `=` (equation relation)
+ *  @param paren    parentheses and square brackets
+ *  @param variable user identifiers and everything else
  */
 case class ColorScheme(
-  command:  AttributedStyle,   // REPL command keywords (simplify, derive, colors, …)
-  function: AttributedStyle,   // mathematical function names (sin, cos, exp, …)
-  constant: AttributedStyle,   // named constants (pi, e, i)
-  number:   AttributedStyle,   // numeric literals
-  operator: AttributedStyle,   // arithmetic operators and :=
-  equation: AttributedStyle,   // bare = (equation relation)
-  paren:    AttributedStyle,   // parentheses and square brackets
-  variable: AttributedStyle    // user identifiers and everything else
+  command:  AttributedStyle,
+  function: AttributedStyle,
+  constant: AttributedStyle,
+  number:   AttributedStyle,
+  operator: AttributedStyle,
+  equation: AttributedStyle,
+  paren:    AttributedStyle,
+  variable: AttributedStyle
 )
 
 object ColorScheme:
@@ -58,12 +69,18 @@ object ColorScheme:
     variable = AttributedStyle.DEFAULT
   )
 
+  /** All named schemes, keyed by the string accepted by the `colors` command. */
   val All: Map[String, ColorScheme] = Map(
     "dark"  -> Dark,
     "light" -> Light,
     "none"  -> Plain
   )
 
+  /** Looks up a scheme by name, falling back to `Dark` for unknown names.
+   *
+   *  @param name the scheme name (`"dark"`, `"light"`, or `"none"`)
+   *  @return the matching `ColorScheme`, or `Dark` if `name` is not recognised
+   */
   def named(name: String): ColorScheme = All.getOrElse(name, Dark)
 
 
@@ -91,6 +108,13 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
   private val WordPat = raw"[a-zA-Z][a-zA-Z0-9_]*".r
 
+  /** Colours `buffer` and returns an `AttributedString` for display.
+   *
+   *  May be called directly in tests and tooling without a `LineReader`.
+   *
+   *  @param buffer the raw input string to highlight
+   *  @return the attributed (coloured) string ready for JLine output
+   */
   def highlightBuffer(buffer: String): AttributedString =
     val cs         = ColorScheme.named(schemeName())
     val sb         = new AttributedStringBuilder()

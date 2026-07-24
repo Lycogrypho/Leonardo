@@ -13,38 +13,40 @@ import org.jline.reader.{EndOfFileException, LineReader, LineReaderBuilder, User
 import org.jline.terminal.TerminalBuilder
 
 
-/**
- * Interactive command-line session over the Leonardo library.
+/** Interactive command-line session over the Leonardo library.
  *
- * Session state lives outside the library's Environment because the two kinds of
- * assignment differ: a constant right-hand side becomes a numeric binding (a _Value
- * the Environment can hold), while a right-hand side with free variables becomes a
- * named definition (a symbolic _Expression, which the Environment deliberately
- * cannot hold). Definitions are late-bound: they are substituted into input at use
- * time, so redefining f also changes any g defined in terms of f.
+ *  Session state lives outside the library's `Environment` because the two kinds
+ *  of assignment differ: a constant right-hand side becomes a numeric binding (a
+ *  `_Value` the `Environment` can hold), while a right-hand side with free
+ *  variables becomes a named definition (a symbolic `_Expression`, which the
+ *  `Environment` deliberately cannot hold).  Definitions are late-bound: they are
+ *  substituted into input at use time, so redefining `f` also changes any `g`
+ *  defined in terms of `f`.
  *
- * Assignment uses ":=" (CAS convention): bare "=" always parses as an _Equation,
- * so "x = 2*x + 1" is a relation to evaluate, never a binding. Session scripts
- * (:save) emit ":=" and old "="-style scripts are NOT accepted — re-create them.
+ *  Assignment uses `:=` (CAS convention): bare `=` always parses as an
+ *  `_Equation`, so `x = 2*x + 1` is a relation to evaluate, never a binding.
+ *  Session scripts (`:save`) emit `:=` and old `=`-style scripts are not accepted.
  *
- * Commands:
- *   x := 3.001           bind a value (constant right-hand side)
- *   f := sin(x) + x      define a function (right-hand side with free variables)
- *   h := lhs = rhs       bind a named equation (can be passed to solve(h, x))
- *   g := consolidate(e)  freeze the simplified+evaluated result of e into g (not late-bound)
- *   lhs = rhs            equation: true/false when concrete; solvable via solve()
- *   lhs == rhs           equality check: evaluates to bool but not solvable
- *   <expression>         evaluate, e.g.  f + 1  or  derive(f, x)
- *   simplify <expr>      structural simplification, no numeric evaluation
- *   expand <expr>        distribute products over sums
- *   precision <n>        set decimal precision
- *   pretty on | off      multi-line, column-aligned matrix display (default: off)
- *   env                  list precision, bindings, and definitions
- *   unset <name>         remove a binding or definition
- *   :load <file>         run a session script (file IO handled by the read loop)
- *   :save <file>         write current state to a replayable script (read loop)
- *   help                 this summary
- *   quit | exit          leave (handled by the read loop)
+ *  Commands:
+ *  {{{
+ *  x := 3.001           bind a value (constant right-hand side)
+ *  f := sin(x) + x      define a function (right-hand side with free variables)
+ *  h := lhs = rhs       bind a named equation (can be passed to solve(h, x))
+ *  g := consolidate(e)  freeze the simplified+evaluated result of e into g (not late-bound)
+ *  lhs = rhs            equation: true/false when concrete; solvable via solve()
+ *  lhs == rhs           equality check: evaluates to bool but not solvable
+ *  <expression>         evaluate, e.g.  f + 1  or  derive(f, x)
+ *  simplify <expr>      structural simplification, no numeric evaluation
+ *  expand <expr>        distribute products over sums
+ *  precision <n>        set decimal precision
+ *  pretty on | off      multi-line, column-aligned matrix display (default: off)
+ *  env                  list precision, bindings, and definitions
+ *  unset <name>         remove a binding or definition
+ *  :load <file>         run a session script (file IO handled by the read loop)
+ *  :save <file>         write current state to a replayable script (read loop)
+ *  help                 this summary
+ *  quit | exit          leave (handled by the read loop)
+ *  }}}
  */
 final class Session:
   private val MaxPrecision = 15
@@ -57,9 +59,10 @@ final class Session:
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
 
+  /** Returns the name of the active colour scheme (`"dark"`, `"light"`, or `"none"`). */
   def currentColorScheme: String = colorSchemeName
 
-  // Rebuilt per command from the immutable Environment constructor.
+  /** Builds a fresh `Environment` from the current precision and numeric bindings. */
   private def env: Environment = new Environment(precision, bindings)
 
   private val emptyEnv = new Environment()
@@ -74,6 +77,14 @@ final class Session:
   // leaves valid tokens for <var> <lo> <hi> and an optional <n> at the tail.
   private val samplesRegex = """^(.+?)\s+([a-zA-Z][a-zA-Z0-9_]*)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)(?:\s+(\d+))?$""".r
 
+  /** Executes one line of input and returns the display string.
+   *
+   *  Dispatches to the appropriate command handler or falls through to expression
+   *  evaluation.  Returns an empty string for blank input.
+   *
+   *  @param line the raw input line (not yet trimmed)
+   *  @return the result to print, or `""` for silent commands
+   */
   def execute(line: String): String = line.trim match
     case ""                     => ""
     case "help" | "?"           => Session.help
@@ -110,40 +121,41 @@ final class Session:
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
     case expression             => withParsed(expression)(evaluate)
 
-  // Serialize a _Value for a :save script in a way that round-trips exactly.
-  // _Number uses the raw Double (d.toString), not the display-rounded toString, so
-  // no digits are lost regardless of session precision.  _Bool is written as a
-  // concrete equation (0 = 0 / 0 = 1) rather than the bare word "true"/"false",
-  // which the grammar would re-parse as a free variable named 'true'/'false'.
+  /** Serialises a `_Value` for a `:save` script so that it round-trips exactly.
+   *
+   *  `_Number` uses the raw `Double` (`d.toString`), not the display-rounded value, so
+   *  no digits are lost regardless of session precision.  `_Bool` is written as a
+   *  concrete equation (`0 = 0` / `0 = 1`) rather than the bare words `true`/`false`,
+   *  which the grammar re-parses as free variables.
+   */
   private def serializeValue(v: _Value): String = v match
     case _Number(d) => d.toString
     case _Bool(b)   => if b then "0 = 0" else "0 = 1"
     case other      => other.toString
 
-  // Shared line-building for script (replayable) and state (human-readable).
-  // headers: ordered preamble lines before bindings/definitions.
-  // bindFmt: serializeValue (raw, round-trip safe) for script; toString (display-rounded) for state.
+  /** Shared line-builder for `script` (replayable) and `state` (human-readable). */
   private def buildLines(headers: List[String], bindFmt: _Value => String): String =
     (headers ++
      bindings.toList.sortBy(_._1).map((k, v) => s"$k := ${bindFmt(v)}") ++
      definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
     ).mkString("\n")
 
-  /**
-   * Current session state serialized as a replayable script — one command per line,
-   * precision first, then bindings and definitions in name order. Feeding this back
-   * through `load` (or line by line through `execute`) reconstructs the session.
-   * Pure: this is what the REPL writes to a `:save` file.
+  /** Current session state serialized as a replayable script — one command per line,
+   *  precision first, then bindings and definitions in name order. Feeding this back
+   *  through `load` (or line by line through `execute`) reconstructs the session.
+   *  Pure: this is what the REPL writes to a `:save` file.
    */
   def script: String = buildLines(
     List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}"),
     serializeValue)
 
-  /**
-   * Execute a whole script body (e.g. the contents of a `:load` file), returning the
-   * newline-joined non-empty outputs of its commands. Blank lines and `#` comments are
-   * skipped. IO-free — the caller supplies the text, so this is unit-testable; the REPL
-   * loop is the only place that actually reads the file.
+  /** Execute a whole script body (e.g. the contents of a `:load` file), returning the
+   *  newline-joined non-empty outputs of its commands. Blank lines and `#` comments are
+   *  skipped. IO-free — the caller supplies the text, so this is unit-testable; the REPL
+   *  loop is the only place that actually reads the file.
+   *
+   *  @param text the script body (newline-separated commands)
+   *  @return the concatenated non-empty output lines
    */
   def load(text: String): String =
     text.linesIterator
@@ -153,18 +165,18 @@ final class Session:
       .filter(_.nonEmpty)
       .mkString("\n")
 
+  /** Parses `input`, then calls `f` on the resulting expression inside a `NonFatal` guard.
+   *
+   *  Parse errors and non-fatal evaluation exceptions are turned into readable messages so
+   *  the REPL loop stays alive.  Fatal errors (`OutOfMemoryError`, `StackOverflowError`)
+   *  propagate — the dimension caps in the matrix constructors prevent allocation failures
+   *  up front, and catching a fatal error would leave the JVM in an unknown state.
+   */
   private def withParsed(input: String)(f: _Expression => String): String =
     scala.util.Try(Parser.parse(input)).fold(
       e => s"parse error: ${e.getMessage}",
       result =>
         if result.successful then
-          // Evaluation runs OUTSIDE the parse Try, so a failure inside f (an unbounded
-          // matrix allocation, an arithmetic overflow, a compiled-closure error, …)
-          // would otherwise propagate through Session.step and kill the REPL loop. Catch
-          // every recoverable (NonFatal) error and report it, keeping the session alive.
-          // Fatal errors (OutOfMemoryError, StackOverflowError) are deliberately NOT
-          // caught — the dimension caps in the matrix constructors prevent the allocation
-          // ones up front; catching a fatal error would leave the JVM in an unknown state.
           try f(result.get)
           catch case NonFatal(e) => s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}"
         else
@@ -176,16 +188,16 @@ final class Session:
             case None    => base
     )
 
+  /** Formats an eval result for display, applying session precision. */
   private def formatResult(result: Either[_Expression, _Value]): String =
     formatExpression(result.toExpression, prettyMatrix)
 
-  // Recursive so the session precision reaches values nested inside a symbolic
-  // _Matrix — decomposition results (lu/qr/eig/jordan) are Left(_Matrix(…)) whose
-  // elements are dense _MatrixValues, which _Matrix.toString would otherwise
-  // render at DefaultPrecision (issue 1.1). The `pretty` flag threads the multi-line
-  // toggle top-down: it is forced off when recursing into a matrix's cells, so a
-  // matrix-of-matrices (a decomposition result) keeps its inner matrices single-line
-  // and only the outermost matrix is ever stacked (issue 4.6).
+  /** Formats `e` for display, applying session precision recursively.
+   *
+   *  The `pretty` flag is forced off when recursing into a matrix's cells, so a
+   *  matrix-of-matrices (a decomposition result) keeps its inner matrices single-line
+   *  and only the outermost matrix is stacked.
+   */
   private def formatExpression(e: _Expression, pretty: Boolean): String = e match
     case n: _Number      => n.display(precision)
     case c: _Complex     => c.display(precision)
@@ -195,16 +207,16 @@ final class Session:
       renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => formatExpression(m(i, j), pretty = false)), pretty)
     case other           => other.toString
 
-  // Render a grid of already-formatted cell strings. Single-line `[[…], […]]` unless
-  // pretty is on and the matrix has at least two rows — then columns are right-aligned
-  // and rows are stacked on separate lines (issue 4.6).
+  /** Renders a grid of already-formatted cell strings.
+   *
+   *  Single-line `[[...], [...]]` by default; column-aligned multi-line when `pretty`
+   *  is true and the matrix has at least two rows.
+   */
   private def renderMatrix(cells: Vector[Vector[String]], pretty: Boolean): String =
     if pretty && cells.sizeIs >= 2 then prettyMatrixString(cells)
     else cells.map(_.mkString("[", ", ", "]")).mkString("[", ", ", "]")
 
-  // Multi-line matrix: each column padded to its widest cell (right-aligned), each row
-  // bracketed, rows stacked with the opening `[` on the first line and closing `]` on
-  // the last so the whole matrix stays a balanced `[[…]…[…]]`.
+  /** Multi-line matrix: right-aligned columns, rows stacked with balanced brackets. */
   private def prettyMatrixString(cells: Vector[Vector[String]]): String =
     val widths = cells.head.indices.map(j => cells.map(_(j).length).max)
     val rows   = cells.map(row =>
@@ -215,16 +227,17 @@ final class Session:
       s"$open$r$close"
     }.mkString("\n")
 
-  // True iff the expression tree contains a _Solve functional node.
+  /** Returns `true` when the expression tree contains a `_Solve` functional node. */
   private def containsSolve(e: _Expression): Boolean = e match
     case _: _Solve => true
     case _         => e.children.exists(containsSolve)
 
-  // When solve produces a result at the REPL top level, auto-bind the solved
-  // variable so it is immediately available in subsequent expressions.
-  // Single solution v = rhs  → bind v (binding or definition, via assign).
-  // Multiple solutions       → bind v_1, v_2, … leaving v itself unbound.
-  // No solution              → None (falls back to formatResult).
+  /** Auto-binds the solved variable when `solve` produces a result at the REPL top level.
+   *
+   *  Single solution `v = rhs` -> bind `v`.
+   *  Multiple solutions -> bind `v_1`, `v_2`, ... leaving `v` itself unbound.
+   *  No solution -> `None` (falls back to `formatResult`).
+   */
   private def tryAutoBindSolve(result: Either[_Expression, _Value]): Option[String] =
     result match
       case Left(_Equation(v: _Variable, rhs))
@@ -240,6 +253,7 @@ final class Session:
         else None
       case _ => None
 
+  /** Evaluates `e` with current definitions and bindings, auto-binding solve results. */
   private def evaluate(e: _Expression): String =
     resolveDerivativeBinders(e) match
       case Left(message) => message
@@ -248,15 +262,14 @@ final class Session:
         if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
         else formatResult(result)
 
-  /**
-   * Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes
-   * whose operands are matrix-shaped — a matrix literal, a matrix operation node, or
-   * a variable bound to a matrix value — are re-typed to the matrix operations and
-   * reduced, so "C = A * B" then "simplify C" executes the multiplication and hands
-   * simplify a _Matrix whose elements it simplifies one by one (_ElementWise).
-   * Purely scalar sub-expressions are untouched: "simplify x + 0" keeps ignoring
-   * numeric bindings. Matrix operands, by contrast, must be resolved through the
-   * session bindings — executing A * B is impossible without knowing A and B.
+  /** Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes
+   *  whose operands are matrix-shaped — a matrix literal, a matrix operation node, or
+   *  a variable bound to a matrix value — are re-typed to the matrix operations and
+   *  reduced, so `C = A * B` then `simplify C` executes the multiplication and hands
+   *  simplify a `_Matrix` whose elements it simplifies one by one (`_ElementWise`).
+   *  Purely scalar sub-expressions are untouched: `simplify x + 0` keeps ignoring
+   *  numeric bindings. Matrix operands, by contrast, must be resolved through the
+   *  session bindings — executing `A * B` is impossible without knowing `A` and `B`.
    */
   private def resolveMatrixOps(e: _Expression): _Expression =
     def isMatrixish(x: _Expression): Boolean = x match
@@ -277,13 +290,18 @@ final class Session:
       case m: _MatrixOperation                               => m.eval(env).toExpression
       case other                                             => other
 
-  /**
-   * d/df where f names a *definition*: the binder is (correctly) never substituted,
-   * so left alone the derivative would be taken with respect to a variable that no
-   * longer occurs in the substituted body — a silent 0. Rewrite via the chain rule
-   * instead: dg/df = (dg/dx) / (df/dx) over the definition's single free variable x.
-   * Definitions of zero or several free variables have no unambiguous chain-rule
-   * variable; those are rejected with a message (Left).
+  /** Rewrites derivative/integral binders that name a *definition* via the chain rule.
+   *
+   *  `d/df` where `f` names a definition: the binder is never substituted, so left
+   *  alone the derivative would be taken with respect to a variable that no longer
+   *  occurs in the substituted body — a silent 0.  Rewrites via the chain rule:
+   *  `dg/df = (dg/dx) / (df/dx)` over the definition's single free variable `x`.
+   *  Definitions with zero or several free variables are rejected with a message
+   *  (`Left`).  The same logic applies to `_Integral` binders (change-of-variable),
+   *  while `_DefIntegral` with a definition binder is rejected outright.
+   *
+   *  @param e the expression to rewrite
+   *  @return `Right(rewritten)` on success; `Left(message)` when a binder cannot be resolved
    */
   private def resolveDerivativeBinders(e: _Expression): Either[String, _Expression] = e match
     case _Derivative(body, v) if definitions.contains(v.variable) =>
@@ -294,9 +312,9 @@ final class Session:
           case Nil      => Left(s"cannot derive with respect to '${v.variable}': its definition has no free variables")
           case vars     => Left(s"cannot derive with respect to '${v.variable}': its definition has several free variables ${vars.mkString("(", ", ", ")")}")
       }
-    // Change-of-variable: ∫ g df = ∫ g · (df/dx) dx over f's single free variable x.
+    // Change-of-variable: integral g df = integral g * (df/dx) dx over f's single free variable x.
     // The derivative df/dx is evaluated eagerly so constant slopes fold immediately
-    // (e.g. f := 2*x → df/dx = 2, and simplify(g * 2) folds away the trivial product).
+    // (e.g. f := 2*x -> df/dx = 2, and simplify(g * 2) folds away the trivial product).
     // _DefIntegral with a definition binder is rejected because its bounds are stated
     // in terms of f and would need to be back-solved via the definition, which is out of scope.
     case _Integral(body, v) if definitions.contains(v.variable) =>
@@ -316,12 +334,16 @@ final class Session:
         case (message :: _, _) => Left(message)
         case (Nil, children)   => Right(other.rebuild(children))
 
-  /**
-   * The numeric-vs-definition decision must see the same expression bare evaluation
-   * would: resolve derivative binders and substitute definitions BEFORE folding, so
-   * "q := derive(p, x)" (p a definition) differentiates the substituted body instead
-   * of treating p as an unknown constant and collapsing to 0. The RAW rhs is still
-   * what gets stored for a definition, keeping it late-bound (redefining p updates q).
+  /** Binds `name` to `rhs`, choosing between a numeric binding and a late-bound definition.
+   *
+   *  Resolves derivative binders and substitutes definitions before folding, so
+   *  `q := derive(p, x)` (where `p` is a definition) differentiates the substituted
+   *  body rather than treating `p` as an unknown constant.  The raw `rhs` is stored
+   *  for a definition, keeping it late-bound.
+   *
+   *  @param name the variable name to bind
+   *  @param rhs  the right-hand side expression (raw, not yet substituted)
+   *  @return the display string `"name := value"` or an error message
    */
   private def assign(name: String, rhs: _Expression): String =
     resolveDerivativeBinders(rhs) match
@@ -337,16 +359,19 @@ final class Session:
             bindings = bindings - name
             s"$name := $rhs"
 
-  /**
-   * "name := consolidate(expr)" (issue 4.9): snapshot the simplified + evaluated result
-   * into `name`, breaking the late-binding that a plain `:=` definition keeps. The body is
-   * substituted, matrix algebra is carried out, simplified, then evaluated WITH the current
-   * bindings (unlike `assign`, which uses an empty env so a free-variable RHS stays a
-   * late-bound definition). A fully numeric result becomes a value binding; a residual
-   * symbolic result is stored as a FROZEN definition — the simplified expression as it
-   * stands now, not the raw body. Because that stored body is already fully substituted, no
-   * definition name survives in it, so a later redefinition of a dependency cannot change it
-   * (and a :save/:load round-trip reproduces the identical definition entry).
+  /** Freezes the simplified+evaluated result of `rhs` into `name` (the `consolidate` command).
+   *
+   *  Unlike `assign`, which stores the raw body for late-binding, `consolidate`
+   *  snapshots the simplified expression with the current bindings applied.  A fully
+   *  numeric result becomes a value binding; a residual symbolic result is stored as a
+   *  frozen definition — the simplified expression as it stands now, not the raw body.
+   *  Because the stored body is already fully substituted, a later redefinition of a
+   *  dependency cannot change it, and a `:save`/`:load` round-trip reproduces the
+   *  identical definition entry.
+   *
+   *  @param name  the variable name to freeze into
+   *  @param rhs   the right-hand side expression (inner of `consolidate(...)`)
+   *  @return the display string `"name := value"` or an error message
    */
   private def consolidate(name: String, rhs: _Expression): String =
     resolveDerivativeBinders(rhs) match
@@ -364,6 +389,12 @@ final class Session:
             bindings = bindings - name
             s"$name := $frozen"
 
+  /** Handles tuple assignment `L, U, P := lu(A)`: binds multiple names to a 1*n row result.
+   *
+   *  @param names the list of variable names (left-hand side of the tuple)
+   *  @param rhs   the right-hand side expression (must evaluate to a 1*n `_Matrix`)
+   *  @return newline-joined display strings for each binding, or an error message
+   */
   private def multiAssign(names: List[String], rhs: _Expression): String =
     names.find(Session.ReservedConstants.contains) match
       case Some(bad) => s"cannot assign to '$bad': it is a built-in constant"
@@ -380,8 +411,9 @@ final class Session:
                   case Left(_Matrix(1, n, _)) =>
                     s"tuple assignment: ${names.size} names on the left but $n elements on the right"
                   case _ =>
-                    s"tuple assignment: right-hand side must evaluate to a 1×n row (use lu, qr, eig, jordan, eigen)"
+                    s"tuple assignment: right-hand side must evaluate to a 1xn row (use lu, qr, eig, jordan, eigen)"
 
+  /** Handles the `samples <expr> <var> <lo> <hi> [<n>]` command. */
   private def doSamples(rest: String): String = rest.trim match
     case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
       // The samples regex admits malformed literals like "1..2" (its [\d.]+ class allows
@@ -404,6 +436,7 @@ final class Session:
         case _ => "samples: <lo> and <hi> must be numbers"
     case _ => "usage: samples <expr> <var> <lo> <hi> [<n>]"
 
+  /** Sets the display precision, rejecting out-of-range values. */
   private def setPrecision(text: String): String =
     text.toIntOption match
       case Some(n) if n >= 0 && n <= MaxPrecision => precision = n; s"precision = $n"
@@ -411,6 +444,7 @@ final class Session:
         s"precision expects a value between 0 and $MaxPrecision, got: $n"
       case _ => s"precision expects a non-negative integer, got: $text"
 
+  /** Sets the active colour scheme by name, rejecting unknown names. */
   private def setColors(name: String): String =
     if ColorScheme.All.contains(name) then
       colorSchemeName = name
@@ -419,11 +453,13 @@ final class Session:
       val available = ColorScheme.All.keys.toList.sorted.mkString(", ")
       s"unknown color scheme '$name'; available: $available"
 
+  /** Sets the pretty-matrix flag from `"on"`/`"off"` (case-insensitive). */
   private def setPretty(text: String): String = text.toLowerCase match
     case "on"  | "true"  => prettyMatrix = true;  "pretty = on"
     case "off" | "false" => prettyMatrix = false; "pretty = off"
     case _               => s"pretty expects 'on' or 'off', got: $text"
 
+  /** Removes a binding or definition by name, reporting whether it existed. */
   private def unset(name: String): String =
     if bindings.contains(name) || definitions.contains(name) then
       bindings = bindings - name
@@ -431,27 +467,30 @@ final class Session:
       s"$name unset"
     else s"$name is not set"
 
+  /** Returns the current session state in human-readable form. */
   private def state: String = buildLines(List(s"precision = $precision"), _.toString)
 
+/** Companion object: constants and IO helpers shared across the REPL entry point. */
 object Session:
-  // Names the parser always resolves as constants; assignment to them is rejected.
+  /** Names the parser always resolves as constants; assignment to them is rejected. */
   val ReservedConstants: Set[String] = Set("pi", "e")
 
-  /** Per-command help text, keyed by the command token (":=", "simplify", …).
-   *  Returned by `help <topic>`; bare `help` still shows the full `help` listing. */
+  /** Per-command help text, keyed by the command token (`:=`, `simplify`, ...).
+   *  Returned by `help <topic>`; bare `help` still shows the full help listing.
+   */
   val helpTopics: Map[String, String] = Map(
     ":=" ->
       """|Bind a name or define a function.
-         |Constant RHS → numeric value; RHS with free variables → late-bound definition.
+         |Constant RHS -> numeric value; RHS with free variables -> late-bound definition.
          |  x := 3.001          bind a numeric value
          |  f := sin(x) + x     define a function (late-bound: redefining f updates g := f^2)
          |  h := x^2 = 4        bind a named equation (pass to solve(h, x))
-         |  L, U, P := lu(A)    bind multiple names to elements of a 1×n result (any decomposition)""".stripMargin,
+         |  L, U, P := lu(A)    bind multiple names to elements of a 1xn result (any decomposition)""".stripMargin,
     "=" ->
       """|Equation relation: true/false when both sides are concrete, symbolic otherwise.
-         |Solvable via solve().  Use ":=" for assignment — "=" is never a binding.
+         |Solvable via solve().  Use ":=" for assignment -- "=" is never a binding.
          |  10*x = 2*x + 1      evaluates to false when x = 3
-         |  solve(10*x = 2*x + 1, x)   → x = 0.125""".stripMargin,
+         |  solve(10*x = 2*x + 1, x)   -> x = 0.125""".stripMargin,
     "==" ->
       """|Equality check: same semantics as "=" but not accepted by solve().
          |Useful when you want a boolean result without accidentally creating a solvable equation.
@@ -460,27 +499,27 @@ object Session:
       """|Structural simplification: remove identities, fold constants, cancel inverses.
          |Matrix algebra is carried out first, then each element simplified.
          |Numeric bindings are NOT applied (use bare evaluation for that).
-         |  simplify x + 0      → x
+         |  simplify x + 0      -> x
          |  simplify C          (C := A * B) executes the multiplication, simplifies each cell""".stripMargin,
     "expand" ->
       """|Distribute products over sums; expand integer powers via the binomial theorem.
          |Matrix algebra is carried out first.
-         |  expand x * (y + z)  → ((x * y) + (x * z))
-         |  expand (x + 1)^2    → (((x ^ 2.0) + (2.0 * x)) + 1.0)""".stripMargin,
+         |  expand x * (y + z)  -> ((x * y) + (x * z))
+         |  expand (x + 1)^2    -> (((x ^ 2.0) + (2.0 * x)) + 1.0)""".stripMargin,
     "eval" ->
       """|Evaluate an expression substituting current bindings and returning a numeric result.
-         |  eval sin(pi/2)      → 1.0""".stripMargin,
+         |  eval sin(pi/2)      -> 1.0""".stripMargin,
     "consolidate" ->
       """|Freeze the simplified + evaluated result of an expression into a new variable.
          |Unlike ":=", which keeps a definition late-bound, consolidate snapshots the value
-         |NOW using the current bindings — redefining a dependency later does not change it.
+         |NOW using the current bindings -- redefining a dependency later does not change it.
          |A fully numeric result becomes a value binding; a residual symbolic result is stored
          |as a frozen (already-simplified) definition.
          |  x := 2
          |  f := x + 1
-         |  g := consolidate(f + f)   → g := 6.0   (stays 6.0 even after x := 100)
+         |  g := consolidate(f + f)   -> g := 6.0   (stays 6.0 even after x := 100)
          |  a := 3
-         |  h := consolidate(a * y)   → h := (3.0 * y)   (a folded in and frozen; h ignores later a := 9)""".stripMargin,
+         |  h := consolidate(a * y)   -> h := (3.0 * y)   (a folded in and frozen; h ignores later a := 9)""".stripMargin,
     "precision" ->
       """|Set the decimal precision for display and numeric comparisons.
          |  precision 8         8 significant decimal digits
@@ -496,7 +535,7 @@ object Session:
       """|Toggle multi-line, column-aligned display of matrices with 2+ rows.
          |Off by default; the setting is persisted by :save / :load.
          |  pretty on           stack rows on separate lines, right-align columns
-         |  pretty off          single-line [[…], […]] form (default)
+         |  pretty off          single-line [[...], [...]] form (default)
          |  pretty              show the current setting""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
@@ -524,22 +563,22 @@ object Session:
          |A matrix equation is solved for a scalar unknown cell-by-cell (intersection),
          |or for a matrix unknown via the inverse / Kronecker vectorization (bind the
          |known matrices first; symbolic coefficients give a symbolic solution).
-         |  solve(10*x = 2*x + 1, x)   → x = 0.125
-         |  solve(x^2 = 4, x)          → [[x = -2.0, x = 2.0]]
-         |  solve([[x, 2*x]] = [[3, 6]], x)   → x = 3.0
-         |  solve(A * X = B, X)        → X = A⁻¹·B     (X * A = B → X = B·A⁻¹)
-         |  solve(A * X + C = B, X)    affine term: → A·X = B − C
-         |  solve(A * X * D = B, X)    two-sided: → X = A⁻¹·B·D⁻¹
+         |  solve(10*x = 2*x + 1, x)   -> x = 0.125
+         |  solve(x^2 = 4, x)          -> [[x = -2.0, x = 2.0]]
+         |  solve([[x, 2*x]] = [[3, 6]], x)   -> x = 3.0
+         |  solve(A * X = B, X)        -> X = A-inverse * B     (X * A = B -> X = B * A-inverse)
+         |  solve(A * X + C = B, X)    affine term: -> A*X = B - C
+         |  solve(A * X * D = B, X)    two-sided: -> X = A-inverse * B * D-inverse
          |  solve(A * X + X * B = C, X)   Sylvester/Lyapunov, via vec/Kronecker
          |  solve(h, x)                h is a named equation""".stripMargin,
     "derive" ->
       """|Differentiate an expression with respect to a variable or a defined function.
          |Chain rule applies when the binder is a definition.
-         |  derive(sin(x), x)           → cos(x)
+         |  derive(sin(x), x)           -> cos(x)
          |  derive(g, f)                chain rule when f := sin(x)""".stripMargin,
     "integral" ->
       """|Indefinite symbolic integration via a rule table.
-         |  integral(x^2, x)            → ((1.0 / 3.0) * (x ^ 3.0))""".stripMargin,
+         |  integral(x^2, x)            -> ((1.0 / 3.0) * (x ^ 3.0))""".stripMargin,
     "samples" ->
       """|Sample a function over a uniform grid, returning tab-separated (x, f(x)) pairs.
          |Non-finite values (div-by-zero, domain errors) are silently skipped.
@@ -547,60 +586,66 @@ object Session:
          |  samples sin(x) x -10 10
          |  samples f x 0 5 100    (f must be a defined function)""".stripMargin,
     "limit" ->
-      """|Compute lim_{v → point} e. Optional direction: "+" (from right) or "-" (from left).
-         |Uses L'Hôpital's rule for 0/0 and ∞/∞ forms; "inf" / "-inf" as limit points.
-         |  limit(sin(x)/x, x, 0)       → 1.0 (L'Hôpital)
-         |  limit(1/x, x, 0, +)         → inf
-         |  limit(1/x, x, 0, -)         → -inf
-         |  limit(atan(x), x, inf)       → 1.5708 (π/2)
-         |  limit(1/x, x, inf)           → 0.0""".stripMargin,
+      """|Compute lim_{v -> point} e. Optional direction: "+" (from right) or "-" (from left).
+         |Uses L'Hopital's rule for 0/0 and inf/inf forms; "inf" / "-inf" as limit points.
+         |  limit(sin(x)/x, x, 0)       -> 1.0 (L'Hopital)
+         |  limit(1/x, x, 0, +)         -> inf
+         |  limit(1/x, x, 0, -)         -> -inf
+         |  limit(atan(x), x, inf)       -> 1.5708 (pi/2)
+         |  limit(1/x, x, inf)           -> 0.0""".stripMargin,
     "laplace" ->
       """|Compute the Laplace transform L{e(t)} with output variable s.
-         |Linearity, powers, exponentials, sin/cos, and the first-shift theorem e^{at}·g(t).
-         |  laplace(1, t, s)             → (1.0 / s)
-         |  laplace(t^2, t, s)           → (2.0 / (s ^ 3.0))
-         |  laplace(sin(3*t), t, s)      → 3/(s^2+9)
-         |  laplace(exp(2*t)*cos(t), t, s) → (s-2)/((s-2)^2+1) via first-shift
+         |Linearity, powers, exponentials, sin/cos, and the first-shift theorem e^{at}*g(t).
+         |  laplace(1, t, s)             -> (1.0 / s)
+         |  laplace(t^2, t, s)           -> (2.0 / (s ^ 3.0))
+         |  laplace(sin(3*t), t, s)      -> 3/(s^2+9)
+         |  laplace(exp(2*t)*cos(t), t, s) -> (s-2)/((s-2)^2+1) via first-shift
          |Stays symbolic when no rule applies.""".stripMargin,
     "fourier" ->
-      """|Compute the unilateral Fourier transform F{e(t)} = L{e(t)}|_{s=i·w}.
+      """|Compute the unilateral Fourier transform F{e(t)} = L{e(t)}|_{s=i*w}.
          |Result is generally complex-valued (contains i, the imaginary unit).
-         |  fourier(exp(-2*t), t, w)     → 1/(2 + i*w)
-         |  fourier(1, t, w)             → 1/(i*w)
-         |  fourier(exp(-t)*sin(t), t, w) → 1/((i*w+1)^2+1) via first-shift
+         |  fourier(exp(-2*t), t, w)     -> 1/(2 + i*w)
+         |  fourier(1, t, w)             -> 1/(i*w)
+         |  fourier(exp(-t)*sin(t), t, w) -> 1/((i*w+1)^2+1) via first-shift
          |Stays symbolic when the Laplace transform is not in the table.""".stripMargin,
     "invlaplace" ->
-      """|Compute the inverse Laplace transform L⁻¹{f(s)} with output variable t.
-         |Rational f(s) = N(s)/D(s) with degree of D ≤ 2: linear, repeated, and complex
+      """|Compute the inverse Laplace transform L-1{f(s)} with output variable t.
+         |Rational f(s) = N(s)/D(s) with degree of D <= 2: linear, repeated, and complex
          |poles (partial fractions / completing the square), plus linearity.
-         |  invlaplace(1/s^2, s, t)          → t
-         |  invlaplace(1/(s-3), s, t)        → exp(3*t)
-         |  invlaplace(2/(s^2+4), s, t)      → sin(2*t)
-         |  invlaplace(3/((s-2)^2+9), s, t)  → exp(2*t)*sin(3*t) via completing the square
-         |Stays symbolic for deg D ≥ 3, symbolic coefficients, or non-rational input.""".stripMargin,
+         |  invlaplace(1/s^2, s, t)          -> t
+         |  invlaplace(1/(s-3), s, t)        -> exp(3*t)
+         |  invlaplace(2/(s^2+4), s, t)      -> sin(2*t)
+         |  invlaplace(3/((s-2)^2+9), s, t)  -> exp(2*t)*sin(3*t) via completing the square
+         |Stays symbolic for deg D >= 3, symbolic coefficients, or non-rational input.""".stripMargin,
     "eigen" ->
       """|Compute the eigenvalues of a square matrix.
-         |Returns a 1×n row [[λ₁, …, λₙ]]; real eigenvalues are _Number, complex pairs are _Complex.
+         |Returns a 1xn row [[l1, ..., ln]]; real eigenvalues are _Number, complex pairs are _Complex.
          |Uses QR iteration with Wilkinson shifts; stays symbolic if the operand is not dense.
-         |  eigen([[4, 1], [1, 3]])          → [[4.61803, 2.38197]]
-         |  eigen([[0, -1], [1, 0]])         → [[(0.0 + 1.0i), (0.0 - 1.0i)]]
+         |  eigen([[4, 1], [1, 3]])          -> [[4.61803, 2.38197]]
+         |  eigen([[0, -1], [1, 0]])         -> [[(0.0 + 1.0i), (0.0 - 1.0i)]]
          |Access element k (1-based): at(eigen(A), 1, k)""".stripMargin,
     "solveSystem" ->
       """|Solve a square system of n linear equations in n unknowns.
          |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).
-         |  solveSystem([[2*x + y = 3, x - y = 0]], x, y)   → [[x = 1.0, y = 1.0]]
+         |  solveSystem([[2*x + y = 3, x - y = 0]], x, y)   -> [[x = 1.0, y = 1.0]]
          |  Named equation matrices work: solveSystem(S, x, y)""".stripMargin,
   )
 
+  /** Returns the help text for a specific `topic`, or the full help listing when not found.
+   *
+   *  @param topic the command token to look up (e.g. `"simplify"`, `":="`)
+   *  @return topic-specific text, or `help` when the topic is unknown
+   */
   def helpTopic(topic: String): String =
     if topic.isEmpty then help else helpTopics.getOrElse(topic, help)
 
+  /** The full command-summary listing printed by `help` with no argument. */
   val help: String =
     """x := 3.001           bind a value (constant right-hand side)
       |f := sin(x) + x      define a function (right-hand side with free variables)
       |h := lhs = rhs       bind a named equation (use with solve(h, x))
       |g := consolidate(e)  freeze the simplified+evaluated result of e into g (not late-bound)
-      |L, U, P := lu(A)     bind multiple names to a decomposition result (1×n row)
+      |L, U, P := lu(A)     bind multiple names to a decomposition result (1xn row)
       |lhs = rhs            equation: true/false once both sides are concrete; stays
       |                     symbolic with free variables; solvable via solve()
       |lhs == rhs           equality check: same as "=" but not accepted by solve()
@@ -618,13 +663,13 @@ object Session:
       |help                 this summary
       |quit | exit          leave""".stripMargin
 
-  /** Read a :load file and replay it through the session. IO lives here, not in Session. */
+  /** Reads a `:load` file and replays it through the session.  IO lives here, not in `Session`. */
   def loadFile(session: Session, path: String): String =
     scala.util.Using(scala.io.Source.fromFile(path, "UTF-8"))(_.mkString) match
       case scala.util.Success(text) => session.load(text)
       case scala.util.Failure(e)    => s"could not read $path: ${e.getMessage}"
 
-  /** Write the session's replayable script to a :save file. IO lives here, not in Session. */
+  /** Writes the session's replayable script to a `:save` file.  IO lives here, not in `Session`. */
   def saveFile(session: Session, path: String): String =
     scala.util.Try:
       val w = new java.io.PrintWriter(path, java.nio.charset.StandardCharsets.UTF_8)
@@ -633,13 +678,15 @@ object Session:
       case scala.util.Success(_) => s"saved to $path"
       case scala.util.Failure(e) => s"could not write $path: ${e.getMessage}"
 
-  /**
-   * Interpret one line read by the REPL loop, resolving the commands `execute` cannot:
-   * the file-IO `:load`/`:save` and the `quit`/`exit` sentinels. A `None` line stands
-   * for end-of-input (Ctrl-D). Returns `None` to stop the loop, or `Some(output)` to
-   * continue — `output` is the (possibly empty) text to print. This keeps the loop's
-   * dispatch logic unit-testable; only the JLine line-editing/history plumbing in
-   * `repl()` is genuinely interactive-only and therefore uncovered by the test suite.
+  /** Interprets one line read by the REPL loop, resolving the commands `execute` cannot:
+   *  the file-IO `:load`/`:save` and the `quit`/`exit` sentinels.  A `None` line stands
+   *  for end-of-input (Ctrl-D).  Returns `None` to stop the loop, or `Some(output)` to
+   *  continue — `output` is the (possibly empty) text to print.  This keeps the loop's
+   *  dispatch logic unit-testable; only the JLine plumbing in `repl()` is interactive-only.
+   *
+   *  @param session the active `Session` that accumulates state
+   *  @param line    the input line, or `None` for end-of-input
+   *  @return `None` to terminate the loop; `Some(output)` to continue
    */
   def step(session: Session, line: Option[String]): Option[String] =
     line match
@@ -649,6 +696,7 @@ object Session:
       case Some(other)                        => Some(session.execute(other))
 
 
+/** Entry point for the interactive Leonardo REPL. */
 @main def repl(): Unit =
   val session = Session()
   // A system terminal enables arrow-key line editing; dumb(true) makes it fall back
@@ -665,7 +713,7 @@ object Session:
     .highlighter(highlighter)
     .build()
   val out = terminal.writer()
-  out.println("Leonardo CAS — type 'help' for commands, 'quit' to leave")
+  out.println("Leonardo CAS -- type 'help' for commands, 'quit' to leave")
   out.flush()
   try
     var running = true

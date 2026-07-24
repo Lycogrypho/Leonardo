@@ -5,25 +5,36 @@ import core.*
 import scalar.*
 
 
-// First-order initial-value problem  y' = rhs(t, y),  y(t₀) = y₀.
-// The node denotes the solution value y(target) of that IVP.
-//
-//   depVar   = y  — the dependent variable (the unknown function's name)
-//   indepVar = t  — the independent variable (what y is differentiated against)
-//   rhs           — the right-hand side f(t, y)
-//   t0, y0        — the initial condition
-//   target        — the point at which the solution is evaluated
-//
-// Both depVar and indepVar are binders and are excluded from children (same
-// convention as _Derivative's v and _Limit's binder), so Substitute/Analysis never
-// recurse into them. rhs/t0/y0/target are ordinary expression positions (they may
-// hold free variables) and so are the children, in that fixed order.
-//
-// eval tries the closed-form symbolic tier first (SolveODESymbolic.scala) — it handles
-// constant-coefficient linear ODEs and works even when the target/initial condition are
-// symbolic. Failing that, it folds t₀/y₀/target to numbers and runs the RK4 solver
-// (SolveODE.scala). When neither applies it stays symbolic (Left(this)) — the fixpoint
-// convention shared with Integrate/Derive/the transforms.
+/** Symbolic node for the solution value of a first-order initial-value problem.
+ *
+ *  Represents `y(target)` where `y` satisfies `y' = rhs(t, y)`, `y(t0) = y0`.
+ *
+ *  Both `depVar` (the dependent variable `y`) and `indepVar` (the independent
+ *  variable `t`) are **binders**: they are excluded from `children` so that
+ *  `substitute` and `dependsOn` never recurse into them, matching the convention
+ *  of `scalar._Derivative` and `scalar._Limit`.  The expression positions
+ *  `rhs`, `t0`, `y0`, and `target` are ordinary children and may hold free
+ *  variables (e.g. a symbolic `target` keeps the result closed-form).
+ *
+ *  Evaluation strategy (two tiers, in order):
+ *   1. **Closed-form** via `solveODESymbolic`: handles `y' = a*y + b` for
+ *      constant (t-free) `a`, `b`; returns a symbolic expression that stays
+ *      closed-form when `t0`/`y0`/`target` are free.
+ *   2. **Numeric RK4** via `solveODE`: folds `t0`/`y0`/`target` to concrete
+ *      `_Number`s and runs the integrator; returns `Right(_Number(result))`.
+ *  When neither applies, `eval` returns `Left(this)` — the fixpoint convention
+ *  shared with the transform nodes and the `scalar._Functional` hierarchy.
+ *
+ *  Round-trip: `toString` emits `ode(rhs, depVar, indepVar, t0, y0, target)`,
+ *  which re-parses to an equivalent node.
+ *
+ *  @param rhs      the right-hand side `f(t, y)` of the ODE
+ *  @param depVar   the dependent variable (the unknown function, e.g. `y`)
+ *  @param indepVar the independent variable (what `y` is differentiated against, e.g. `t`)
+ *  @param t0       the initial time point
+ *  @param y0       the initial value `y(t0)`
+ *  @param target   the point at which the solution is evaluated
+ */
 case class _ODE(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
                 t0: _Expression, y0: _Expression, target: _Expression) extends _Functional:
   override def toString: String = s"ode($rhs, $depVar, $indepVar, $t0, $y0, $target)"
