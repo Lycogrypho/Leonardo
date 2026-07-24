@@ -4,31 +4,31 @@ package core
 import scala.math.{exp, log, sin, cos, sinh, cosh, atan2, hypot}
 
 
-// Concrete complex value: a fully-reduced (re, im) pair, sibling to _Number rather
-// than a widening of it. This is the deliberate design that keeps the change cheap:
-// every existing `_Number(x)` pattern match across the codebase keeps firing on real
-// results, because the smart factory `_Complex.of` collapses a zero imaginary part
-// back to a plain `_Number`. Only a genuinely non-real value ever becomes a _Complex.
-//
-// Like _Number, a _Complex never rounds in eval — the stored Doubles are propagated
-// as-is and rounding is a display concern handled in toString / display(p). So
-// exp(i·π) reduces to _Complex(-1.0, 1.22e-16) (sin(π) is floating-point noise) and
-// prints as "-1.0" once the imaginary part rounds away; the equation tolerance treats
-// it as real, exactly as it already does for real noise like sin(π) ≈ 0.
-//
-// Arithmetic lives in the companion as functions over _Value operands (a _Number is
-// viewed as (x, 0)), returning Option[_Value]: None signals a non-finite or undefined
-// result (log 0, 0^0, a non-numeric operand) so the caller stays symbolic, mirroring
-// the "domain errors stay symbolic" contract of the real path.
+/** Companion for the concrete complex value [[_Complex]]; holds the smart factory and all
+ *  arithmetic on [[_Value]] operands.
+ *
+ *  Arithmetic returns `Option[_Value]` — `None` signals a non-finite or undefined result
+ *  (e.g. `log 0`, `0 ^ negative`) so the caller stays symbolic, mirroring the "domain
+ *  errors stay symbolic" contract of the real path.
+ *
+ *  [[_Complex.of]] collapses a zero imaginary part back to a plain [[_Number]], so every
+ *  existing `_Number(x)` pattern match across the codebase keeps firing on real results —
+ *  only a genuinely non-real value ever becomes a `_Complex`.  Binary operations promote
+ *  `_Number` operands to `(x, 0)` via [[_Complex.parts]].
+ */
 object _Complex:
 
-  /** Smart factory: a zero imaginary part collapses to the real _Number, so the real
-   *  fast-path and every _Number pattern match keep working. Only a genuinely non-real
-   *  value becomes a _Complex. */
+  /** Smart factory: collapses a zero imaginary part to [[_Number]], preserving the real
+   *  fast-path and all `_Number(x)` pattern matches.
+   *  @param re real part
+   *  @param im imaginary part; if `0.0` the result is `_Number(re)`
+   */
   def of(re: Double, im: Double): _Value =
     if im == 0.0 then _Number(re) else new _Complex(re, im)
 
-  /** (re, im) view of any numeric value; None for non-numeric values (_Bool, matrices). */
+  /** Extracts the `(re, im)` parts from any numeric value.
+   *  `None` for non-numeric values such as [[_Bool]] or [[_MatrixValue]].
+   */
   def parts(v: _Value): Option[(Double, Double)] = v match
     case _Number(x)  => Some((x, 0.0))
     case c: _Complex => Some((c.re, c.im))
@@ -37,18 +37,28 @@ object _Complex:
   private def finiteVal(re: Double, im: Double): Option[_Value] =
     if re.isNaN || re.isInfinite || im.isNaN || im.isInfinite then None else Some(of(re, im))
 
-  // Binary field operations. Each promotes _Number operands to (x, 0) via `parts`,
-  // returns None if either operand is non-numeric or the result is non-finite.
+  /** Complex addition `a + b`; `None` when either operand is non-numeric or the result
+   *  is non-finite.
+   */
   def add(a: _Value, b: _Value): Option[_Value] =
     for (ar, ai) <- parts(a); (br, bi) <- parts(b); r <- finiteVal(ar + br, ai + bi) yield r
 
+  /** Complex subtraction `a - b`; `None` when either operand is non-numeric or the result
+   *  is non-finite.
+   */
   def sub(a: _Value, b: _Value): Option[_Value] =
     for (ar, ai) <- parts(a); (br, bi) <- parts(b); r <- finiteVal(ar - br, ai - bi) yield r
 
+  /** Complex multiplication `a * b`; `None` when either operand is non-numeric or the
+   *  result is non-finite.
+   */
   def mul(a: _Value, b: _Value): Option[_Value] =
     for (ar, ai) <- parts(a); (br, bi) <- parts(b)
         r <- finiteVal(ar * br - ai * bi, ar * bi + ai * br) yield r
 
+  /** Complex division `a / b`; `None` when either operand is non-numeric, the denominator
+   *  is zero, or the result is non-finite.
+   */
   def div(a: _Value, b: _Value): Option[_Value] =
     for (ar, ai) <- parts(a); (br, bi) <- parts(b); r <- divParts(ar, ai, br, bi) yield r
 
@@ -57,8 +67,11 @@ object _Complex:
     if denom == 0.0 then None    // division by zero stays symbolic, as in the real path
     else finiteVal((ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom)
 
-  /** Principal complex power z^w = exp(w · log z). 0^w is 0 for a positive real w and
-   *  undefined (None) otherwise, matching the real path's "0^negative stays symbolic". */
+  /** Principal complex power `z ^ w = exp(w · log z)`.  `0 ^ w` is `0` for a positive
+   *  real `w` and `None` otherwise, matching the real path's "0 ^ negative stays symbolic".
+   *  @param a base
+   *  @param b exponent
+   */
   def pow(a: _Value, b: _Value): Option[_Value] =
     for (ar, ai) <- parts(a); (br, bi) <- parts(b); r <- powParts(ar, ai, br, bi) yield r
 
@@ -74,41 +87,69 @@ object _Complex:
       val mag = exp(er)
       finiteVal(mag * cos(ei), mag * sin(ei))
 
-  // Elementary functions on a complex argument (standard identities).
+  /** Complex exponential `exp(v) = e^a(cos b + i·sin b)` where `v = a + bi`.
+   *  `None` for non-numeric input or non-finite result.
+   */
   def expc(v: _Value): Option[_Value] =
     for (a, b) <- parts(v); r <- finiteVal(exp(a) * cos(b), exp(a) * sin(b)) yield r
 
+  /** Principal complex logarithm `log(v) = ln|v| + i·arg(v)`.
+   *  `None` when `v` is zero, non-numeric, or the result is non-finite.
+   */
   def logc(v: _Value): Option[_Value] =
     parts(v).flatMap { (a, b) =>
       val mod = hypot(a, b)
       if mod == 0.0 then None else finiteVal(log(mod), atan2(b, a))
     }
 
+  /** Complex sine `sin(a + bi) = sin(a)cosh(b) + i·cos(a)sinh(b)`.
+   *  `None` for non-numeric input or non-finite result.
+   */
   def sinc(v: _Value): Option[_Value] =
     for (a, b) <- parts(v); r <- finiteVal(sin(a) * cosh(b), cos(a) * sinh(b)) yield r
 
+  /** Complex cosine `cos(a + bi) = cos(a)cosh(b) − i·sin(a)sinh(b)`.
+   *  `None` for non-numeric input or non-finite result.
+   */
   def cosc(v: _Value): Option[_Value] =
     for (a, b) <- parts(v); r <- finiteVal(cos(a) * cosh(b), -(sin(a) * sinh(b))) yield r
 
+  /** Complex tangent `tan(v) = sin(v) / cos(v)`.
+   *  `None` when the cosine is zero, the input is non-numeric, or the result is non-finite.
+   */
   def tanc(v: _Value): Option[_Value] =
     for s <- sinc(v); c <- cosc(v); r <- div(s, c) yield r
 
 
-// The imaginary part is never exactly 0 (the `of` factory guarantees it), so a
-// _Complex is always genuinely non-real. Constructor is private: all construction
-// routes through `of` to preserve that invariant; pattern matching `_Complex(re, im)`
-// stays available to the whole codebase.
+/** Concrete complex value `re + im·i` where `im ≠ 0`.
+ *
+ *  The imaginary part is never exactly `0` — the [[_Complex.of]] factory guarantees this
+ *  invariant by collapsing to [[_Number]] in that case.  Construction through `of` is the
+ *  only public route; pattern matching `_Complex(re, im)` remains available.
+ *
+ *  Like [[_Number]], a `_Complex` never rounds in `eval`; rounding is a display concern
+ *  handled by `toString` / `display(p)`.  A rounded-away imaginary part causes the value
+ *  to print as a plain real (e.g. `exp(i·π)` → `"-1.0"`); a pure imaginary value prints
+ *  as `"bi"` / `"i"` / `"-i"`; the full form is `"(a + bi)"`.
+ *
+ *  @param re real part
+ *  @param im imaginary part; guaranteed non-zero by the [[_Complex.of]] factory
+ */
 case class _Complex private (re: Double, im: Double) extends _Value:
+  /** Returns `Right(this)` — a concrete complex value needs no further reduction. */
   override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
   override def children: List[_Expression] = List.empty
   override def rebuild(c: List[_Expression]): _Expression = this
 
-  // toString rounds for display only (DefaultPrecision), mirroring _Number: a real
-  // residual in the imaginary part rounds away (exp(i·π) prints "-1.0"), a purely
-  // imaginary value prints as "<b>i" ("i" / "-i" for ±1), and the full form is the
-  // re-parsable "(a + bi)" / "(a - bi)".
+  /** Renders this complex number at [[Environment.DefaultPrecision]] decimal places.
+   *  A rounded-away imaginary part yields a plain real string; a zero real part yields
+   *  `"bi"` / `"i"` / `"-i"`; otherwise `"(a ± bi)"`.
+   */
   override def toString: String = display(Environment.DefaultPrecision)
 
+  /** Renders this complex number at `precision` decimal places for REPL display.
+   *  @param precision number of decimal places to show
+   */
   def display(precision: Int): String =
     val r = _Number.round(re, precision)
     val m = _Number.round(im, precision)

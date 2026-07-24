@@ -2,57 +2,84 @@ package it.grypho.scala.leonardo
 package core
 
 
-// Foundation of every expression tree, shared across all domains.
-// eval reduces an expression: Right holds a fully-reduced _Value; Left holds a
-// symbolic expression that could not be fully reduced.
-//
-// children / rebuild: generic structural traversal — algorithms that touch every node
-// type (Substitute, Analysis, …) use these instead of matching each case explicitly.
-// children returns sub-expressions subject to recursive traversal; binder positions
-// (e.g. the variable of differentiation in _Derivative) are excluded. rebuild(cs)
-// reconstructs the same node shape with new sub-expressions.
-//
-// freeVars: the set of variable names that appear free in this expression. Cached
-// as a lazy val per instance — computed once, then O(1). Provided with a default
-// implementation in terms of children so new node types get it for free.
+/** Base trait of every expression tree node, shared across all domains.
+ *
+ *  The dual-evaluation contract: `eval` returns `Right` when the expression fully reduces
+ *  to a concrete [[_Value]]; `Left` when some variable is still free and the node is
+ *  returned in its most-reduced symbolic form.
+ *
+ *  `children` / `rebuild` enable generic structural traversal so algorithms that visit
+ *  every node type (`Substitute`, `Analysis`, …) do not need to match each case explicitly.
+ *  Binder positions (e.g. the differentiation variable) are excluded from `children`;
+ *  `rebuild` carries them through unchanged.
+ *
+ *  `freeVars` is cached per instance — computed once from `children`, then O(1).
+ *  New node types inherit a correct default automatically.
+ */
 trait _Expression:
+  /** Reduces this expression in the given environment.
+   *  @param env variable bindings and display precision
+   *  @return `Right(v)` when all free variables resolved to concrete values;
+   *          `Left(e)` when reduction is partial or impossible
+   */
   def eval(env: Environment): Either[_Expression, _Value]
+
+  /** Sub-expressions subject to recursive structural traversal.
+   *  Binder positions (e.g. the differentiation variable) are excluded.
+   */
   def children: List[_Expression]
+
+  /** Reconstructs the same node shape with replacement sub-expressions.
+   *  @param newChildren replacements in the same order and count as `children`
+   */
   def rebuild(newChildren: List[_Expression]): _Expression
+
+  /** Cached set of free variable names; O(1) after the first access. */
   lazy val freeVars: Set[String] = children.flatMap(_.freeVars).toSet
 
 
-// Marker for a fully-reduced, concrete result — a number now, a matrix/boolean/… later.
-// Distinct from a symbolic atom such as a free variable.
+/** Marker trait for a fully-reduced, concrete result — a number, a matrix, or a boolean —
+ *  as opposed to a symbolic atom (free variable) that is not yet concrete.
+ */
 trait _Value extends _Expression
 
 
-// Marker for plain containers of expressions (a matrix literal, an element-wise sum,
-// a transpose): per-element algorithms (derive, simplify, expand, integrate) may
-// distribute over children and rebuild the same node shape. Mark a node ONLY when
-// that distribution is mathematically valid for ALL such algorithms — linear
-// containers qualify; product-like nodes, which need product rules, do not.
-// Lives in core so domain packages can opt in without scalar importing them.
+/** Marker trait for expression nodes whose children may receive per-element algorithm
+ *  passes (derive, simplify, expand, integrate).
+ *
+ *  An algorithm may distribute over `children` and `rebuild` the same shape only when this
+ *  trait is present **and** the distribution is mathematically valid for *all* such
+ *  algorithms.  Linear containers qualify; product-like nodes that require product rules
+ *  must not be marked.  Lives in `core` so domain packages can opt in without creating a
+ *  cross-domain import.
+ */
 trait _ElementWise extends _Expression
 
 
-// Marker for a symbolic matrix node (matrix._Matrix) whose `children` are its cells in
-// row-major order and whose `rebuild` preserves the rows×cols shape. It exists so that
-// core/scalar algorithms can distribute a scalar function element-wise over a symbolic
-// matrix argument (exp(A), sin(A), … over a matrix with free-variable entries) without
-// importing the matrix package — scalar sees only this core marker and the generic
-// children/rebuild. Narrower than _ElementWise on purpose: distributing a function over
-// the children of, say, an equation or a matrix sum would be meaningless, so only the
-// matrix literal opts in. The dense counterpart (_MatrixValue) is handled numerically
-// and is not marked.
+/** Marker trait for a symbolic matrix node whose `children` are its cells in row-major
+ *  order and whose `rebuild` preserves the `rows × cols` shape.
+ *
+ *  Lets `core` and `scalar` algorithms distribute a scalar function element-wise over a
+ *  symbolic matrix argument (`exp(A)`, `sin(A)`, … over a matrix with free-variable cells)
+ *  without importing the `matrix` package — they see only this marker and the generic
+ *  `children` / `rebuild`.  Narrower than [[_ElementWise]] on purpose: only the matrix
+ *  literal opts in.  The dense counterpart ([[_MatrixValue]]) is handled numerically and
+ *  is not marked.
+ */
 trait _MatrixShaped extends _Expression:
+  /** Number of rows in the symbolic matrix. */
   def rows: Int
+  /** Number of columns in the symbolic matrix. */
   def cols: Int
 
 
+/** Companion for the concrete real scalar value [[_Number]]. */
 object _Number:
   private val factorTable: Array[Double] = Array.tabulate(16)(i => scala.math.pow(10.0, i))
 
+  /** Rounds `d` to `precision` decimal places for display; returns `d` unchanged when it
+   *  is NaN, infinite, or too large for the rounded value to fit in a `Long`.
+   */
   private[core] def round(d: Double, precision: Int): Double =
     if d.isNaN || d.isInfinite then d
     else
@@ -62,42 +89,62 @@ object _Number:
       if scala.math.abs(d) * factor > Long.MaxValue.toDouble then d
       else (d * factor).round.toDouble / factor
 
+/** Concrete real scalar value.
+ *
+ *  Rounding is a display concern only: `toString` and `display` round for output; `eval`
+ *  propagates the stored `Double` as-is.  `±∞` serialises as `"inf"` / `"-inf"` for
+ *  round-trip safety through the parser.
+ *
+ *  @param d the exact double-precision value
+ */
 case class _Number(d: Double) extends _Value:
-  // toString rounds for display only (DefaultPrecision = 5); no rounding in eval.
-  // Infinity is represented as "inf" / "-inf" so it round-trips through the parser.
+  /** Renders this number at [[Environment.DefaultPrecision]] decimal places.
+   *  `±∞` renders as `"inf"` / `"-inf"` for round-trip safety.
+   */
   override def toString: String =
     if d.isPosInfinity then "inf"
     else if d.isNegInfinity then "-inf"
     else _Number.round(d, Environment.DefaultPrecision).toString
-  // display(p) rounds to p decimal places — used by the REPL to respect session precision.
+
+  /** Renders this number at `precision` decimal places for REPL display.
+   *  @param precision number of decimal places to show
+   */
   def display(precision: Int): String =
     if d.isPosInfinity then "inf"
     else if d.isNegInfinity then "-inf"
     else _Number.round(d, precision).toString
 
-  // No rounding in eval: the stored Double is propagated as-is. Rounding is a
-  // display concern only, handled at the boundary by toString / display(p).
+  /** Returns `Right(this)` — a concrete number needs no further reduction. */
   override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
 
   override def children: List[_Expression] = List.empty
   override def rebuild(c: List[_Expression]): _Expression = this
 
 
-// Truth value — the concrete result of a fully-reduced relation (an _Equation whose
-// sides both fold to numbers today; logic connectives later). The third concrete
-// _Value after _Number and _MatrixValue.
+/** Concrete boolean value — the result of a fully-reduced relation.
+ *  @param b the truth value
+ */
 case class _Bool(b: Boolean) extends _Value:
   override def toString: String = b.toString
+  /** Returns `Right(this)` — a concrete boolean needs no further reduction. */
   override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
   override def children: List[_Expression] = List.empty
   override def rebuild(c: List[_Expression]): _Expression = this
 
 
-// A free variable is a symbolic atom, not a concrete value, so it is not a _Value:
-// eval yields Right only once the variable is bound to one in the environment.
+/** A free variable: a symbolic atom that is not yet a concrete value.
+ *
+ *  `eval` returns `Right` only when `variable` is bound to a [[_Value]] in the environment;
+ *  otherwise it stays `Left(this)`.
+ *
+ *  @param variable the variable name
+ */
 case class _Variable(variable: String) extends _Expression:
   override def toString: String = variable
 
+  /** Looks up this variable in `env` and delegates `eval` to the bound value if found.
+   *  @param env variable bindings; this variable's name is the lookup key
+   */
   override def eval(env: Environment): Either[_Expression, _Value] =
     env.get(variable) match
       case Some(n) => n.eval(env)
@@ -108,9 +155,10 @@ case class _Variable(variable: String) extends _Expression:
   override lazy val freeVars: Set[String] = Set(variable)
 
 
-// Collapse an eval result back to a plain expression — used when rebuilding a
-// symbolic node from partially-reduced operands.
 extension (result: Either[_Expression, _Value])
+  /** Collapses an `eval` result back to a plain [[_Expression]].
+   *  Used when rebuilding a symbolic node from partially-reduced operands.
+   */
   def toExpression: _Expression = result match
     case Left(e)  => e
     case Right(v) => v

@@ -1,10 +1,14 @@
 package it.grypho.scala.leonardo
 package core
 
-// The Heaviside unit step function: step(t) = 0 for t < 0, 1 for t >= 0.
-// Evaluates to a concrete _Number when its argument reduces to a _Number;
-// otherwise stays symbolic so transform rules can pattern-match on it.
-// Not _ElementWise: derive/simplify/expand/integrate do not distribute through step.
+/** Heaviside unit step function: `step(t) = 1` when `t ≥ 0`, `0` otherwise.
+ *
+ *  Evaluates to a concrete [[_Number]] when its argument reduces to a `_Number`; otherwise
+ *  stays symbolic so transform rules can pattern-match on it.  Not [[_ElementWise]]:
+ *  derive / simplify / expand / integrate do not automatically distribute through `step`.
+ *
+ *  @param arg the argument expression
+ */
 case class _Heaviside(arg: _Expression) extends _Expression:
   override def toString: String = s"step($arg)"
   override def eval(env: Environment): Either[_Expression, _Value] =

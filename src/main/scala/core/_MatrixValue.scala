@@ -4,32 +4,25 @@ package core
 import java.util.stream.IntStream
 
 
-// Dense, fully-reduced matrix value: a row-major Array[Double], not n² _Number nodes.
-// This is the concrete counterpart of the symbolic matrix node (matrix._Matrix),
-// exactly as _Number is the concrete counterpart of a scalar expression. It lives in
-// core so Environment can bind matrix values without core depending on any domain.
-//
-// Immutability: the public factory takes a defensive copy of the caller's array and
-// the storage is private, so no live reference into a value's data can exist outside
-// it — a _MatrixValue is as immutable as every other _Value. Kernels build results
-// with `new` on arrays they own, skipping the copy.
-//
-// The O(n²)/O(n³) kernels (add, multiply, transpose, scale) operate directly on the
-// dense array. multiply parallelizes over rows — each row of the output depends only
-// on one row of the left operand, so the writes are disjoint and need no locking —
-// but only above a work-volume threshold, where the fork/join overhead is amortized.
-
+/** Companion for the dense concrete matrix value [[_MatrixValue]]. */
 object _MatrixValue:
   // rows × inner × cols below this stays sequential: fork/join costs more than it saves.
   private val ParallelThreshold = 1L << 16
   // Multiply block edge: 64×64 doubles = 32 KB, an L1-sized tile of each operand.
   private val Tile = 64
 
+  /** Creates a `_MatrixValue` from a caller-supplied row-major array (defensively copied).
+   *  @param rows number of rows; must be positive
+   *  @param cols number of columns; must be positive
+   *  @param data row-major element array; must have length `rows * cols`
+   */
   def apply(rows: Int, cols: Int, data: Array[Double]): _MatrixValue =
     new _MatrixValue(rows, cols, data.clone)
 
-  // n×n identity — the dense counterpart of the matrix.IdentityMatrix node. Used by the
-  // vectorized (Sylvester) solver tier for absent left/right coefficients (issue 4.5).
+  /** n×n identity matrix — dense counterpart of the `matrix.IdentityMatrix` node.
+   *  Used by the vectorized (Sylvester) solver tier for absent left/right coefficients.
+   *  @param n side length; must be positive
+   */
   def identity(n: Int): _MatrixValue =
     val out = new Array[Double](n * n)
     var i = 0
@@ -38,8 +31,13 @@ object _MatrixValue:
       i += 1
     new _MatrixValue(n, n, out)
 
-  // Inverse of `vec`: reshape a (rows·cols)×1 column vector back into a rows×cols
-  // matrix, column-major (matching vec's stacking). None when v does not conform.
+  /** Inverse of `vec`: reshapes a `(rows·cols)×1` column vector back into a `rows×cols`
+   *  matrix using column-major order (matching `vec`'s stacking).
+   *  `None` when `v` does not conform to the requested dimensions.
+   *  @param v    the vectorised matrix; must be a column vector of length `rows * cols`
+   *  @param rows target number of rows
+   *  @param cols target number of columns
+   */
   def unvec(v: _MatrixValue, rows: Int, cols: Int): Option[_MatrixValue] =
     if v.cols != 1 || v.rows != rows * cols then None
     else
@@ -54,15 +52,32 @@ object _MatrixValue:
       Some(new _MatrixValue(rows, cols, out))
 
 
+/** Dense, fully-reduced matrix value: a row-major `Array[Double]`, not `n²` [[_Number]] nodes.
+ *
+ *  The concrete counterpart of the symbolic matrix node (`matrix._Matrix`), exactly as
+ *  [[_Number]] is the concrete counterpart of a scalar expression.  Lives in `core` so
+ *  [[Environment]] can bind matrix values without `core` depending on any domain.
+ *
+ *  Immutability: the public factory ([[_MatrixValue$.apply]]) takes a defensive copy and the
+ *  storage is private — kernels build results on arrays they own, skipping the copy.
+ *
+ *  `multiply` parallelises over independent row blocks above a work-volume threshold;
+ *  writes are disjoint and require no locking.
+ *
+ *  @param rows number of rows; must be positive
+ *  @param cols number of columns; must be positive
+ */
 final class _MatrixValue private (val rows: Int, val cols: Int, private val data: Array[Double]) extends _Value:
   require(rows > 0 && cols > 0, s"matrix dimensions must be positive: ${rows}x$cols")
   require(data.length == rows * cols, s"expected ${rows * cols} elements, got ${data.length}")
 
+  /** Returns the element at row `i`, column `j` (zero-based). */
   def apply(i: Int, j: Int): Double = data(i * cols + j)
 
-  // Read-only view of the dense storage (row-major).
+  /** Read-only view of the dense storage in row-major order. */
   def toVector: Vector[Double] = data.toVector
 
+  /** Returns `Right(this)` — a concrete matrix needs no further reduction. */
   override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
   override def children: List[_Expression] = List.empty
   override def rebuild(c: List[_Expression]): _Expression = this
@@ -72,29 +87,37 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       rows == that.rows && cols == that.cols && java.util.Arrays.equals(data, that.data)
     case _ => false
 
-  // Cached: the storage is immutable, and recomputing would rescan the whole array.
+  /** Cached hash code; safe because the storage is immutable. */
   override lazy val hashCode: Int =
     31 * (31 * rows + cols) + java.util.Arrays.hashCode(data)
 
-  // display(p) rounds to p decimal places — mirrors _Number.display(p) for REPL precision.
+  /** Renders this matrix at `precision` decimal places for REPL display; mirrors
+   *  [[_Number$.round _Number.round]] behaviour.
+   *  @param precision number of decimal places to show
+   */
   def display(precision: Int): String =
     (0 until rows).map(i =>
       (0 until cols).map(j => _Number.round(this(i, j), precision))
         .mkString("[", ", ", "]")
     ).mkString("[", ", ", "]")
 
-  // toString rounds for display only (DefaultPrecision), mirroring _Number.
+  /** Renders this matrix at [[Environment.DefaultPrecision]] decimal places. */
   override def toString: String = display(Environment.DefaultPrecision)
 
+  /** Returns `true` when every element is finite (not NaN, not infinite). */
   def isFinite: Boolean = data.forall(d => !d.isNaN && !d.isInfinite)
 
-  // Lift this matrix into an Either for eval: Right when all elements are finite,
-  // Left(orElse) otherwise (non-finite = domain error; stays symbolic like x/0).
-  // Shared by scalar._Operation and matrix._MatrixOperation; living here avoids
-  // duplicating the guard in two packages that cannot import each other.
+  /** Lifts this matrix into an `Either` for use in `eval`: `Right(this)` when all elements
+   *  are finite; `Left(orElse)` otherwise (non-finite is a domain error — stays symbolic like
+   *  `x / 0`).  Shared by `scalar` and `matrix` packages without requiring cross-imports.
+   *  @param orElse the symbolic fallback expression
+   */
   def guarded(orElse: _Expression): Either[_Expression, _Value] =
     if isFinite then Right(this) else Left(orElse)
 
+  /** Element-wise matrix addition.
+   *  @param that matrix to add; must have the same `rows` and `cols`
+   */
   def add(that: _MatrixValue): _MatrixValue =
     require(rows == that.rows && cols == that.cols, s"dimension mismatch: ${rows}x$cols + ${that.rows}x${that.cols}")
     val out = new Array[Double](data.length)
@@ -104,9 +127,13 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       i += 1
     new _MatrixValue(rows, cols, out)
 
+  /** Multiplies every element by scalar `k`.
+   *  @param k the scalar factor
+   */
   def scale(k: Double): _MatrixValue =
     new _MatrixValue(rows, cols, data.map(_ * k))
 
+  /** Returns the transpose of this matrix (`cols × rows`). */
   def transpose: _MatrixValue =
     val out = new Array[Double](data.length)
     var i = 0
@@ -118,9 +145,11 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       i += 1
     new _MatrixValue(cols, rows, out)
 
-  // Kronecker product: (this ⊗ that) — the (rows·that.rows)×(cols·that.cols) block
-  // matrix whose (i, j) block is this(i, j) · that. The kernel behind the vectorized
-  // matrix-equation tier (issue 4.5): vec(A·X·B) = (Bᵀ ⊗ A) · vec(X).
+  /** Kronecker product `this ⊗ that`: the `(rows·that.rows) × (cols·that.cols)` block
+   *  matrix whose `(i, j)` block is `this(i, j) · that`.  The kernel behind the vectorized
+   *  matrix-equation tier: `vec(A·X·B) = (Bᵀ ⊗ A) · vec(X)`.
+   *  @param that the right factor
+   */
   def kronecker(that: _MatrixValue): _MatrixValue =
     val kc  = cols * that.cols
     val out = new Array[Double](rows * that.rows * kc)
@@ -141,8 +170,9 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       i += 1
     new _MatrixValue(rows * that.rows, kc, out)
 
-  // Column-stacking vectorization: the (rows·cols)×1 column vector with
-  // vec[j·rows + i] = this(i, j) — the vec(·) of the Kronecker identity above.
+  /** Column-stacking vectorisation: returns the `(rows·cols) × 1` column vector where
+   *  `vec[j·rows + i] = this(i, j)`.  Paired with [[_MatrixValue$.unvec]].
+   */
   def vec: _MatrixValue =
     val out = new Array[Double](rows * cols)
     var j = 0
@@ -154,10 +184,11 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       j += 1
     new _MatrixValue(rows * cols, 1, out)
 
-  // Determinant via LU decomposition with partial pivoting, O(n³) — the numeric
-  // counterpart of the symbolic cofactor expansion in matrix.Determinant. None when
-  // the matrix is non-square (undefined); a zero pivot means a singular matrix and
-  // yields Some(0.0). Works on a defensive clone, so the value's storage is untouched.
+  /** Determinant via LU decomposition with partial pivoting, O(n³).
+   *  `None` when the matrix is non-square; `Some(0.0)` when singular (zero pivot).
+   *  Operates on a defensive clone — the value's storage is untouched.
+   *  @return `Some(det)` for square matrices, `None` for non-square
+   */
   def determinant: Option[Double] =
     if rows != cols then None
     else
@@ -193,10 +224,11 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         col += 1
       Some(det)
 
-  // Inverse via Gauss–Jordan elimination with partial pivoting, O(n³). None when the
-  // matrix is non-square or singular (a zero pivot) — the caller stays symbolic, the
-  // same contract as x/0 in scalar.Ratio. The augmented identity is reduced in lockstep
-  // with a clone of the data, so no live reference into the value's storage escapes.
+  /** Inverse via Gauss–Jordan elimination with partial pivoting, O(n³).
+   *  `None` when the matrix is non-square or singular — the caller stays symbolic, the
+   *  same "domain error stays symbolic" contract as `x / 0` in `scalar.Ratio`.
+   *  @return `Some(A⁻¹)` for invertible square matrices, `None` otherwise
+   */
   def inverse: Option[_MatrixValue] =
     if rows != cols then None
     else
@@ -240,11 +272,11 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         col += 1
       Some(new _MatrixValue(n, n, inv))
 
-  // LU decomposition with partial pivoting: P·A = L·U.
-  // L is unit lower triangular, U is upper triangular, P is the permutation matrix.
-  // None when non-square or singular (zero pivot encountered).
-  // The combined a array holds multipliers below the diagonal (L) and the elimination
-  // result above and on the diagonal (U), matching the standard compact LU storage.
+  /** LU decomposition with partial pivoting: `P·A = L·U`, where `L` is unit lower
+   *  triangular, `U` is upper triangular, and `P` is the permutation matrix.
+   *  `None` when the matrix is non-square or singular (zero pivot encountered).
+   *  @return `Some((L, U, P))` for square non-singular matrices, `None` otherwise
+   */
   def luDecompose: Option[(_MatrixValue, _MatrixValue, _MatrixValue)] =
     if rows != cols then None
     else
@@ -289,17 +321,15 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           else uData(i * n + j) = a(i * n + j)
       Some((_MatrixValue(n, n, lData), _MatrixValue(n, n, uData), _MatrixValue(n, n, pData)))
 
-  // Eigenvalue decomposition via QR iteration with Wilkinson shifts.
-  // Returns the n eigenvalues as a Vector[_Value] — each is a _Number (real) or
-  // _Complex (conjugate pair from a 2×2 block). None for non-square matrices or when
-  // the iteration does not converge within 300·n steps.
-  //
-  // Algorithm: maintain a shrinking active sub-matrix (sz×sz). Each step either
-  // deflates the bottom eigenvalue (sub-diagonal < tolerance) or applies a QR step
-  // with Wilkinson shift (eigenvalue of the bottom-right 2×2 closest to a[sz-1,sz-1]).
-  // 2×2 blocks are solved analytically, catching complex conjugate pairs without
-  // further iteration. When the Wilkinson shift causes rank deficiency (shift is an
-  // exact eigenvalue), a tiny perturbation is added to let Gram-Schmidt proceed.
+  /** Eigenvalue decomposition via QR iteration with Wilkinson shifts.
+   *  Returns the `n` eigenvalues as [[_Number]] (real) or [[_Complex]] (conjugate pairs
+   *  from 2×2 blocks).  `None` for non-square matrices or non-convergence within 300·n steps.
+   *
+   *  Algorithm: shrinking active sub-matrix; deflation when the sub-diagonal drops below
+   *  tolerance; Wilkinson shift QR step otherwise; 2×2 blocks solved analytically.  A tiny
+   *  perturbation breaks rank deficiency when the shift hits an exact eigenvalue.
+   *  @return `Some(eigenvalues)` in deflation order, `None` for non-square or non-convergent
+   */
   def eigenDecompose: Option[Vector[_Value]] =
     if rows != cols then None
     else
@@ -518,12 +548,13 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           k = 0; while k < n do { vRe(k) /= norm; vIm(k) /= norm; k += 1 }
           Some((vRe, vIm))
 
-  // Spectral decomposition: eigenvalues + eigenvectors.
-  // Returns (columns of V as Vector[Vector[_Value]], eigenvalues as Vector[_Value]).
-  // Eigenvector column j corresponds to eigenvalue j in the returned vector.
-  // Complex conjugate pairs (α ± βi) always occupy consecutive positions.
-  // None when non-square, QR iteration fails to converge, or an eigenvector
-  // cannot be extracted (numerically degenerate/defective matrix).
+  /** Spectral decomposition: eigenvalues and right eigenvectors.
+   *  Returns `(columns of V, eigenvalues)` where eigenvector column `j` corresponds to
+   *  eigenvalue `j`.  Complex conjugate pairs `(α ± βi)` occupy consecutive positions.
+   *  `None` when non-square, QR iteration fails, or an eigenvector cannot be extracted
+   *  (numerically degenerate or defective matrix).
+   *  @return `Some((V, eigenvalues))` or `None`
+   */
   def spectralDecompose: Option[(Vector[Vector[_Value]], Vector[_Value])] =
     if rows != cols then None
     else eigenDecompose.flatMap { eigs =>
@@ -553,9 +584,11 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       if cols.size == opts.size then Some((cols, eigs)) else None
     }
 
-  // QR decomposition via modified Gram-Schmidt: A = Q·R (for square matrices; m ≥ n).
-  // Q is m×n with orthonormal columns, R is n×n upper triangular.
-  // None when rows < cols or the matrix is rank-deficient (column collapses to zero norm).
+  /** QR decomposition via modified Gram-Schmidt: `A = Q·R` (`m ≥ n`).
+   *  `Q` is `m × n` with orthonormal columns; `R` is `n × n` upper triangular.
+   *  `None` when `rows < cols` or the matrix is rank-deficient (a column reduces to zero norm).
+   *  @return `Some((Q, R))` or `None`
+   */
   def qrDecompose: Option[(_MatrixValue, _MatrixValue)] =
     if rows < cols then None
     else
@@ -586,12 +619,14 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         j += 1
       Some((_MatrixValue(m, n, q), _MatrixValue(n, n, r)))
 
-  // (this: rows×n) * (that: n×that.cols). Block-tiled i-k-j: Tile×Tile blocks keep
-  // the hot block of `that` (and of `out`) cache-resident across a whole row block,
-  // instead of re-streaming all of `that` from memory for every output row. Within
-  // each output cell the k-accumulation order is still ascending, so results are
-  // bit-identical to the untiled kernel. Row blocks write disjoint output slices,
-  // so they parallelize with no locking, above the work-volume threshold.
+  /** Matrix multiplication `this × that` (`this.cols` must equal `that.rows`).
+   *
+   *  Block-tiled `i-k-j` loop: `Tile × Tile` blocks keep the hot tile of `that` (and `out`)
+   *  cache-resident across a whole row block.  Within each output cell, `k`-accumulation is
+   *  ascending, so results are bit-identical to the untiled kernel.  Row blocks write disjoint
+   *  slices of `out` and parallelise with no locking above the work-volume threshold.
+   *  @param that right factor; `that.rows` must equal `this.cols`
+   */
   def multiply(that: _MatrixValue): _MatrixValue =
     require(cols == that.rows, s"dimension mismatch: ${rows}x$cols * ${that.rows}x${that.cols}")
     val n    = cols
