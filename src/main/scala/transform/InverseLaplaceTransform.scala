@@ -5,38 +5,57 @@ import core.*
 import scalar.*
 
 
-// Inverse Laplace transform rule set — the dual of LaplaceTransform.scala.
-// inverseLaplaceOf(F, s, t) computes L⁻¹{F(s)} as a function of t. Returns
-// _InverseLaplace(F, s, t) unchanged when no rule applies (fixpoint / stay-symbolic
-// convention, matching the forward transform and derive/integrate).
-//
-// Strategy: linearity peels sums and s-free constant factors; the core is a rational
-// matcher for F(s) = N(s)/D(s) with deg N < deg D. The denominator's numeric coefficients
-// (via scalar.collect) decide the pole structure:
-//   deg D = 1:  b/(s − a)                → b·e^{a·t}
-//   deg D = 2, distinct real roots r₁,r₂ → A·e^{r₁·t} + B·e^{r₂·t}
-//   deg D = 2, repeated real root a      → e^{a·t}·(N₁ + (N₀ + N₁·a)·t)
-//   deg D = 2, complex roots a ± i·w     → e^{a·t}·(N₁·cos(w·t) + ((N₀+N₁·a)/w)·sin(w·t))
-//   deg D ≥ 3, distinct roots only       → residue partial fractions via companion-matrix
-//                                           root-finding (eigenDecompose); repeated roots
-//                                           detected by near-zero D'(root) → stay symbolic.
-//   Second-shift: L⁻¹{e^{-as}·F(s)} = u(t-a)·f(t-a)  where f = L⁻¹{F}; matched for
-//                 Product(Exp(-as), F), Product(F, Exp(-as)), and Ratio(Exp(-as), D(s)).
-// Symbolic-coefficient denominators always stay symbolic (numericCoeffs returns None).
+/** Inverse Laplace transform rule set.
+ *
+ *  [[inverseLaplaceOf]] computes `L^-1{F(s)}` as a function of `t`.  Returns
+ *  [[_InverseLaplace]]`(F, s, t)` unchanged when no rule applies (fixpoint /
+ *  stay-symbolic convention, matching the forward transform and `derive`/`integrate`).
+ *
+ *  Strategy: linearity peels sums and `s`-free constant factors; the core matches
+ *  rational `N(s)/D(s)` with `deg N < deg D`.  The denominator's numeric coefficients
+ *  (via `scalar.collect`) decide the pole structure:
+ *  - `deg D = 1`:  `b/(s - a)` -> `b * exp(a*t)`
+ *  - `deg D = 2`, distinct real roots `r1, r2` -> `A*exp(r1*t) + B*exp(r2*t)`
+ *  - `deg D = 2`, repeated real root `a`        -> `exp(a*t) * (N1 + (N0 + N1*a)*t)`
+ *  - `deg D = 2`, complex roots `a +/- i*w`     -> `exp(a*t) * (N1*cos(w*t) + ((N0+N1*a)/w)*sin(w*t))`
+ *  - `deg D >= 3`, distinct roots only           -> residue partial fractions via
+ *                                                   companion-matrix root-finding;
+ *                                                   repeated roots stay symbolic.
+ *  - **Second-shift**: `L^-1{exp(-a*s)*F(s)} = u(t-a)*f(t-a)` where `f = L^-1{F}`;
+ *    matched for `Product(Exp(-a*s), F)`, `Product(F, Exp(-a*s))`, and
+ *    `Ratio(Exp(-a*s), D(s))`.
+ *
+ *  Symbolic-coefficient denominators always stay symbolic (`numericCoeffs` returns `None`).
+ */
 
+/** Computes `L^-1{f}` with Laplace variable `s` and time variable `t`.
+ *
+ *  Applies `simplifyFully` to the result when a rule fires, keeping the output readable.
+ *
+ *  @param f the frequency-domain expression to invert
+ *  @param s the Laplace frequency variable
+ *  @param t the time variable
+ *  @return the inverse Laplace transform of `f`, or [[_InverseLaplace]]`(f, s, t)` if no rule applies
+ */
 def inverseLaplaceOf(f: _Expression, s: _Variable, t: _Variable): _Expression =
   val result = inverseImpl(f, s, t)
   if result.isInstanceOf[_InverseLaplace] then result else simplifyFully(result)
 
-// Returns Some(a) for a positive numeric a when inner matches -a*sv
-// (the exponent of e^{-as} in the second-shift factor).
+/** Returns `Some(a)` for a positive `a` when `inner` matches `-a * sv` (the exponent of `exp(-a*s)`). */
 private def negShiftOf(inner: _Expression, sv: String): Option[Double] = inner match
   case Product(_Number(c), vv: _Variable) if vv.variable == sv && c < 0 => Some(-c)
   case Product(vv: _Variable, _Number(c)) if vv.variable == sv && c < 0 => Some(-c)
   case _                                                                  => None
 
-// L⁻¹{e^{-as}·F(s)} = u(t-a)·f(t-a) where f = L⁻¹{F}.
-// Returns None when a cannot be extracted or F cannot be inverted.
+/** Applies the second-shift theorem: `L^-1{exp(-a*s) * F(s)} = u(t-a) * f(t-a)`.
+ *
+ *  @param inner the exponent of the `exp` factor (must match `-a * s`)
+ *  @param F     the remaining frequency-domain factor
+ *  @param s     the Laplace variable
+ *  @param t     the time variable
+ *  @return `Some(u(t-a) * f(t-a))` on success; `None` when `a` cannot be extracted
+ *          or `F` cannot be inverted
+ */
 private def inverseSecondShift(
     inner: _Expression, F: _Expression, s: _Variable, t: _Variable
 ): Option[_Expression] =
@@ -48,9 +67,10 @@ private def inverseSecondShift(
       Some(Product(_Heaviside(Sum(t, _Number(-a))), ftShifted))
   }
 
+/** Recursive rule dispatcher for the inverse Laplace transform. */
 private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression = f match
 
-  // Linearity: L⁻¹{A + B} = L⁻¹{A} + L⁻¹{B}. If either half is unresolved, the whole
+  // Linearity: L^-1{A + B} = L^-1{A} + L^-1{B}. If either half is unresolved, the whole
   // sum stays symbolic (a partially-inverted sum would be misleading).
   case Sum(a, b) =>
     val ia = inverseImpl(a, s, t)
@@ -58,7 +78,7 @@ private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression
     if ia.isInstanceOf[_InverseLaplace] || ib.isInstanceOf[_InverseLaplace] then _InverseLaplace(f, s, t)
     else Sum(ia, ib)
 
-  // Constant multiple: L⁻¹{c · G} = c · L⁻¹{G} when c is free of s (both orderings).
+  // Constant multiple: L^-1{c * G} = c * L^-1{G} when c is free of s (both orderings).
   case Product(c, g) if !dependsOn(c, s) =>
     val ig = inverseImpl(g, s, t)
     if ig.isInstanceOf[_InverseLaplace] then _InverseLaplace(f, s, t) else Product(c, ig)
@@ -66,7 +86,7 @@ private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression
     val ig = inverseImpl(g, s, t)
     if ig.isInstanceOf[_InverseLaplace] then _InverseLaplace(f, s, t) else Product(c, ig)
 
-  // Second-shift theorem: L⁻¹{e^{-as}·F(s)} = u(t-a)·f(t-a).
+  // Second-shift theorem: L^-1{exp(-a*s) * F(s)} = u(t-a) * f(t-a).
   // Matched in three forms that arise in practice.
   case Product(Exp(inner), g)   => inverseSecondShift(inner, g, s, t).getOrElse(_InverseLaplace(f, s, t))
   case Product(g, Exp(inner))   => inverseSecondShift(inner, g, s, t).getOrElse(_InverseLaplace(f, s, t))
@@ -80,9 +100,9 @@ private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression
 
   case _ => _InverseLaplace(f, s, t)
 
-// Numeric coefficient vector of a polynomial in s (c₀, c₁, …), or None when the
-// expression is not polynomial in s or a coefficient is not a concrete number — in
-// which case the pole structure cannot be decided numerically and we stay symbolic.
+/** Returns the numeric coefficient vector `[c0, c1, ..., cn]` of a polynomial in `s`,
+ *  or `None` when any coefficient is not a concrete number (stays symbolic).
+ */
 private def numericCoeffs(e: _Expression, s: _Variable): Option[Vector[Double]] =
   collect(e, s).flatMap { cs =>
     cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
@@ -90,11 +110,13 @@ private def numericCoeffs(e: _Expression, s: _Variable): Option[Vector[Double]] 
     }
   }
 
+/** Evaluates `e` in an empty environment and returns the numeric value, or `None`. */
 private def asNumber(e: _Expression): Option[Double] =
   e.eval(new Environment()) match
     case Right(_Number(d)) => Some(d)
     case _                 => None
 
+/** Inverts a strictly proper rational `N(s)/D(s)` (`deg N < deg D`); `None` when unsupported. */
 private def invRational(num: _Expression, den: _Expression, s: _Variable, t: _Variable): Option[_Expression] =
   for
     ns <- numericCoeffs(num, s)
@@ -103,16 +125,18 @@ private def invRational(num: _Expression, den: _Expression, s: _Variable, t: _Va
     result <- ds.size match
       case 2 => Some(invLinear(ns, ds, t))
       case 3 => invQuadratic(ns, ds, t)
-      case _ => invHigherDegree(ns, ds, s, t)   // deg D ≥ 3: residue partial fractions
+      case _ => invHigherDegree(ns, ds, s, t)   // deg D >= 3: residue partial fractions
   yield result
 
-// b / (d₁·s + d₀)  →  (n₀/d₁) · e^{a·t},  a = −d₀/d₁.
+/** Inverts `b / (d1*s + d0)` -> `(n0/d1) * exp(a*t)` where `a = -d0/d1`. */
 private def invLinear(ns: Vector[Double], ds: Vector[Double], t: _Variable): _Expression =
   val a     = -ds(0) / ds(1)
   val coeff = ns.headOption.getOrElse(0.0) / ds(1)
   scaleExp(coeff, a, t)
 
-// (n₁·s + n₀) / (d₂·s² + d₁·s + d₀), reduced to monic and split by completing the square.
+/** Inverts `(n1*s + n0) / (d2*s^2 + d1*s + d0)` by completing the square.
+ *  Handles complex conjugate poles, repeated real root, and distinct real roots.
+ */
 private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): Option[_Expression] =
   val d2 = ds(2)
   val p  = ds(1) / d2
@@ -120,16 +144,16 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
   val n1 = ns.lift(1).getOrElse(0.0) / d2
   val n0 = ns.headOption.getOrElse(0.0) / d2
   val a  = -p / 2.0
-  val w2 = q - p * p / 4.0        // (s − a)² + w²  with  w² = q − p²/4
+  val w2 = q - p * p / 4.0        // (s - a)^2 + w^2  with  w^2 = q - p^2/4
   if w2 > 0.0 then
-    // Complex conjugate poles a ± i·w → damped oscillation.
+    // Complex conjugate poles a +/- i*w -> damped oscillation.
     val w = math.sqrt(w2)
     Some(damped(a, t, sum(mul(n1, Cos(mulNum(w, t))), mul((n0 + n1 * a) / w, Sin(mulNum(w, t))))))
   else if w2 == 0.0 then
-    // Repeated real root a: n₁/(s−a) + (n₀+n₁·a)/(s−a)² → e^{a·t}(n₁ + (n₀+n₁·a)·t).
+    // Repeated real root a: n1/(s-a) + (n0+n1*a)/(s-a)^2 -> exp(a*t)*(n1 + (n0+n1*a)*t).
     Some(damped(a, t, sum(_Number(n1), mul(n0 + n1 * a, t))))
   else
-    // Distinct real roots a ± √(−w²) → partial fractions A/(s−r₁) + B/(s−r₂).
+    // Distinct real roots a +/- sqrt(-w^2) -> partial fractions A/(s-r1) + B/(s-r2).
     val r  = math.sqrt(-w2)
     val r1 = a + r
     val r2 = a - r
@@ -137,13 +161,13 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
     val a2 = (n1 * r2 + n0) / (r2 - r1)
     Some(sum(scaleExp(a1, r1, t), scaleExp(a2, r2, t)))
 
-// ── high-degree rational inverse: companion-matrix root-finding + residue partial fractions ──
+// ── High-degree rational inverse: companion-matrix root-finding + residue partial fractions ──
 
-// [c₀, c₁, …, cₙ] → [c₁, 2c₂, …, n·cₙ]  (differentiate polynomial coefficient vector).
+/** Differentiates a polynomial coefficient vector: `[c0, c1, ..., cn]` -> `[c1, 2*c2, ..., n*cn]`. */
 private def derivPoly(coeffs: Vector[Double]): Vector[Double] =
   coeffs.zipWithIndex.tail.map { (c, i) => i.toDouble * c }
 
-// Horner evaluation of a real-coefficient polynomial at a complex point r = (rRe, rIm).
+/** Horner evaluation of a real-coefficient polynomial at a complex point `r = (re, im)`. */
 private def evalPolyAt(coeffs: Vector[Double], r: (Double, Double)): (Double, Double) =
   val (rre, rim) = r
   coeffs.foldRight((0.0, 0.0)) { (c, acc) =>
@@ -151,8 +175,7 @@ private def evalPolyAt(coeffs: Vector[Double], r: (Double, Double)): (Double, Do
     (are * rre - aim * rim + c, are * rim + aim * rre)
   }
 
-// Roots of a polynomial (coeffs(i) = coefficient of sⁱ) via its companion matrix.
-// Builds the n×n Frobenius companion and calls _MatrixValue.eigenDecompose.
+/** Finds the roots of a polynomial (coeffs(i) = coefficient of `s^i`) via its Frobenius companion matrix. */
 private def polyRoots(coeffs: Vector[Double]): Option[Vector[_Value]] =
   if coeffs.isEmpty then None
   else
@@ -165,8 +188,9 @@ private def polyRoots(coeffs: Vector[Double]): Option[Vector[_Value]] =
       for i <- 1 until n do mat(i * n + (i - 1)) = 1.0              // sub-diagonal
       _MatrixValue(n, n, mat).eigenDecompose
 
-// Pair complex roots into conjugate pairs (positive-im, negative-im).
-// None when any root cannot be matched (implies repeated or defective).
+/** Pairs complex roots into conjugate pairs (positive-im, negative-im).
+ *  Returns `None` when any root cannot be matched (implies repeated or defective).
+ */
 private def pairConjugates(cs: Vector[_Complex]): Option[Vector[(_Complex, _Complex)]] =
   val pos = cs.filter(_.im > 0)
   val neg = cs.filter(_.im < 0)
@@ -178,10 +202,13 @@ private def pairConjugates(cs: Vector[_Complex]): Option[Vector[(_Complex, _Comp
     }
     if pairs.size == pos.size then Some(pairs) else None
 
-// Inverse Laplace for strictly proper N(s)/D(s) with deg D ≥ 3, distinct roots only.
-// Residue formula: A_r = N(r)/D'(r) for each root r.  For complex conjugate pairs
-// (α ± βi) the combined term is  2·Re(A)·e^{αt}·cos(βt) − 2·Im(A)·e^{αt}·sin(βt).
-// Returns None when root-finding fails or any root is repeated (|D'(root)| < 1e-12).
+/** Inverts a strictly proper `N(s)/D(s)` with `deg D >= 3` and distinct roots only.
+ *
+ *  Residue formula: `A_r = N(r) / D'(r)` for each root `r`.  For complex conjugate
+ *  pairs `(alpha +/- beta*i)` the combined term is
+ *  `2*Re(A)*exp(alpha*t)*cos(beta*t) - 2*Im(A)*exp(alpha*t)*sin(beta*t)`.
+ *  Returns `None` when root-finding fails or any root is repeated (`|D'(root)| < 1e-12`).
+ */
 private def invHigherDegree(
     ns: Vector[Double], ds: Vector[Double], s: _Variable, t: _Variable
 ): Option[_Expression] =
@@ -226,25 +253,28 @@ private def invHigherDegree(
       }
   }
 
-// ── expression builders (fold trivial 0/1 coefficients so output stays readable) ──
+// ── Expression builders (fold trivial 0/1 coefficients so output stays readable) ──
 
+/** Returns `k * e`, folding `0 * e -> 0` and `1 * e -> e`. */
 private def mul(k: Double, e: _Expression): _Expression = k match
   case 0.0 => _Number(0)
   case 1.0 => e
   case _   => Product(_Number(k), e)
 
+/** Returns `k * e`, folding `1 * e -> e`. */
 private def mulNum(k: Double, e: _Expression): _Expression =
   if k == 1.0 then e else Product(_Number(k), e)
 
+/** Returns `a + b`, folding `0 + b -> b` and `a + 0 -> a`. */
 private def sum(a: _Expression, b: _Expression): _Expression = (a, b) match
   case (_Number(0.0), _) => b
   case (_, _Number(0.0)) => a
   case _                 => Sum(a, b)
 
-// coeff · e^{a·t}  (a = 0 collapses the exponential to the bare coefficient).
+/** Returns `coeff * exp(a * t)`, collapsing the exponential when `a = 0`. */
 private def scaleExp(coeff: Double, a: Double, t: _Variable): _Expression =
   if a == 0.0 then _Number(coeff) else mul(coeff, Exp(mulNum(a, t)))
 
-// e^{a·t} · inner  (a = 0 → inner).
+/** Returns `exp(a * t) * inner`, omitting the exponential factor when `a = 0`. */
 private def damped(a: Double, t: _Variable, inner: _Expression): _Expression =
   if a == 0.0 then inner else Product(Exp(mulNum(a, t)), inner)

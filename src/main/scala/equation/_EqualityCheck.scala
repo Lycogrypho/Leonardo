@@ -4,13 +4,22 @@ package equation
 import core.*
 
 
-// An explicit equality check — "a == b" — always reduces to _Bool when both sides
-// are concrete, using the same tolerance as _Equation. Unlike _Equation it is:
-//   - NOT solvable: _Solve.eval requires an _Equation, so solve(a == b, x) stays
-//     symbolic (use "=" to build a solvable equation).
-//   - Still _ElementWise: simplify / expand / derive distribute over both sides,
-//     mirroring the _Equation treatment.
-// toString is "lhs == rhs", which round-trips through the parser.
+/** An explicit equality test: `lhs == rhs`.
+ *
+ *  Always reduces to `_Bool` when both sides are concrete, using the same
+ *  tolerance as [[_Equation]] (`|a - b| <= 0.5 * 10^(-env.precision)`).
+ *
+ *  Unlike [[_Equation]] it is:
+ *  - **NOT solvable**: [[_Solve]].eval requires an [[_Equation]], so
+ *    `solve(a == b, x)` stays symbolic.  Use `=` to build a solvable relation.
+ *  - Still `_ElementWise`: `simplify`/`expand`/`derive` distribute over both
+ *    sides, mirroring the [[_Equation]] treatment.
+ *
+ *  `toString` is `"lhs == rhs"`, which round-trips through the parser.
+ *
+ *  @param lhs left-hand side expression
+ *  @param rhs right-hand side expression
+ */
 case class _EqualityCheck(lhs: _Expression, rhs: _Expression) extends _ElementWise:
   override def toString: String = s"$lhs == $rhs"
   override def children: List[_Expression] = List(lhs, rhs)

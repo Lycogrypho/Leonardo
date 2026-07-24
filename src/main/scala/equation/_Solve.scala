@@ -5,21 +5,27 @@ import core.*
 import matrix.*
 
 
-// AST node for the solve(eq, v) functional (parser: "solve(expr, v)").
-// eq is _Expression, not _Equation, so a named equation (h := x = 5) can be
-// passed directly: after Session.substitute expands h → _Equation(x, 5), eval
-// pattern-matches on the concrete _Equation and delegates to solve(). If eq is
-// not an _Equation at eval time (e.g. a plain expression or an _EqualityCheck),
-// the node stays symbolic — only "=" builds a solvable relation, not "==".
-//
-// A solution set is never a concrete _Value, so eval always answers Left:
-//   - no solution found/known  → Left(this)                (stays symbolic)
-//   - exactly one solution     → Left(x = expr)            (an _Equation)
-//   - several solutions        → Left([[x = e₁, x = e₂]])  (a row-vector _Matrix)
-//
-// children exposes eq as a single child (binder v excluded), so substitute/
-// dependsOn/rebuild walk into it — if eq is a _Variable naming a definition,
-// substitute replaces it with its body before eval runs.
+/** AST node for the `solve(eq, v)` functional (parser: `solve(expr = expr, v)`).
+ *
+ *  `eq` is typed as `_Expression`, not `[[_Equation]]`, so a named equation binding
+ *  (`h := x = 5`) can be passed directly: after substitution expands `h` to
+ *  `_Equation(x, 5)`, `eval` pattern-matches on the concrete `_Equation` and
+ *  delegates to [[solve]].  If `eq` is not an `_Equation` at eval time (e.g. a plain
+ *  expression or an `_EqualityCheck`), the node stays symbolic -- only `=` builds a
+ *  solvable relation, not `==`.
+ *
+ *  A solution set is never a concrete `_Value`, so `eval` always answers `Left`:
+ *  - no solution found / known  -> `Left(this)`            (stays symbolic)
+ *  - exactly one solution       -> `Left(v = expr)`        (an `_Equation`)
+ *  - several solutions          -> `Left([[v=e1, v=e2]])` (a row-vector `_Matrix`)
+ *
+ *  `children` exposes `eq` as a single child (binder `v` is excluded), so
+ *  `substitute`/`dependsOn`/`rebuild` walk into `eq` -- if `eq` is a `_Variable`
+ *  naming a definition, `substitute` replaces it with its body before `eval` runs.
+ *
+ *  @param eq the equation expression (must resolve to an [[_Equation]] at eval time)
+ *  @param v  the solve variable (binder -- excluded from `children`)
+ */
 case class _Solve(eq: _Expression, v: _Variable) extends _Expression:
   override def toString: String = s"solve($eq, $v)"
   override def children: List[_Expression] = List(eq)

@@ -8,43 +8,56 @@ import matrix.*
 import scala.annotation.tailrec
 
 
-// Equation solver: solve(eq, v) returns the solutions of eq in v as a list of
-// equations in the shape "v = expr" — a solution set does not fit eval's
-// Either[_Expression, _Value], so like derive/integrate this is a package-level
-// algorithm (the _Solve node presents its result at eval time).
-//
-// Tiers:
-//   - polynomial via scalar.collect (like-term collection):
-//       degree 1 → v = -c₀/c₁ (symbolic coefficients welcome)
-//       degree 2 → discriminant; 0, 1 or 2 real roots for numeric coefficients,
-//                  the two ±√Δ closed forms for symbolic ones
-//       degree 0 → Nil (the equation does not constrain v)
-//   - anything else (transcendental forms, degree ≥ 3) falls back to numeric
-//     root-finding: compile(lhs − rhs, v, env) gives a Double => Double closure,
-//     scanned for sign changes over [-100, 100] and refined by bisection — up to
-//     MaxNumericRoots roots (periodic functions have infinitely many). If the
-//     difference is not compilable (unbound symbols besides v), Nil.
-//
-// Each solution's right-hand side is folded through env, so bound coefficients
-// produce numeric answers: with a := 2, solve(a·x = 4, x) yields x = 2.
-//
-// Matrix equations take two separate paths, tried before the scalar tiers:
-//   - unknown MATRIX v (A·v = B): v = A⁻¹·B via the inverse kernel (solveMatrixUnknown);
-//   - scalar v inside a matrix equation (both sides reduce to matrices): element-wise
-//     decomposition keeping the values that satisfy every cell (solveElementwise).
+/** Multi-tier equation solver.
+ *
+ *  [[solve]] returns the solutions of `eq` in `v` as a list of `[[_Equation]]`s in
+ *  the shape `v = expr`.  A solution set does not fit `eval`'s
+ *  `Either[_Expression, _Value]`, so like `derive`/`integrate` this is a
+ *  package-level algorithm (the [[_Solve]] node presents its result at eval time).
+ *
+ *  Tiers, tried in order (most specific first):
+ *  1. **Matrix unknown** (`solveMatrixUnknown`) -- if `v` names a matrix-valued
+ *     unknown, recognises linear shapes `A*v = B`, `v*A = B`, `A*v*D = B`,
+ *     `A*v + C = B`, and `v = B` via the inverse kernel (dense) or cofactor
+ *     expansion (symbolic, capped at 6x6); general Sylvester/Lyapunov shapes via
+ *     Kronecker vectorization (capped at a 20x20 unknown).
+ *  2. **Scalar v inside a matrix equation** (`solveElementwise`) -- when both sides
+ *     reduce to matrices, decomposes per-cell, pools candidates, and keeps those
+ *     satisfying the whole equation.
+ *  3. **Scalar linear** -- degree-1 polynomial via `scalar.collect`: `v = -c0/c1`.
+ *  4. **Scalar quadratic** -- degree-2 polynomial: discriminant; 0/1/2 real roots for
+ *     numeric coefficients, the two +/-sqrt(delta) closed forms for symbolic ones.
+ *  5. **Numeric bisection** -- compiles `lhs - rhs` to a `Double => Double` closure,
+ *     scans for sign changes over `[-100, 100]`, and refines by bisection (up to
+ *     `MaxNumericRoots` roots).  Returns `Nil` when the expression is not compilable.
+ *
+ *  Each solution's right-hand side is folded through `env`, so bound coefficients
+ *  produce numeric answers: with `a := 2`, `solve(a*x = 4, x)` yields `x = 2`.
+ */
 
+/** Search range for the numeric bisection tier. */
 private val SearchLo         = -100.0
+/** Search range for the numeric bisection tier. */
 private val SearchHi         = 100.0
+/** Number of uniform samples in `[SearchLo, SearchHi]` for sign-change detection. */
 private val SearchSamples    = 10000
+/** Maximum number of roots returned by the numeric tier (periodic functions have infinitely many). */
 private val MaxNumericRoots  = 8
+/** Bisection refinement iterations per detected sign-change interval. */
 private val BisectIterations = 200
 
+/** Returns the solutions of `eq` in `v` as a list of `v = expr` equations.
+ *
+ *  An empty list means no solution was found (or the equation does not constrain `v`).
+ *  The caller ([[_Solve]].eval) interprets the list: empty -> stays symbolic, one ->
+ *  single equation, many -> a row-vector `_Matrix` of equations.
+ *
+ *  @param eq  the equation to solve
+ *  @param v   the variable to solve for
+ *  @param env the evaluation environment (variable bindings + precision)
+ *  @return    the solution list, possibly empty
+ */
 def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): List[_Equation] =
-  // Tiers, most specific first:
-  //   4.3b — unknown MATRIX v (A·v = B): v = A⁻¹·B via the inverse kernel;
-  //   4.3a — scalar v inside a matrix equation (both sides reduce to matrices):
-  //          element-wise decomposition, a dimension mismatch has no solution;
-  //   otherwise the scalar linear/quadratic/numeric tiers.
   solveMatrixUnknown(eq, v, env) match
     case Some(solution) => solution
     case None =>
@@ -54,6 +67,7 @@ def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): Li
           else Nil
         case None => solveScalar(eq, v, env)
 
+/** Scalar linear/quadratic/numeric tiers for a non-matrix equation. */
 private def solveScalar(eq: _Equation, v: _Variable, env: Environment): List[_Equation] =
   val difference = Sum(eq.lhs, Product(_Number(-1), eq.rhs))
 
@@ -66,16 +80,12 @@ private def solveScalar(eq: _Equation, v: _Variable, env: Environment): List[_Eq
 
   roots.map(r => _Equation(v, r.eval(env).toExpression))
 
-// Issue 4.3a — scalar unknown v inside a matrix equation lhs = rhs. The two sides are
-// reduced element-wise (a MatSum / matrix literal folds to an n×m grid of scalar
-// expressions), giving n·m scalar equations Aᵢⱼ = Bᵢⱼ in v. Their roots are pooled as
-// candidates, then each candidate is checked against the WHOLE matrix equation — a value
-// is a solution only when every element holds. Verification reuses _Equation.eval's
-// precision-tolerant matrix comparison, so a candidate that satisfies some elements but
-// not others is dropped: the reported [[1+x, 2+x], [1+2x, 3+3x]] = [[1,3],[3,6]] forces
-// x = 0 in cell (1,1) and x = 1 elsewhere, so no candidate verifies and the result is
-// empty (the solve node then stays symbolic). Symbolic roots that do not reduce to a
-// bindable value under env are conservatively skipped (no false positives).
+/** Solves for a scalar `v` inside a matrix equation by element-wise decomposition.
+ *
+ *  Pools roots from each cell equation; keeps candidates that satisfy the whole
+ *  matrix equation under `env`.  Symbolic roots that do not bind to a concrete value
+ *  are conservatively skipped (no false positives).
+ */
 private def solveElementwise(eq: _Equation, lhs: _Matrix, rhs: _Matrix, v: _Variable, env: Environment): List[_Equation] =
   val elementEqs: List[_Equation] = lhs.elems.toList.zip(rhs.elems).map((l, r) => _Equation(l, r))
   val candidates: List[_Value]    =
@@ -83,29 +93,27 @@ private def solveElementwise(eq: _Equation, lhs: _Matrix, rhs: _Matrix, v: _Vari
   val verified = candidates.filter(root => eq.eval(env.withBinding(v.variable, root)).contains(_Bool(true)))
   dedupeRoots(verified, env).map(root => _Equation(v, root))
 
-// Both sides re-inflated to matrix literals, or None when either is not matrix-shaped.
+/** Returns both sides re-inflated to `_Matrix` literals, or `None` when either is not matrix-shaped. */
 private def matrixSides(eq: _Equation, env: Environment): Option[(_Matrix, _Matrix)] =
   (asMatrix(eq.lhs.eval(env)), asMatrix(eq.rhs.eval(env))) match
     case (Some(l), Some(r)) => Some((l, r))
     case _                  => None
 
+/** Converts an already-evaluated result to a `_Matrix` literal, or `None`. */
 private def asMatrix(r: Either[_Expression, _Value]): Option[_Matrix] = r match
   case Left(m: _Matrix)        => Some(m)
   case Right(mv: _MatrixValue) => Some(_Matrix.fromValue(mv))
   case _                       => None
 
-// Issue 4.3b / 4.5 — the unknown v is a MATRIX in a linear matrix equation. Recognises
-// the shapes A·v = B, v·A = B, A·v·D = B, A·v + C = B (and permutations) and v = B where
-// the *known* operands (A, C, D, B) are either concrete matrices (dense fast path: A⁻¹ via
-// LU kernel) or symbolic matrix literals (symbolic path: A⁻¹ via cofactor expansion, capped
-// at MaxSymbolicDim = 6):
-//   A·v = B → v = A⁻¹·B   v·A = B → v = B·A⁻¹   A·v·D = B → v = A⁻¹·B·D⁻¹   v = B → v = B
-// An affine v-free term is peeled to the constant side first (A·v + C = B → A·v = B − C).
-// Some(Nil) when A is singular / non-square or the shapes do not conform (no solution →
-// the _Solve node stays symbolic). None when the equation is not a matrix-unknown form,
-// so the element-wise (4.3a) and scalar tiers still run. Products are the scalar `Product`
-// node because a bare unknown parses as a scalar variable (`A * X` with A and B bound
-// matrices → `Product(A, X)`); the `MatProduct` shapes are accepted too for completeness.
+/** Tries to solve for a MATRIX-valued unknown `v` in a linear matrix equation.
+ *
+ *  Recognises the shapes `A*v = B`, `v*A = B`, `A*v*D = B`, `A*v + C = B`, and
+ *  `v = B`.  First tries the single-inverse (`linearMatrixSolve`) tier; then the
+ *  Kronecker vectorization (`vectorizedMatrixSolve`) tier for multi-term shapes
+ *  (Sylvester, Lyapunov, etc.).  `Some(Nil)` when the shape is recognised but
+ *  singular/non-conforming (no solution); `None` when `v` is not a matrix unknown
+ *  (so the scalar tiers still run).
+ */
 private def solveMatrixUnknown(eq: _Equation, v: _Variable, env: Environment): Option[List[_Equation]] =
   for
     (withV, constant) <- sideWith(v, eq)
@@ -114,48 +122,50 @@ private def solveMatrixUnknown(eq: _Equation, v: _Variable, env: Environment): O
                            .orElse(vectorizedMatrixSolve(withV, b, v, env))
   yield solution
 
-// withV is the side containing v; b is the known right-hand matrix expression (concrete
-// or symbolic). Returns None when withV is not one of the recognised matrix-unknown shapes.
-//
-// Shapes handled (4.3b + 4.5), most specific first:
-//   - affine term      A·X + C = B → recurse on A·X with B − C   (issue 4.5)
-//   - two-sided        A·X·D = B   → X = A⁻¹·B·D⁻¹                (issue 4.5)
-//   - one-sided        A·X = B     → X = A⁻¹·B ;  X·A = B → X = B·A⁻¹
-//   - bare unknown     X = B       → X = B
-// The additive-peel and two-sided cases accept both the scalar Sum/Product nodes (a
-// bound-variable operand parses as a scalar node) and the MatSum/MatProduct nodes (a
-// matrix-literal operand parses as a matrix node).
+/** Recognises and solves single-inverse matrix-unknown shapes.
+ *
+ *  Shapes handled (most specific first):
+ *  - affine term: `A*X + C = B` -> peel `C`, recurse on `A*X = B - C`
+ *  - two-sided:   `A*X*D = B`   -> `X = A^-1 * B * D^-1`
+ *  - one-sided:   `A*X = B`     -> `X = A^-1 * B`; `X*A = B` -> `X = B * A^-1`
+ *  - bare:        `X = B`       -> `X = B`
+ *
+ *  Both the scalar `Sum`/`Product` nodes and the matrix `MatSum`/`MatProduct` nodes
+ *  are accepted (a bound-variable operand may parse as a scalar node).
+ */
 @tailrec
 private def linearMatrixSolve(withV: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
   withV match
-    // Affine: peel a v-free additive operand across (A·X + C = B → A·X = B − C).
+    // Affine: peel a v-free additive operand across (A*X + C = B -> A*X = B - C).
     case MatSum(l, r) if !dependsOn(l, v) => linearMatrixSolve(r, matSub(b, l), v, env)
     case MatSum(l, r) if !dependsOn(r, v) => linearMatrixSolve(l, matSub(b, r), v, env)
     case Sum(l, r)    if !dependsOn(l, v) => linearMatrixSolve(r, matSub(b, l), v, env)
     case Sum(l, r)    if !dependsOn(r, v) => linearMatrixSolve(l, matSub(b, r), v, env)
-    // Two-sided product: A·X·D = B → X = A⁻¹·B·D⁻¹.
+    // Two-sided product: A*X*D = B -> X = A^-1 * B * D^-1.
     case MatProduct(MatProduct(a, m), d) if m == v => twoSidedSolve(a, d, b, v, env)
     case MatProduct(a, MatProduct(m, d)) if m == v => twoSidedSolve(a, d, b, v, env)
     case Product(Product(a, m), d)       if m == v => twoSidedSolve(a, d, b, v, env)
     case Product(a, Product(m, d))       if m == v => twoSidedSolve(a, d, b, v, env)
-    // One-sided product: A·X = B → X = A⁻¹·B ;  X·A = B → X = B·A⁻¹.
+    // One-sided product: A*X = B -> X = A^-1 * B ;  X*A = B -> X = B * A^-1.
     case Product(a, r)    if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
     case MatProduct(a, r) if r == v => matrixDivide(a, b, v, env, aOnLeft = true)
     case Product(l, a)    if l == v => matrixDivide(a, b, v, env, aOnLeft = false)
     case MatProduct(l, a) if l == v => matrixDivide(a, b, v, env, aOnLeft = false)
-    case r                if r == v =>                                   // v = B (or B − C)
+    case r                if r == v =>                                   // v = B (or B - C)
       val sol = b.eval(env) match
         case Right(value) => value
         case Left(expr)   => simplifyFully(expr)
       Some(List(_Equation(v, sol)))
     case _                          => None
 
-// A·v = B → v = A⁻¹·B; v·A = B → v = B·A⁻¹.
-// Dense fast path: both A and B reduce to _MatrixValue — uses the LU inverse kernel;
-// Some(Nil) when singular/non-square or dimensions do not conform.
-// Symbolic path: A or B is a _Matrix literal — uses the Inverse node (cofactor expansion,
-// capped at MaxSymbolicDim); the product is computed via MatProduct. Returns None when the
-// inverse cannot be determined (so element-wise/scalar tiers still get a chance).
+/** Solves `A*v = B` (aOnLeft=true) or `v*A = B` (aOnLeft=false) via matrix inverse.
+ *
+ *  Dense fast path: both `A` and `B` reduce to `_MatrixValue` -- uses the LU
+ *  inverse kernel; `Some(Nil)` when singular/non-square or dimensions do not conform.
+ *  Symbolic path: `A` or `B` is a `_Matrix` literal -- uses the `Inverse` node
+ *  (cofactor expansion, capped at `MaxSymbolicDim`); returns `None` when the inverse
+ *  cannot be determined so the element-wise / scalar tiers still get a chance.
+ */
 private def matrixDivide(a: _Expression, b: _Expression, v: _Variable, env: Environment, aOnLeft: Boolean): Option[List[_Equation]] =
   (asMatrixValue(a.eval(env)), asMatrixValue(b.eval(env))) match
     case (Some(aMatrix), Some(bMatrix)) =>
@@ -170,63 +180,62 @@ private def matrixDivide(a: _Expression, b: _Expression, v: _Variable, env: Envi
             if aOnLeft then MatProduct(aInvResult.toExpression, b).eval(env)
             else MatProduct(b, aInvResult.toExpression).eval(env)
           product match
-            case Left(_: MatProduct) => None   // dimensions don't conform — fall through
+            case Left(_: MatProduct) => None   // dimensions don't conform -- fall through
             case Left(expr)          => Some(List(_Equation(v, simplifyFully(expr))))
             case Right(mv)           => Some(List(_Equation(v, mv)))
 
-// Two-sided linear matrix equation A·X·D = B → X = A⁻¹·B·D⁻¹ (issue 4.5). Both flanks
-// are inverted via the Inverse node (dense LU kernel for concrete operands, cofactor
-// expansion for symbolic ones capped at MaxSymbolicDim), then the triple product is
-// evaluated. This is a recognised matrix-unknown shape, so it always answers Some:
-// Some(Nil) when either inverse cannot be determined (singular / non-square / above the
-// cofactor cap / non-conforming) — no solution — never falling through to the scalar
-// tiers (which cannot solve for a matrix unknown).
+/** Solves `A*X*D = B` -> `X = A^-1 * B * D^-1` (two-sided inversion).
+ *
+ *  Both flanks are inverted via the `Inverse` node (dense LU kernel for concrete
+ *  operands, cofactor expansion for symbolic ones capped at `MaxSymbolicDim`).
+ *  Always answers `Some`: `Some(Nil)` when either inverse cannot be determined
+ *  (singular / non-square / above the cofactor cap / non-conforming dimensions).
+ *  Never falls through to the scalar tiers since the shape has been recognised.
+ */
 private def twoSidedSolve(a: _Expression, d: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
   Some(finalizeSolution(MatProduct(MatProduct(Inverse(a), b), Inverse(d)).eval(env), v).getOrElse(Nil))
 
-// B − C as a matrix expression, used to peel a v-free additive term to the constant
-// side. Kept symbolic; the caller's matrixDivide / finalizeSolution evaluates it.
+/** Returns `B - C` as a matrix expression for peeling an affine term to the constant side. */
 private def matSub(b: _Expression, c: _Expression): _Expression =
   MatSum(b, MatScale(_Number(-1), c))
 
-// A reduced right-hand side as the single matrix solution v = <matrix>, or None when it
-// did not collapse to a matrix shape (an unreduced MatProduct/MatSum/Inverse means a
-// singular or non-conforming operand).
+/** Returns `Some(List(v = <matrix>))` when `result` reduced to a matrix shape, `None` otherwise. */
 private def finalizeSolution(result: Either[_Expression, _Value], v: _Variable): Option[List[_Equation]] =
   result match
     case Right(mv: _MatrixValue) => Some(List(_Equation(v, mv)))
     case Left(m: _Matrix)        => Some(List(_Equation(v, simplifyFully(m))))
     case _                       => None
 
-// ── 4.5 vectorized tier: general linear matrix equations (Sylvester shapes) ──────
+// ── Vectorized tier: general linear matrix equations (Sylvester shapes) ──────
 //
-// When the unknown matrix v appears in SEVERAL additive terms — A·v + v·B = C
-// (Sylvester), A·v + v·Aᵀ = C (Lyapunov), k·v + A·v·D = C, … — no single-inverse
-// closed form exists. Each v-term is classified as  s · L · v · R  (absent L/R =
-// identity, s a scalar factor) and the equation is vectorized with the Kronecker
-// identity  vec(L·v·R) = (Rᵀ ⊗ L) · vec(v),  assembling the (p·q)×(p·q) dense system
-//   M · vec(v) = vec(C′)    with  M = Σ sᵢ·(Rᵢᵀ ⊗ Lᵢ)   and  C′ = C − (v-free terms).
-// Solved via the inverse kernel and reshaped back with unvec. Dense-only: every
-// coefficient must reduce to a _MatrixValue or _Number under env — a symbolic
-// coefficient yields None so the equation stays symbolic. Some(Nil) when the shape is
-// recognised but singular / non-conforming (no solution). This tier also covers the
-// single-term scalar coefficient (k·v = B → v = B/k), which the one-sided tier cannot
-// invert as a matrix.
+// When the unknown matrix v appears in SEVERAL additive terms -- A*v + v*B = C
+// (Sylvester), A*v + v*A^T = C (Lyapunov), k*v + A*v*D = C, etc. -- no single-inverse
+// closed form exists. Each v-term is classified as s * L * v * R (absent L/R = identity,
+// s a scalar factor) and the equation is vectorized with the Kronecker identity
+//   vec(L*v*R) = (R^T ⊗ L) * vec(v),
+// assembling the (p*q) x (p*q) dense system M * vec(v) = vec(C'), then solved via
+// the inverse kernel and reshaped back with unvec. Dense-only.
 
-// M is (p·q)×(p·q): cap the vectorized dimension so the Kronecker system stays small.
-private val MaxVectorizedSize = 400   // up to a 20×20 unknown
+/** Dimension cap for the Kronecker system (`MaxVectorizedSize = p*q`; up to a 20x20 unknown). */
+private val MaxVectorizedSize = 400
 
-// One additive term linear in v: scale · left · v · right (absent side = identity).
+/** One additive term linear in `v`: `scale * left * v * right` (absent side = identity).
+ *
+ *  @param scale scalar multiplier
+ *  @param left  optional left matrix coefficient (`None` = identity)
+ *  @param right optional right matrix coefficient (`None` = identity)
+ */
 private final case class LinearTerm(scale: Double, left: Option[_MatrixValue], right: Option[_MatrixValue])
 
-// Additive operands of a Sum/MatSum tree, in order.
+/** Flattens a `Sum`/`MatSum` tree into a list of additive operands. */
 private def flattenSum(e: _Expression): List[_Expression] = e match
   case Sum(a, b)    => flattenSum(a) ++ flattenSum(b)
   case MatSum(a, b) => flattenSum(a) ++ flattenSum(b)
   case other        => List(other)
 
-// Classify one additive term as s·L·v·R; None when the term is not linear in v or a
-// coefficient does not reduce to a dense matrix / number under env.
+/** Classifies one additive term as `s * L * v * R`; `None` when not linear in `v` or a
+ *  coefficient does not reduce to a dense matrix / number under `env`.
+ */
 private def classifyTerm(t: _Expression, v: _Variable, env: Environment): Option[LinearTerm] = t match
   case x if x == v      => Some(LinearTerm(1.0, None, None))
   case Product(a, b)    => classifyFactor(a, b, v, env)
@@ -234,9 +243,10 @@ private def classifyTerm(t: _Expression, v: _Variable, env: Environment): Option
   case MatScale(k, m)   => classifyFactor(k, m, v, env)
   case _                => None
 
-// A binary product with v on exactly one side: the v-free factor composes into the
-// inner term's left/right coefficient (l · (L·v·R) = (l·L)·v·R and mirror) or into
-// its scalar factor when it reduces to a _Number.
+/** Classifies a binary product with `v` on exactly one side into a [[LinearTerm]].
+ *  The v-free factor is composed into the inner term's left/right coefficient or
+ *  into its scalar factor when it reduces to a `_Number`.
+ */
 private def classifyFactor(l: _Expression, r: _Expression, v: _Variable, env: Environment): Option[LinearTerm] =
   (dependsOn(l, v), dependsOn(r, v)) match
     case (false, true) =>
@@ -255,10 +265,13 @@ private def classifyFactor(l: _Expression, r: _Expression, v: _Variable, env: En
           case Some(ri) if ri.cols == d.rows => Some(inner.copy(right = Some(ri.multiply(d))))
           case _                             => None
         case _ => None)
-    case _ => None   // v on both sides (nonlinear in v) — not classifiable
+    case _ => None   // v on both sides (nonlinear) -- not classifiable
 
-// Entry point of the tier: None when the equation is not a recognisable dense linear
-// matrix equation (later tiers run); Some(Nil) when recognised but unsolvable.
+/** Entry point for the vectorized tier.
+ *
+ *  `None` when the equation is not a recognisable dense linear matrix equation (later
+ *  tiers run); `Some(Nil)` when recognised but unsolvable (singular / non-conforming).
+ */
 private def vectorizedMatrixSolve(withV: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
   val (vTerms, cTerms) = flattenSum(withV).partition(dependsOn(_, v))
   for
@@ -268,7 +281,7 @@ private def vectorizedMatrixSolve(withV: _Expression, b: _Expression, v: _Variab
     if terms.nonEmpty
   yield solveVectorized(terms, bDense, constants, v).getOrElse(Nil)
 
-// Assemble and solve M·vec(v) = vec(C′); None → no solution (singular/non-conforming).
+/** Assembles and solves `M * vec(v) = vec(C')` via the Kronecker identity; `None` on failure. */
 private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
                             constants: Vector[_MatrixValue], v: _Variable): Option[List[_Equation]] =
   val p = b.rows
@@ -276,7 +289,7 @@ private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
   if constants.exists(c => c.rows != p || c.cols != q) then None
   else
     val cPrime = constants.foldLeft(b)((acc, c) => acc.add(c.scale(-1.0)))
-    // Unknown dimensions: L is p×rX and R is cX×q; absent coefficients imply rX = p / cX = q.
+    // Unknown dimensions: L is p x rX and R is cX x q; absent coefficients imply rX = p / cX = q.
     val rX = terms.collectFirst { case LinearTerm(_, Some(l), _) => l.cols }.getOrElse(p)
     val cX = terms.collectFirst { case LinearTerm(_, _, Some(r)) => r.rows }.getOrElse(q)
     val conforming = terms.forall { t =>
@@ -298,39 +311,46 @@ private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
         x    <- _MatrixValue.unvec(mInv.multiply(cPrime.vec), rX, cX)
       yield List(_Equation(v, x))
 
+/** Multiplies two conforming matrices; `None` when dimensions do not match. */
 private def matMul(p: _MatrixValue, q: _MatrixValue): Option[_MatrixValue] =
   if p.cols == q.rows then Some(p.multiply(q)) else None
 
-// The unique side of eq that contains v (with the other, v-free side), or None when v
-// occurs on both sides or neither.
+/** Returns the unique side of `eq` that contains `v`, paired with the v-free side.
+ *  `None` when `v` occurs on both sides or neither (not a linear matrix-unknown shape).
+ */
 private def sideWith(v: _Variable, eq: _Equation): Option[(_Expression, _Expression)] =
   (dependsOn(eq.lhs, v), dependsOn(eq.rhs, v)) match
     case (true, false) => Some((eq.lhs, eq.rhs))
     case (false, true) => Some((eq.rhs, eq.lhs))
     case _             => None
 
+/** Extracts a `_MatrixValue` from an already-evaluated result, or `None`. */
 private def asMatrixValue(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
   case Right(m: _MatrixValue) => Some(m)
   case _                      => None
 
-// Accepts both a fully reduced _MatrixValue and a partially-symbolic _Matrix literal.
+/** Accepts a fully-reduced `_MatrixValue` or a partially-symbolic `_Matrix` literal; `None` otherwise. */
 private def asMatrixExpr(r: Either[_Expression, _Value]): Option[_Expression] = r match
   case Right(mv: _MatrixValue) => Some(mv)
   case Left(m: _Matrix)        => Some(m)
   case _                       => None
 
-// Collapse roots equal within the display tolerance (the same 0.5·10⁻ᵖ used by
-// _Equation) so ±√Δ duplicates and repeated element roots print once.
+/** Removes duplicate roots equal within the display tolerance (`0.5 * 10^(-env.precision)`). */
 private def dedupeRoots(roots: List[_Value], env: Environment): List[_Value] =
   val tol = 0.5 * math.pow(10, -env.precision)
   roots.foldLeft(List.empty[_Value]) { (acc, r) =>
     if acc.exists(a => sameValue(a, r, tol)) then acc else acc :+ r
   }
 
+/** Returns `true` when two concrete values are equal within `tol`. */
 private def sameValue(a: _Value, b: _Value, tol: Double): Boolean = (a, b) match
   case (_Number(x), _Number(y)) => math.abs(x - y) <= tol
   case _                        => a == b
 
+/** Returns the real roots of `c2*x^2 + c1*x + c0 = 0`.
+ *  Numeric coefficients: 0, 1, or 2 `_Number` roots.
+ *  Symbolic coefficients: both +/-sqrt(delta) closed forms.
+ */
 private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): List[_Expression] =
   (c0, c1, c2) match
     case (_Number(a0), _Number(a1), _Number(a2)) =>
@@ -341,7 +361,7 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): L
         val sq = math.sqrt(delta)
         List(_Number((-a1 - sq) / (2.0 * a2)), _Number((-a1 + sq) / (2.0 * a2)))
     case _ =>
-      // Symbolic coefficients: both ±√Δ closed forms (the sign of Δ is unknown).
+      // Symbolic coefficients: both +-sqrt(delta) closed forms (sign of delta unknown).
       val delta = Sum(Power(c1, _Number(2)), Product(_Number(-4), Product(c2, c0)))
       val sqrtD = Power(delta, _Number(0.5))
       val denom = Product(_Number(2), c2)
@@ -350,6 +370,7 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): L
         simplifyFully(Ratio(Sum(Product(_Number(-1), c1), sqrtD), denom))
       )
 
+/** Sign-change scan over `[SearchLo, SearchHi]` followed by bisection; up to `MaxNumericRoots` roots. */
 private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_Expression] =
   compile(f, v, env) match
     case None     => Nil
@@ -364,9 +385,9 @@ private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_
         val fb = fn(b)
         if fa == 0.0 then
           // An exact grid-point zero is a genuine root only if the function changes
-          // sign around it.  When f is identically zero (e.g. sin(x) = sin(x) →
-          // f ≡ 0), every grid point triggers fa == 0.0 and both neighbourhood
-          // samples are also zero — their product is 0, not negative, so no root
+          // sign around it.  When f is identically zero (e.g. sin(x) = sin(x) ->
+          // f = 0), every grid point triggers fa == 0.0 and both neighbourhood
+          // samples are also zero -- their product is 0, not negative, so no root
           // is collected and the identity case returns Nil instead of 8 fake roots.
           val eps     = step * 0.5
           val fBefore = fn(a - eps)
@@ -377,6 +398,7 @@ private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_
         a = b; fa = fb; i += 1
       found.toList.map(_Number(_))
 
+/** Bisection refinement: narrows `[lo, hi]` around a sign change for `BisectIterations` steps. */
 private def bisect(fn: Double => Double, lo0: Double, hi0: Double, flo0: Double): Double =
   var lo  = lo0
   var hi  = hi0

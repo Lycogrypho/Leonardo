@@ -4,10 +4,23 @@ package equation
 import core.*
 
 
-// Shared helper for _Equation.eval and _EqualityCheck.eval: both bodies are
-// line-for-line identical except for the node type used to rebuild symbolic
-// residuals. `wrap` receives the two (possibly reduced) operands and produces
-// the appropriate node, keeping the shared logic in one place.
+/** Shared comparison helper for [[_Equation]] and [[_EqualityCheck]].
+ *
+ *  Both node types apply identical tolerance-based equality logic; they differ only in
+ *  the node used to rebuild the symbolic residual when the sides are not yet concrete.
+ *  `wrap` receives the two (possibly already-reduced) operands and produces the
+ *  appropriate node, keeping the shared logic in one place.
+ *
+ *  Two numbers are equal when `|a - b| <= 0.5 * 10^(-env.precision)`.  Matrices
+ *  compare element-wise under the same tolerance.  Complex values are compared
+ *  component-wise via `_Complex.parts`.
+ *
+ *  @param lhs  left-hand side expression
+ *  @param rhs  right-hand side expression
+ *  @param env  evaluation environment (supplies precision and variable bindings)
+ *  @param wrap factory for the residual node when the result stays symbolic
+ *  @return `Right(_Bool(true/false))` when both sides are concrete, `Left(wrap(...))` otherwise
+ */
 private[equation] def compareSides(
     lhs: _Expression, rhs: _Expression, env: Environment
 )(wrap: (_Expression, _Expression) => _Expression): Either[_Expression, _Value] =
@@ -20,7 +33,7 @@ private[equation] def compareSides(
         x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
       Right(_Bool(equal))
     // Both sides are concrete: for-comprehension extracts (re,im) via _Complex.parts;
-    // None on non-numeric values → close = None → stays symbolic. No double-call of parts.
+    // None on non-numeric values -> close = None -> stays symbolic. No double-call of parts.
     case (Right(av: _Value), Right(bv: _Value)) =>
       val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
         yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
@@ -28,22 +41,24 @@ private[equation] def compareSides(
     case (ra, rb) => Left(wrap(ra.toExpression, rb.toExpression))
 
 
-// Equation domain: a relation between two expressions, following the matrix
-// blueprint (own package importing core; nothing imports back).
-//
-// eval reduces both sides; when both fold to concrete values the equation itself
-// reduces to a _Bool. Numeric equality is tolerance-based, tied to env.precision —
-// exact Double comparison would make "sin(pi) = 0" false on floating-point noise;
-// instead two numbers are equal when their difference vanishes at the configured
-// number of decimals (|a − b| ≤ 0.5·10⁻ᵖ). Concrete matrices compare element-wise
-// under the same tolerance. Anything else stays symbolic with the sides reduced.
-//
-// _ElementWise: an equation is a container of its two sides — differentiating,
-// simplifying, expanding, or integrating an equation applies the algorithm to both
-// sides (d/dx (lhs = rhs) is d(lhs)/dx = d(rhs)/dx), so the marker is sound here.
-//
-// toString is "lhs = rhs" (no outer parentheses): equations exist only at the top
-// level of the grammar, and the round-trip invariant parse(toString(e)) == e holds.
+/** A relation between two expressions: `lhs = rhs`.
+ *
+ *  `eval` reduces both sides and compares them when both are concrete.  Numeric
+ *  equality is tolerance-based, tied to `env.precision` -- exact `Double` comparison
+ *  would make `sin(pi) = 0` false on floating-point noise; instead two numbers are
+ *  equal when `|a - b| <= 0.5 * 10^(-p)`.  Concrete matrices compare element-wise
+ *  under the same tolerance.  Anything else stays symbolic with the sides reduced.
+ *
+ *  Marked `_ElementWise`: an equation is a container of its two sides, so
+ *  `derive`/`simplify`/`expand`/`integrate` apply the algorithm to both sides
+ *  (e.g. `d/dx (lhs = rhs)` is `d(lhs)/dx = d(rhs)/dx`).
+ *
+ *  `toString` is `"lhs = rhs"` (no outer parentheses): equations exist only at the
+ *  top level of the grammar, and the round-trip invariant `parse(toString(e)) == e` holds.
+ *
+ *  @param lhs left-hand side expression
+ *  @param rhs right-hand side expression
+ */
 case class _Equation(lhs: _Expression, rhs: _Expression) extends _ElementWise:
   override def toString: String = s"$lhs = $rhs"
   override def children: List[_Expression] = List(lhs, rhs)

@@ -7,28 +7,38 @@ import scalar.*
 import scala.util.boundary, boundary.break
 
 
-// Linear system solver: solveSystem(equations, variables, env) returns the unique
-// solution of a square n×n linear system as a list of "v = expr" equations,
-// or None when the system is non-square, nonlinear, or singular.
-//
-// Coefficient extraction uses scalar.collect (the same prerequisite used by solve's
-// linear and quadratic tiers): for each equation i and variable j,
-// collect(lhsᵢ − rhsᵢ, vⱼ) yields the polynomial coefficients in vⱼ; for a
-// linear system the result has length ≤ 2 (length > 2 means nonlinear → None).
-// Linearity is double-checked: no extracted coefficient Aᵢⱼ may depend on any of
-// the solve variables (it may depend on other unbound symbols).
-// The constant term bᵢ is −(lhsᵢ − rhsᵢ evaluated at all vⱼ = 0).
-//
-// Dense path (all Aᵢⱼ and bᵢ fold to _Number in env): Gaussian elimination with
-//   partial pivoting on Double arrays; returns None when the pivot threshold drops
-//   below 1e-12 (singular or near-singular).
-// Symbolic path (some coefficient or constant stays symbolic): row reduction using
-//   Sum/Product/Ratio/_Expression arithmetic; simplifyFully at every step to keep
-//   expressions tractable; returns None when any diagonal pivot simplifies to 0.
-//
-// Solution right-hand sides are folded through env so bound symbols produce
-// numeric answers (same convention as solve()).
+/** Linear system solver for square n-by-n systems.
+ *
+ *  [[solveSystem]] returns the unique solution as a list of `v = expr` equations,
+ *  or `None` when the system is non-square, nonlinear, or singular.
+ *
+ *  Coefficient extraction uses `scalar.collect` (the same prerequisite used by
+ *  [[solve]]'s linear and quadratic tiers): for each equation `i` and variable `j`,
+ *  `collect(lhs_i - rhs_i, v_j)` yields the polynomial coefficients in `v_j`; for a
+ *  linear system the result has length <= 2 (length > 2 means nonlinear -> `None`).
+ *  A linearity guard rejects any coefficient `A_ij` that depends on a solve variable.
+ *  The constant term `b_i` is `-(lhs_i - rhs_i evaluated with all v_j = 0)`.
+ *
+ *  **Dense path** (all `A_ij` and `b_i` fold to `_Number` in `env`): Gaussian
+ *  elimination with partial pivoting on `Double` arrays; returns `None` when the
+ *  pivot drops below `1e-12` (singular or near-singular).
+ *
+ *  **Symbolic path** (some coefficient or constant stays symbolic): row reduction
+ *  using `Sum`/`Product`/`Ratio`/`_Expression` arithmetic with `simplifyFully` at
+ *  every step; returns `None` when any diagonal pivot simplifies to `_Number(0)`.
+ *
+ *  Solution right-hand sides are folded through `env` so bound symbols produce
+ *  numeric answers (same convention as [[solve]]).
+ */
 
+/** Returns the unique solution of a square linear system, or `None`.
+ *
+ *  @param equations the list of equations (must be n equations for n variables)
+ *  @param variables the solve variables (must match the number of equations)
+ *  @param env       the evaluation environment (variable bindings + precision)
+ *  @return `Some(list of v_i = expr_i)` on success; `None` when non-square,
+ *          nonlinear, singular, or near-singular
+ */
 def solveSystem(
     equations: List[_Equation],
     variables: List[_Variable],
@@ -41,13 +51,13 @@ def solveSystem(
   val exprs: Vector[_Expression] =
     equations.map(eq => simplifyFully(Sum(eq.lhs, Product(_Number(-1), eq.rhs)))).toVector
 
-  // Extract coefficient matrix A[i][j] via collect(exprᵢ, vⱼ)
+  // Extract coefficient matrix A[i][j] via collect(expr_i, v_j)
   val coeffOpt: Option[Vector[Vector[_Expression]]] = allOpt(exprs.map { expr =>
     allOpt(variables.map { v =>
       collect(expr, v) match
         case Some(cs) if cs.size == 1 => Some(_Number(0))    // v absent
         case Some(cs) if cs.size == 2 => Some(cs(1))         // linear in v
-        case Some(_)                  => None                 // degree ≥ 2
+        case Some(_)                  => None                 // degree >= 2
         case None                     => None                 // non-polynomial
     })
   })
@@ -56,10 +66,10 @@ def solveSystem(
     case None    => return None
     case Some(m) => m
 
-  // Linearity guard: no Aᵢⱼ may depend on any solve variable
+  // Linearity guard: no A_ij may depend on any solve variable
   if A.exists(_.exists(c => variables.exists(v => dependsOn(c, v)))) then return None
 
-  // Constant vector b[i] = −(exprᵢ with all solve variables bound to 0)
+  // Constant vector b[i] = -(expr_i with all solve variables bound to 0)
   val zeroEnv = variables.foldLeft(env)((e, v) => e.withBinding(v.variable, _Number(0)))
   val b: Vector[_Expression] =
     exprs.map(expr => simplifyFully(Product(_Number(-1), expr.eval(zeroEnv).toExpression)))
@@ -83,18 +93,27 @@ def solveSystem(
       )
 
 
-// Sequences an iterable of Options into Option[Vector]: None if any element is None.
+/** Sequences an iterable of `Option`s into `Option[Vector]`; `None` if any element is `None`.
+ *
+ *  @param xs the iterable of options to sequence
+ *  @return `Some(vector of unwrapped values)` when all elements are `Some`, `None` otherwise
+ */
 private def allOpt[A](xs: Iterable[Option[A]]): Option[Vector[A]] =
   val seq = xs.toVector
   val flat = seq.flatten
   if flat.size == seq.size then Some(flat) else None
 
 
-// Gaussian elimination with partial pivoting on Double arrays.
-// Solves A·x = b in-place on an augmented [A|b] matrix.
-// Returns None when any pivot is near-zero (singular / near-singular system).
-// The early exits use boundary/break: a `return` inside a `for … do` body would be a
-// non-local return (the body desugars to a lambda), which Scala 3 deprecates.
+/** Gaussian elimination with partial pivoting on `Double` arrays.
+ *
+ *  Solves `A * x = b` in-place on an augmented `[A|b]` matrix.
+ *  Early exits use `boundary`/`break` (a `return` inside a `for` body desugars to
+ *  a lambda in Scala 3, which makes non-local returns deprecated).
+ *
+ *  @param A the n-by-n coefficient matrix (as a vector of rows)
+ *  @param b the right-hand-side vector of length n
+ *  @return `Some(solution vector)` on success; `None` when any pivot is near-zero
+ */
 private def gaussDense(A: Vector[Vector[Double]], b: Vector[Double]): Option[Vector[Double]] =
   val n   = A.size
   val aug = Array.tabulate(n)(i => A(i).toArray :+ b(i))
@@ -119,9 +138,15 @@ private def gaussDense(A: Vector[Vector[Double]], b: Vector[Double]): Option[Vec
     Some(x.toVector)
 
 
-// Symbolic Gaussian elimination using _Expression arithmetic and simplifyFully.
-// Returns None when any pivot simplifies to _Number(0) (structurally singular).
-// Early exits via boundary/break, like gaussDense.
+/** Symbolic Gaussian elimination using `_Expression` arithmetic and `simplifyFully`.
+ *
+ *  Early exits via `boundary`/`break` like [[gaussDense]].
+ *
+ *  @param A the n-by-n symbolic coefficient matrix
+ *  @param b the symbolic right-hand-side vector of length n
+ *  @return `Some(solution vector of expressions)` on success;
+ *          `None` when any pivot simplifies to `_Number(0)` (structurally singular)
+ */
 private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]): Option[Vector[_Expression]] =
   val n   = A.size
   val aug = Array.tabulate(n)(i => (A(i) :+ b(i)).toArray)
