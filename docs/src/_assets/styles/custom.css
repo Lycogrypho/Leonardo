@@ -1,0 +1,24 @@
+/* ── Leonardo ScalaDoc custom styles ─────────────────────────────────────────
+ *
+ * logo2.svg (180×67, landscape) already contains the project name, so the
+ * Scaladoc-generated text title is hidden.
+ *
+ * Scaladoc's own CSS constrains the project-logo to ~40px wide (giving ~15px
+ * tall for a 180:67 SVG), so the overrides below use !important.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* Hide the generated text title — the name is embedded in the SVG */
+.project-name,
+.mobile-menu-logo .project-name {
+  display: none !important;
+}
+
+/* Override scaladoc's default logo sizing */
+#project-logo img,
+#dark-project-logo img,
+.mobile-menu-logo #project-logo img,
+.mobile-menu-logo #dark-project-logo img {
+  height: 67px !important;
+  width: auto !important;
+  max-width: none !important;
+}

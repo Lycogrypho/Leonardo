@@ -16,6 +16,15 @@ Global / excludeLintKeys += idePackagePrefix
 lazy val PlantUML = config("plantuml").hide
 lazy val puml     = taskKey[Unit]("Regenerate docs/src/structure.svg from docs/structure.puml")
 
+// ── Scaladoc CSS injection ─────────────────────────────────────────────────────
+// Scaladoc 3 copies _assets/ from the siteroot but does NOT inject <link> tags
+// for custom CSS files.  This task runs after `sbt doc` and patches every HTML
+// file in the api output: it copies docs/src/_assets/styles/custom.css into the
+// output's styles/ directory and inserts a <link> element (with the correct
+// relative path) just before </head>.  Re-running the task is idempotent because
+// files already containing "custom.css" are skipped.
+lazy val injectApiStyles = taskKey[Unit]("Inject custom CSS into generated scaladoc HTML pages")
+
 lazy val root = (project in file("."))
   .enablePlugins(MdocPlugin)
   .settings(
@@ -60,8 +69,33 @@ lazy val root = (project in file("."))
       "-siteroot",        (target.value / "mdoc").getAbsolutePath,
       "-project",         "Leonardo",
       "-project-version", version.value,
-      "-project-logo",    "docs/src/logo.svg"
-    )
+      "-project-logo",    "docs/src/logo2.svg"
+    ),
+
+    // ── Custom CSS injection ───────────────────────────────────────────────────
+    injectApiStyles := {
+      val log    = streams.value.log
+      val apiDir = target.value / s"scala-${scalaVersion.value}" / "api"
+      val source = baseDirectory.value / "docs" / "src" / "_assets" / "styles" / "custom.css"
+      if (!apiDir.exists || !source.exists) {
+        log.warn(s"injectApiStyles: skipping — apiDir or source missing")
+      } else {
+        IO.copyFile(source, apiDir / "styles" / "custom.css")
+        val htmlFiles = (apiDir ** "*.html").get.filter(_.isFile)
+        var count = 0
+        htmlFiles.foreach { f =>
+          val html = IO.read(f)
+          if (!html.contains("custom.css")) {
+            val rel   = IO.relativize(apiDir, f).getOrElse(f.getName)
+            val depth = rel.replace('\\', '/').count(_ == '/')
+            val link  = s"""<link rel="stylesheet" href="${"../" * depth}styles/custom.css">"""
+            IO.write(f, html.replace("</head>", link + "</head>"))
+            count += 1
+          }
+        }
+        log.info(s"Custom CSS injected into $count scaladoc HTML pages")
+      }
+    }
   )
 
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0"
@@ -78,5 +112,5 @@ libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.19" % "tes
 
 // Shortcut for the interactive REPL: `sbt repl` instead of the full runMain path.
 addCommandAlias("repl", "runMain it.grypho.scala.leonardo.cli.repl")
-// Full site: regenerate UML diagram → validate code examples → Scaladoc site.
-addCommandAlias("site", ";puml;mdoc;doc")
+// Full site: regenerate UML diagram → validate code examples → Scaladoc site + CSS.
+addCommandAlias("site", ";puml;mdoc;doc;injectApiStyles")
