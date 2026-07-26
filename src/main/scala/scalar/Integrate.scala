@@ -26,6 +26,10 @@ import core.*
  *  heuristic (see [[liatePriority]]).  Forms whose parts expansion needs rational-function
  *  cancellation (`∫ x·ln(x) dx`, `∫ arctan(x) dx`) or algebraic solving of a cyclic
  *  integral (`∫ eˣ·sin(x) dx`) are left symbolic; those await the partial-fractions tier.
+ *
+ *  A dedicated reduction formula (see [[reduceSinCosPower]]) handles the trigonometric
+ *  powers `∫ sinⁿ(u) dx` and `∫ cosⁿ(u) dx` (integer `n` in `[2, MaxReductionPower]`,
+ *  `u` linear in `v`), which parts cannot reach because the power is not a product.
  */
 
 /** Returns the slope `a` when `u` is linear in `v` (i.e. `d(u)/dv` folds to a nonzero
@@ -163,6 +167,48 @@ private def partsProduct(f: _Expression, g: _Expression, v: _Variable, depth: In
         applyParts(u, dv, v, depth)
       case _ => None
 
+/** Largest exponent accepted by the trigonometric power-reduction rule.
+ *
+ *  Matches the Laplace power-rule convention (`transform.LaplaceTransform`): a bound
+ *  keeps a pathological `∫ sin^1000(x) dx` from expanding into a huge tree, even though
+ *  the recursion always terminates (the exponent drops by two each step).
+ */
+private val MaxReductionPower = 20
+
+/** True when `n` is an integer in `[2, MaxReductionPower]` -- the range the trig-power
+ *  reduction handles (`n = 0` and `n = 1` are the base cases already in the table). */
+private def isReduciblePower(n: Double): Boolean =
+  n.toInt.toDouble == n && n >= 2 && n <= MaxReductionPower
+
+/** Reduction formula for `∫ sin^n(u) dx` and `∫ cos^n(u) dx` with `u = a*v + b` linear.
+ *
+ *  Derived by parts (`∫ sin^n = ∫ sin^(n-1)·sin`):
+ *  {{{
+ *  ∫ sin^n(u) dx = -sin^(n-1)(u)·cos(u)/(a·n) + (n-1)/n · ∫ sin^(n-2)(u) dx
+ *  ∫ cos^n(u) dx =  cos^(n-1)(u)·sin(u)/(a·n) + (n-1)/n · ∫ cos^(n-2)(u) dx
+ *  }}}
+ *  The `1/a` factor comes from the linear inner argument (chain rule).  The recursion
+ *  drops `n` by two per step and bottoms out at `∫ sin(u) dx` / `∫ cos(u) dx` (`n = 1`)
+ *  or `∫ 1 dx` (`n = 0`), both handled by the surrounding rule table.
+ *
+ *  @param isSin `true` for a sine power, `false` for a cosine power
+ *  @param u     the (linear) inner argument
+ *  @param n     the integer exponent (guaranteed in `[2, MaxReductionPower]` by the caller)
+ *  @param v     the integration variable
+ *  @param depth current integration-by-parts recursion depth (threaded through unchanged)
+ *  @return the antiderivative, or `None` when `u` is not linear in `v`
+ */
+private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variable, depth: Int): Option[_Expression] =
+  linearSlope(u, v).flatMap { a =>
+    val base     = if isSin then Sin(u) else Cos(u)
+    val other    = if isSin then Cos(u) else Sin(u)
+    val sign     = if isSin then _Number(-1) else _Number(1)
+    val boundary = Ratio(Product(sign, Product(Power(base, _Number(n - 1)), other)), _Number(a * n))
+    val lower    = integrateImpl(simplifyFully(Power(base, _Number(n - 2))), v, depth)
+    if containsIntegral(lower) then None
+    else Some(simplifyFully(Sum(boundary, Product(Ratio(_Number(n - 1), _Number(n)), lower))))
+  }
+
 
 /** Returns an antiderivative of `e` with respect to `v`, or `_Integral(e, v)` when
  *  no rule applies.
@@ -206,6 +252,15 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression
 
   // the bare variable: integral(v, v) = v^2/2   (Power rule below only sees v wrapped in Power)
   case x: _Variable if x.variable == v.variable => Ratio(Power(v, _Number(2)), _Number(2))
+
+  // trigonometric power reduction (must precede the generic power rule, which would
+  // otherwise see the non-linear base sin(u)/cos(u) and give up):
+  //   integral(sin^n(u), v) and integral(cos^n(u), v) for integer n in [2, MaxReductionPower],
+  //   u linear in v. Recurses down to the n=1 (Sin/Cos primitives) or n=0 (constant) cases.
+  case Power(Sin(u), _Number(n)) if isReduciblePower(n) =>
+    reduceSinCosPower(isSin = true, u, n.toInt, v, depth).getOrElse(_Integral(e, v))
+  case Power(Cos(u), _Number(n)) if isReduciblePower(n) =>
+    reduceSinCosPower(isSin = false, u, n.toInt, v, depth).getOrElse(_Integral(e, v))
 
   // power rule over a linear argument u (slope a):
   //   integral(u^n, v) = u^(n+1) / (a*(n+1))   for n != -1

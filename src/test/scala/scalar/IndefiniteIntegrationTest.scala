@@ -199,6 +199,66 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
     assertAntiderivative(Ln(x), 0.5, 1.0, 2.0)
   }
 
+  // --- trigonometric power reduction formulas (4.B) ---
+
+  "âˆ« sinÂ²(x) dx" should "have derivative sinÂ²(x)" in
+  {
+    assertAntiderivative(Power(Sin(x), _Number(2)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« sinÂ³(x) dx (odd power, bottoms at n=1)" should "have derivative sinÂ³(x)" in
+  {
+    assertAntiderivative(Power(Sin(x), _Number(3)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« cosÂ²(x) dx" should "have derivative cosÂ²(x)" in
+  {
+    assertAntiderivative(Power(Cos(x), _Number(2)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« cosÂ³(x) dx (odd power, bottoms at n=1)" should "have derivative cosÂ³(x)" in
+  {
+    assertAntiderivative(Power(Cos(x), _Number(3)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« sinâ´(x) dx (even power, bottoms at n=0)" should "have derivative sinâ´(x)" in
+  {
+    assertAntiderivative(Power(Sin(x), _Number(4)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« cosâµ(x) dx (deeper recursion)" should "have derivative cosâµ(x)" in
+  {
+    assertAntiderivative(Power(Cos(x), _Number(5)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« sinÂ²(2x) dx (linear argument, slope 2)" should "have derivative sinÂ²(2x)" in
+  {
+    assertAntiderivative(Power(Sin(Product(_Number(2), x)), _Number(2)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« cosÂ²(3x + 1) dx (linear argument, slope 3)" should "have derivative cosÂ²(3x+1)" in
+  {
+    val u = Sum(Product(_Number(3), x), _Number(1))
+    assertAntiderivative(Power(Cos(u), _Number(2)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« 3*sinÂ²(x) dx (constant multiple peeled before reduction)" should "have derivative 3*sinÂ²(x)" in
+  {
+    assertAntiderivative(Product(_Number(3), Power(Sin(x), _Number(2))), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« sinÂ²Â¹(x) dx (exponent above MaxReductionPower)" should "stay symbolic" in
+  {
+    val e = Power(Sin(x), _Number(21))
+    assert(integrate(e, x) == _Integral(e, x))
+  }
+
+  "âˆ« sinÂ²(xÂ²) dx (non-linear argument)" should "stay symbolic" in
+  {
+    val e = Power(Sin(Power(x, _Number(2))), _Number(2))
+    assert(integrate(e, x) == _Integral(e, x))
+  }
+
   // --- forms still needing rational-function cancellation stay symbolic (future 4.C) ---
 
   "âˆ« arctan(x) dx (needs âˆ«x/(1+xÂ²))" should "stay symbolic" in
