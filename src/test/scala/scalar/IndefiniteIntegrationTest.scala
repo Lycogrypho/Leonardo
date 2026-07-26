@@ -156,12 +156,62 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
     )
   }
 
-  // --- unsupported forms stay symbolic ---
+  // --- integration by parts (LIATE): polynomial Ã— {exp, sin, cos} and standalone log ---
 
-  "âˆ« x*sin(x) dx (needs integration by parts)" should "stay symbolic" in
+  "âˆ« x*sin(x) dx" should "have derivative x*sin(x)" in
   {
-    assert(integrate(Product(x, Sin(x)), x) == _Integral(Product(x, Sin(x)), x))
+    assertAntiderivative(Product(x, Sin(x)), -1.0, 0.5, 2.0)
   }
+
+  "âˆ« x*cos(x) dx" should "have derivative x*cos(x)" in
+  {
+    assertAntiderivative(Product(x, Cos(x)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« x*exp(x) dx" should "have derivative x*exp(x)" in
+  {
+    assertAntiderivative(Product(x, Exp(x)), -1.0, 0.5, 1.5)
+  }
+
+  "âˆ« xÂ²*exp(x) dx (two parts levels)" should "have derivative xÂ²*exp(x)" in
+  {
+    assertAntiderivative(Product(Power(x, _Number(2)), Exp(x)), -1.0, 0.5, 1.5)
+  }
+
+  "âˆ« xÂ²*sin(x) dx (two parts levels)" should "have derivative xÂ²*sin(x)" in
+  {
+    assertAntiderivative(Product(Power(x, _Number(2)), Sin(x)), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« (2x+1)*exp(x) dx (polynomial factor)" should "have derivative (2x+1)*exp(x)" in
+  {
+    val poly = Sum(Product(_Number(2), x), _Number(1))
+    assertAntiderivative(Product(poly, Exp(x)), -1.0, 0.5, 1.5)
+  }
+
+  "âˆ« exp(x)*x dx (factor order swapped)" should "have derivative exp(x)*x" in
+  {
+    assertAntiderivative(Product(Exp(x), x), -1.0, 0.5, 1.5)
+  }
+
+  "âˆ« ln(x) dx (standalone log, dv = 1)" should "have derivative ln(x)" in
+  {
+    assertAntiderivative(Ln(x), 0.5, 1.0, 2.0)
+  }
+
+  // --- forms still needing rational-function cancellation stay symbolic (future 4.C) ---
+
+  "âˆ« arctan(x) dx (needs âˆ«x/(1+xÂ²))" should "stay symbolic" in
+  {
+    assert(integrate(Atan(x), x) == _Integral(Atan(x), x))
+  }
+
+  "âˆ« x*ln(x) dx (needs xÂ²/x cancellation)" should "stay symbolic" in
+  {
+    assert(integrate(Product(x, Ln(x)), x) == _Integral(Product(x, Ln(x)), x))
+  }
+
+  // --- unsupported forms stay symbolic ---
 
   "âˆ« sin(xÂ²) dx (non-linear argument)" should "stay symbolic" in
   {

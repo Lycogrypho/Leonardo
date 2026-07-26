@@ -17,8 +17,15 @@ import core.*
  *  Chain-rule coverage is limited to a linear inner argument `u = a*v + b`:
  *  there the substitution `t = u` has constant `dt/dv = a`, so the integral of
  *  `f(u)` w.r.t. `v` equals `F(u)/a`.  Non-linear inner arguments (which would need a
- *  general substitution or parts) are left symbolic.  [[linearSlope]] returns `Some(a)`
+ *  general substitution) are left symbolic.  [[linearSlope]] returns `Some(a)`
  *  exactly when `u` is linear in `v`.
+ *
+ *  Integration by parts (`∫ u dv = u·V − ∫ V du`, `V = ∫ dv`) covers products of a
+ *  polynomial with `exp`/`sin`/`cos` (the polynomial is repeatedly differentiated away)
+ *  and a standalone logarithm (`∫ ln(x) dx`).  The `u`/`dv` split follows the LIATE
+ *  heuristic (see [[liatePriority]]).  Forms whose parts expansion needs rational-function
+ *  cancellation (`∫ x·ln(x) dx`, `∫ arctan(x) dx`) or algebraic solving of a cyclic
+ *  integral (`∫ eˣ·sin(x) dx`) are left symbolic; those await the partial-fractions tier.
  */
 
 /** Returns the slope `a` when `u` is linear in `v` (i.e. `d(u)/dv` folds to a nonzero
@@ -33,37 +40,169 @@ private def linearSlope(u: _Expression, v: _Variable): Option[Double] =
     case Right(_Number(a)) if a != 0.0 => Some(a)
     case _                             => None
 
+/** Maximum nested integration-by-parts applications before giving up.
+ *
+ *  Bounds cyclic integrals (e.g. `∫ eˣ·sin(x) dx`, which reproduces itself after two
+ *  applications) so they stay symbolic instead of recursing forever.  Polynomial times
+ *  `exp`/`sin`/`cos` terminates well within this bound (the polynomial degree drops by
+ *  one per level).
+ */
+private val MaxPartsDepth = 4
+
+/** Strips `v`-independent factors from a product, returning the `v`-dependent core.
+ *
+ *  A parts sub-integrand often bundles a numeric coefficient inside a product
+ *  (`-cos(x)·2x` parses as `Product(Product(-1, cos(x)), Product(2, x))`), which would
+ *  hide the `cos`/polynomial factors from [[liatePriority]].  Peeling the constants
+ *  exposes the shape that decides the LIATE class.
+ *
+ *  @param e the factor to strip
+ *  @param v the integration variable
+ *  @return `e` with its `v`-independent factors removed
+ */
+private def stripConstantFactors(e: _Expression, v: _Variable): _Expression = e match
+  case Product(a, b) if !dependsOn(a, v) => stripConstantFactors(b, v)
+  case Product(a, b) if !dependsOn(b, v) => stripConstantFactors(a, v)
+  case _                                 => e
+
+/** LIATE priority of a factor for the integration-by-parts `u`/`dv` split.
+ *
+ *  The factor with the HIGHER priority is chosen as `u` (the part that gets
+ *  differentiated), the other as `dv` (the part that gets integrated):
+ *  Logarithmic (5) > Inverse-trig (4) > Algebraic/polynomial (3) > Trig (2) >
+ *  Exponential (1).  The factor is classified by its `v`-dependent core (see
+ *  [[stripConstantFactors]]).  Returns `None` for shapes parts cannot use.
+ *
+ *  @param f the factor to classify
+ *  @param v the integration variable
+ *  @return the LIATE priority, or `None` when `f` is not a usable parts factor
+ */
+private def liatePriority(f: _Expression, v: _Variable): Option[Int] =
+  stripConstantFactors(f, v) match
+    case Ln(_)                             => Some(5)
+    case LogBase(_, b) if !dependsOn(b, v) => Some(5)
+    case Asin(_) | Acos(_) | Atan(_)       => Some(4)
+    case core if collect(core, v).isDefined => Some(3)   // polynomial in v
+    case Sin(_) | Cos(_)                   => Some(2)
+    case Exp(_)                            => Some(1)
+    case _                                 => None
+
+/** Splits `e` into a `(numerator, denominator)` pair, flattening nested products and
+ *  ratios so that reciprocal factors cancel under [[simplify]].
+ *
+ *  The `∫ V du` integrand produced by parts often carries a reciprocal (e.g.
+ *  `d/dx ln(x) = 1/x`); collecting the whole product into one fraction lets `x·(1/x)`
+ *  fold to `1` via the existing `x/x → 1` rule.
+ *
+ *  @param e the expression to split
+ *  @return `(numerator, denominator)` whose ratio equals `e`
+ */
+private def asFraction(e: _Expression): (_Expression, _Expression) = e match
+  case Product(a, b) =>
+    val (na, da) = asFraction(a)
+    val (nb, db) = asFraction(b)
+    (Product(na, nb), Product(da, db))
+  case Ratio(a, b) =>
+    val (na, da) = asFraction(a)
+    val (nb, db) = asFraction(b)
+    (Product(na, db), Product(da, nb))
+  case _ => (e, _Number(1))
+
+/** Rebuilds `e` as a single fully-simplified fraction (see [[asFraction]]). */
+private def combineFraction(e: _Expression): _Expression =
+  val (num, den) = asFraction(e)
+  simplifyFully(Ratio(num, den))
+
+/** True when `e` still contains an unresolved [[_Integral]] node.
+ *
+ *  Signals that a parts attempt could not reduce some sub-integral to a closed form,
+ *  so the whole attempt must stay symbolic.
+ */
+private def containsIntegral(e: _Expression): Boolean = e match
+  case _: _Integral => true
+  case _            => e.children.exists(containsIntegral)
+
+/** Applies one step of integration by parts: `∫ u dv = u·V − ∫ V du` with `V = ∫ dv`.
+ *
+ *  Returns `None` (stay symbolic) when either `∫ dv` or the resulting `∫ V du` cannot
+ *  be reduced to a closed form (its result still contains an [[_Integral]]).
+ *
+ *  @param u     the factor to differentiate
+ *  @param dv    the factor to integrate
+ *  @param v     the integration variable
+ *  @param depth current parts-recursion depth (guards against cyclic integrals)
+ *  @return `Some(antiderivative)` on success, `None` to stay symbolic
+ */
+private def applyParts(u: _Expression, dv: _Expression, v: _Variable, depth: Int): Option[_Expression] =
+  val vInt = integrateImpl(dv, v, depth)
+  if containsIntegral(vInt) then None
+  else
+    val du        = simplifyFully(derive(u, v))
+    val integrand = combineFraction(Product(vInt, du))
+    val rest      = integrateImpl(integrand, v, depth + 1)
+    if containsIntegral(rest) then None
+    else Some(simplifyFully(Sum(Product(u, vInt), Product(_Number(-1), rest))))
+
+/** Integration by parts for a product of two `v`-dependent factors.
+ *
+ *  Selects `u` and `dv` by the LIATE heuristic (see [[liatePriority]]); returns `None`
+ *  when either factor is a shape parts cannot use, or the depth cap is hit.
+ *
+ *  @param f     the first factor
+ *  @param g     the second factor
+ *  @param v     the integration variable
+ *  @param depth current parts-recursion depth
+ *  @return `Some(antiderivative)` on success, `None` to stay symbolic
+ */
+private def partsProduct(f: _Expression, g: _Expression, v: _Variable, depth: Int): Option[_Expression] =
+  if depth >= MaxPartsDepth then None
+  else
+    (liatePriority(f, v), liatePriority(g, v)) match
+      case (Some(pf), Some(pg)) =>
+        val (u, dv) = if pf >= pg then (f, g) else (g, f)
+        applyParts(u, dv, v, depth)
+      case _ => None
+
 
 /** Returns an antiderivative of `e` with respect to `v`, or `_Integral(e, v)` when
  *  no rule applies.
  *
  *  `_ElementWise` containers (matrices, equations) are integrated element-wise.
- *  Chain-rule support is limited to linear inner arguments; non-linear forms stay
- *  symbolic.
+ *  Chain-rule support is limited to linear inner arguments; integration by parts
+ *  covers polynomial times `exp`/`sin`/`cos` and the standalone logarithm.
  *
  *  @param e the integrand
  *  @param v the integration variable
  *  @return an antiderivative of `e` (constant of integration omitted),
  *          or `_Integral(e, v)` when no rule fires
  */
-def integrate(e: _Expression, v: _Variable): _Expression = e match
+def integrate(e: _Expression, v: _Variable): _Expression = integrateImpl(e, v, 0)
+
+/** Rule-table implementation of [[integrate]], threading the parts-recursion `depth`.
+ *
+ *  @param e     the integrand
+ *  @param v     the integration variable
+ *  @param depth current integration-by-parts recursion depth
+ *  @return an antiderivative of `e`, or `_Integral(e, v)` when no rule fires
+ */
+private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression = e match
   // Element-wise containers (see core._ElementWise): integrate each child. Must
   // precede the constant rule below, which would otherwise wrap a v-independent
   // matrix in the scalar node Product(matrix, v) instead of integrating per element.
-  case ew: _ElementWise => ew.rebuild(ew.children.map(integrate(_, v)))
+  case ew: _ElementWise => ew.rebuild(ew.children.map(integrateImpl(_, v, depth)))
 
   // integral(c, v) = c*v          (c independent of v)
   case _ if !dependsOn(e, v) => Product(e, v)
 
   // linearity: integral(a + b, v) = integral(a, v) + integral(b, v)
-  case Sum(a, b) => Sum(integrate(a, v), integrate(b, v))
+  case Sum(a, b) => Sum(integrateImpl(a, v, depth), integrateImpl(b, v, depth))
 
   // constant multiple: integral(c*f, v) = c * integral(f, v)
-  case Product(a, b) if !dependsOn(a, v) => Product(a, integrate(b, v))
-  case Product(a, b) if !dependsOn(b, v) => Product(b, integrate(a, v))
+  case Product(a, b) if !dependsOn(a, v) => Product(a, integrateImpl(b, v, depth))
+  case Product(a, b) if !dependsOn(b, v) => Product(b, integrateImpl(a, v, depth))
 
   // constant denominator: integral(f/c, v) = (integral(f, v))/c
-  case Ratio(a, b) if !dependsOn(b, v) => Ratio(integrate(a, v), b)
+  case Ratio(a, b) if !dependsOn(b, v) => Ratio(integrateImpl(a, v, depth), b)
 
   // the bare variable: integral(v, v) = v^2/2   (Power rule below only sees v wrapped in Power)
   case x: _Variable if x.variable == v.variable => Ratio(Power(v, _Number(2)), _Number(2))
@@ -113,6 +252,18 @@ def integrate(e: _Expression, v: _Variable): _Expression = e match
     case Some(a) => Ratio(Sin(u), _Number(a))
     case None    => _Integral(e, v)
 
-  // No rule (e.g. products of two v-dependent factors needing parts, tan, inverse
-  // trig, non-linear compositions): stay symbolic.
+  // Integration by parts for a product of two v-dependent factors (the earlier
+  // constant-multiple Product cases already peeled any v-free factor, so both
+  // factors here depend on v). LIATE selects u/dv; stays symbolic if parts cannot
+  // reduce the resulting sub-integral.
+  case Product(f, g) => partsProduct(f, g, v, depth).getOrElse(_Integral(e, v))
+
+  // Standalone logarithm: integral(ln(u), v) via parts with dv = 1 (u linear in v).
+  case Ln(u) if depth < MaxPartsDepth && linearSlope(u, v).isDefined =>
+    applyParts(e, _Number(1), v, depth).getOrElse(_Integral(e, v))
+  case LogBase(u, b) if depth < MaxPartsDepth && !dependsOn(b, v) && linearSlope(u, v).isDefined =>
+    applyParts(e, _Number(1), v, depth).getOrElse(_Integral(e, v))
+
+  // No rule (tan, standalone inverse trig, non-linear compositions, cyclic parts):
+  // stay symbolic.
   case _ => _Integral(e, v)
