@@ -259,16 +259,79 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
     assert(integrate(e, x) == _Integral(e, x))
   }
 
-  // --- forms still needing rational-function cancellation stay symbolic (future 4.C) ---
+  // --- rational functions via partial fractions (4.C) ---
 
-  "âˆ« arctan(x) dx (needs âˆ«x/(1+xÂ²))" should "stay symbolic" in
+  "âˆ« 1/(1 + xÂ²) dx (quadratic denominator, complex roots)" should "have derivative 1/(1+xÂ²)" in
   {
-    assert(integrate(Atan(x), x) == _Integral(Atan(x), x))
+    // reaches the general rational tier when written x/x-independent numerator form;
+    // here the dedicated atan rule already covers it, but the rational tier agrees.
+    assertAntiderivative(Ratio(_Number(1), Sum(_Number(1), Power(x, _Number(2)))), 0.5, 1.0, 2.0)
   }
 
-  "âˆ« x*ln(x) dx (needs xÂ²/x cancellation)" should "stay symbolic" in
+  "âˆ« x/(1 + xÂ²) dx (log-substitution shape, half-log result)" should "have derivative x/(1+xÂ²)" in
   {
-    assert(integrate(Product(x, Ln(x)), x) == _Integral(Product(x, Ln(x)), x))
+    assertAntiderivative(Ratio(x, Sum(_Number(1), Power(x, _Number(2)))), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« 1/(xÂ² + x + 1) dx (irreducible quadratic, pure arctan)" should "have derivative 1/(xÂ²+x+1)" in
+  {
+    val den = Sum(Sum(Power(x, _Number(2)), x), _Number(1))
+    assertAntiderivative(Ratio(_Number(1), den), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« 1/(xÂ² - 1) dx (distinct real roots)" should "have derivative 1/(xÂ²-1)" in
+  {
+    // domain x > 1 so both ln(x-1), ln(x+1) are real
+    assertAntiderivative(Ratio(_Number(1), Sum(Power(x, _Number(2)), _Number(-1))), 1.5, 2.0, 3.0)
+  }
+
+  "âˆ« (2x + 3)/(xÂ² + 3x + 2) dx (numerator = D', becomes ln D)" should "have derivative (2x+3)/(xÂ²+3x+2)" in
+  {
+    val den = Sum(Sum(Power(x, _Number(2)), Product(_Number(3), x)), _Number(2))
+    val num = Sum(Product(_Number(2), x), _Number(3))
+    assertAntiderivative(Ratio(num, den), 0.5, 1.0, 2.0)   // x > 0 keeps roots -1, -2 out of range
+  }
+
+  "âˆ« 1/(x - 1)Â² dx (repeated real root at deg 2)" should "have derivative 1/(x-1)Â²" in
+  {
+    val den = Power(Sum(x, _Number(-1)), _Number(2))
+    assertAntiderivative(Ratio(_Number(1), den), 1.5, 2.0, 3.0)
+  }
+
+  "âˆ« xÂ²/(xÂ² + 1) dx (improper: long division -> 1 - 1/(xÂ²+1))" should "have derivative xÂ²/(xÂ²+1)" in
+  {
+    assertAntiderivative(Ratio(Power(x, _Number(2)), Sum(Power(x, _Number(2)), _Number(1))), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« xÂ³/(xÂ² + 1) dx (improper: quotient x, remainder -x)" should "have derivative xÂ³/(xÂ²+1)" in
+  {
+    assertAntiderivative(Ratio(Power(x, _Number(3)), Sum(Power(x, _Number(2)), _Number(1))), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« 1/((x-1)(x-2)(x-3)) dx (deg 3, distinct real roots via residues)" should "have derivative it" in
+  {
+    // denominator x^3 - 6x^2 + 11x - 6; sample x > 3 so all logs are real
+    val den = Sum(Sum(Sum(Power(x, _Number(3)), Product(_Number(-6), Power(x, _Number(2)))),
+                      Product(_Number(11), x)), _Number(-6))
+    assertAntiderivative(Ratio(_Number(1), den), 3.5, 4.0, 5.0)
+  }
+
+  "âˆ« 1/((xÂ²+1)(x-1)) dx (deg 3 with complex roots)" should "stay symbolic" in
+  {
+    val den = Product(Sum(Power(x, _Number(2)), _Number(1)), Sum(x, _Number(-1)))
+    assert(integrate(Ratio(_Number(1), den), x) == _Integral(Ratio(_Number(1), den), x))
+  }
+
+  // --- formerly deferred parts cases, now unblocked by the rational tier (4.C) ---
+
+  "âˆ« arctan(x) dx (parts + âˆ«x/(1+xÂ²) via rational tier)" should "have derivative arctan(x)" in
+  {
+    assertAntiderivative(Atan(x), -1.0, 0.5, 2.0)
+  }
+
+  "âˆ« x*ln(x) dx (parts + xÂ²/(2x) long division)" should "have derivative x*ln(x)" in
+  {
+    assertAntiderivative(Product(x, Ln(x)), 0.5, 1.0, 2.0)
   }
 
   // --- unsupported forms stay symbolic ---

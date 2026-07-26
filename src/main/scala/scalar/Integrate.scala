@@ -210,12 +210,200 @@ private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variab
   }
 
 
+// ── Rational-function integration by partial fractions (issue 4.C) ──────────────
+//
+// integrateRational handles Ratio(N(v), D(v)) where N and D are polynomials in v with
+// numeric coefficients: polynomial long division peels an improper fraction into a
+// polynomial part plus a proper remainder, then the proper part is decomposed by the
+// structure of D — linear denominators integrate to a log, quadratic denominators via
+// completing the square (log + arctan, or two logs / a log-plus-reciprocal for real /
+// repeated roots), and degree >= 3 denominators with DISTINCT REAL roots via residues
+// (sum of logs). Repeated roots at degree >= 3, any complex root at degree >= 3, and
+// symbolic (non-numeric) coefficients stay symbolic — the same boundary the inverse
+// Laplace transform draws (transform.InverseLaplaceTransform).
+
+/** Numeric tolerance for treating a polynomial coefficient / discriminant as zero. */
+private val RationalEps = 1e-9
+
+/** Evaluates `e` in an empty environment, returning `Some(d)` for a concrete number. */
+private def constValue(e: _Expression): Option[Double] =
+  e.eval(new Environment()) match
+    case Right(_Number(d)) => Some(d)
+    case _                 => None
+
+/** Dense numeric coefficient vector `[c0, c1, ..., cn]` of `e` as a polynomial in `v`,
+ *  or `None` when `e` is not polynomial or any coefficient is not a concrete number. */
+private def polyCoeffs(e: _Expression, v: _Variable): Option[Vector[Double]] =
+  collect(e, v).flatMap { cs =>
+    cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
+      for tail <- acc; d <- constValue(c) yield d +: tail
+    }
+  }
+
+/** Degree of a coefficient vector: the highest index with a non-negligible coefficient,
+ *  or `-1` for the zero polynomial. */
+private def polyDegree(cs: Vector[Double]): Int =
+  cs.lastIndexWhere(c => math.abs(c) > RationalEps)
+
+/** Derivative coefficient vector: `[c1, 2*c2, ..., n*cn]`. */
+private def derivCoeffs(cs: Vector[Double]): Vector[Double] =
+  if cs.sizeIs <= 1 then Vector(0.0) else cs.zipWithIndex.tail.map((c, i) => i.toDouble * c)
+
+/** Horner evaluation of a real-coefficient polynomial at a real point. */
+private def evalCoeffsReal(cs: Vector[Double], x: Double): Double =
+  cs.foldRight(0.0)((c, acc) => acc * x + c)
+
+/** Polynomial long division `num / den` -> `(quotient, remainder)` coefficient vectors
+ *  (`num = quotient * den + remainder`, `deg remainder < deg den`). */
+private def polyDivide(num: Vector[Double], den: Vector[Double]): (Vector[Double], Vector[Double]) =
+  val dd   = polyDegree(den)
+  val lc   = den(dd)
+  val dnum = polyDegree(num)
+  if dnum < dd then (Vector(0.0), num)
+  else
+    val rr = num.toArray.clone()
+    val q  = Array.fill(dnum - dd + 1)(0.0)
+    var k  = dnum - dd
+    while k >= 0 do
+      val coef = rr(dd + k) / lc
+      q(k) = coef
+      var i = 0
+      while i <= dd do
+        rr(k + i) -= coef * den(i)
+        i += 1
+      k -= 1
+    (q.toVector, rr.toVector)
+
+/** Roots of a polynomial (via the Frobenius companion matrix eigenvalues), each a
+ *  real `_Number` or a non-real `_Complex`; `None` when degree < 1 or QR fails. */
+private def polyRoots(cs: Vector[Double]): Option[Vector[_Value]] =
+  val n = polyDegree(cs)
+  if n < 1 then None
+  else
+    val cn  = cs(n)
+    val mat = Array.fill(n * n)(0.0)
+    for i <- 0 until n do mat(i * n + (n - 1)) = -cs(i) / cn  // last column
+    for i <- 1 until n do mat(i * n + (i - 1)) = 1.0          // sub-diagonal
+    _MatrixValue(n, n, mat).eigenDecompose
+
+/** Builds `k * ln(arg)`, folding `k = 0` to `0` and `k = 1` to `ln(arg)`. */
+private def logTerm(k: Double, arg: _Expression): _Expression = scaleBy(k, Ln(arg))
+
+/** Builds `k * e`, folding `k = 0` to `0` and `k = 1` to `e`. */
+private def scaleBy(k: Double, e: _Expression): _Expression =
+  if math.abs(k) < 1e-15 then _Number(0)
+  else if math.abs(k - 1.0) < 1e-15 then e
+  else Product(_Number(k), e)
+
+/** Integrates the polynomial `sum(cs(i) * v^i)` term by term to `sum(cs(i)/(i+1) * v^(i+1))`. */
+private def integratePolyCoeffs(cs: Vector[Double], v: _Variable): _Expression =
+  val terms = cs.zipWithIndex.collect {
+    case (c, i) if math.abs(c) > RationalEps => scaleBy(c / (i + 1), Power(v, _Number(i + 1)))
+  }
+  if terms.isEmpty then _Number(0) else terms.reduce((a, b) => Sum(a, b))
+
+/** Integrates a proper rational `num/den` (`deg num < deg den`, numeric coefficients).
+ *
+ *  @param num the proper numerator coefficients
+ *  @param den the denominator coefficients (degree >= 1)
+ *  @param v   the integration variable
+ *  @return the antiderivative, or `None` when the denominator shape is out of scope
+ *          (repeated/complex roots at degree >= 3)
+ */
+private def integrateProperRational(num: Vector[Double], den: Vector[Double], v: _Variable): Option[_Expression] =
+  polyDegree(den) match
+    case 1 =>
+      // n0 / (d1*v + d0) = (n0/d1) * ln(d1*v + d0)
+      val d1 = den(1)
+      val d0 = den(0)
+      val n0 = num.headOption.getOrElse(0.0)
+      Some(logTerm(n0 / d1, simplifyFully(Sum(Product(_Number(d1), v), _Number(d0)))))
+    case 2           => integrateQuadraticDen(num, den, v)
+    case d if d >= 3 => integrateByResidues(num, den, v)
+    case _           => None
+
+/** Integrates `(n1*v + n0)/(c2*v^2 + c1*v + c0)` by completing the square.
+ *
+ *  Complex roots -> log + arctan; repeated real root -> log + reciprocal; distinct real
+ *  roots -> two logs (partial fractions).
+ */
+private def integrateQuadraticDen(num: Vector[Double], den: Vector[Double], v: _Variable): Option[_Expression] =
+  val c2 = den(2)
+  val p  = den(1) / c2
+  val q  = den(0) / c2
+  val n1 = num.lift(1).getOrElse(0.0) / c2
+  val n0 = num.headOption.getOrElse(0.0) / c2
+  val a  = -p / 2.0
+  val w2 = q - p * p / 4.0             // (v - a)^2 + w2
+  val xa = Sum(v, _Number(-a))         // v - a
+  if w2 > RationalEps then
+    // complex conjugate roots: (n1/2)*ln((v-a)^2 + w2) + ((n0 + n1*a)/w)*atan((v-a)/w)
+    val w = math.sqrt(w2)
+    val logPart = logTerm(n1 / 2.0, Sum(Power(xa, _Number(2)), _Number(w2)))
+    val atanArg = Atan(Ratio(xa, _Number(w)))
+    Some(simplifyFully(Sum(logPart, scaleBy((n0 + n1 * a) / w, atanArg))))
+  else if math.abs(w2) <= RationalEps then
+    // repeated real root a: n1*ln(v-a) - (n0 + n1*a)/(v-a)
+    Some(simplifyFully(Sum(logTerm(n1, xa), scaleBy(-(n0 + n1 * a), Ratio(_Number(1), xa)))))
+  else
+    // distinct real roots a +/- r: A*ln(v-r1) + B*ln(v-r2)
+    val r  = math.sqrt(-w2)
+    val r1 = a + r
+    val r2 = a - r
+    val a1 = (n1 * r1 + n0) / (r1 - r2)
+    val a2 = (n1 * r2 + n0) / (r2 - r1)
+    Some(simplifyFully(Sum(logTerm(a1, Sum(v, _Number(-r1))), logTerm(a2, Sum(v, _Number(-r2))))))
+
+/** Integrates a proper rational with `deg den >= 3` by residues, when all roots of `den`
+ *  are real and distinct: `sum over roots r of  N(r)/D'(r) * ln(v - r)`.
+ *
+ *  Any complex root or repeated root leaves the integral symbolic (`None`).
+ */
+private def integrateByResidues(num: Vector[Double], den: Vector[Double], v: _Variable): Option[_Expression] =
+  polyRoots(den).flatMap { roots =>
+    val reals = roots.collect { case _Number(re) => re }
+    if reals.size != roots.size then None                     // a complex root -> out of scope
+    else if reals.combinations(2).exists((pair: Vector[Double]) => math.abs(pair(0) - pair(1)) < 1e-6) then None  // repeated
+    else
+      val dden  = derivCoeffs(den)
+      val terms = reals.map { r =>
+        logTerm(evalCoeffsReal(num, r) / evalCoeffsReal(dden, r), Sum(v, _Number(-r)))
+      }
+      if terms.isEmpty then None else Some(simplifyFully(terms.reduce((a, b) => Sum(a, b))))
+  }
+
+/** Integrates a rational function `numE / denE` when both are polynomials in `v`.
+ *
+ *  Improper fractions (`deg num >= deg den`) are split by long division into a polynomial
+ *  part plus a proper remainder; the proper part is decomposed by [[integrateProperRational]].
+ *
+ *  @param numE the numerator expression
+ *  @param denE the denominator expression (already known to depend on `v`)
+ *  @param v    the integration variable
+ *  @return the antiderivative, or `None` to stay symbolic
+ */
+private def integrateRational(numE: _Expression, denE: _Expression, v: _Variable): Option[_Expression] =
+  for
+    numC <- polyCoeffs(numE, v)
+    denC <- polyCoeffs(denE, v)
+    if polyDegree(denC) >= 1
+    res  <-
+      if polyDegree(numC) >= polyDegree(denC) then
+        val (quot, rem) = polyDivide(numC, denC)
+        val polyPart    = integratePolyCoeffs(quot, v)
+        if polyDegree(rem) < 0 then Some(polyPart)
+        else integrateProperRational(rem, denC, v).map(pr => Sum(polyPart, pr))
+      else integrateProperRational(numC, denC, v)
+  yield simplifyFully(res)
+
+
 /** Returns an antiderivative of `e` with respect to `v`, or `_Integral(e, v)` when
  *  no rule applies.
  *
  *  `_ElementWise` containers (matrices, equations) are integrated element-wise.
  *  Chain-rule support is limited to linear inner arguments; integration by parts
- *  covers polynomial times `exp`/`sin`/`cos` and the standalone logarithm.
+ *  covers polynomial times `exp`/`sin`/`cos` and the standalone logarithm; rational
+ *  functions are integrated by partial fractions (see [[integrateRational]]).
  *
  *  @param e the integrand
  *  @param v the integration variable
@@ -289,6 +477,16 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression
       case Some(s) => Product(a, Ratio(Asin(u), _Number(s)))
       case None    => _Integral(e, v)
 
+  // General rational function N(v)/D(v) (both polynomials in v): long division for
+  // improper fractions, then partial fractions on the proper part (log for linear
+  // denominators, completing the square for quadratics, residue logs for deg>=3 with
+  // distinct real roots). Placed after the specific atan/asin ratio rules (which give
+  // cleaner closed forms for their shapes) but before the constant-numerator log rule,
+  // which would otherwise capture a polynomial-denominator ratio and give up on it.
+  // Non-polynomial operands / out-of-scope root structures -> None -> stays symbolic.
+  case Ratio(num, den) if dependsOn(den, v) =>
+    integrateRational(num, den, v).getOrElse(_Integral(e, v))
+
   // integral(c/u, v) = c*log(u)/a   (reciprocal written as a Ratio rather than Power(u, -1))
   case Ratio(a, u) if !dependsOn(a, v) => linearSlope(u, v) match
     case Some(s) => Product(a, Ratio(Ln(u), _Number(s)))
@@ -317,6 +515,13 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression
   case Ln(u) if depth < MaxPartsDepth && linearSlope(u, v).isDefined =>
     applyParts(e, _Number(1), v, depth).getOrElse(_Integral(e, v))
   case LogBase(u, b) if depth < MaxPartsDepth && !dependsOn(b, v) && linearSlope(u, v).isDefined =>
+    applyParts(e, _Number(1), v, depth).getOrElse(_Integral(e, v))
+
+  // Standalone arctan: integral(atan(u), v) via parts with dv = 1 (u linear in v). The
+  // resulting integral(u'/(1 + u^2)) closes through the rational-function tier above.
+  // (asin/acos are not added: their parts step needs integral(x/sqrt(1 - x^2)), which is
+  // not a rational function and has no rule -- their parts attempt would just bail.)
+  case Atan(u) if depth < MaxPartsDepth && linearSlope(u, v).isDefined =>
     applyParts(e, _Number(1), v, depth).getOrElse(_Integral(e, v))
 
   // No rule (tan, standalone inverse trig, non-linear compositions, cyclic parts):
