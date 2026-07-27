@@ -1,5 +1,6 @@
 ---
 title: Leonardo
+nav_order: 1
 ---
 
 <p style="text-align:center"><img src="Banner.svg" alt="Leonardo" style="max-width:100%;width:100%"/></p>

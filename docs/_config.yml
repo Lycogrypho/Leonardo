@@ -1,0 +1,63 @@
+# Jekyll configuration for the Leonardo documentation site (GitHub Pages).
+#
+# The prose pages live in docs/src (shared with the mdoc / Scaladoc pipeline); this
+# config drives the "Just the Docs" theme over them. The build is run from CI
+# (.github/workflows/pages.yml) as:
+#
+#   bundle exec jekyll build --source src --destination ../_site --config _config.yml
+#
+# The Scaladoc API reference is injected into the built site under /api by the workflow
+# (it is NOT produced by Jekyll). See docs/README.md for the full build story.
+
+title: Leonardo
+description: A Scala 3 symbolic mathematics library and Computer Algebra System (CAS).
+
+# GitHub project page: https://lycogrypho.github.io/Leonardo/
+# `url` is the origin, `baseurl` the repo sub-path. If the repo is renamed or served
+# from a user/apex domain, update both (baseurl "" for a user/apex site).
+url: "https://lycogrypho.github.io"
+baseurl: "/Leonardo"
+
+# Remote theme — no local theme gem needed; resolved by jekyll-remote-theme.
+remote_theme: just-the-docs/just-the-docs
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-relative-links
+  - jekyll-seo-tag
+
+# Turn the existing inter-page `foo.md` links into permalinks (so both the Scaladoc
+# site and the Jekyll site can share the same markdown source unchanged).
+relative_links:
+  enabled: true
+  collections: false
+
+# Every page uses the theme's default layout without needing per-page front matter.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+# ── Just the Docs options ──────────────────────────────────────────────────────
+search_enabled: true
+heading_anchors: true
+
+aux_links:
+  "API (Scaladoc)":
+    - "/Leonardo/api/"
+  "GitHub":
+    - "https://github.com/Lycogrypho/Leonardo"
+aux_links_new_tab: false
+
+# Large/duplicate source assets and non-site files that must not be published.
+# (logo_bw.svg, Banner.svg and structure.svg ARE referenced by the prose and kept.)
+exclude:
+  - logo.svg
+  - logo2.svg
+  - logo_bkp.svg
+  - logo_bkp2.svg
+  - _assets
+  - Gemfile
+  - Gemfile.lock
+  - "*.puml"
