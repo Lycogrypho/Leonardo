@@ -1,0 +1,86 @@
+name: Deploy documentation site to GitHub Pages
+
+# Publishes the Leonardo support site: the "Just the Docs" prose (docs/src) at the site
+# root, plus the Scaladoc API reference at /api. Runs on every push to main; can also be
+# triggered manually. One-time repo setup: Settings -> Pages -> Source = "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something that affects the site changes.
+    paths:
+      - "docs/**"
+      - "src/main/**"
+      - "build.sbt"
+      - "project/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Least-privilege token plus the permissions the Pages deployment needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One live deployment at a time; a newer push cancels an in-flight run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Scaladoc API reference (the /api subfolder) ──────────────────────────
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Build API docs (mdoc verifies samples, doc renders, injectApiStyles adds the logo/CSS)
+        run: sbt "mdoc; doc; injectApiStyles"
+
+      # ── Jekyll prose site (Just the Docs over docs/src) ──────────────────────
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: docs
+
+      - name: Build Jekyll site
+        working-directory: docs
+        run: bundle exec jekyll build --source src --destination ../_site --config _config.yml
+        env:
+          JEKYLL_ENV: production
+
+      # ── Assemble: prose at root, API at /api, .nojekyll so the _-prefixed
+      #    Scaladoc file names survive static serving. ───────────────────────────
+      - name: Add API reference and .nojekyll
+        run: |
+          cp -r target/scala-3.3.6/api _site/api
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

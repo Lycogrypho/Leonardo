@@ -6,6 +6,8 @@ Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). T
 
 This project is loosely inspired by the Scala project [Cascala/Galileo]([https://github.com/cascala/galileo|), though the codebase has been completely rewritten from scratch.
 
+📖 **Documentation site**: [lycogrypho.github.io/Leonardo](https://lycogrypho.github.io/Leonardo/) — guides, examples, and the full Scaladoc API reference (under `/api`), built from `docs/` and published to GitHub Pages by [`.github/workflows/pages.yml`](.github/workflows/pages.yml). See [`docs/README.md`](docs/README.md) for the build details.
+
 ## Overview
 
 Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathematical expressions. It builds an Abstract Syntax Tree (AST) from textual input and can evaluate expressions both numerically and symbolically.

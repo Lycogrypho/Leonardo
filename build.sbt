@@ -28,7 +28,7 @@ lazy val injectApiStyles = taskKey[Unit]("Inject custom CSS into generated scala
 lazy val root = (project in file("."))
   .enablePlugins(MdocPlugin)
   .settings(
-    name := "Leonardo",
+    name             := "Leonardo",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
 
     // ── PlantUML dependency (resolved, never on project classpath) ─────────────

@@ -1,5 +1,6 @@
 ---
 title: Interactive REPL
+nav_order: 7
 ---
 
 <img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>

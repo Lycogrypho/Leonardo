@@ -1,0 +1,18 @@
+# Gemfile for the Leonardo documentation site (Just the Docs on GitHub Pages).
+#
+# Used by CI (ruby/setup-ruby with bundler-cache) and for local previews:
+#
+#   cd docs && bundle install
+#   bundle exec jekyll serve --source src --config _config.yml
+#
+# then browse http://127.0.0.1:4000/Leonardo/
+
+source "https://rubygems.org"
+
+gem "jekyll", "~> 4.3"
+gem "jekyll-remote-theme", "~> 0.4"
+gem "jekyll-relative-links", "~> 0.7"
+gem "jekyll-seo-tag", "~> 2.8"
+
+# Windows / JRuby time-zone data (harmless elsewhere).
+gem "tzinfo-data", platforms: [:mingw, :x64_mingw, :mswin, :jruby]
