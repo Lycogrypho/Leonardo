@@ -116,20 +116,22 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
   it should "cap the step count for a very long interval" in:
     assert(stepCount(1e9, 5) == 1000000)
 
-  it should "stay accurate over a long interval (y' = -y/(1+t) at t=1000 → 1/1001)" in:
-    // Nonlinear-coefficient rhs (collect coefficient depends on t) → forced through RK4, not
-    // the closed-form tier. With the old span-independent count h would be ~1 here.
-    val rhs  = Ratio(Product(_Number(-1), _Variable("y")), Sum(_Number(1), _Variable("t")))
+  it should "stay accurate over a long interval (y' = -y^2, y(0)=1 at t=1000 → 1/1001)" in:
+    // Nonlinear rhs (collect → degree 2 → None) forces RK4, not the closed-form tier;
+    // exercises the interval-scaled step count over a long span (h stays ≈ 1e-3). With the
+    // old span-independent count h would be ~1 here.
+    val rhs  = Product(_Number(-1), Power(_Variable("y"), _Number(2)))
     val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1000))
-    approxSolve(node, 1.0 / 1001.0, 1e-9)   // exact solution y = 1/(1+t)
+    approxSolve(node, 1.0 / 1001.0, 1e-6)   // exact solution y = 1/(1+t)
 
   it should "not degrade at precision 0 (interval step count is precision-independent floor)" in:
-    // y' = t*y forces RK4; at precision 0 the old code used 1 step (large error).
-    val rhs  = Product(_Variable("t"), _Variable("y"))
+    // y' = -y^2 is nonlinear (collect → None) so it forces RK4; at precision 0 the old code
+    // used 1 step (large error). Exact solution y = 1/(1+t) → 0.5 at t = 1.
+    val rhs  = Product(_Number(-1), Power(_Variable("y"), _Number(2)))
     val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1))
     node.eval(new Environment(0)).toExpression match
-      case _Number(d) => assert(math.abs(d - math.exp(0.5)) <= 1e-6, s"got $d")
-      case other      => fail(s"expected _Number ≈ e^{1/2}, got $other")
+      case _Number(d) => assert(math.abs(d - 0.5) <= 1e-6, s"got $d")
+      case other      => fail(s"expected _Number ≈ 0.5, got $other")
 
   it should "stay symbolic when the shape is unrecognised and the target is symbolic" in:
     // sin(y) is nonlinear (collect → None), so the symbolic tier declines; a free target
@@ -138,10 +140,20 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
                     _Number(0), _Number(1), _Variable("T"))
     assert(node.eval(emptyEnv) == Left(node))
 
-  it should "stay symbolic for a t-dependent coefficient with a symbolic target" in:
-    // y' = t*y is linear in y but the coefficient depends on t → not constant-coefficient,
-    // so the symbolic tier declines; a free target blocks RK4 → fully symbolic.
+  it should "solve a t-dependent-coefficient ODE in closed form (y' = t*y → e^{T^2/2})" in:
+    // Integrating-factor tier (issue 4.D): mu = exp(-t^2/2), b = 0 → y = y0*exp((T^2 - t0^2)/2).
+    // A free target keeps the result symbolic; it folds once T is bound. Exact y = e^{t^2/2}.
     val node = _ODE(Product(_Variable("t"), _Variable("y")), _Variable("y"), _Variable("t"),
+                    _Number(0), _Number(1), _Variable("T"))
+    assert(node.eval(emptyEnv).isLeft, s"expected symbolic closed form, got ${node.eval(emptyEnv)}")
+    node.eval(new Environment(5, Map("T" -> _Number(1)))).toExpression match
+      case _Number(d) => assert(math.abs(d - math.exp(0.5)) <= 1e-9, s"got $d")
+      case other      => fail(s"expected _Number ≈ e^{1/2}, got $other")
+
+  it should "stay fully symbolic when the coefficient integral has no closed form and the target is free" in:
+    // y' = tan(t)*y is linear, but integral(tan(t)) is not in the table, so the
+    // integrating-factor tier declines; a free target blocks RK4 too → fully symbolic.
+    val node = _ODE(Product(Tg(_Variable("t")), _Variable("y")), _Variable("y"), _Variable("t"),
                     _Number(0), _Number(1), _Variable("T"))
     assert(node.eval(emptyEnv) == Left(node))
 
@@ -190,6 +202,38 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
       case Some(d) => d
       case None    => fail("RK4 unexpectedly failed")
     assert(math.abs(symbolic - rk4) <= 1e-4, s"closed form $symbolic vs RK4 $rk4")
+
+  // ─────────────────────── variable-coefficient tier (issue 4.D) ───────────────────────
+
+  it should "solve the linear ODE y' = -y + t, y(0)=1 at t=1 in closed form (→ 2/e)" in:
+    // integrating factor mu = e^t; mu*q = t*e^t is integrated by parts. Exact y = t - 1 + 2e^{-t}.
+    val rhs  = Sum(Product(_Number(-1), _Variable("y")), _Variable("t"))
+    val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1))
+    approxSolve(node, 2.0 / math.E, 1e-9)
+
+  it should "solve a variable-coefficient ODE y' = -y/(1+t), y(0)=1 at t=3 in closed form (→ 1/4)" in:
+    // coefficient a = -1/(1+t): integral(a) = -ln(1+t), mu = 1+t. Exact y = 1/(1+t).
+    val rhs  = Ratio(Product(_Number(-1), _Variable("y")), Sum(_Number(1), _Variable("t")))
+    val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(3))
+    approxSolve(node, 0.25, 1e-9)
+
+  it should "match RK4 numerically for the variable-coefficient ODE y' = -y + t" in:
+    val rhs  = Sum(Product(_Number(-1), _Variable("y")), _Variable("t"))
+    val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(1))
+    val symbolic = node.eval(emptyEnv).toExpression match
+      case _Number(d) => d
+      case other      => fail(s"expected numeric closed form, got $other")
+    val rk4 = solveODE(rhs, _Variable("y"), _Variable("t"), 0.0, 1.0, 1.0, emptyEnv) match
+      case Some(d) => d
+      case None    => fail("RK4 unexpectedly failed")
+    assert(math.abs(symbolic - rk4) <= 1e-4, s"closed form $symbolic vs RK4 $rk4")
+
+  it should "fall back to RK4 when the coefficient integral has no closed form (y' = tan(t)*y)" in:
+    // integral(tan(t)) is not in the table → integrating-factor tier declines; with a numeric
+    // target RK4 takes over. Exact solution y = sec(t) → 1/cos(0.5).
+    val rhs  = Product(Tg(_Variable("t")), _Variable("y"))
+    val node = _ODE(rhs, _Variable("y"), _Variable("t"), _Number(0), _Number(1), _Number(0.5))
+    approxSolve(node, 1.0 / math.cos(0.5), 1e-6)
 
   // ───────────────────────────── parser ─────────────────────────────
 

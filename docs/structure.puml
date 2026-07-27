@@ -536,6 +536,10 @@ package "ode" {
         a*y      -> y0*e^{a(t-t0)}
         b        -> y0 + b*(t-t0)
         a*y + b  -> (y0 + b/a)*e^{a(t-t0)} - b/a
+        __ variable-coeff linear y' = a(t)*y + b(t) __
+        integrating factor mu = e^{-integral a dt}
+        y = (Q(target) - Q(t0) + y0*mu(t0)) / mu(target)
+        with Q = integral(mu*b dt)
     }
 
     "_ODE" --|> "_Functional"
@@ -543,6 +547,7 @@ package "ode" {
     "_ODE" ..> "SolveODESymbolic" : closed-form tier first
     "_ODE" ..> "SolveODE"         : RK4 fallback at eval
     "SolveODESymbolic" ..> "Normalize" : collect() linear-in-y coeffs
+    "SolveODESymbolic" ..> "Integrate" : integral(a), integral(mu*b) (variable-coeff tier)
     "SolveODESymbolic" ..> "Simplify"  : simplifyFully() output
 }
 
