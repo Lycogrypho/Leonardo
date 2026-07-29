@@ -287,3 +287,39 @@ class SimplifyTest extends AnyFlatSpec:
   {
     assert(Power(_Number(2), _Number(3)).simplify() == _Number(8))
   }
+
+  // --- issue 1.1: _Heaviside constant-folding at numeric arguments ---
+
+  "simplify(step(0))" should "fold to 1 (step(0) = 1, arg >= 0)" in
+  {
+    assert(_Heaviside(_Number(0)).simplify() == _Number(1))
+  }
+
+  "simplify(step(3))" should "fold to 1 (positive arg)" in
+  {
+    assert(_Heaviside(_Number(3)).simplify() == _Number(1))
+  }
+
+  "simplify(step(-1))" should "fold to 0 (negative arg)" in
+  {
+    assert(_Heaviside(_Number(-1)).simplify() == _Number(0))
+  }
+
+  "simplify(step(x))" should "remain step(x) when arg is symbolic" in
+  {
+    assert(_Heaviside(x).simplify() == _Heaviside(x))
+  }
+
+  "simplify(step(x - x))" should "fold step arg to 0 then constant-fold to 1" in
+  {
+    // step(x - x) -> step(0) -> 1
+    assert(_Heaviside(Sum(x, Product(_Number(-1), x))).simplifyFully() == _Number(1))
+  }
+
+  "simplify(step(0))" should "agree with eval(step(0))" in
+  {
+    val simplified  = _Heaviside(_Number(0)).simplify()
+    val evaled      = _Heaviside(_Number(0)).eval(new Environment())
+    assert(simplified == _Number(1))
+    assert(evaled     == Right(_Number(1)))
+  }
