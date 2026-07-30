@@ -272,22 +272,23 @@ final class Session:
    *  session bindings — executing `A * B` is impossible without knowing `A` and `B`.
    */
   private def resolveMatrixOps(e: _Expression): _Expression =
+    val localEnv = env
     def isMatrixish(x: _Expression): Boolean = x match
       case _: _Matrix | _: _MatrixOperation | _: _MatrixValue => true
-      case v: _Variable => env.get(v.variable).exists(_.isInstanceOf[_MatrixValue])
+      case v: _Variable => localEnv.get(v.variable).exists(_.isInstanceOf[_MatrixValue])
       case _            => false
 
     val rec = e.rebuild(e.children.map(resolveMatrixOps))
     rec match
-      case Sum(a, b) if isMatrixish(a) || isMatrixish(b)     => MatSum(a, b).eval(env).toExpression
-      case Product(a, b) if isMatrixish(a) && isMatrixish(b) => MatProduct(a, b).eval(env).toExpression
-      case Product(a, b) if isMatrixish(b)                   => MatScale(a, b).eval(env).toExpression
-      case Product(a, b) if isMatrixish(a)                   => MatScale(b, a).eval(env).toExpression
-      case Ratio(a, b) if isMatrixish(a) && !isMatrixish(b)  => MatScale(Ratio(_Number(1), b), a).eval(env).toExpression
-      case Ratio(a, b) if isMatrixish(a) && isMatrixish(b)   => MatProduct(a, Inverse(b)).eval(env).toExpression
-      case Ratio(a, b) if isMatrixish(b)                     => MatScale(a, Inverse(b)).eval(env).toExpression
-      case d @ Determinant(_)                                => d.eval(env).toExpression
-      case m: _MatrixOperation                               => m.eval(env).toExpression
+      case Sum(a, b) if isMatrixish(a) || isMatrixish(b)     => MatSum(a, b).eval(localEnv).toExpression
+      case Product(a, b) if isMatrixish(a) && isMatrixish(b) => MatProduct(a, b).eval(localEnv).toExpression
+      case Product(a, b) if isMatrixish(b)                   => MatScale(a, b).eval(localEnv).toExpression
+      case Product(a, b) if isMatrixish(a)                   => MatScale(b, a).eval(localEnv).toExpression
+      case Ratio(a, b) if isMatrixish(a) && !isMatrixish(b)  => MatScale(Ratio(_Number(1), b), a).eval(localEnv).toExpression
+      case Ratio(a, b) if isMatrixish(a) && isMatrixish(b)   => MatProduct(a, Inverse(b)).eval(localEnv).toExpression
+      case Ratio(a, b) if isMatrixish(b)                     => MatScale(a, Inverse(b)).eval(localEnv).toExpression
+      case d @ Determinant(_)                                => d.eval(localEnv).toExpression
+      case m: _MatrixOperation                               => m.eval(localEnv).toExpression
       case other                                             => other
 
   /** Rewrites derivative/integral binders that name a *definition* via the chain rule.
