@@ -1,6 +1,12 @@
 ThisBuild / scalaVersion := "3.3.6"
 
-scalacOptions ++= Seq( "-explain", "-deprecation", "-feature" )
+scalacOptions ++= Seq(
+  "-explain", "-deprecation", "-feature",
+  // package.scala files contain only a chained package clause + a /** */ doc comment;
+  // scalac warns "No class/trait/object defined" because nothing is compiled per se.
+  // The Scaladoc association is correct — only Zinc's dependency tracking is limited.
+  "-Wconf:src=.*package\\.scala:silent"
+)
 
 // idePackagePrefix is consumed by the IntelliJ sbt import, not by any sbt task;
 // exclude it from the lintUnused warning printed at every startup.
