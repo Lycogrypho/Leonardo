@@ -12,8 +12,8 @@ import scala.math
  *    `0/0` or `∞/∞` indeterminate form.  Also detects the `c/0` form and returns `±∞`
  *    based on the direction of approach of the denominator.
  *  - Tier 3 — **structural rules at ±∞**: polynomial rationals via [[collect]]
- *    (`Normalize.scala`), elementary functions (`exp`, `ln`, `atan`, `sin`/`cos`)
- *    handled by shape.
+ *    (`Normalize.scala`), elementary functions (`exp`, `ln`, `atan`, `sin`/`cos`,
+ *    and constant-base powers `b^f(v)`) handled by shape.
  *  - Tier 4 — **epsilon perturbation** for one-sided limits that survived all other tiers.
  *
  *  Returns `_Limit(e, v, point, dir)` unchanged when no rule applies (fixpoint convention).
@@ -179,6 +179,27 @@ private def limitInfinity(e: _Expression, v: _Variable, p: Double, env: Environm
           val s = da * db
           if s.isNaN then _Limit(ex, v, _Number(p), LimitDir.Both) else _Number(s)
         case _ => _Limit(ex, v, _Number(p), LimitDir.Both)
+
+    // Constant base, v-dependent exponent: b^f(v) as v → ±∞.
+    // b > 1: f→+∞ ⟹ +∞, f→-∞ ⟹ 0.  0 < b < 1: reversed. b == 1: always 1.
+    // Negative and zero bases stay symbolic (complex / degenerate territory).
+    case Power(base, exp) if !dependsOn(base, v) =>
+      base.eval(env) match
+        case Right(_Number(b)) if b > 0.0 =>
+          go(exp) match
+            case _Number(d) if d.isPosInfinity =>
+              if b > 1.0      then _Number(Double.PositiveInfinity)
+              else if b < 1.0 then _Number(0.0)
+              else _Number(1.0)
+            case _Number(d) if d.isNegInfinity =>
+              if b > 1.0      then _Number(0.0)
+              else if b < 1.0 then _Number(Double.PositiveInfinity)
+              else _Number(1.0)
+            case _Number(d) =>
+              val r = math.pow(b, d)
+              if r.isFinite then _Number(r) else numericInfFallback(ex, v, p, env)
+            case _ => numericInfFallback(ex, v, p, env)
+        case _ => numericInfFallback(ex, v, p, env)
 
     case Power(base, _Number(n)) =>
       go(base) match

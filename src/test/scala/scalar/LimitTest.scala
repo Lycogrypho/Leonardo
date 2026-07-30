@@ -182,6 +182,38 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
     val r = parse("limit(sin(x), x, inf)").eval(env).toExpression
     assert(r.isInstanceOf[_Limit], s"expected symbolic _Limit, got $r")
 
+  // --- issue 1.2: Power(constant_base, v-dependent exp) at ±∞ ---
+
+  it should "evaluate e^x as x→+inf to +inf (was staying symbolic)" in:
+    assert(eval("limit(e^x, x, inf)") == "inf")
+
+  it should "evaluate e^x as x→-inf to 0 (was staying symbolic)" in:
+    approx("limit(e^x, x, -inf)", 0.0)
+
+  it should "agree: e^x and exp(x) give the same limit at +inf" in:
+    assert(eval("limit(e^x, x, inf)") == eval("limit(exp(x), x, inf)"))
+
+  it should "agree: e^x and exp(x) give the same limit at -inf" in:
+    approx("limit(e^x, x, -inf)", 0.0)
+
+  it should "evaluate 2^x as x→+inf to +inf (base > 1)" in:
+    assert(eval("limit(2^x, x, inf)") == "inf")
+
+  it should "evaluate 2^x as x→-inf to 0 (base > 1)" in:
+    approx("limit(2^x, x, -inf)", 0.0)
+
+  it should "evaluate (1/2)^x as x→+inf to 0 (base < 1)" in:
+    approx("limit((1/2)^x, x, inf)", 0.0)
+
+  it should "evaluate (1/2)^x as x→-inf to +inf (base < 1)" in:
+    assert(eval("limit((1/2)^x, x, -inf)") == "inf")
+
+  it should "evaluate 1^x as x→+inf to 1 (base == 1)" in:
+    approx("limit(1^x, x, inf)", 1.0)
+
+  it should "evaluate 10^(1/x) as x→+inf to 1 (exponent→0)" in:
+    approx("limit(10^(1/x), x, inf)", 1.0)
+
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ simplify / expand pass-through â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   it should "simplify body and point of a _Limit" in:
