@@ -227,11 +227,18 @@ private val MaxVectorizedSize = 400
  */
 private final case class LinearTerm(scale: Double, left: Option[_MatrixValue], right: Option[_MatrixValue])
 
-/** Flattens a `Sum`/`MatSum` tree into a list of additive operands. */
-private def flattenSum(e: _Expression): List[_Expression] = e match
-  case Sum(a, b)    => flattenSum(a) ++ flattenSum(b)
-  case MatSum(a, b) => flattenSum(a) ++ flattenSum(b)
-  case other        => List(other)
+/** Flattens a `Sum`/`MatSum` tree into a list of additive operands.
+ *  Uses a worklist accumulator to guarantee O(1) stack depth regardless of tree height.
+ */
+@annotation.tailrec
+private def flattenSum(pending: List[_Expression], acc: List[_Expression]): List[_Expression] =
+  pending match
+    case Nil                  => acc.reverse
+    case Sum(a, b)    :: rest => flattenSum(a :: b :: rest, acc)
+    case MatSum(a, b) :: rest => flattenSum(a :: b :: rest, acc)
+    case other        :: rest => flattenSum(rest, other :: acc)
+
+private def flattenSum(e: _Expression): List[_Expression] = flattenSum(List(e), Nil)
 
 /** Classifies one additive term as `s * L * v * R`; `None` when not linear in `v` or a
  *  coefficient does not reduce to a dense matrix / number under `env`.
