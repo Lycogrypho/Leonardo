@@ -66,8 +66,8 @@ def collect(e: _Expression, v: _Variable): Option[Vector[_Expression]] =
 
 /** Drops trailing zero coefficients; always returns at least `Vector(_Number(0))`. */
 private def trimTrailingZeros(cs: Vector[_Expression]): Vector[_Expression] =
-  val trimmed = cs.reverse.dropWhile(_ == _Number(0)).reverse
-  if trimmed.isEmpty then Vector(_Number(0)) else trimmed
+  val last = cs.lastIndexWhere(_ != _Number(0))
+  if last < 0 then Vector(_Number(0)) else cs.take(last + 1)
 
 /** Rebuilds `e` as a sum of like terms collected as a polynomial in `v`.
  *
