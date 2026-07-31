@@ -63,6 +63,17 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Ratio(x, _Number(1)).simplify() == x)
   }
 
+  // issue 3.3: Ratio(a, -1) was not simplified
+  "simplify(x / -1)" should "equal -x" in
+  {
+    assert(Ratio(x, _Number(-1)).simplify() == Product(_Number(-1), x))
+  }
+
+  "simplifyFully(sin(x) / -1)" should "equal -1 * sin(x)" in
+  {
+    assert(Ratio(Sin(x), _Number(-1)).simplifyFully() == Product(_Number(-1), Sin(x)))
+  }
+
   "simplify(0 / x)" should "equal 0" in
   {
     assert(Ratio(_Number(0), x).simplify() == _Number(0))

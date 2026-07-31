@@ -406,18 +406,12 @@ private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_
       found.toList.map(_Number(_))
 
 /** Bisection refinement: narrows `[lo, hi]` around a sign change for `BisectIterations` steps. */
-private def bisect(fn: Double => Double, lo0: Double, hi0: Double, flo0: Double): Double =
-  var lo  = lo0
-  var hi  = hi0
-  var flo = flo0
-  var i   = 0
-  while i < BisectIterations do
+@annotation.tailrec
+private def bisect(fn: Double => Double, lo: Double, hi: Double, flo: Double, i: Int = 0): Double =
+  if i >= BisectIterations then (lo + hi) / 2.0
+  else
     val mid  = (lo + hi) / 2.0
     val fmid = fn(mid)
-    if fmid == 0.0 then return mid
-    if flo * fmid < 0.0 then hi = mid
-    else
-      lo = mid
-      flo = fmid
-    i += 1
-  (lo + hi) / 2.0
+    if fmid == 0.0 then mid
+    else if flo * fmid < 0.0 then bisect(fn, lo, mid, flo, i + 1)
+    else bisect(fn, mid, hi, fmid, i + 1)
