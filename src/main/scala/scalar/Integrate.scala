@@ -32,6 +32,10 @@ import core.*
  *  `u` linear in `v`), which parts cannot reach because the power is not a product.
  */
 
+/** Shared empty environment used by [[linearSlope]] and [[constValue]] to fold
+ *  constant-only expressions without allocating a throwaway instance per call. */
+private val EmptyEnv = new Environment()
+
 /** Returns the slope `a` when `u` is linear in `v` (i.e. `d(u)/dv` folds to a nonzero
  *  constant); `None` for non-linear or constant `u`.
  *
@@ -40,7 +44,7 @@ import core.*
  *  @return `Some(a)` when `u = a*v + b` with `a != 0`, `None` otherwise
  */
 private def linearSlope(u: _Expression, v: _Variable): Option[Double] =
-  derive(u, v).eval(new Environment()) match
+  derive(u, v).eval(EmptyEnv) match
     case Right(_Number(a)) if a != 0.0 => Some(a)
     case _                             => None
 
@@ -227,7 +231,7 @@ private val RationalEps = 1e-9
 
 /** Evaluates `e` in an empty environment, returning `Some(d)` for a concrete number. */
 private def constValue(e: _Expression): Option[Double] =
-  e.eval(new Environment()) match
+  e.eval(EmptyEnv) match
     case Right(_Number(d)) => Some(d)
     case _                 => None
 
