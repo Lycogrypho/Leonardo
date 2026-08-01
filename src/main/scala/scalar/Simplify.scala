@@ -132,17 +132,22 @@ private def simplifyImpl(e: _Expression): _Expression = e match
 
   case Asin(a) =>
     simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
-      case x                      => Asin(x)
+      case _Number(d) if d == 0.0  => _Number(0)
+      case _Number(d) if d == 1.0  => _Number(math.Pi / 2)
+      case _Number(d) if d == -1.0 => _Number(-math.Pi / 2)
+      case x                       => Asin(x)
 
   case Acos(a) =>
     simplify(a) match
-      case _Number(d) if d == 1.0 => _Number(0)
-      case x                      => Acos(x)
+      case _Number(d) if d == 1.0  => _Number(0)
+      case _Number(d) if d == 0.0  => _Number(math.Pi / 2)
+      case _Number(d) if d == -1.0 => _Number(math.Pi)
+      case x                       => Acos(x)
 
   case Atan(a) =>
     simplify(a) match
       case _Number(d) if d == 0.0 => _Number(0)
+      case _Number(d) if d == 1.0 => _Number(math.Pi / 4)
       case x                      => Atan(x)
 
   case _Heaviside(a) =>

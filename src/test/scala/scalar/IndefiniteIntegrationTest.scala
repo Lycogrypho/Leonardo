@@ -356,6 +356,49 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
 
   // --- Syntax sugar ---
 
+  // --- issue 4.3: ∫ step(u) dv = u·step(u) / a ---
+
+  "integrate(step(x), x)" should "equal x*step(x)" in
+  {
+    val result = integrate(_Heaviside(x), x)
+    assert(result == Ratio(Product(x, _Heaviside(x)), _Number(1.0)),
+      s"got: $result")
+  }
+
+  "integrate(step(2*x), x)" should "equal (2x)*step(2x) / 2" in
+  {
+    val twoX = Product(_Number(2), x)
+    val result = integrate(_Heaviside(twoX), x)
+    assert(result == Ratio(Product(twoX, _Heaviside(twoX)), _Number(2.0)),
+      s"got: $result")
+  }
+
+  "integrate(step(x+1), x)" should "equal (x+1)*step(x+1) / 1" in
+  {
+    val xp1 = Sum(x, _Number(1))
+    val result = integrate(_Heaviside(xp1), x)
+    assert(result == Ratio(Product(xp1, _Heaviside(xp1)), _Number(1.0)),
+      s"got: $result")
+  }
+
+  "integrate(step(x^2), x)" should "stay symbolic (non-linear argument)" in
+  {
+    val e = _Heaviside(Power(x, _Number(2)))
+    assert(integrate(e, x) == _Integral(e, x))
+  }
+
+  "integrate(step(x), x) antiderivative" should "evaluate to x at positive x and 0 at negative x" in
+  {
+    val antideriv = integrate(_Heaviside(x), x)  // x * step(x) / 1
+    def evalAt(d: Double): Double =
+      antideriv.eval(new Environment().withBinding("x", _Number(d))) match
+        case Right(_Number(v)) => v
+        case other => fail(s"expected numeric at x=$d, got $other")
+    assert(math.abs(evalAt(3.0)  - 3.0) < 1e-9)   // 3  * step(3)  = 3
+    assert(math.abs(evalAt(-2.0) - 0.0) < 1e-9)   // -2 * step(-2) = 0
+    assert(math.abs(evalAt(0.0)  - 0.0) < 1e-9)   // 0  * step(0)  = 0
+  }
+
   "e.integrate(v)" should "forward to the package-level integrate" in
   {
     val direct = integrate(Power(x, _Number(2)), x)

@@ -232,3 +232,20 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
       case _Limit(body, _, _, _) =>
         assert(body.toString.contains("+"))  // (x*x + x*1)
       case other => fail(s"expected _Limit, got $other")
+
+  // --- issue 4.1: two-sided (Both) limits via numeric sampling ---
+
+  "limit(sin(x)/x, x, 0)" should "evaluate to 1 (two-sided, epsilon tier)" in:
+    approx("limit(sin(x)/x, x, 0)", 1.0)
+
+  "limit(x^2, x, 2)" should "evaluate to 4 (two-sided, continuous function)" in:
+    approx("limit(x^2, x, 2)", 4.0)
+
+  "limit((exp(x)-1)/x, x, 0)" should "evaluate to 1 (two-sided, L'Hopital or epsilon)" in:
+    approx("limit((exp(x)-1)/x, x, 0)", 1.0)
+
+  "limit(1/x, x, 0)" should "stay symbolic (sign flip → two-sided DNE)" in:
+    // sign flips across 0, so the two-sided limit does not exist → stays as _Limit node
+    parse("limit(1/x, x, 0)").eval(env).toExpression match
+      case _: _Limit => // expected: stays symbolic
+      case other     => fail(s"expected symbolic _Limit but got $other")

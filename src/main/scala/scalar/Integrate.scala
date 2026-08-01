@@ -509,6 +509,13 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression
     case Some(a) => Ratio(Sin(u), _Number(a))
     case None    => _Integral(e, v)
 
+  // Heaviside step: ∫ step(u) dv = u·step(u) / a  (u = a·v + b linear, chain rule 1/a).
+  // Verified by differentiation: d/dv [u·step(u)/a] = (du/dv)·step(u)/a + u·dirac(u)/a
+  // and u·δ(u) = 0 in the distributional sense, leaving step(u).
+  case _Heaviside(u) => linearSlope(u, v) match
+    case Some(a) => Ratio(Product(u, _Heaviside(u)), _Number(a))
+    case None    => _Integral(e, v)
+
   // Integration by parts for a product of two v-dependent factors (the earlier
   // constant-multiple Product cases already peeled any v-free factor, so both
   // factors here depend on v). LIATE selects u/dv; stays symbolic if parts cannot

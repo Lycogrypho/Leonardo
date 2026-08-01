@@ -198,6 +198,48 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Exp(Ln(x)).simplify() == x)
   }
 
+  // --- issue 4.2: known values for inverse trig functions ---
+
+  "simplify(asin(0))" should "equal 0" in
+  {
+    assert(Asin(_Number(0)).simplify() == _Number(0))
+  }
+
+  "simplify(asin(1))" should "equal pi/2" in
+  {
+    assert(Asin(_Number(1)).simplify() == _Number(math.Pi / 2))
+  }
+
+  "simplify(asin(-1))" should "equal -pi/2" in
+  {
+    assert(Asin(_Number(-1)).simplify() == _Number(-math.Pi / 2))
+  }
+
+  "simplify(acos(1))" should "equal 0" in
+  {
+    assert(Acos(_Number(1)).simplify() == _Number(0))
+  }
+
+  "simplify(acos(0))" should "equal pi/2" in
+  {
+    assert(Acos(_Number(0)).simplify() == _Number(math.Pi / 2))
+  }
+
+  "simplify(acos(-1))" should "equal pi" in
+  {
+    assert(Acos(_Number(-1)).simplify() == _Number(math.Pi))
+  }
+
+  "simplify(atan(0))" should "equal 0" in
+  {
+    assert(Atan(_Number(0)).simplify() == _Number(0))
+  }
+
+  "simplify(atan(1))" should "equal pi/4" in
+  {
+    assert(Atan(_Number(1)).simplify() == _Number(math.Pi / 4))
+  }
+
   // --- known function values ---
 
   "simplify(exp(0))" should "equal 1" in

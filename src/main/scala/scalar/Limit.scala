@@ -90,23 +90,30 @@ private def cOverZero(
         case _                            => _Limit(e, v, _Number(p), dir)   // sign flip → DNE
 
 /** Tier 4: evaluates at two points close to `p` from the requested direction.
- *  Reports the average when they converge; stays symbolic otherwise.
+ *  For one-sided limits, reports the average when the two samples converge.
+ *  For two-sided limits, checks that the left and right estimates both converge
+ *  and agree with each other; stays symbolic when any check fails.
  */
 private def limitEpsilon(
   e: _Expression, v: _Variable, p: Double, dir: LimitDir, env: Environment
 ): _Expression =
+  val eps = math.max(1e-8, math.abs(p) * 1e-6)
+  def estimate(x1: Double, x2: Double): Option[Double] =
+    (numericAt(e, v, x1, env), numericAt(e, v, x2, env)) match
+      case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite &&
+           math.abs(y1 - y2) <= 1e-5 * (1.0 + math.abs(y2)) => Some((y1 + y2) / 2)
+      case _ => None
   dir match
-    case LimitDir.Both => _Limit(e, v, _Number(p), dir)
-    case _ =>
-      val eps = math.max(1e-8, math.abs(p) * 1e-6)
-      val (x1, x2) = dir match
-        case LimitDir.FromRight => (p + eps, p + eps * 0.001)
-        case LimitDir.FromLeft  => (p - eps, p - eps * 0.001)
-        case LimitDir.Both      => (p, p)   // unreachable
-      (numericAt(e, v, x1, env), numericAt(e, v, x2, env)) match
-        case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite &&
-             math.abs(y1 - y2) <= 1e-5 * (1.0 + math.abs(y2)) =>
-          _Number((y1 + y2) / 2)
+    case LimitDir.FromRight =>
+      estimate(p + eps, p + eps * 0.001).map(_Number(_)).getOrElse(_Limit(e, v, _Number(p), dir))
+    case LimitDir.FromLeft  =>
+      estimate(p - eps, p - eps * 0.001).map(_Number(_)).getOrElse(_Limit(e, v, _Number(p), dir))
+    case LimitDir.Both =>
+      val rEst = estimate(p + eps, p + eps * 0.001)
+      val lEst = estimate(p - eps, p - eps * 0.001)
+      (lEst, rEst) match
+        case (Some(l), Some(r)) if math.abs(l - r) <= 1e-5 * (1.0 + math.abs(r)) =>
+          _Number((l + r) / 2)
         case _ => _Limit(e, v, _Number(p), dir)
 
 /** Tier 3: structural evaluation at ±∞ by recursing over the AST shape. */
