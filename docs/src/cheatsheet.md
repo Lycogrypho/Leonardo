@@ -1,0 +1,283 @@
+---
+title: Cheatsheet
+nav_order: 9
+---
+
+# Leonardo Cheatsheet
+
+Quick reference for the interactive REPL and all mathematical expressions.
+For full detail on any command run `help <command>` at the REPL prompt.
+
+---
+
+## REPL session commands
+
+| Command | Description |
+|---|---|
+| `help` / `?` | Full command listing |
+| `help <cmd>` / `? <cmd>` | Detail for one command |
+| `env` / `vars` | Show all bindings and definitions |
+| `precision <n>` | Set display/comparison precision (default 5) |
+| `colors dark\|light\|none` | Syntax-highlight scheme (default `dark`) |
+| `pretty on\|off` | Multi-line matrix display (default `off`) |
+| `simplify <expr>` | Structural simplification |
+| `expand <expr>` | Distribute products over sums |
+| `eval <expr>` | Evaluate substituting current bindings |
+| `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts) |
+| `unset <name>` | Remove a binding or definition |
+| `:save <file>` | Write session to a replayable script |
+| `:load <file>` | Replay a session script from file |
+| `quit` / `exit` | Leave the REPL |
+
+---
+
+## Assignment
+
+```
+x := 3.14              numeric binding (constant RHS)
+f := sin(x) + x        symbolic definition (late-bound: follows redefinitions)
+h := 2*x = x + 1      named equation (pass to solve)
+g := consolidate(f)    freeze current value of f into g (not late-bound)
+L, U, P := lu(A)       tuple binding from a 1×n decomposition result
+```
+
+`=` is always an equation relation, never assignment. Use `:=` for binding.
+
+---
+
+## Expression syntax
+
+| Syntax | Meaning |
+|---|---|
+| `+` `-` `*` `/` | Arithmetic |
+| `^` | Power (right-associative: `2^3^2` = `2^9`) |
+| `-x` | Unary minus |
+| `3sin(x)` / `3x` | Implicit multiplication |
+| `(expr)` | Grouping |
+
+### Built-in constants
+
+| Token | Value |
+|---|---|
+| `pi` | π ≈ 3.14159 |
+| `e` | Euler's number ≈ 2.71828 |
+| `i` | Imaginary unit (√−1) |
+| `inf` | +∞ |
+| `-inf` | −∞ |
+
+---
+
+## Mathematical functions
+
+| Expression | Meaning |
+|---|---|
+| `exp(x)` | eˣ |
+| `ln(x)` | Natural logarithm |
+| `log(x)` | log₁₀(x) |
+| `log(x, b)` | log_b(x) |
+| `sin(x)` | Sine |
+| `cos(x)` | Cosine |
+| `tan(x)` / `tg(x)` | Tangent |
+| `asin(x)` | Arcsine |
+| `acos(x)` | Arccosine |
+| `atan(x)` | Arctangent |
+| `step(x)` | Heaviside unit step (1 if x ≥ 0, 0 otherwise) |
+
+---
+
+## Calculus
+
+### Differentiation
+
+```
+derive(sin(x), x)               -> cos(x)
+derive(x^3, x)                  -> (3.0 * (x ^ 2.0))
+derive(f, x, y)                 mixed partial ∂²f/∂x∂y
+derive(f, x, x)                 second derivative d²f/dx²
+```
+
+### Indefinite integration
+
+```
+integral(x^2, x)                -> (1/3) * x^3
+integral(exp(x), x)             -> exp(x)
+integral(sin(x), x)             -> -cos(x)
+integral(1/x, x)                -> ln(x)
+integral(step(x), x)            -> x*step(x)
+```
+
+### Definite integration (Simpson's rule)
+
+```
+integral(sin(x), x, 0, pi)      -> ≈ 2.0
+```
+
+### Limits
+
+```
+limit(sin(x)/x, x, 0)           -> 1.0
+limit(1/x, x, 0, +)             -> inf    (from right)
+limit(1/x, x, 0, -)             -> -inf   (from left)
+limit(atan(x), x, inf)          -> 1.5708 (π/2)
+limit((1 + 1/x)^x, x, inf)     -> 2.71828 (e)
+```
+
+### Sampling
+
+```
+samples sin(x) x -pi pi
+samples f x 0 10 500            500 points for defined function f
+```
+
+---
+
+## Equations & solving
+
+### Equation relations
+
+```
+2*x + 1 = 5                     symbolic equation (evaluates to _Bool when x is bound)
+x^2 + 1 == x^2 + 1              equality check (not solvable via solve)
+```
+
+### solve — single equation
+
+```
+solve(2*x + 1 = 5, x)           -> x = 2.0  (linear)
+solve(x^2 = 4, x)               -> [[x = -2.0, x = 2.0]]  (quadratic)
+solve(sin(x) = 0, x)            numeric bisection fallback
+```
+
+### solve — matrix equation
+
+```
+solve(A * X = B, X)             -> X = inv(A) * B
+solve(X * A = B, X)             -> X = B * inv(A)
+solve(A * X * D = B, X)         -> X = inv(A) * B * inv(D)
+solve(A * X + C = B, X)         affine: X = inv(A) * (B - C)
+solve(A * X + X * B = C, X)     Sylvester equation (Kronecker vectorization)
+```
+
+### solveSystem — linear systems
+
+```
+solveSystem([[2*x + y = 3, x - y = 0]], x, y)   -> [[x = 1.0, y = 1.0]]
+```
+
+---
+
+## Complex numbers
+
+`i` is the imaginary unit; arithmetic with `i` produces complex results automatically.
+
+```
+(2 + 3i) * (1 - i)             -> (5.0 + 1.0i)
+exp(i * pi)                     -> -1.0  (Euler's formula)
+(-1)^0.5                        -> (0.0 + 1.0i)  (principal value)
+ln(-1)                          -> (0.0 + 3.14159i)
+```
+
+---
+
+## Matrix domain
+
+### Literals
+
+```
+[[1, 2], [3, 4]]                2×2 matrix
+[[1, 2, 3]]                     1×3 row vector
+```
+
+### Constructors
+
+```
+eye(n)                          n×n identity matrix
+zeros(r, c)                     r×c zero matrix
+zeros(n)                        n×n zero matrix
+```
+
+### Operations
+
+```
+A + B                           element-wise sum
+A - B                           element-wise difference
+A * B                           matrix product (or scalar multiple if one is a number)
+k * A                           scalar multiple
+transpose(A)                    transpose
+det(A)                          determinant (scalar)
+inv(A)                          inverse
+A ^ n                           integer matrix power (binary exponentiation)
+pow(A, n)                       same as A^n
+```
+
+### Decompositions — result is a 1×n row, use `at(result, 1, k)` to index
+
+```
+lu(A)                           -> [[L, U, P]]  (P·A = L·U, partial pivoting)
+qr(A)                           -> [[Q, R]]     (A = Q·R, modified Gram-Schmidt)
+eigen(A)                        -> [[λ₁, …, λₙ]]  eigenvalues only
+eig(A)                          -> [[V, D]]     A·V = V·D  (eigenvectors + diagonal)
+jordan(A)                       -> [[P, J]]     A = P·J·P⁻¹
+```
+
+### Indexing decomposition results
+
+```
+L, U, P := lu(A)                tuple binding
+at(lu(A), 1, 1)                 first element (L)
+at(eigen(A), 1, 2)              second eigenvalue
+```
+
+### Scalar functions over matrices (element-wise)
+
+```
+sin([[pi/2, 0], [0, pi]])       element-wise sin
+exp([[1, 0], [0, 1]])           element-wise exp
+```
+
+---
+
+## Integral transforms
+
+### Laplace transform  `L{e(t)}`
+
+```
+laplace(1, t, s)                -> 1/s
+laplace(t^2, t, s)              -> 2/s^3
+laplace(sin(3*t), t, s)         -> 3/(s^2+9)
+laplace(exp(2*t)*cos(t), t, s)  -> (s-2)/((s-2)^2+1)  first-shift
+laplace(t^3*exp(-t), t, s)      derivative-of-transform rule
+```
+
+### Fourier transform  `F{e(t)} = L{e(t)}|_{s=iω}`
+
+```
+fourier(exp(-2*t), t, w)        -> 1/(2 + i*w)
+fourier(1, t, w)                -> 1/(i*w)
+```
+
+### Inverse Laplace transform  `L⁻¹{f(s)}`
+
+```
+invlaplace(1/s, s, t)           -> 1
+invlaplace(1/s^2, s, t)         -> t
+invlaplace(1/(s-3), s, t)       -> exp(3*t)
+invlaplace(2/(s^2+4), s, t)     -> sin(2*t)
+invlaplace(3/((s-2)^2+9), s, t) -> exp(2*t)*sin(3*t)
+```
+
+---
+
+## Ordinary differential equations
+
+First-order IVP  `y' = f(t, y)`,  `y(t₀) = y₀`,  returns `y(target)`.
+
+```
+ode(k*y, y, t, 0, 1, 1)        y' = k·y, y(0)=1  -> e^k  (symbolic in k)
+ode(-y, y, t, 0, 1, 1)         y' = -y,  y(0)=1  -> 0.36788 (= 1/e)
+ode(-y+t, y, t, 0, 1, 1)       y' = -y+t, y(0)=1 -> integrating factor (closed form)
+ode(y*y, y, t, 0, 1, 0.5)      nonlinear -> RK4 numeric fallback
+```
+
+Closed-form tier covers linear `y' = a(t)·y + b(t)`.
+RK4 (4th-order Runge-Kutta) is the numeric fallback for all other shapes.
