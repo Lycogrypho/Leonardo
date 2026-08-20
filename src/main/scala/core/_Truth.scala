@@ -36,6 +36,31 @@ object _Truth:
       else if clamped == 1.0 then _Bool(true)
       else new _Truth(clamped)
 
+  /** Reads a *symmetric* ternary digit as a truth value.
+   *
+   *  Symmetric ternary spells the three truth values `{-1, 0, 1}` where the default
+   *  alphabet uses `{0, 1/2, 1}`; the two are related by the affine map
+   *  `t = (s + 1) / 2`, of which [[_Truth.symmetric]] is the inverse.  This is a change
+   *  of digits only — the same rule table drives both spellings.
+   *
+   *  @param s the symmetric digit; `-1` is false, `0` is unknown, `1` is true
+   *  @return the corresponding truth value, via [[_Truth.of]] (so `±1` collapse to `_Bool`)
+   */
+  def fromSymmetric(s: Double): _Value = of((s + 1.0) / 2.0)
+
+  /** Reads any truth-valued result as a symmetric ternary digit.
+   *
+   *  The counterpart of [[fromSymmetric]] for values that may be `_Bool` rather than
+   *  `_Truth` (the crisp endpoints, which `of` collapses).
+   *
+   *  @param v the value to read
+   *  @return the symmetric digit in `[-1, 1]`, or `None` when `v` is not truth-valued
+   */
+  def toSymmetric(v: _Value): Option[Double] = v match
+    case _Bool(b)  => Some(if b then 1.0 else -1.0)
+    case t: _Truth => Some(t.symmetric)
+    case _         => None
+
 
 /** A graded truth value: a degree strictly between false and true.
  *
@@ -72,3 +97,8 @@ case class _Truth private (d: Double) extends _Value:
   def display(precision: Int): String =
     val r = _Number.round(d, precision)
     if r == 0.5 then "unknown" else r.toString
+
+  /** This degree written as a symmetric ternary digit: `2 * d - 1`, so `0.5` is `0`.
+   *  The inverse of [[_Truth.fromSymmetric]].
+   */
+  def symmetric: Double = 2.0 * d - 1.0

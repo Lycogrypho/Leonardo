@@ -5,13 +5,14 @@ import core.*
 
 
 /** Folds two concrete truth-valued operands through a min–max kernel.
- *  `None` when either operand is not a truth-valued `_Value`.
+ *  `None` when either operand is not a truth-valued `_Value` under the active encoding.
  */
 private def foldConstants(
-    x: _Expression, y: _Expression, rule: (Double, Double) => Double
+    x: _Expression, y: _Expression, rule: (Double, Double) => Double, symmetric: Boolean
 ): Option[_Expression] = (x, y) match
-  case (xv: _Value, yv: _Value) => for p <- asTruth(xv); q <- asTruth(yv) yield _Truth.of(rule(p, q))
-  case _                        => None
+  case (xv: _Value, yv: _Value) =>
+    for p <- asTruth(xv, symmetric); q <- asTruth(yv, symmetric) yield _Truth.of(rule(p, q))
+  case _ => None
 
 
 /** Single-pass structural simplification of the logical connectives.
@@ -39,68 +40,78 @@ private def foldConstants(
  *
  *  @param e            the expression to simplify
  *  @param simplifyLeaf pass applied to non-connective sub-expressions (default: `identity`)
+ *  @param symmetric    whether the symmetric ternary digits `{-1, 0, 1}` are in scope
+ *                      (the REPL passes its session toggle); this pass takes no
+ *                      `Environment`, by the same design that makes `scalar.simplify`
+ *                      ignore bindings
  *  @return the simplified expression; never larger than the input
  */
-def simplifyLogic(e: _Expression, simplifyLeaf: _Expression => _Expression = identity): _Expression = e match
-  case And(a, b) =>
-    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
-    foldConstants(x, y, kleeneAnd).getOrElse((x, y) match
-      case (_Bool(false), _) | (_, _Bool(false))       => _Bool(false)
-      case (_Bool(true), r)                            => r
-      case (l, _Bool(true))                            => l
-      case (l, r) if l == r                            => l               // idempotence
-      case (l, Not(r)) if l == r && isCrisp(l)         => _Bool(false)    // complement (crisp only)
-      case (Not(l), r) if l == r && isCrisp(l)         => _Bool(false)
-      case (l, Or(p, q)) if l == p || l == q           => l               // absorption
-      case (Or(p, q), r) if r == p || r == q           => r
-      case (l, r)                                      => And(l, r))
+def simplifyLogic(
+    e: _Expression,
+    simplifyLeaf: _Expression => _Expression = identity,
+    symmetric: Boolean = false
+): _Expression =
+  def rec(x: _Expression): _Expression = simplifyLogic(x, simplifyLeaf, symmetric)
+  e match
+    case And(a, b) =>
+      val (x, y) = (rec(a), rec(b))
+      foldConstants(x, y, kleeneAnd, symmetric).getOrElse((x, y) match
+        case (_Bool(false), _) | (_, _Bool(false))          => _Bool(false)
+        case (_Bool(true), r)                               => r
+        case (l, _Bool(true))                               => l
+        case (l, r) if l == r                               => l               // idempotence
+        case (l, Not(r)) if l == r && isCrisp(l, symmetric) => _Bool(false)    // complement (crisp only)
+        case (Not(l), r) if l == r && isCrisp(l, symmetric) => _Bool(false)
+        case (l, Or(p, q)) if l == p || l == q              => l               // absorption
+        case (Or(p, q), r) if r == p || r == q              => r
+        case (l, r)                                         => And(l, r))
 
-  case Or(a, b) =>
-    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
-    foldConstants(x, y, kleeneOr).getOrElse((x, y) match
-      case (_Bool(true), _) | (_, _Bool(true))         => _Bool(true)
-      case (_Bool(false), r)                           => r
-      case (l, _Bool(false))                           => l
-      case (l, r) if l == r                            => l               // idempotence
-      case (l, Not(r)) if l == r && isCrisp(l)         => _Bool(true)     // complement (crisp only)
-      case (Not(l), r) if l == r && isCrisp(l)         => _Bool(true)
-      case (l, And(p, q)) if l == p || l == q          => l               // absorption
-      case (And(p, q), r) if r == p || r == q          => r
-      case (l, r)                                      => Or(l, r))
+    case Or(a, b) =>
+      val (x, y) = (rec(a), rec(b))
+      foldConstants(x, y, kleeneOr, symmetric).getOrElse((x, y) match
+        case (_Bool(true), _) | (_, _Bool(true))            => _Bool(true)
+        case (_Bool(false), r)                              => r
+        case (l, _Bool(false))                              => l
+        case (l, r) if l == r                               => l               // idempotence
+        case (l, Not(r)) if l == r && isCrisp(l, symmetric) => _Bool(true)     // complement (crisp only)
+        case (Not(l), r) if l == r && isCrisp(l, symmetric) => _Bool(true)
+        case (l, And(p, q)) if l == p || l == q             => l               // absorption
+        case (And(p, q), r) if r == p || r == q             => r
+        case (l, r)                                         => Or(l, r))
 
-  case Not(a) =>
-    val x = simplifyLogic(a, simplifyLeaf)
-    val folded = x match
-      case v: _Value => asTruth(v).map(p => _Truth.of(kleeneNot(p)))
-      case _         => None
-    folded.getOrElse(x match
-      case Not(y) => y                                                    // double negation
-      case _      => Not(x))
+    case Not(a) =>
+      val x = rec(a)
+      val folded = x match
+        case v: _Value => asTruth(v, symmetric).map(p => _Truth.of(kleeneNot(p)))
+        case _         => None
+      folded.getOrElse(x match
+        case Not(y) => y                                                       // double negation
+        case _      => Not(x))
 
-  case Implies(a, b) =>
-    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
-    foldConstants(x, y, kleeneImplies).getOrElse((x, y) match
-      case (_Bool(false), _)                   => _Bool(true)
-      case (_Bool(true), r)                    => r
-      case (_, _Bool(true))                    => _Bool(true)
-      case (l, _Bool(false))                   => simplifyLogic(Not(l), simplifyLeaf)
-      case (l, r) if l == r && isCrisp(l)      => _Bool(true)             // crisp only
-      case (l, r)                              => Implies(l, r))
+    case Implies(a, b) =>
+      val (x, y) = (rec(a), rec(b))
+      foldConstants(x, y, kleeneImplies, symmetric).getOrElse((x, y) match
+        case (_Bool(false), _)                              => _Bool(true)
+        case (_Bool(true), r)                               => r
+        case (_, _Bool(true))                               => _Bool(true)
+        case (l, _Bool(false))                              => rec(Not(l))
+        case (l, r) if l == r && isCrisp(l, symmetric)      => _Bool(true)     // crisp only
+        case (l, r)                                         => Implies(l, r))
 
-  case Xor(a, b) =>
-    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
-    foldConstants(x, y, kleeneXor).getOrElse((x, y) match
-      case (l, _Bool(false))                   => l
-      case (_Bool(false), r)                   => r
-      case (l, _Bool(true))                    => simplifyLogic(Not(l), simplifyLeaf)
-      case (_Bool(true), r)                    => simplifyLogic(Not(r), simplifyLeaf)
-      case (l, r) if l == r && isCrisp(l)      => _Bool(false)            // crisp only
-      case (l, r)                              => Xor(l, r))
+    case Xor(a, b) =>
+      val (x, y) = (rec(a), rec(b))
+      foldConstants(x, y, kleeneXor, symmetric).getOrElse((x, y) match
+        case (l, _Bool(false))                              => l
+        case (_Bool(false), r)                              => r
+        case (l, _Bool(true))                               => rec(Not(l))
+        case (_Bool(true), r)                               => rec(Not(r))
+        case (l, r) if l == r && isCrisp(l, symmetric)      => _Bool(false)    // crisp only
+        case (l, r)                                         => Xor(l, r))
 
-  // Non-connective: scalar simplification does not recurse into connectives (its
-  // fallback is `case other => other`), so the injected leaf pass is the only chance
-  // a scalar body nested inside a connective gets.
-  case other => simplifyLeaf(other)
+    // Non-connective: scalar simplification does not recurse into connectives (its
+    // fallback is `case other => other`), so the injected leaf pass is the only chance
+    // a scalar body nested inside a connective gets.
+    case other => simplifyLeaf(other)
 
 
 /** Iterates [[simplifyLogic]] until the result stops changing (fixpoint).
@@ -110,9 +121,14 @@ def simplifyLogic(e: _Expression, simplifyLeaf: _Expression => _Expression = ide
  *
  *  @param e            the expression to simplify
  *  @param simplifyLeaf pass applied to non-connective sub-expressions (default: `identity`)
+ *  @param symmetric    whether the symmetric ternary digits `{-1, 0, 1}` are in scope
  *  @return the fully simplified expression
  */
 @annotation.tailrec
-def simplifyLogicFully(e: _Expression, simplifyLeaf: _Expression => _Expression = identity): _Expression =
-  val s = simplifyLogic(e, simplifyLeaf)
-  if s == e then e else simplifyLogicFully(s, simplifyLeaf)
+def simplifyLogicFully(
+    e: _Expression,
+    simplifyLeaf: _Expression => _Expression = identity,
+    symmetric: Boolean = false
+): _Expression =
+  val s = simplifyLogic(e, simplifyLeaf, symmetric)
+  if s == e then e else simplifyLogicFully(s, simplifyLeaf, symmetric)

@@ -27,10 +27,11 @@ private val MaxNormalFormClauses = 1024
  *  input unchanged when distribution would exceed [[MaxNormalFormClauses]], or when the
  *  expression carries a `_Truth` degree (normal forms are a two-valued notion).
  *
- *  @param e the expression to normalise
+ *  @param e         the expression to normalise
+ *  @param symmetric whether the symmetric ternary digits `{-1, 0, 1}` are in scope
  *  @return the CNF of `e`, or `e` unchanged when it is not crisp or the distribution blows up
  */
-def toCNF(e: _Expression): _Expression = toNormalForm(e, conjunctive = true)
+def toCNF(e: _Expression, symmetric: Boolean = false): _Expression = toNormalForm(e, conjunctive = true, symmetric)
 
 
 /** Rewrites `e` into disjunctive normal form: a disjunction of conjunctions of literals.
@@ -39,10 +40,11 @@ def toCNF(e: _Expression): _Expression = toNormalForm(e, conjunctive = true)
  *  dropped, and an empty term set collapses to `_Bool(false)`.  Same crisp-only domain
  *  restriction and clause cap.
  *
- *  @param e the expression to normalise
+ *  @param e         the expression to normalise
+ *  @param symmetric whether the symmetric ternary digits `{-1, 0, 1}` are in scope
  *  @return the DNF of `e`, or `e` unchanged when it is not crisp or the distribution blows up
  */
-def toDNF(e: _Expression): _Expression = toNormalForm(e, conjunctive = false)
+def toDNF(e: _Expression, symmetric: Boolean = false): _Expression = toNormalForm(e, conjunctive = false, symmetric)
 
 
 /** Shared CNF/DNF pipeline; `conjunctive` selects which connective is the outer level.
@@ -50,10 +52,10 @@ def toDNF(e: _Expression): _Expression = toNormalForm(e, conjunctive = false)
  *  Returns `e` untouched when it carries a `_Truth` degree: clause-level cleanup rests on
  *  the complement law (`a or not a` is a trivially-true clause), which fails at `unknown`.
  */
-private def toNormalForm(e: _Expression, conjunctive: Boolean): _Expression =
-  if !isCrisp(e) then e
+private def toNormalForm(e: _Expression, conjunctive: Boolean, symmetric: Boolean): _Expression =
+  if !isCrisp(e, symmetric) then e
   else
-    val simplified = simplifyLogicFully(e)
+    val simplified = simplifyLogicFully(e, identity, symmetric)
     clauseSet(nnf(simplified, negated = false), conjunctive) match
       case Some(clauses) => rebuildNormal(clauses, conjunctive)
       case None          => e

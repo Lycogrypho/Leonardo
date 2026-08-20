@@ -119,6 +119,71 @@ A free variable counts as a crisp atom — that is the documented domain
 restriction of `simplifyLogic`, `toCNF`, and `toDNF`. If a variable may hold
 `unknown`, bind it and use `eval` rather than `simplify`.
 
+## Symmetric ternary: the same logic in different digits
+
+Symmetric ternary spells the three truth values with the digits `{-1, 0, 1}`
+instead of `{false, unknown, true}`. The two alphabets are related by the affine
+map `t = (s + 1) / 2`, so this is an **encoding**, not a second semantics — the
+rule table above is untouched:
+
+```scala mdoc
+_Truth.fromSymmetric(-1.0)
+_Truth.fromSymmetric(0.0)
+_Truth.fromSymmetric(1.0)
+_Truth.toSymmetric(_Truth.Unknown)
+```
+
+The encoding is switched on per `Environment` (the REPL spells it
+`logic symmetric on`). With it on, the digits are additionally *read* as truth
+values in connective positions, and the Kleene identities restate verbatim:
+
+```scala mdoc:silent
+val sym = new Environment(Environment.DefaultPrecision, Map.empty, symmetricLogic = true)
+```
+
+```scala mdoc
+Parser.parse("-1 and 0").get.eval(sym)     // false and unknown = false
+Parser.parse("1 or 0").get.eval(sym)       // true or unknown = true
+Parser.parse("0 and 0").get.eval(sym)      // unknown and unknown = unknown
+Parser.parse("not 0").get.eval(sym)        // not unknown = unknown
+```
+
+The guard matters: with the encoding **off** a bare `0` is a plain number, so a
+connective over it stays symbolic rather than silently becoming a truth value,
+and ordinary arithmetic is never reinterpreted in either mode:
+
+```scala mdoc
+And(_Number(1.0), _Number(0.0)).eval(env)  // default: stays symbolic
+Parser.parse("2 * 3 + 1").get.eval(sym)    // symmetric: still just arithmetic
+```
+
+Because the flag lives on the `Environment`, a *bound* variable participates too
+— which a purely textual encoding could not do:
+
+```scala mdoc
+And(a, _Bool(true)).eval(sym.withBinding("a", _Number(0.0)))
+```
+
+One consequence worth noting: under this encoding the digit `0` is `unknown`, so
+it counts as graded for the crisp-only gate — `0 and not 0` must not fold to
+`false` by complement:
+
+```scala mdoc
+simplifyLogicFully(And(_Number(0.0), Not(_Number(0.0))), identity, symmetric = true)
+```
+
+At the REPL the toggle is persisted by `:save`, but the script always writes the
+word spelling, so saved sessions stay portable across the setting:
+
+```
+leonardo> logic symmetric on
+leonardo> truth3 not a
+a  | (not a)
+-1 | 1
+0  | 0
+1  | -1
+```
+
 ## Simplification
 
 `simplifyLogic` (and its fixpoint `simplifyLogicFully`) applies constant folding,

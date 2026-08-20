@@ -4,6 +4,10 @@ package logic
 import core.*
 
 
+/** The symmetric ternary digits, read as truth values only under the symmetric encoding. */
+private val SymmetricDigits: Set[Double] = Set(-1.0, 0.0, 1.0)
+
+
 /** Widens any truth-valued result to its degree in `[0, 1]`.
  *
  *  `_Bool` auto-widens in connective positions (the `Int` → `Double` analogy), so the
@@ -11,27 +15,42 @@ import core.*
  *  same table as the graded one.  Every other `_Value` (a `_Number`, a `_MatrixValue`,
  *  a `_Complex`) yields `None`, which keeps the connective symbolic.
  *
- *  @param v the concrete value to widen
+ *  Under the symmetric ternary encoding (`symmetric = true`, driven by
+ *  `Environment.symmetricLogic`) the digits `-1`, `0`, `1` additionally read as
+ *  `false`, `unknown`, `true` via `_Truth.fromSymmetric`'s affine map.  The word
+ *  spellings keep working, so the encoding only ever *adds* a way to write a truth
+ *  value.  The guard matters: outside symmetric mode a bare `0` must stay a number,
+ *  or `0 and x` would silently become `unknown and x`.
+ *
+ *  @param v         the concrete value to widen
+ *  @param symmetric whether the symmetric ternary digits are in scope
  *  @return the truth degree, or `None` when `v` is not truth-valued
  */
-private[leonardo] def asTruth(v: _Value): Option[Double] = v match
-  case _Bool(b)  => Some(if b then 1.0 else 0.0)
-  case _Truth(d) => Some(d)
-  case _         => None
+private[leonardo] def asTruth(v: _Value, symmetric: Boolean = false): Option[Double] = v match
+  case _Bool(b)                                    => Some(if b then 1.0 else 0.0)
+  case _Truth(d)                                   => Some(d)
+  case _Number(d) if symmetric && SymmetricDigits.contains(d) => Some((d + 1.0) / 2.0)
+  case _                                           => None
 
 
-/** Returns `true` when no [[core._Truth]] degree occurs anywhere in `e`.
+/** Returns `true` when no graded (neither-true-nor-false) truth value occurs in `e`.
  *
  *  The classical rewrite rules that fail in many-valued logic (complement,
- *  `a implies a`) are gated on this test.  Free variables count as crisp: the classical
- *  rules assume boolean-valued atoms, which is the documented domain restriction of
- *  [[simplifyLogic]], [[toCNF]], and [[toDNF]].
+ *  `a implies a`, `a xor a`) are gated on this test.  Free variables count as crisp:
+ *  the classical rules assume boolean-valued atoms, which is the documented domain
+ *  restriction of [[simplifyLogic]], [[toCNF]], and [[toDNF]].
  *
- *  @param e the expression to test
+ *  Under the symmetric encoding the digit `0` spells `unknown` and is therefore graded
+ *  too — without that case `0 and not 0` would wrongly fold to `false` by complement.
+ *  The digits `-1` and `1` stay crisp.
+ *
+ *  @param e         the expression to test
+ *  @param symmetric whether the symmetric ternary digits are in scope
  */
-private[logic] def isCrisp(e: _Expression): Boolean = e match
-  case _: _Truth => false
-  case other     => other.children.forall(isCrisp)
+private[logic] def isCrisp(e: _Expression, symmetric: Boolean = false): Boolean = e match
+  case _: _Truth                          => false
+  case _Number(0.0) if symmetric          => false
+  case other                              => other.children.forall(isCrisp(_, symmetric))
 
 
 /** Conjunction kernel: the t-norm `min(a, b)`.

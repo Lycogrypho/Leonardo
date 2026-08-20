@@ -16,6 +16,11 @@ import core.*
  *  to `_Bool`.  Any other concrete operand (a `_Number`, a matrix) leaves the node
  *  symbolic.
  *
+ *  `eval` consults its `Environment` only for the truth-value *encoding*
+ *  (`symmetricLogic`, which additionally admits the digits `{-1, 0, 1}` as truth values):
+ *  the rule table itself is the same for every encoding, so symmetric ternary is a change
+ *  of digits, never a second semantics.
+ *
  *  Deliberately NOT marked `core._ElementWise`: that marker means derive/simplify/
  *  expand/integrate distribute over children (linear containers only), and the
  *  connectives are not linear -- `derive(a and b, x)` must stay symbolic.
@@ -26,23 +31,27 @@ sealed trait _Connective extends _Expression
 /** Applies a binary rule to two evaluated operands.
  *
  *  Yields `Right` only when both operands reduced to truth-valued results; otherwise the
- *  node is rebuilt symbolically from the most-reduced operands via `wrap`.
+ *  node is rebuilt symbolically from the most-reduced operands via `wrap`.  `env` supplies
+ *  the truth-value encoding (see `Environment.symmetricLogic`), not the rule table, which
+ *  is the same for every encoding.
  *
  *  @param ra   the evaluated left operand
  *  @param rb   the evaluated right operand
  *  @param rule the min–max kernel to apply to the two degrees
  *  @param wrap factory rebuilding the symbolic residual node
+ *  @param env  evaluation environment, consulted for the truth-value encoding
  *  @return `Right(value)` when both operands are truth-valued, `Left(residual)` otherwise
  */
 private def combine(
     ra:   Either[_Expression, _Value],
     rb:   Either[_Expression, _Value],
     rule: (Double, Double) => Double,
-    wrap: (_Expression, _Expression) => _Expression
+    wrap: (_Expression, _Expression) => _Expression,
+    env:  Environment
 ): Either[_Expression, _Value] =
   (ra, rb) match
     case (Right(x: _Value), Right(y: _Value)) =>
-      (asTruth(x), asTruth(y)) match
+      (asTruth(x, env.symmetricLogic), asTruth(y, env.symmetricLogic)) match
         case (Some(p), Some(q)) => Right(_Truth.of(rule(p, q)))
         case _                  => Left(wrap(x, y))
     case (l, r) => Left(wrap(l.toExpression, r.toExpression))
@@ -65,8 +74,8 @@ case class And(a: _Expression, b: _Expression) extends _Connective:
   override def eval(env: Environment): Either[_Expression, _Value] =
     a.eval(env) match
       // short-circuit: false and X = false, X never evaluated (the Product zero rule)
-      case Right(v) if asTruth(v).contains(0.0) => Right(_Bool(false))
-      case ra                                   => combine(ra, b.eval(env), kleeneAnd, And.apply)
+      case Right(v) if asTruth(v, env.symmetricLogic).contains(0.0) => Right(_Bool(false))
+      case ra => combine(ra, b.eval(env), kleeneAnd, And.apply, env)
 
 
 /** Disjunction: `a or b`, evaluated as `max` over the operand degrees.
@@ -85,8 +94,8 @@ case class Or(a: _Expression, b: _Expression) extends _Connective:
   override def eval(env: Environment): Either[_Expression, _Value] =
     a.eval(env) match
       // short-circuit: true or X = true, X never evaluated
-      case Right(v) if asTruth(v).contains(1.0) => Right(_Bool(true))
-      case ra                                   => combine(ra, b.eval(env), kleeneOr, Or.apply)
+      case Right(v) if asTruth(v, env.symmetricLogic).contains(1.0) => Right(_Bool(true))
+      case ra => combine(ra, b.eval(env), kleeneOr, Or.apply, env)
 
 
 /** Negation: `not a`, evaluated as `1 - a`.  `unknown` is the fixpoint.
@@ -99,7 +108,7 @@ case class Not(a: _Expression) extends _Connective:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     a.eval(env) match
-      case Right(v) => asTruth(v) match
+      case Right(v) => asTruth(v, env.symmetricLogic) match
         case Some(p) => Right(_Truth.of(kleeneNot(p)))
         case None    => Left(Not(v))
       case ra       => Left(Not(ra.toExpression))
@@ -121,8 +130,8 @@ case class Implies(a: _Expression, b: _Expression) extends _Connective:
   override def eval(env: Environment): Either[_Expression, _Value] =
     a.eval(env) match
       // short-circuit: false implies X = true, X never evaluated
-      case Right(v) if asTruth(v).contains(0.0) => Right(_Bool(true))
-      case ra                                   => combine(ra, b.eval(env), kleeneImplies, Implies.apply)
+      case Right(v) if asTruth(v, env.symmetricLogic).contains(0.0) => Right(_Bool(true))
+      case ra => combine(ra, b.eval(env), kleeneImplies, Implies.apply, env)
 
 
 /** Exclusive disjunction: `a xor b`, evaluated as the lattice reading of
@@ -138,4 +147,4 @@ case class Xor(a: _Expression, b: _Expression) extends _Connective:
   override def rebuild(c: List[_Expression]): _Expression = Xor(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    combine(a.eval(env), b.eval(env), kleeneXor, Xor.apply)
+    combine(a.eval(env), b.eval(env), kleeneXor, Xor.apply, env)

@@ -5,7 +5,7 @@ import core.*
 import scalar.*
 import matrix.*
 import equation.{_Equation, _Solve}
-import logic.{_Connective, simplifyLogicFully, truthTable, kleeneTable, MaxTruthTableVars, MaxKleeneTableVars}
+import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable, MaxTruthTableVars, MaxKleeneTableVars}
 import parser.Parser
 
 import scala.util.control.NonFatal
@@ -41,6 +41,7 @@ import org.jline.terminal.TerminalBuilder
  *  expand <expr>        distribute products over sums
  *  precision <n>        set decimal precision
  *  pretty on | off      multi-line, column-aligned matrix display (default: off)
+ *  logic symmetric on|off  spell truth values as -1 / 0 / 1 (default: off)
  *  env                  list precision, bindings, and definitions
  *  unset <name>         remove a binding or definition
  *  :load <file>         run a session script (file IO handled by the read loop)
@@ -57,6 +58,10 @@ final class Session:
   // single-line `[[…], […]]` form (which tests and :save scripts rely on) is unchanged;
   // `pretty on` opts in, mirroring the `colors` toggle.
   private var prettyMatrix: Boolean = false
+  // Symmetric ternary display/parse encoding (issue 4.G): {-1, 0, 1} instead of
+  // {false, unknown, true}. Off by default so the 4.F alphabet is unchanged; an
+  // *encoding* toggle only -- the min-max rule table is the same either way.
+  private var symmetricLogic: Boolean = false
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
 
@@ -64,7 +69,7 @@ final class Session:
   def currentColorScheme: String = colorSchemeName
 
   /** Builds a fresh `Environment` from the current precision and numeric bindings. */
-  private def env: Environment = new Environment(precision, bindings)
+  private def env: Environment = new Environment(precision, bindings, symmetricLogic)
 
   private val emptyEnv = new Environment()
 
@@ -108,7 +113,15 @@ final class Session:
     case s"colors $name"        => setColors(name.trim)
     case "pretty"               => s"pretty = ${if prettyMatrix then "on" else "off"}"
     case s"pretty $mode"        => setPretty(mode.trim)
-    case s"simplify $rest"      => withParsed(rest)(e => simplifyPipeline(e).toString)
+    case "logic symmetric"      => s"logic symmetric = ${if symmetricLogic then "on" else "off"}"
+    case s"logic symmetric $mode" => setSymmetricLogic(mode.trim)
+    case s"logic $rest"         => s"unknown logic setting ${rest.trim.split(" ").head}; try: logic symmetric on | off"
+    // simplify renders through toString (it deliberately ignores session precision);
+    // symmetricSpelling only overrides it when the result is itself a truth value.
+    case s"simplify $rest"      => withParsed(rest) { e =>
+      val r = simplifyPipeline(e)
+      symmetricSpelling(r).getOrElse(r.toString)
+    }
     case s"expand $rest"        => withParsed(rest)(e => expand(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
@@ -151,7 +164,8 @@ final class Session:
    *  Pure: this is what the REPL writes to a `:save` file.
    */
   def script: String = buildLines(
-    List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}"),
+    List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}",
+         s"logic symmetric ${if symmetricLogic then "on" else "off"}"),
     serializeValue)
 
   /** Execute a whole script body (e.g. the contents of a `:load` file), returning the
@@ -197,13 +211,37 @@ final class Session:
   private def formatResult(result: Either[_Expression, _Value]): String =
     formatExpression(result.toExpression, prettyMatrix)
 
+  /** The symmetric-ternary spelling of a truth value: `-1` / `0` / `1`.
+   *
+   *  `None` when the toggle is off or `e` is not a truth value, so every caller falls
+   *  back to the default `false` / `unknown` / `true` alphabet.  Rendering only -- the
+   *  stored value is the same either way, which is why `:save` keeps writing the word
+   *  spelling and scripts stay portable across the toggle.
+   */
+  private def symmetricSpelling(e: _Expression): Option[String] =
+    if !symmetricLogic then None
+    else e match
+      case v: _Value => _Truth.toSymmetric(v).map(symmetricDigit)
+      case _         => None
+
+  /** Renders a symmetric digit, dropping the decimal point for the three whole digits. */
+  private def symmetricDigit(s: Double): String =
+    if s == s.round.toDouble then s.round.toString else _Number(s).display(precision)
+
+  /** Renders a truth value for a table cell or an assignment echo, honouring the toggle. */
+  private def truthCell(v: _Value): String = symmetricSpelling(v).getOrElse(v.toString)
+
   /** Formats `e` for display, applying session precision recursively.
    *
    *  The `pretty` flag is forced off when recursing into a matrix's cells, so a
    *  matrix-of-matrices (a decomposition result) keeps its inner matrices single-line
    *  and only the outermost matrix is stacked.
    */
-  private def formatExpression(e: _Expression, pretty: Boolean): String = e match
+  private def formatExpression(e: _Expression, pretty: Boolean): String =
+    symmetricSpelling(e).getOrElse(formatDefault(e, pretty))
+
+  /** [[formatExpression]] in the default truth alphabet. */
+  private def formatDefault(e: _Expression, pretty: Boolean): String = e match
     case n: _Number      => n.display(precision)
     case c: _Complex     => c.display(precision)
     case t: _Truth       => t.display(precision)
@@ -251,7 +289,7 @@ final class Session:
    */
   private def simplifyPipeline(e: _Expression): _Expression =
     val prepared = simplify(resolveMatrixOps(substitute(e, definitions)))
-    if containsConnective(prepared) then simplifyLogicFully(prepared, simplifyFully) else prepared
+    if containsConnective(prepared) then simplifyLogicFully(prepared, simplifyFully, symmetricLogic) else prepared
 
   /** Handles the `truth <expr>` command: tabulates the expression over its free
    *  variables (definitions substituted first; session numeric bindings are ignored --
@@ -260,17 +298,18 @@ final class Session:
    *  `unknown`, which is what `truth3` is for.
    */
   private def doTruthTable(e: _Expression): String =
-    tabulate(e, "truth", MaxTruthTableVars, 5) { (body, vars) =>   // "false" is 5 characters
-      truthTable(body, vars, new Environment(precision))
-        .map((assignment, result) => (assignment.view.mapValues(_.toString).toMap, result.map(_.toString)))
+    tabulate(e, "truth", MaxTruthTableVars, if symmetricLogic then 2 else 5) { (body, vars) =>
+      truthTable(body, vars, env)
+        .map((assignment, result) =>
+          (assignment.view.mapValues(b => truthCell(_Bool(b))).toMap, result.map(b => truthCell(_Bool(b)))))
     }
 
   /** Handles the `truth3 <expr>` command: the three-valued (Kleene) counterpart of
    *  `truth`, enumerating each free variable over `false`/`unknown`/`true`.
    */
   private def doKleeneTable(e: _Expression): String =
-    tabulate(e, "truth3", MaxKleeneTableVars, 7) { (body, vars) =>  // "unknown" is 7 characters
-      kleeneTable(body, vars, new Environment(precision))
+    tabulate(e, "truth3", MaxKleeneTableVars, if symmetricLogic then 2 else 7) { (body, vars) =>
+      kleeneTable(body, vars, env)
         .map((assignment, result) =>
           (assignment.view.mapValues(v => formatExpression(v, pretty = false)).toMap,
            result.map(v => formatExpression(v, pretty = false))))
@@ -429,7 +468,7 @@ final class Session:
           case Right(value) =>
             bindings = bindings + (name -> value)
             definitions = definitions - name
-            s"$name := $value"
+            s"$name := ${truthCell(value)}"
           case Left(_) =>
             definitions = definitions + (name -> rhs)
             bindings = bindings - name
@@ -458,7 +497,7 @@ final class Session:
           case Right(value) =>
             bindings = bindings + (name -> value)
             definitions = definitions - name
-            s"$name := $value"
+            s"$name := ${truthCell(value)}"
           case Left(expr) =>
             val frozen = simplify(expr)
             definitions = definitions + (name -> frozen)
@@ -528,6 +567,12 @@ final class Session:
     else
       val available = ColorScheme.All.keys.toList.sorted.mkString(", ")
       s"unknown color scheme '$name'; available: $available"
+
+  /** Sets the symmetric-ternary encoding flag from `"on"`/`"off"` (case-insensitive). */
+  private def setSymmetricLogic(text: String): String = text.toLowerCase match
+    case "on"  | "true"  => symmetricLogic = true;  "logic symmetric = on"
+    case "off" | "false" => symmetricLogic = false; "logic symmetric = off"
+    case _               => s"logic symmetric expects 'on' or 'off', got: $text"
 
   /** Sets the pretty-matrix flag from `"on"`/`"off"` (case-insensitive). */
   private def setPretty(text: String): String = text.toLowerCase match
@@ -636,6 +681,19 @@ object Session:
          |  true or unknown             -> true      (1 annihilates max)
          |  unknown and unknown         -> unknown
          |  u := unknown                bind it like any other value""".stripMargin,
+    "logic" ->
+      """|Switch the truth-value alphabet between the default and symmetric ternary.
+         |Symmetric ternary spells the SAME three truth values with the digits -1, 0, 1
+         |(false, unknown, true), related by the affine map t = (s + 1) / 2.  It is an
+         |encoding, not a semantics: the min-max rule table is identical either way.
+         |With the toggle on, -1 / 0 / 1 are also READ as truth values in connective
+         |positions, so "1 and 0" is "true and unknown"; with it off a bare 0 stays a
+         |plain number, so ordinary arithmetic is never reinterpreted.
+         |The setting is persisted by :save / :load; :save always writes the word
+         |spelling, so scripts stay portable across the toggle.
+         |  logic symmetric on        -1 / 0 / 1
+         |  logic symmetric off       false / unknown / true (default)
+         |  logic symmetric           show the current setting""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -759,6 +817,8 @@ object Session:
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)
+      |logic symmetric on|off  spell truth values as -1 / 0 / 1 instead of
+      |                     false / unknown / true (symmetric ternary; default: off)
       |env                  list precision, bindings, and definitions
       |unset <name>         remove a binding or definition
       |:load <file>         run a session script (bindings/definitions/commands)

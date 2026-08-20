@@ -18,10 +18,18 @@ object Environment:
  *
  *  `withBinding` returns a new `Environment`; the original is unchanged (structural sharing).
  *
- *  @param precision decimal places used when rendering numbers
+ *  @param precision      decimal places used when rendering numbers
+ *  @param symmetricLogic when `true`, the digits `{-1, 0, 1}` are read as the symmetric
+ *                        ternary spelling of `{false, unknown, true}` in logical
+ *                        connective positions, and truth values render in that alphabet.
+ *                        This is an *encoding* toggle, not a semantics: the min–max rule
+ *                        table is untouched and the two alphabets are related by the
+ *                        affine map `t = (s + 1) / 2` (see `core._Truth.fromSymmetric`).
+ *                        Defaults to `false`, the `false`/`unknown`/`true` spelling.
  */
 class Environment(val precision: Int = Environment.DefaultPrecision,
-                  private val variables: Map[String, _Value] = Map()):
+                  private val variables: Map[String, _Value] = Map(),
+                  val symmetricLogic: Boolean = false):
 
   /** Returns the value bound to `variable`, or `None` if it is free.
    *  @param variable the name to look up
@@ -40,4 +48,4 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
    *  @param value    the concrete value to associate
    */
   def withBinding(variable: String, value: _Value): Environment =
-    new Environment(precision, variables + (variable -> value))
+    new Environment(precision, variables + (variable -> value), symmetricLogic)

@@ -68,6 +68,8 @@ package "core" {
         __ companion __
         + of(d): _Value  (0.0 -> _Bool(false), 1.0 -> _Bool(true))
         Unknown: _Truth = _Truth(0.5)
+        + fromSymmetric(s): _Value   t = (s + 1) / 2
+        + toSymmetric(v): Option[Double]
     }
 
     class "_Complex" <<case>> [[equations.html]] {
@@ -111,6 +113,7 @@ package "core" {
 
     class "Environment" [[expressions.html]] {
         + precision: Int
+        + symmetricLogic: Boolean  (truth-value encoding)
         + get(name: String): Option
         + withBinding(name, v): Environment
         __ companion __
@@ -660,8 +663,11 @@ package "logic" {
     }
 
     class "Kleene" <<utility>> [[logic.html]] {
-        + asTruth(v): Option[Double]   (_Bool -> 1/0, _Truth -> d)
-        + isCrisp(e): Boolean          (no _Truth in the tree)
+        + asTruth(v, symmetric): Option[Double]
+          _Bool -> 1/0 ; _Truth -> d
+          symmetric: also -1 / 0 / 1 (issue 4.G)
+        + isCrisp(e, symmetric): Boolean
+          no graded value in the tree; digit 0 is graded
         __ shared min-max rule table __
         kleeneAnd = min ; kleeneOr = max
         kleeneNot = 1 - a
@@ -699,6 +705,7 @@ package "logic" {
     "Xor"     --|> "_Connective"
 
     "_Connective" ..> "Kleene"        : asTruth + min-max kernels at eval
+    "_Connective" ..> "Environment"   : reads symmetricLogic (encoding only)
     "_Connective" ..> "_Bool"         : crisp result
     "_Connective" ..> "_Truth"        : graded result (_Truth.of collapses 0/1 to _Bool)
     "SimplifyLogic"   ..> "Kleene"    : constant folding + isCrisp gate

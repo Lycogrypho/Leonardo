@@ -29,6 +29,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts) |
 | `truth <expr>` | Truth table over the expression's free variables |
 | `truth3 <expr>` | Three-valued (Kleene) truth table: false / unknown / true |
+| `logic symmetric on|off` | Spell truth values as -1 / 0 / 1 (default: off) |
 | `unset <name>` | Remove a binding or definition |
 | `:save <file>` | Write session to a replayable script |
 | `:load <file>` | Replay a session script from file |
@@ -198,6 +199,22 @@ unknown and unknown             -> unknown
 unknown implies unknown         -> unknown
 ```
 
+### Symmetric ternary (an encoding, not a semantics)
+
+```
+logic symmetric on              spell truth values as -1 / 0 / 1
+logic symmetric off             false / unknown / true (default)
+logic symmetric                 show the current setting
+-1 and 0                        -> -1   (false and unknown, with the toggle on)
+1 or 0                          -> 1
+0 and 0                         -> 0
+not 0                           -> 0
+2 * 3 + 1                       -> 7.0  (arithmetic is never reinterpreted)
+1 and 0                         stays symbolic while the toggle is OFF
+```
+
+Related by `t = (s + 1) / 2`; the rule table is identical either way.
+`:save` persists the toggle but always writes the word spelling.
 ### Simplification & truth tables
 
 ```

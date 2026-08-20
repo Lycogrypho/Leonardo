@@ -1435,3 +1435,115 @@ class ReplSessionTest extends AnyFlatSpec:
     val h = LeonardoHighlighter(() => "dark")
     assert(h.highlightBuffer("truth3 a and unknown").toString == "truth3 a and unknown")
   }
+  // --- issue 4.G: symmetric ternary encoding ---
+
+  "the logic symmetric toggle" should "default to off and report its state" in
+  {
+    val s = session
+    assert(s.execute("logic symmetric") == "logic symmetric = off")
+    assert(s.execute("logic symmetric on") == "logic symmetric = on")
+    assert(s.execute("logic symmetric") == "logic symmetric = on")
+    assert(s.execute("logic symmetric off") == "logic symmetric = off")
+  }
+
+  it should "reject a bad mode and an unknown logic setting" in
+  {
+    val s = session
+    assert(s.execute("logic symmetric maybe").contains("expects 'on' or 'off'"))
+    assert(s.execute("logic tnorm product").contains("unknown logic setting"))
+  }
+
+  "truth values under the symmetric encoding" should "print as -1 / 0 / 1" in
+  {
+    val s = session
+    s.execute("logic symmetric on")
+    assert(s.execute("true") == "1")
+    assert(s.execute("false") == "-1")
+    assert(s.execute("unknown") == "0")
+    assert(s.execute("2 = 2") == "1")
+  }
+
+  it should "read -1 / 0 / 1 as truth values in connective positions" in
+  {
+    val s = session
+    s.execute("logic symmetric on")
+    assert(s.execute("-1 and 0") == "-1")     // false and unknown = false
+    assert(s.execute("1 or 0") == "1")        // true or unknown = true
+    assert(s.execute("0 and 0") == "0")       // unknown and unknown = unknown
+    assert(s.execute("not 0") == "0")
+    assert(s.execute("1 and 0") == "0")
+  }
+
+  it should "leave ordinary arithmetic alone" in
+  {
+    val s = session
+    s.execute("logic symmetric on")
+    assert(s.execute("2 * 3 + 1") == "7.0")
+    assert(s.execute("0 + 1") == "1.0")
+  }
+
+  it should "apply to a variable bound to a digit" in
+  {
+    val s = session
+    s.execute("logic symmetric on")
+    s.execute("a := 0")
+    assert(s.execute("a and 1") == "0")
+    assert(s.execute("a and -1") == "-1")
+  }
+
+  it should "echo assignments in the symmetric alphabet" in
+  {
+    val s = session
+    s.execute("logic symmetric on")
+    assert(s.execute("u := unknown") == "u := 0")
+    assert(s.execute("t := 2 = 2") == "t := 1")
+  }
+
+  it should "spell the truth tables in digits" in
+  {
+    val s = session
+    s.execute("logic symmetric on")
+    val out = s.execute("truth3 not a").linesIterator.toList
+    assert(out.size == 4, s"expected header + 3 rows; got:\n${out.mkString("\n")}")
+    assert(out(1).startsWith("-1 | 1"), s"unexpected row: ${out(1)}")
+    assert(out(2).startsWith("0  | 0"), s"unexpected row: ${out(2)}")
+    assert(out(3).startsWith("1  | -1"), s"unexpected row: ${out(3)}")
+  }
+
+  it should "not apply the crisp-only complement rule to the digit 0" in
+  {
+    val s = session
+    s.execute("logic symmetric on")
+    assert(s.execute("simplify 0 and not 0") == "0")
+  }
+
+  "the symmetric toggle" should "be persisted by a script round-trip" in
+  {
+    val s1 = session
+    s1.execute("logic symmetric on")
+    s1.execute("u := unknown")
+    assert(s1.script.contains("logic symmetric on"))
+    // :save always writes the word spelling, so the script is portable across the toggle
+    assert(s1.script.contains("u := unknown"))
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("logic symmetric") == "logic symmetric = on")
+    assert(s2.execute("u") == "0")
+  }
+
+  "the default alphabet" should "be completely unaffected while the toggle is off" in
+  {
+    val s = session
+    assert(s.execute("true") == "true")
+    assert(s.execute("unknown") == "unknown")
+    assert(s.execute("u := unknown") == "u := unknown")
+    // digits stay plain numbers, so a connective over them stays symbolic
+    assert(s.execute("1 and 0") == "(1.0 and 0.0)")
+    assert(s.execute("truth3 not a").linesIterator.toList(2).startsWith("unknown | unknown"))
+  }
+
+  "assigning to logic" should "be rejected" in
+  {
+    val s = session
+    assert(s.execute("logic := 3").contains("reserved word"))
+  }

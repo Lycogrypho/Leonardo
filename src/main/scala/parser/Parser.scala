@@ -70,7 +70,7 @@ object Parser extends JavaTokenParsers:
     "and", "or", "not", "implies", "xor",                // logic connectives
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
-    "unset", "samples", "colors", "pretty", "truth", "truth3", "help", "quit", "exit" // REPL commands
+    "unset", "samples", "colors", "pretty", "truth", "truth3", "logic", "help", "quit", "exit" // REPL commands
   )
 
   private val MaxDepth = 500

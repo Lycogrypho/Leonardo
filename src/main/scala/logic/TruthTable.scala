@@ -83,7 +83,7 @@ def kleeneTable(e: _Expression, vars: List[_Variable], env: Environment = new En
         .map((n, j) => n -> KleeneValues((i / weight(j)) % radix)).toMap
       val bound = assignment.foldLeft(env)((acc, kv) => acc.withBinding(kv._1, kv._2))
       val result = e.eval(bound) match
-        case Right(v) if asTruth(v).isDefined => Some(v)
-        case _                                => None
+        case Right(v) if asTruth(v, env.symmetricLogic).isDefined => Some(v)
+        case _                                                    => None
       (assignment, result)
     }
