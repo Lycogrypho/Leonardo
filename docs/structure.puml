@@ -62,6 +62,14 @@ package "core" {
         + b: Boolean
     }
 
+    class "_Truth" <<case>> [[logic.html]] {
+        + d: Double   (strictly inside 0..1)
+        + display(precision: Int): String
+        __ companion __
+        + of(d): _Value  (0.0 -> _Bool(false), 1.0 -> _Bool(true))
+        Unknown: _Truth = _Truth(0.5)
+    }
+
     class "_Complex" <<case>> [[equations.html]] {
         + re: Double
         + im: Double
@@ -114,6 +122,7 @@ package "core" {
     "_MatrixShaped" --|> "_Expression"
     "_Number"      ..|> "_Value"
     "_Bool"        ..|> "_Value"
+    "_Truth"       ..|> "_Value"
     "_Complex"     ..|> "_Value"
     "_MatrixValue" ..|> "_Value"
     "_Variable"    ..|> "_Expression"
@@ -618,7 +627,7 @@ package "equation" {
 }
 
 ' ===================================================
-' PACKAGE: logic - boolean logic domain (imports core)
+' PACKAGE: logic - boolean + three-valued (Kleene) logic (imports core)
 ' ===================================================
 package "logic" {
 
@@ -650,6 +659,16 @@ package "logic" {
         b : _Expression
     }
 
+    class "Kleene" <<utility>> [[logic.html]] {
+        + asTruth(v): Option[Double]   (_Bool -> 1/0, _Truth -> d)
+        + isCrisp(e): Boolean          (no _Truth in the tree)
+        __ shared min-max rule table __
+        kleeneAnd = min ; kleeneOr = max
+        kleeneNot = 1 - a
+        kleeneImplies = max(1 - a, b)
+        kleeneXor = max(min(a,1-b), min(1-a,b))
+    }
+
     class "SimplifyLogic" <<utility>> [[logic.html]] {
         + simplifyLogic(e, leaf): _Expression
         + simplifyLogicFully(e, leaf): _Expression
@@ -666,8 +685,10 @@ package "logic" {
         clause cap 1024 -> input unchanged
     }
     class "TruthTableLogic" <<utility>> [[logic.html]] {
-        + truthTable(e, vars, env): Vector
-        max 16 variables; None per non-reducing row
+        + truthTable(e, vars, env): Vector      (2^n rows, max 16 vars)
+        + kleeneTable(e, vars, env): Vector     (3^n rows, max 10 vars)
+        KleeneValues = [false, unknown, true]
+        None per non-reducing row
     }
 
     "_Connective" --|> "_Expression"
@@ -677,7 +698,12 @@ package "logic" {
     "Implies" --|> "_Connective"
     "Xor"     --|> "_Connective"
 
-    "_Connective" ..> "_Bool" : reduces to at eval
+    "_Connective" ..> "Kleene"        : asTruth + min-max kernels at eval
+    "_Connective" ..> "_Bool"         : crisp result
+    "_Connective" ..> "_Truth"        : graded result (_Truth.of collapses 0/1 to _Bool)
+    "SimplifyLogic"   ..> "Kleene"    : constant folding + isCrisp gate
+    "NormalForm"      ..> "Kleene"    : isCrisp gate
+    "TruthTableLogic" ..> "Kleene"    : asTruth on each row
 }
 ' ===================================================
 ' PACKAGE: parser
@@ -710,7 +736,8 @@ package "parser" {
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
 "Parser" ..> "_ODE"            : ode(rhs, y, t, t0, y0, target)
 "Parser" ..> "_Heaviside"      : step(expr)
-"Parser" ..> "_Connective"     : and / or / not / implies / xor; true / false literals
+"Parser" ..> "_Connective"     : and / or / not / implies / xor
+"Parser" ..> "_Truth"          : unknown literal (true / false -> _Bool)
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)

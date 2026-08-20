@@ -24,10 +24,11 @@ private val MaxNormalFormClauses = 1024
  *
  *  Crisp-only (the `Asin` convention): valid for `_Bool` operands only.  Non-connective
  *  sub-expressions (equations, scalar bodies) are treated as opaque atoms.  Returns the
- *  input unchanged when distribution would exceed [[MaxNormalFormClauses]].
+ *  input unchanged when distribution would exceed [[MaxNormalFormClauses]], or when the
+ *  expression carries a `_Truth` degree (normal forms are a two-valued notion).
  *
  *  @param e the expression to normalise
- *  @return the CNF of `e`, or `e` unchanged when the distribution blows up
+ *  @return the CNF of `e`, or `e` unchanged when it is not crisp or the distribution blows up
  */
 def toCNF(e: _Expression): _Expression = toNormalForm(e, conjunctive = true)
 
@@ -39,17 +40,23 @@ def toCNF(e: _Expression): _Expression = toNormalForm(e, conjunctive = true)
  *  restriction and clause cap.
  *
  *  @param e the expression to normalise
- *  @return the DNF of `e`, or `e` unchanged when the distribution blows up
+ *  @return the DNF of `e`, or `e` unchanged when it is not crisp or the distribution blows up
  */
 def toDNF(e: _Expression): _Expression = toNormalForm(e, conjunctive = false)
 
 
-/** Shared CNF/DNF pipeline; `conjunctive` selects which connective is the outer level. */
+/** Shared CNF/DNF pipeline; `conjunctive` selects which connective is the outer level.
+ *
+ *  Returns `e` untouched when it carries a `_Truth` degree: clause-level cleanup rests on
+ *  the complement law (`a or not a` is a trivially-true clause), which fails at `unknown`.
+ */
 private def toNormalForm(e: _Expression, conjunctive: Boolean): _Expression =
-  val simplified = simplifyLogicFully(e)
-  clauseSet(nnf(simplified, negated = false), conjunctive) match
-    case Some(clauses) => rebuildNormal(clauses, conjunctive)
-    case None          => e
+  if !isCrisp(e) then e
+  else
+    val simplified = simplifyLogicFully(e)
+    clauseSet(nnf(simplified, negated = false), conjunctive) match
+      case Some(clauses) => rebuildNormal(clauses, conjunctive)
+      case None          => e
 
 
 /** Negation normal form: desugars `implies`/`xor` and pushes `not` down to the leaves

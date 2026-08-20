@@ -68,9 +68,9 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "and", "or", "not", "implies", "xor",                // logic connectives
-    "pi", "e", "i", "inf", "true", "false",              // constants (inf = +inf; true/false = _Bool)
+    "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
-    "unset", "samples", "colors", "pretty", "truth", "help", "quit", "exit" // REPL commands
+    "unset", "samples", "colors", "pretty", "truth", "truth3", "help", "quit", "exit" // REPL commands
   )
 
   private val MaxDepth = 500
@@ -355,21 +355,22 @@ object Parser extends JavaTokenParsers:
    */
   lazy val number:   Parser[_Number]    = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s => _Number(s.toDouble) }
 
-  /** The built-in constants `pi`, `e`, `i`, `inf`, `true`, and `false`, all
+  /** The built-in constants `pi`, `e`, `i`, `inf`, `true`, `false`, and `unknown`, all
    *  word-boundary guarded.
    *
    *  `i` is the imaginary unit (`_Complex(0, 1)`); `3i` is implicit multiplication
    *  yielding `_Complex(0, 3)`, while `im` or `i1` stay ordinary variables.
-   *  `true`/`false` are the boolean literals (`_Bool`); the guard keeps `truex` an
-   *  ordinary variable.
+   *  `true`/`false` are the boolean literals (`_Bool`) and `unknown` is the third Kleene
+   *  truth value (`_Truth.Unknown`); the guard keeps `truex` an ordinary variable.
    */
   lazy val constant: Parser[_Value]     =
     """pi(?![a-zA-Z0-9])""".r  ^^^ _Number(math.Pi)                 |
     """e(?![a-zA-Z0-9])""".r   ^^^ _Number(math.E)                  |
     """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)                |
     """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity) |
-    """true(?![a-zA-Z0-9_])""".r  ^^^ _Bool(true)                   |
-    """false(?![a-zA-Z0-9_])""".r ^^^ _Bool(false)
+    """true(?![a-zA-Z0-9_])""".r    ^^^ _Bool(true)                 |
+    """false(?![a-zA-Z0-9_])""".r   ^^^ _Bool(false)                |
+    """unknown(?![a-zA-Z0-9_])""".r ^^^ _Truth.Unknown
 
   /** A user-defined variable name.
    *

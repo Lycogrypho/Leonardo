@@ -14,7 +14,7 @@ import java.util.regex.Pattern
  *
  *  @param command  REPL command keywords (`simplify`, `derive`, `colors`, ...)
  *  @param function mathematical function names (`sin`, `cos`, `exp`, ...)
- *  @param constant named constants (`pi`, `e`, `i`) and the boolean literals (`true`, `false`)
+ *  @param constant named constants (`pi`, `e`, `i`) and the truth literals (`true`, `false`, `unknown`)
  *  @param number   numeric literals
  *  @param operator arithmetic operators, `:=`, and the word connectives (`and`, `or`, `not`, `implies`, `xor`)
  *  @param equation bare `=` (equation relation)
@@ -98,13 +98,13 @@ object ColorScheme:
 class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
 
   private val Commands  = Set("simplify", "expand", "eval", "precision", "env",
-                               "unset", "help", "samples", "colors", "pretty", "truth", "quit", "exit")
+                               "unset", "help", "samples", "colors", "pretty", "truth", "truth3", "quit", "exit")
   private val Functions = Set("sin", "cos", "tan", "tg", "asin", "acos", "atan",
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",
                                "limit", "laplace", "fourier", "invlaplace", "ode")
   private val LogicOps  = Set("and", "or", "not", "implies", "xor")
-  private val Constants = Set("pi", "e", "i", "true", "false")
+  private val Constants = Set("pi", "e", "i", "true", "false", "unknown")
 
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
   private val WordPat = raw"[a-zA-Z][a-zA-Z0-9_]*".r

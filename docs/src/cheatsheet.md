@@ -28,6 +28,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `eval <expr>` | Evaluate substituting current bindings |
 | `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts) |
 | `truth <expr>` | Truth table over the expression's free variables |
+| `truth3 <expr>` | Three-valued (Kleene) truth table: false / unknown / true |
 | `unset <name>` | Remove a binding or definition |
 | `:save <file>` | Write session to a replayable script |
 | `:load <file>` | Replay a session script from file |
@@ -170,7 +171,7 @@ solveSystem([[2*x + y = 3, x - y = 0]], x, y)   -> [[x = 1.0, y = 1.0]]
 
 ---
 
-## Boolean logic
+## Logic
 
 ### Connectives
 
@@ -186,13 +187,26 @@ false and (1/0 = 0)             -> false   (short-circuit: right side never eval
 
 Precedence (tightest to loosest): `not` > `and` > `xor` > `or` > `implies`.
 
+### Three-valued (Kleene) logic
+
+```
+unknown                         the third truth value (a bindable value like true/false)
+not unknown                     -> unknown   (0.5 is the negation fixpoint)
+false and unknown               -> false     (0 annihilates min)
+true or unknown                 -> true      (1 annihilates max)
+unknown and unknown             -> unknown
+unknown implies unknown         -> unknown
+```
+
 ### Simplification & truth tables
 
 ```
 simplify a and true             -> a
 simplify not not a              -> a
 simplify a or (a and b)         -> a   (absorption)
-truth a and b                   truth table over the free variables (max 16)
+simplify unknown and not unknown  -> unknown   (complement is gated on crisp operands)
+truth a and b                   two-valued table over the free variables (max 16)
+truth3 a and not a              three-valued table: false / unknown / true (max 10)
 ```
 ## Complex numbers
 

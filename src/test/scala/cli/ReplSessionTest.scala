@@ -1352,3 +1352,86 @@ class ReplSessionTest extends AnyFlatSpec:
     val h = LeonardoHighlighter(() => "dark")
     assert(h.highlightBuffer("truth a and not b or true").toString == "truth a and not b or true")
   }
+
+  // --- issue 4.F: ternary (Kleene) logic ---
+
+  "the unknown literal" should "evaluate and bind like any other value" in
+  {
+    val s = session
+    assert(s.execute("unknown") == "unknown")
+    assert(s.execute("u := unknown") == "u := unknown")
+    assert(s.execute("u") == "unknown")
+    assert(s.execute("not u") == "unknown")
+  }
+
+  "the Kleene identities" should "hold at the REPL" in
+  {
+    val s = session
+    assert(s.execute("false and unknown") == "false")
+    assert(s.execute("true or unknown") == "true")
+    assert(s.execute("unknown and unknown") == "unknown")
+    assert(s.execute("not unknown") == "unknown")
+    assert(s.execute("unknown implies unknown") == "unknown")
+    assert(s.execute("true and unknown") == "unknown")
+  }
+
+  "simplify over unknown" should "not apply the crisp-only complement rule" in
+  {
+    val s = session
+    assert(s.execute("simplify unknown and not unknown") == "unknown")
+    // a free variable is still treated as a crisp atom
+    assert(s.execute("simplify a and not a") == "false")
+  }
+
+  "an unknown binding" should "round-trip through a script" in
+  {
+    val s1 = session
+    s1.execute("u := unknown")
+    assert(s1.script.contains("u := unknown"))
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("u") == "unknown")
+    assert(s2.execute("u and false") == "false")
+  }
+
+  "the truth3 command" should "print the three-valued table" in
+  {
+    val s = session
+    val out = s.execute("truth3 not a")
+    val lines = out.linesIterator.toList
+    assert(lines.size == 4, s"expected header + 3 rows; got:\n$out")
+    assert(lines(1).startsWith("false   | true"), s"unexpected row: ${lines(1)}")
+    assert(lines(2).startsWith("unknown | unknown"), s"unexpected row: ${lines(2)}")
+    assert(lines(3).startsWith("true    | false"), s"unexpected row: ${lines(3)}")
+  }
+
+  it should "enumerate 3^n rows for n variables" in
+  {
+    val s = session
+    assert(s.execute("truth3 a and b").linesIterator.toList.size == 10)  // header + 9
+  }
+
+  "the bare truth3 command" should "print a usage message" in
+  {
+    val s = session
+    assert(s.execute("truth3") == "usage: truth3 <expr>")
+  }
+
+  "the boolean truth command" should "still work unchanged alongside truth3" in
+  {
+    val s = session
+    assert(s.execute("truth a and b").linesIterator.toList.size == 5)
+  }
+
+  "assigning to unknown or truth3" should "be rejected" in
+  {
+    val s = session
+    assert(s.execute("unknown := 3").contains("reserved word"))
+    assert(s.execute("truth3 := 3").contains("reserved word"))
+  }
+
+  "the highlighter" should "accept the unknown literal without error" in
+  {
+    val h = LeonardoHighlighter(() => "dark")
+    assert(h.highlightBuffer("truth3 a and unknown").toString == "truth3 a and unknown")
+  }

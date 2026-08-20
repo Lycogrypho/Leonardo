@@ -4,17 +4,32 @@ package logic
 import core.*
 
 
-/** Single-pass structural simplification of the boolean connectives.
+/** Folds two concrete truth-valued operands through a min–max kernel.
+ *  `None` when either operand is not a truth-valued `_Value`.
+ */
+private def foldConstants(
+    x: _Expression, y: _Expression, rule: (Double, Double) => Double
+): Option[_Expression] = (x, y) match
+  case (xv: _Value, yv: _Value) => for p <- asTruth(xv); q <- asTruth(yv) yield _Truth.of(rule(p, q))
+  case _                        => None
+
+
+/** Single-pass structural simplification of the logical connectives.
  *
- *  Rules: constant folding (`a and true = a`, `a or true = true`, ...), double negation
+ *  Rules: constant folding through the shared min–max kernels, double negation
  *  (`not not a = a`), idempotence (`a and a = a`), complement (`a and not a = false`),
  *  and absorption (`a or (a and b) = a`).  De Morgan and the `implies`/`xor` desugarings
  *  are deliberately NOT applied here -- they reshape rather than shrink, and belong to
  *  the normal forms ([[toCNF]]/[[toDNF]]).
  *
- *  Crisp-only (the `Asin` convention): the complement and absorption rules are valid
- *  over `_Bool` operands only; they must not fire once intermediate truth degrees widen
- *  the carrier.
+ *  Many-valued soundness: every rule above except four is valid in the full `[0, 1]`
+ *  min–max lattice, so it applies unchanged to `_Truth` operands.  The four that are
+ *  not — complement in `and` and in `or`, `a implies a = true`, and `a xor a = false` —
+ *  all fail at `unknown` (`unknown and not unknown = unknown`, not `false`) and are gated
+ *  on [[isCrisp]].  Free variables count as crisp: the classical rules assume
+ *  boolean-valued atoms, the documented domain restriction of this pass (the `Asin`
+ *  convention).  Bind a variable to `unknown` and use `eval`, not `simplify`, to get the
+ *  three-valued answer.
  *
  *  Non-connective sub-expressions are handed to `simplifyLeaf`.  The default is
  *  `identity`; the REPL passes `scalar.simplifyFully` so a scalar body nested inside a
@@ -27,49 +42,60 @@ import core.*
  *  @return the simplified expression; never larger than the input
  */
 def simplifyLogic(e: _Expression, simplifyLeaf: _Expression => _Expression = identity): _Expression = e match
-  case And(a, b) => (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf)) match
-    case (_Bool(false), _) | (_, _Bool(false)) => _Bool(false)
-    case (_Bool(true), y)                      => y
-    case (x, _Bool(true))                      => x
-    case (x, y) if x == y                      => x               // idempotence
-    case (x, Not(y)) if x == y                 => _Bool(false)    // complement
-    case (Not(x), y) if x == y                 => _Bool(false)
-    case (x, Or(p, q)) if x == p || x == q     => x               // absorption
-    case (Or(p, q), y) if y == p || y == q     => y
-    case (x, y)                                => And(x, y)
+  case And(a, b) =>
+    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
+    foldConstants(x, y, kleeneAnd).getOrElse((x, y) match
+      case (_Bool(false), _) | (_, _Bool(false))       => _Bool(false)
+      case (_Bool(true), r)                            => r
+      case (l, _Bool(true))                            => l
+      case (l, r) if l == r                            => l               // idempotence
+      case (l, Not(r)) if l == r && isCrisp(l)         => _Bool(false)    // complement (crisp only)
+      case (Not(l), r) if l == r && isCrisp(l)         => _Bool(false)
+      case (l, Or(p, q)) if l == p || l == q           => l               // absorption
+      case (Or(p, q), r) if r == p || r == q           => r
+      case (l, r)                                      => And(l, r))
 
-  case Or(a, b) => (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf)) match
-    case (_Bool(true), _) | (_, _Bool(true))   => _Bool(true)
-    case (_Bool(false), y)                     => y
-    case (x, _Bool(false))                     => x
-    case (x, y) if x == y                      => x               // idempotence
-    case (x, Not(y)) if x == y                 => _Bool(true)     // complement
-    case (Not(x), y) if x == y                 => _Bool(true)
-    case (x, And(p, q)) if x == p || x == q    => x               // absorption
-    case (And(p, q), y) if y == p || y == q    => y
-    case (x, y)                                => Or(x, y)
+  case Or(a, b) =>
+    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
+    foldConstants(x, y, kleeneOr).getOrElse((x, y) match
+      case (_Bool(true), _) | (_, _Bool(true))         => _Bool(true)
+      case (_Bool(false), r)                           => r
+      case (l, _Bool(false))                           => l
+      case (l, r) if l == r                            => l               // idempotence
+      case (l, Not(r)) if l == r && isCrisp(l)         => _Bool(true)     // complement (crisp only)
+      case (Not(l), r) if l == r && isCrisp(l)         => _Bool(true)
+      case (l, And(p, q)) if l == p || l == q          => l               // absorption
+      case (And(p, q), r) if r == p || r == q          => r
+      case (l, r)                                      => Or(l, r))
 
-  case Not(a) => simplifyLogic(a, simplifyLeaf) match
-    case _Bool(x) => _Bool(!x)
-    case Not(x)   => x                                            // double negation
-    case x        => Not(x)
+  case Not(a) =>
+    val x = simplifyLogic(a, simplifyLeaf)
+    val folded = x match
+      case v: _Value => asTruth(v).map(p => _Truth.of(kleeneNot(p)))
+      case _         => None
+    folded.getOrElse(x match
+      case Not(y) => y                                                    // double negation
+      case _      => Not(x))
 
-  case Implies(a, b) => (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf)) match
-    case (_Bool(false), _)  => _Bool(true)
-    case (_Bool(true), y)   => y
-    case (_, _Bool(true))   => _Bool(true)
-    case (x, _Bool(false))  => simplifyLogic(Not(x), simplifyLeaf)
-    case (x, y) if x == y   => _Bool(true)
-    case (x, y)             => Implies(x, y)
+  case Implies(a, b) =>
+    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
+    foldConstants(x, y, kleeneImplies).getOrElse((x, y) match
+      case (_Bool(false), _)                   => _Bool(true)
+      case (_Bool(true), r)                    => r
+      case (_, _Bool(true))                    => _Bool(true)
+      case (l, _Bool(false))                   => simplifyLogic(Not(l), simplifyLeaf)
+      case (l, r) if l == r && isCrisp(l)      => _Bool(true)             // crisp only
+      case (l, r)                              => Implies(l, r))
 
-  case Xor(a, b) => (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf)) match
-    case (_Bool(x), _Bool(y)) => _Bool(x != y)
-    case (x, _Bool(false))    => x
-    case (_Bool(false), y)    => y
-    case (x, _Bool(true))     => simplifyLogic(Not(x), simplifyLeaf)
-    case (_Bool(true), y)     => simplifyLogic(Not(y), simplifyLeaf)
-    case (x, y) if x == y     => _Bool(false)
-    case (x, y)               => Xor(x, y)
+  case Xor(a, b) =>
+    val (x, y) = (simplifyLogic(a, simplifyLeaf), simplifyLogic(b, simplifyLeaf))
+    foldConstants(x, y, kleeneXor).getOrElse((x, y) match
+      case (l, _Bool(false))                   => l
+      case (_Bool(false), r)                   => r
+      case (l, _Bool(true))                    => simplifyLogic(Not(l), simplifyLeaf)
+      case (_Bool(true), r)                    => simplifyLogic(Not(r), simplifyLeaf)
+      case (l, r) if l == r && isCrisp(l)      => _Bool(false)            // crisp only
+      case (l, r)                              => Xor(l, r))
 
   // Non-connective: scalar simplification does not recurse into connectives (its
   // fallback is `case other => other`), so the injected leaf pass is the only chance

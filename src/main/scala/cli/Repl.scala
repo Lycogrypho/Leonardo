@@ -5,7 +5,7 @@ import core.*
 import scalar.*
 import matrix.*
 import equation.{_Equation, _Solve}
-import logic.{_Connective, simplifyLogicFully, truthTable, MaxTruthTableVars}
+import logic.{_Connective, simplifyLogicFully, truthTable, kleeneTable, MaxTruthTableVars, MaxKleeneTableVars}
 import parser.Parser
 
 import scala.util.control.NonFatal
@@ -113,6 +113,8 @@ final class Session:
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
     case "truth"                => "usage: truth <expr>"
+    case "truth3"               => "usage: truth3 <expr>"
+    case s"truth3 $rest"        => withParsed(rest)(doKleeneTable)
     case s"truth $rest"         => withParsed(rest)(doTruthTable)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
     // Precedes the generic assignment: the reserved-name guards above already matched the
@@ -128,8 +130,8 @@ final class Session:
    *
    *  `_Number` uses the raw `Double` (`d.toString`), not the display-rounded value, so
    *  no digits are lost regardless of session precision.  `_Bool` is written as the
-   *  `true`/`false` literal, which the grammar parses back to `_Bool` (word-boundary
-   *  guarded constants, like `pi`/`e`).
+   *  `true`/`false` literal and `_Truth.Unknown` as `unknown`, which the grammar parses
+   *  back (word-boundary guarded constants, like `pi`/`e`).
    */
   private def serializeValue(v: _Value): String = v match
     case _Number(d) => d.toString
@@ -204,6 +206,7 @@ final class Session:
   private def formatExpression(e: _Expression, pretty: Boolean): String = e match
     case n: _Number      => n.display(precision)
     case c: _Complex     => c.display(precision)
+    case t: _Truth       => t.display(precision)
     case m: _MatrixValue =>
       renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => _Number(m(i, j)).display(precision)), pretty)
     case m: _Matrix      =>
@@ -253,22 +256,54 @@ final class Session:
   /** Handles the `truth <expr>` command: tabulates the expression over its free
    *  variables (definitions substituted first; session numeric bindings are ignored --
    *  every free variable is enumerated as a boolean).  Rows that do not reduce to a
-   *  boolean show `?` in the result column.
+   *  boolean show `?` in the result column -- including rows whose value is the graded
+   *  `unknown`, which is what `truth3` is for.
    */
   private def doTruthTable(e: _Expression): String =
+    tabulate(e, "truth", MaxTruthTableVars, 5) { (body, vars) =>   // "false" is 5 characters
+      truthTable(body, vars, new Environment(precision))
+        .map((assignment, result) => (assignment.view.mapValues(_.toString).toMap, result.map(_.toString)))
+    }
+
+  /** Handles the `truth3 <expr>` command: the three-valued (Kleene) counterpart of
+   *  `truth`, enumerating each free variable over `false`/`unknown`/`true`.
+   */
+  private def doKleeneTable(e: _Expression): String =
+    tabulate(e, "truth3", MaxKleeneTableVars, 7) { (body, vars) =>  // "unknown" is 7 characters
+      kleeneTable(body, vars, new Environment(precision))
+        .map((assignment, result) =>
+          (assignment.view.mapValues(v => formatExpression(v, pretty = false)).toMap,
+           result.map(v => formatExpression(v, pretty = false))))
+    }
+
+  /** Shared renderer for the `truth` / `truth3` commands.
+   *
+   *  Substitutes definitions, enumerates the body's free variables in name order, and
+   *  lays the rows out as left-aligned columns with the expression itself as the result
+   *  header.  A row whose result is `None` renders as `?`.
+   *
+   *  @param e        the parsed expression to tabulate
+   *  @param command  the command name, used in the too-many-variables message
+   *  @param maxVars  the variable cap for this table's arity
+   *  @param minWidth minimum column width (the widest truth literal of this table)
+   *  @param rows     builds the already-stringified rows for a body and its variables
+   *  @return the rendered table, or an error message when the variable cap is exceeded
+   */
+  private def tabulate(e: _Expression, command: String, maxVars: Int, minWidth: Int)
+                      (rows: (_Expression, List[_Variable]) => Vector[(Map[String, String], Option[String])]): String =
     val body = substitute(e, definitions)
     val vars = body.freeVars.toList.sorted.map(_Variable.apply)
-    if vars.sizeIs > MaxTruthTableVars then
-      s"truth: too many variables (${vars.size}); the limit is $MaxTruthTableVars"
+    if vars.sizeIs > maxVars then
+      s"$command: too many variables (${vars.size}); the limit is $maxVars"
     else
       val names  = vars.map(_.variable)
-      val widths = names.map(n => math.max(n.length, 5))  // "false" is 5 characters
+      val widths = names.map(n => math.max(n.length, minWidth))
       def row(cells: List[String], result: String): String =
         val vals = cells.zip(widths).map((c, w) => c.padTo(w, ' ')).mkString(" ")
         if vals.isEmpty then s"| $result" else s"$vals | $result"
       val header = row(names, body.toString)
-      val lines  = truthTable(body, vars, new Environment(precision)).map { (assignment, result) =>
-        row(names.map(n => assignment(n).toString), result.map(_.toString).getOrElse("?"))
+      val lines  = rows(body, vars).map { (assignment, result) =>
+        row(names.map(assignment), result.getOrElse("?"))
       }
       (header +: lines).mkString("\n")
 
@@ -584,7 +619,23 @@ object Session:
          |rows that do not reduce to a boolean show "?".  Limit: 16 variables.
          |Connective precedence (tightest to loosest): not, and, xor, or, implies.
          |  truth a and (b or not a)
-         |  truth (a or b) and not (a and b)     equivalent to a xor b""".stripMargin,
+         |  truth (a or b) and not (a and b)     equivalent to a xor b
+         |Use truth3 for the three-valued (Kleene) table.""".stripMargin,
+    "truth3" ->
+      """|Print the three-valued (Kleene) truth table over the free variables.
+         |Each variable is enumerated as false / unknown / true (3^n rows, max 10 vars).
+         |Semantics: and = min, or = max, not = 1 - a, so "unknown" is the fixpoint of
+         |negation and the classical laws that fail there (a and not a) do not fold.
+         |  truth3 a and not a          -> unknown at a = unknown, false otherwise
+         |  truth3 a implies b""".stripMargin,
+    "unknown" ->
+      """|The third Kleene truth value: neither true nor false.
+         |A first-class value like true/false -- bindable, printable, saved by :save.
+         |  not unknown                 -> unknown   (unknown is the negation fixpoint)
+         |  false and unknown           -> false     (0 annihilates min)
+         |  true or unknown             -> true      (1 annihilates max)
+         |  unknown and unknown         -> unknown
+         |  u := unknown                bind it like any other value""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -701,9 +752,10 @@ object Session:
       |simplify <expr>      structural simplification (matrix algebra is carried out,
       |                     then each element is simplified; scalars ignore bindings)
       |expand <expr>        distribute products over sums (matrix algebra as above)
-      |a and b, not a, ...  boolean connectives (loosest first): implies, or, xor, and,
-      |                     not; literals true/false; see "help truth" for truth tables
+      |a and b, not a, ...  logic connectives (loosest first): implies, or, xor, and,
+      |                     not; literals true/false/unknown (three-valued Kleene)
       |truth <expr>         print the truth table over the expression's free variables
+      |truth3 <expr>        three-valued table: false / unknown / true per variable
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)
