@@ -231,6 +231,22 @@ sigmf(x, a, c)                  sigmoid
 defuzz(trimf(x,0,5,10), x, 0, 10)  -> 5.0   crisp value by centre of gravity
 ```
 
+### Custom membership curves
+
+The four built-in shapes are a convenience, not a limit: `truth(<expr>)` turns ANY
+scalar expression of one variable into a membership curve.
+
+```
+truth(1 / (1 + (x - 5)^2))      a Cauchy bell -- a curve of your own
+bell := truth(1 / (1 + (x-5)^2))   name it, then use the name
+defuzz(bell, x, 0, 10)          -> 5.0    custom curves defuzzify like built-ins
+very(bell)                      and compose with hedges and connectives
+truth(2)                        stays symbolic: a degree must lie in [0, 1]
+defuzz(1/(1+(x-5)^2), x, 0, 10) a bare scalar curve works too (no wrapper needed)
+defuzz(trimf(x,0,3,6) or trimf(x,4,7,10), x, 0, 10)
+                                aggregate curves with the connectives, then defuzzify
+```
+
 ### t-norm families
 
 ```

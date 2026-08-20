@@ -388,3 +388,81 @@ class FuzzyLogicTest extends AnyFlatSpec:
     // an empty or inverted range stays symbolic
     assert(_Defuzzify(tri, x, _Number(10), _Number(0)).eval(minmax).isLeft)
   }
+
+  // --- custom membership functions: the built-in curves are a convenience, not a limit ---
+
+  "truth(<expr>)" should "define a custom membership curve from any scalar expression" in
+  {
+    // a Cauchy bell centred on 5, which is not one of the four built-in shapes
+    val bell = parse("truth(1 / (1 + (x - 5)^2))")
+    def at(v: Double): Double = degree(bell, minmax.withBinding("x", _Number(v)))
+    assertClose(at(5.0), 1.0, "at the centre")
+    assertClose(at(4.0), 0.5, "one unit out")
+    assertClose(at(6.0), at(4.0), "symmetric")
+    assert(at(0.0) < at(4.0), "decaying away from the centre")
+  }
+
+  it should "compose with the hedges and the connectives like a built-in curve" in
+  {
+    val env4 = minmax.withBinding("x", _Number(4.0))
+    assertClose(degree(parse("very(truth(1 / (1 + (x - 5)^2)))"), env4), 0.25, "very of the custom curve")
+    assertClose(degree(parse("truth(1 / (1 + (x - 5)^2)) and truth(0.2)"), env4), 0.2, "and:")
+  }
+
+  it should "defuzzify like a built-in curve" in
+  {
+    centroid(parse("truth(1 / (1 + (x - 5)^2))"), x, 0.0, 10.0) match
+      case Some(c) => assertClose(c, 5.0, "custom centroid:")
+      case None    => fail("expected a centroid for the custom curve")
+  }
+
+  it should "stay symbolic outside [0, 1] rather than clamping" in
+  {
+    assert(_TruthOf(_Number(2.0)).eval(minmax).isLeft)
+    assert(_TruthOf(_Number(-1.0)).eval(minmax).isLeft)
+  }
+
+  "a raw scalar curve" should "defuzzify without the truth(...) wrapper" in
+  {
+    centroid(parse("1 / (1 + (x - 5)^2)"), x, 0.0, 10.0) match
+      case Some(c) => assertClose(c, 5.0, "raw centroid:")
+      case None    => fail("expected a centroid for the raw curve")
+    // the compiled fast path and the tree path must agree on what counts as a degree:
+    // values outside [0, 1] are not membership degrees and are dropped by both
+    assert(centroid(parse("x"), x, 0.0, 10.0) == centroid(parse("truth(x)"), x, 0.0, 10.0),
+      "the compile fast path and the tree path must agree")
+  }
+
+  "sampleDegrees" should "drop out-of-range points on the compiled fast path too" in
+  {
+    // x over [0, 10] is compilable but only x <= 1 is a degree
+    val pts = sampleDegrees(parse("x"), x, 0.0, 10.0, 11)
+    assert(pts.map(_._1) == Vector(0.0, 1.0), s"expected only the in-range points, got: $pts")
+  }
+
+  // --- aggregating curves with the connectives (the fuzzy-inference step) ---
+
+  "a membership argument" should "accept connectives, so curves can be aggregated" in
+  {
+    // the union of two triangles, symmetric about 5 -> centroid back at 5
+    parse("defuzz(trimf(x, 0, 3, 6) or trimf(x, 4, 7, 10), x, 0, 10)").eval(minmax) match
+      case Right(_Number(c)) => assertClose(c, 5.0, "aggregated centroid:")
+      case other             => fail(s"expected a number, got: $other")
+  }
+
+  it should "accept connectives under the hedges as well" in
+  {
+    assert(parse("very(trimf(x, 0, 5, 10) or trimf(x, 2, 6, 9))").isInstanceOf[Very])
+    assert(parse("somewhat(truth(0.5) and truth(0.8))").isInstanceOf[Somewhat])
+  }
+
+  it should "not leak the logic level into ordinary function or factor positions" in
+  {
+    // only the membership positions moved up to the logic level; sin(...) and the
+    // arithmetic paren branch still take an arithmetic argument, so a connective there
+    // is a parse error rather than silently becoming a scalar operand
+    assert(!Parser.parse("sin(a and b)").successful)
+    assert(!Parser.parse("2 * (a and b)").successful)
+    // connectives at the top level are of course still fine
+    assert(Parser.parse("sin(a) and sin(b)").successful)
+  }

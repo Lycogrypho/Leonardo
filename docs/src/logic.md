@@ -212,8 +212,70 @@ Parser.parse("somewhat(0.25)").get.eval(env)           // dilation: sqrt d
 Parser.parse("very(0.5) and somewhat(0.25)").get.eval(env)
 ```
 
-The full set is `trimf(x, a, b, c)`, `trapmf(x, a, b, c, d)`,
+The built-in set is `trimf(x, a, b, c)`, `trapmf(x, a, b, c, d)`,
 `gaussmf(x, mean, sigma)`, `sigmf(x, a, c)`, plus the hedges `very` and `somewhat`.
+
+### Custom membership functions
+
+The built-in curves are a convenience, not a limit: `truth(x)` takes an **arbitrary
+scalar expression**, so any function of one variable is a membership curve. Here is a
+Cauchy bell, which is none of the four built-in shapes:
+
+```scala mdoc:silent
+val bell = Parser.parse("truth(1 / (1 + (x - 5)^2))").get
+def at(v: Double) = bell.eval(env.withBinding("x", _Number(v)))
+```
+
+```scala mdoc
+at(5.0)     // the centre
+at(4.0)     // one unit out
+at(0.0)
+```
+
+A custom curve is not second-class — it composes with the hedges, the connectives and
+`defuzz` exactly like a built-in one:
+
+```scala mdoc
+Parser.parse("very(truth(1 / (1 + (x - 5)^2)))").get.eval(env.withBinding("x", _Number(4.0)))
+centroid(bell, _Variable("x"), 0.0, 10.0)
+```
+
+At the REPL a curve is usually given a name first, and then used by that name:
+
+```
+leonardo> bell := truth(1 / (1 + (x - 5)^2))
+leonardo> defuzz(bell, x, 0, 10)
+5.0
+```
+
+Two rules worth knowing. First, a membership degree lives in `[0, 1]`: an argument
+outside that interval is not a degree, so the node stays symbolic rather than
+clamping — which is how a custom curve tells you it has left the unit interval.
+
+```scala mdoc
+Parser.parse("truth(2)").get.eval(env)     // stays symbolic, not clamped to true
+```
+
+Second, `defuzz` also accepts a bare scalar curve with no `truth(...)` wrapper, and
+either way only points inside `[0, 1]` count as membership:
+
+```scala mdoc
+Parser.parse("defuzz(1 / (1 + (x - 5)^2), x, 0, 10)").get.eval(env)
+```
+
+### Aggregating curves
+
+Because degrees are truth values, curves combine with the ordinary connectives — the
+usual fuzzy-inference step, where each rule contributes a curve and the results are
+unioned before defuzzifying:
+
+```scala mdoc
+Parser.parse("defuzz(trimf(x, 0, 3, 6) or trimf(x, 4, 7, 10), x, 0, 10)").get.eval(env)
+```
+
+The connectives are admitted in the membership positions specifically — the argument
+of `defuzz`, `very`, and `somewhat`. Ordinary function arguments stay arithmetic, so
+`sin(a and b)` is still a parse error.
 
 ### Alternative t-norms
 

@@ -20,7 +20,12 @@ val DefaultDefuzzSamples: Int = 201
  *  [[asDegree]] so a truth-valued degree counts (`scalar.sample` would drop it, since it
  *  keeps only `_Number` results).
  *
- *  Non-finite degrees are dropped, following the `sample` convention.
+ *  A point is kept only when its value is an actual membership degree — finite and
+ *  inside `[0, 1]`.  The range test matters for the fast path: the tree path already
+ *  reads through [[asDegree]], which rejects anything outside the interval, so without
+ *  it the same curve would be treated differently depending on whether `compile`
+ *  happened to lower it.  Points outside the interval are dropped, following the
+ *  `sample` convention for values that are not results.
  *
  *  @param membership the membership expression in `v`
  *  @param v          the variable ranging over the grid
@@ -46,7 +51,12 @@ def sampleDegrees(
       membership.eval(env.withBinding(v.variable, _Number(x))) match
         case Right(value) => asDegree(value, env.symmetricLogic)
         case _            => None
-  xs.flatMap(x => at(x).filter(d => !d.isNaN && !d.isInfinite).map(d => (x, d)))
+  xs.flatMap(x => at(x).filter(isDegree).map(d => (x, d)))
+
+
+/** Whether `d` is an actual membership degree: finite and inside `[0, 1]`. */
+private def isDegree(d: Double): Boolean =
+  !d.isNaN && !d.isInfinite && d >= 0.0 && d <= 1.0
 
 
 /** Defuzzifies by the centre of gravity: `Σ x·μ(x) / Σ μ(x)` over the sampled curve.

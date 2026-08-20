@@ -105,6 +105,15 @@ object Parser extends JavaTokenParsers:
   /** Guards the parenthesised-logic branch of `notExpr` against unbounded nesting. */
   private def guardedLogicExpr: Parser[_Expression] = depthGuarded(logicExpr)
 
+  /** A membership-expression argument: a full logic expression, not just arithmetic.
+   *
+   *  Membership degrees are truth values, so aggregating curves with the connectives
+   *  (`defuzz(cold or warm, t, 0, 40)` -- the usual fuzzy-inference step) has to parse.
+   *  Only the positions that genuinely take a membership expression use this; ordinary
+   *  function arguments stay on `guardedExpr`, which keeps equations top-level only.
+   */
+  private def guardedMembership: Parser[_Expression] = guardedLogicExpr
+
   /** Guards the `not` right-recursion (`not not not ...`) against unbounded chaining. */
   private def guardedNotExpr: Parser[_Expression] = depthGuarded(notExpr)
 
@@ -308,8 +317,8 @@ object Parser extends JavaTokenParsers:
     // Fuzzy tier: truth(x) converts a scalar degree into a truth value (and is the
     // printed form of a graded _Truth); the hedges and curves produce degrees directly.
     "truth("    ~> guardedExpr <~ ")"                                     ^^ _TruthOf.apply                |
-    "very("     ~> guardedExpr <~ ")"                                     ^^ Very.apply                    |
-    "somewhat(" ~> guardedExpr <~ ")"                                     ^^ Somewhat.apply                |
+    "very("     ~> guardedMembership <~ ")"                               ^^ Very.apply                    |
+    "somewhat(" ~> guardedMembership <~ ")"                               ^^ Somewhat.apply                |
     "trimf("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case x ~ _ ~ a ~ _ ~ b ~ _ ~ c => TriMF(x, a, b, c)
     }                                                                                                      |
@@ -350,7 +359,7 @@ object Parser extends JavaTokenParsers:
       case rhs ~ _ ~ y ~ _ ~ t ~ _ ~ t0 ~ _ ~ y0 ~ _ ~ tgt => _ODE(rhs, y, t, t0, y0, tgt)
     }                                                                                             |
     // defuzz(e, v, lo, hi): centre-of-gravity defuzzification over [lo, hi].
-    "defuzz(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")" ^^ {
+    "defuzz(" ~> guardedMembership ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ l ~ _ ~ h => _Defuzzify(e, v, l, h)
     }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |

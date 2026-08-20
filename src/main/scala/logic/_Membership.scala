@@ -55,7 +55,14 @@ private def reduceMembership(
  *  it a degree would print as a bare number and re-parse as a plain `_Number`.  The
  *  Kleene midpoint keeps its own literal, `unknown`.
  *
- *  Out-of-range arguments are clamped by `_Truth.of`, matching that factory's contract.
+ *  This is also how a *custom* membership function is written: the argument is an
+ *  arbitrary scalar expression, so `truth(1 / (1 + (x - 5)^2))` is a perfectly good
+ *  curve and composes with the hedges, the connectives, and `defuzz` exactly like the
+ *  built-in ones.
+ *
+ *  An argument outside `[0, 1]` is *not* a degree, so the node stays symbolic rather
+ *  than clamping — the same "domain errors stay symbolic" rule the rest of the library
+ *  follows, and a useful signal that a custom curve has left the unit interval.
  *
  *  @param a the degree expression
  */
