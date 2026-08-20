@@ -4,3 +4,12 @@
 /.idea/
 /target/
 
+# Jekyll documentation-site build artifacts (see .github/workflows/pages.yml)
+/_site/
+/docs/_site/
+/docs/.jekyll-cache/
+/docs/Gemfile.lock
+
+/CLAUDE.md
+/.sbtopts
+/ToDo.md

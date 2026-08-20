@@ -3,6 +3,10 @@ title: Developer Guide
 nav_order: 10
 ---
 
+<img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
+
+---
+
 # Leonardo Developer Guide
 
 This guide is a complete onboarding reference for developers new to the Leonardo codebase.
