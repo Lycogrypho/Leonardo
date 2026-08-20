@@ -5,7 +5,8 @@ import core.*
 import scalar.*
 import matrix.*
 import equation.{_Equation, _Solve}
-import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable, MaxTruthTableVars, MaxKleeneTableVars}
+import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable,
+                  MaxTruthTableVars, MaxKleeneTableVars}
 import parser.Parser
 
 import scala.util.control.NonFatal
@@ -42,6 +43,7 @@ import org.jline.terminal.TerminalBuilder
  *  precision <n>        set decimal precision
  *  pretty on | off      multi-line, column-aligned matrix display (default: off)
  *  logic symmetric on|off  spell truth values as -1 / 0 / 1 (default: off)
+ *  logic minmax|product|lukasiewicz   fuzzy t-norm family (default: minmax)
  *  env                  list precision, bindings, and definitions
  *  unset <name>         remove a binding or definition
  *  :load <file>         run a session script (file IO handled by the read loop)
@@ -62,6 +64,9 @@ final class Session:
   // {false, unknown, true}. Off by default so the 4.F alphabet is unchanged; an
   // *encoding* toggle only -- the min-max rule table is the same either way.
   private var symmetricLogic: Boolean = false
+  // Fuzzy t-norm family (issue 4.H). MinMax is the default and the only lattice of the
+  // three, so the boolean and three-valued tiers are unaffected by it.
+  private var semantics: LogicSemantics = LogicSemantics.MinMax
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
 
@@ -69,7 +74,7 @@ final class Session:
   def currentColorScheme: String = colorSchemeName
 
   /** Builds a fresh `Environment` from the current precision and numeric bindings. */
-  private def env: Environment = new Environment(precision, bindings, symmetricLogic)
+  private def env: Environment = new Environment(precision, bindings, symmetricLogic, semantics)
 
   private val emptyEnv = new Environment()
 
@@ -113,9 +118,10 @@ final class Session:
     case s"colors $name"        => setColors(name.trim)
     case "pretty"               => s"pretty = ${if prettyMatrix then "on" else "off"}"
     case s"pretty $mode"        => setPretty(mode.trim)
+    case "logic"                => logicState
     case "logic symmetric"      => s"logic symmetric = ${if symmetricLogic then "on" else "off"}"
     case s"logic symmetric $mode" => setSymmetricLogic(mode.trim)
-    case s"logic $rest"         => s"unknown logic setting ${rest.trim.split(" ").head}; try: logic symmetric on | off"
+    case s"logic $rest"         => setSemantics(rest.trim)
     // simplify renders through toString (it deliberately ignores session precision);
     // symmetricSpelling only overrides it when the result is itself a truth value.
     case s"simplify $rest"      => withParsed(rest) { e =>
@@ -165,6 +171,7 @@ final class Session:
    */
   def script: String = buildLines(
     List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}",
+         s"logic ${semanticsName(semantics)}",
          s"logic symmetric ${if symmetricLogic then "on" else "off"}"),
     serializeValue)
 
@@ -289,7 +296,8 @@ final class Session:
    */
   private def simplifyPipeline(e: _Expression): _Expression =
     val prepared = simplify(resolveMatrixOps(substitute(e, definitions)))
-    if containsConnective(prepared) then simplifyLogicFully(prepared, simplifyFully, symmetricLogic) else prepared
+    if containsConnective(prepared) then simplifyLogicFully(prepared, simplifyFully, symmetricLogic, semantics)
+    else prepared
 
   /** Handles the `truth <expr>` command: tabulates the expression over its free
    *  variables (definitions substituted first; session numeric bindings are ignored --
@@ -568,6 +576,21 @@ final class Session:
       val available = ColorScheme.All.keys.toList.sorted.mkString(", ")
       s"unknown color scheme '$name'; available: $available"
 
+  /** Both logic settings in one listing, for the bare `logic` command. */
+  private def logicState: String =
+    s"logic ${semanticsName(semantics)}\nlogic symmetric = ${if symmetricLogic then "on" else "off"}"
+
+  /** The REPL spelling of a semantics: the enum case name in lower case. */
+  private def semanticsName(s: LogicSemantics): String = s.toString.toLowerCase
+
+  /** Selects the t-norm family by name (case-insensitive), rejecting unknown names. */
+  private def setSemantics(text: String): String =
+    LogicSemantics.values.find(_.toString.equalsIgnoreCase(text)) match
+      case Some(s) => semantics = s; s"logic ${semanticsName(s)}"
+      case None =>
+        val available = LogicSemantics.values.map(semanticsName).mkString(", ")
+        s"unknown logic setting '$text'; try: $available, or symmetric on | off"
+
   /** Sets the symmetric-ternary encoding flag from `"on"`/`"off"` (case-insensitive). */
   private def setSymmetricLogic(text: String): String = text.toLowerCase match
     case "on"  | "true"  => symmetricLogic = true;  "logic symmetric = on"
@@ -681,6 +704,15 @@ object Session:
          |  true or unknown             -> true      (1 annihilates max)
          |  unknown and unknown         -> unknown
          |  u := unknown                bind it like any other value""".stripMargin,
+    "defuzz" ->
+      """|Defuzzify a membership curve over [lo, hi] to a single crisp value.
+         |Uses the centre of gravity (centroid) over a 201-point grid.
+         |  defuzz(trimf(x, 0, 5, 10), x, 0, 10)      -> 5.0   (apex of a symmetric triangle)
+         |  defuzz(gaussmf(x, 3, 1), x, 0, 6)         -> 3.0
+         |Membership curves: trimf(x,a,b,c), trapmf(x,a,b,c,d), gaussmf(x,mean,sigma),
+         |sigmf(x,a,c).  Hedges: very(d) = d^2, somewhat(d) = sqrt(d).
+         |truth(x) turns a scalar degree in [0,1] into a truth value (and is how a
+         |graded degree prints, so it round-trips through :save).""".stripMargin,
     "logic" ->
       """|Switch the truth-value alphabet between the default and symmetric ternary.
          |Symmetric ternary spells the SAME three truth values with the digits -1, 0, 1
@@ -693,7 +725,13 @@ object Session:
          |spelling, so scripts stay portable across the toggle.
          |  logic symmetric on        -1 / 0 / 1
          |  logic symmetric off       false / unknown / true (default)
-         |  logic symmetric           show the current setting""".stripMargin,
+         |  logic symmetric           show the current setting
+         |The t-norm family selects how graded degrees combine; all three agree with
+         |classical logic on true/false, so the boolean and ternary tiers are unaffected.
+         |  logic minmax              and = min, or = max (default; the only lattice)
+         |  logic product             and = a*b, or = a+b-a*b
+         |  logic lukasiewicz         and = max(0,a+b-1), or = min(1,a+b)
+         |  logic                     show both settings""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -819,6 +857,8 @@ object Session:
       |pretty on | off      multi-line, column-aligned matrix display (default: off)
       |logic symmetric on|off  spell truth values as -1 / 0 / 1 instead of
       |                     false / unknown / true (symmetric ternary; default: off)
+      |logic <semantics>    fuzzy t-norm: minmax | product | lukasiewicz (default: minmax)
+      |defuzz(e, v, lo, hi) defuzzify a membership curve to a crisp value (centroid)
       |env                  list precision, bindings, and definitions
       |unset <name>         remove a binding or definition
       |:load <file>         run a session script (bindings/definitions/commands)

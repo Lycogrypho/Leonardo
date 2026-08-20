@@ -68,9 +68,10 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "and", "or", "not", "implies", "xor",                // logic connectives
+    "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
-    "unset", "samples", "colors", "pretty", "truth", "truth3", "logic", "help", "quit", "exit" // REPL commands
+    "unset", "samples", "colors", "pretty", "truth3", "logic", "help", "quit", "exit" // REPL commands
   )
 
   private val MaxDepth = 500
@@ -303,7 +304,24 @@ object Parser extends JavaTokenParsers:
     "eigen("  ~> guardedExpr <~ ")"                                       ^^ _EigenDecomposition.apply     |
     "eig("    ~> guardedExpr <~ ")"                                       ^^ _EigDecomposition.apply       |
     "jordan(" ~> guardedExpr <~ ")"                                       ^^ _JordanDecomposition.apply    |
-    "step("   ~> guardedExpr <~ ")"                                       ^^ _Heaviside.apply
+    "step("   ~> guardedExpr <~ ")"                                       ^^ _Heaviside.apply           |
+    // Fuzzy tier: truth(x) converts a scalar degree into a truth value (and is the
+    // printed form of a graded _Truth); the hedges and curves produce degrees directly.
+    "truth("    ~> guardedExpr <~ ")"                                     ^^ _TruthOf.apply                |
+    "very("     ~> guardedExpr <~ ")"                                     ^^ Very.apply                    |
+    "somewhat(" ~> guardedExpr <~ ")"                                     ^^ Somewhat.apply                |
+    "trimf("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case x ~ _ ~ a ~ _ ~ b ~ _ ~ c => TriMF(x, a, b, c)
+    }                                                                                                      |
+    "trapmf(" ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case x ~ _ ~ a ~ _ ~ b ~ _ ~ c ~ _ ~ d => TrapMF(x, a, b, c, d)
+    }                                                                                                      |
+    "gaussmf(" ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case x ~ _ ~ m ~ _ ~ s => GaussMF(x, m, s)
+    }                                                                                                      |
+    "sigmf(" ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case x ~ _ ~ a ~ _ ~ c => SigMF(x, a, c)
+    }
 
   /** Direction token for `limit(expr, var, point, +/-)`. */
   private lazy val limitDir: Parser[LimitDir] = ("+" | "-") ^^ {
@@ -330,6 +348,10 @@ object Parser extends JavaTokenParsers:
     // evaluated at target.  depVar/indepVar are variables; rhs/t0/y0/target are expressions.
     "ode(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case rhs ~ _ ~ y ~ _ ~ t ~ _ ~ t0 ~ _ ~ y0 ~ _ ~ tgt => _ODE(rhs, y, t, t0, y0, tgt)
+    }                                                                                             |
+    // defuzz(e, v, lo, hi): centre-of-gravity defuzzification over [lo, hi].
+    "defuzz(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ l ~ _ ~ h => _Defuzzify(e, v, l, h)
     }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |

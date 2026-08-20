@@ -1547,3 +1547,117 @@ class ReplSessionTest extends AnyFlatSpec:
     val s = session
     assert(s.execute("logic := 3").contains("reserved word"))
   }
+  // --- issue 4.H: fuzzy logic ---
+
+  "the logic semantics setting" should "default to minmax and switch by name" in
+  {
+    val s = session
+    assert(s.execute("logic").linesIterator.toList.head == "logic minmax")
+    assert(s.execute("logic product") == "logic product")
+    assert(s.execute("logic lukasiewicz") == "logic lukasiewicz")
+    assert(s.execute("logic minmax") == "logic minmax")
+  }
+
+  it should "reject an unknown name and list the options" in
+  {
+    val s = session
+    val out = s.execute("logic godel")
+    assert(out.contains("unknown logic setting"))
+    assert(out.contains("minmax") && out.contains("product") && out.contains("lukasiewicz"))
+  }
+
+  it should "report both logic settings on the bare command" in
+  {
+    val s = session
+    s.execute("logic product")
+    s.execute("logic symmetric on")
+    val out = s.execute("logic").linesIterator.toList
+    assert(out.contains("logic product"))
+    assert(out.contains("logic symmetric = on"))
+  }
+
+  "graded degrees" should "combine by the active t-norm" in
+  {
+    val s = session
+    assert(s.execute("truth(0.3) and truth(0.7)") == "truth(0.3)")
+    s.execute("logic product")
+    assert(s.execute("truth(0.3) and truth(0.5)") == "truth(0.15)")
+    s.execute("logic lukasiewicz")
+    assert(s.execute("truth(0.3) and truth(0.5)") == "false")   // max(0, -0.2) collapses to false
+    assert(s.execute("truth(0.8) and truth(0.7)") == "unknown")   // 0.5 is the Kleene midpoint
+  }
+
+  "the hedges and curves" should "evaluate at the REPL" in
+  {
+    val s = session
+    assert(s.execute("very(0.5)") == "truth(0.25)")
+    assert(s.execute("somewhat(0.25)") == "unknown")        // sqrt(0.25) = 0.5
+    assert(s.execute("trimf(5, 0, 5, 10)") == "true")       // apex collapses to true
+    assert(s.execute("trimf(2.5, 0, 5, 10)") == "unknown")  // exactly one half
+    assert(s.execute("gaussmf(3, 3, 1)") == "true")
+  }
+
+  it should "compose with the connectives" in
+  {
+    val s = session
+    assert(s.execute("very(0.5) and somewhat(0.25)") == "truth(0.25)")
+    assert(s.execute("trimf(2.5, 0, 5, 10) and true") == "unknown")
+  }
+
+  "defuzz" should "return the crisp representative of a curve" in
+  {
+    val s = session
+    assert(s.execute("defuzz(trimf(x, 0, 5, 10), x, 0, 10)") == "5.0")
+    assert(s.execute("defuzz(gaussmf(x, 3, 1), x, 0, 6)") == "3.0")
+  }
+
+  "a graded binding" should "round-trip through a script" in
+  {
+    val s1 = session
+    s1.execute("d := very(0.5)")
+    assert(s1.execute("d") == "truth(0.25)")
+    assert(s1.script.contains("d := truth(0.25)"))
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("d") == "truth(0.25)")
+    assert(s2.execute("d and false") == "false")
+  }
+
+  "the semantics setting" should "be persisted by a script round-trip" in
+  {
+    val s1 = session
+    s1.execute("logic product")
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("logic").linesIterator.toList.head == "logic product")
+    assert(s2.execute("truth(0.3) and truth(0.5)") == "truth(0.15)")
+  }
+
+  "simplify under product semantics" should "not apply the lattice-only idempotence rule" in
+  {
+    val s = session
+    // min-max is a lattice, so idempotence folds the conjunction away
+    assert(s.execute("simplify truth(0.3) and truth(0.3)") == "truth(0.3)")
+    s.execute("logic product")
+    // under product a and a = a^2, so the structural rule is gated off; simplify does
+    // not evaluate the truth(...) nodes, so the conjunction simply stays
+    assert(s.execute("simplify truth(0.3) and truth(0.3)") == "(truth(0.3) and truth(0.3))")
+    // evaluation, by contrast, applies the product t-norm
+    assert(s.execute("truth(0.3) and truth(0.3)") == "truth(0.09)")
+    // a free variable is still a crisp atom, so idempotence holds under every semantics
+    assert(s.execute("simplify a and a") == "a")
+  }
+
+  "assigning to a fuzzy keyword" should "be rejected" in
+  {
+    val s = session
+    for name <- List("very", "somewhat", "trimf", "gaussmf", "defuzz", "truth") do
+      assert(s.execute(s"$name := 3").contains("reserved word"), s"'$name' must be reserved")
+  }
+
+  "the highlighter" should "accept the fuzzy vocabulary without error" in
+  {
+    val h = LeonardoHighlighter(() => "dark")
+    val line = "defuzz(very(trimf(x, 0, 5, 10)), x, 0, 10)"
+    assert(h.highlightBuffer(line).toString == line)
+  }

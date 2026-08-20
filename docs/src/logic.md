@@ -184,6 +184,81 @@ a  | (not a)
 1  | -1
 ```
 
+## Fuzzy logic: the full [0, 1] interval
+
+The `_Truth` carrier already holds any degree in `[0, 1]`, so the fuzzy tier needs no
+new value type — only a way to *produce* degrees and a choice of how they combine.
+`truth(x)` converts a scalar degree, and is also how a graded degree prints, so it
+round-trips:
+
+```scala mdoc
+Parser.parse("truth(0.25)").get.eval(env)
+_Truth.of(0.25).toString
+And(_Truth.of(0.3), _Truth.of(0.7)).eval(env)     // min
+Not(_Truth.of(0.3)).eval(env)                     // 1 - a
+```
+
+### Membership functions and hedges
+
+Membership curves map a crisp measurement into `[0, 1]`, and the hedges reshape a
+degree. They evaluate to truth values, so they compose with the connectives directly
+— no cast at each step:
+
+```scala mdoc
+Parser.parse("trimf(2.5, 0, 5, 10)").get.eval(env)     // triangular, halfway up
+Parser.parse("gaussmf(3, 3, 1)").get.eval(env)         // gaussian, at the mean
+Parser.parse("very(0.5)").get.eval(env)                // concentration: d squared
+Parser.parse("somewhat(0.25)").get.eval(env)           // dilation: sqrt d
+Parser.parse("very(0.5) and somewhat(0.25)").get.eval(env)
+```
+
+The full set is `trimf(x, a, b, c)`, `trapmf(x, a, b, c, d)`,
+`gaussmf(x, mean, sigma)`, `sigmf(x, a, c)`, plus the hedges `very` and `somewhat`.
+
+### Alternative t-norms
+
+Which t-norm combines degrees is an `Environment` parameter, not a separate package or
+node: min–max (the default), product, or Łukasiewicz. All three agree with classical
+logic on the crisp values, so the boolean and three-valued tiers are unaffected:
+
+```scala mdoc:silent
+val prod  = new Environment(Environment.DefaultPrecision, Map.empty, false, LogicSemantics.Product)
+val lukas = new Environment(Environment.DefaultPrecision, Map.empty, false, LogicSemantics.Lukasiewicz)
+```
+
+```scala mdoc
+And(_Truth.of(0.3), _Truth.of(0.5)).eval(prod)    // 0.3 * 0.5
+Or(_Truth.of(0.3), _Truth.of(0.5)).eval(prod)     // a + b - a*b
+And(_Truth.of(0.8), _Truth.of(0.7)).eval(lukas)   // max(0, 1.5 - 1)
+And(_Bool(true), _Bool(true)).eval(lukas)         // crisp: unchanged
+```
+
+Only min–max is a *lattice*, so idempotence and absorption hold for graded degrees
+there alone — `a and a` is `a` squared under the product t-norm. Simplification gates
+those two rules on the semantics accordingly, on top of the crisp-only gate above:
+
+```scala mdoc
+simplifyLogicFully(And(_Truth.of(0.3), _Truth.of(0.3)), identity, false, LogicSemantics.MinMax)
+simplifyLogicFully(And(_Truth.of(0.3), _Truth.of(0.3)), identity, false, LogicSemantics.Product)
+```
+
+### Defuzzification
+
+Defuzzifying collapses a membership curve back to one crisp value. `centroid` (the
+centre of gravity) is what `defuzz(e, v, lo, hi)` uses in the grammar; `meanOfMaxima`
+and `bisector` are available as library functions:
+
+```scala mdoc
+val tri = Parser.parse("trimf(x, 0, 5, 10)").get
+centroid(tri, _Variable("x"), 0.0, 10.0)
+meanOfMaxima(tri, _Variable("x"), 0.0, 10.0)
+Parser.parse("defuzz(trimf(x, 0, 5, 10), x, 0, 10)").get.eval(env)
+```
+
+Sampling takes `scalar.compile`'s fast path when the curve is pure scalar arithmetic
+and falls back to tree evaluation for membership and connective nodes — this is where
+`logic` gains its `scalar` import, the same relationship `matrix` already has.
+
 ## Simplification
 
 `simplifyLogic` (and its fixpoint `simplifyLogicFully`) applies constant folding,

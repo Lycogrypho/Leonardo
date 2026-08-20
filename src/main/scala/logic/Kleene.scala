@@ -44,54 +44,105 @@ private[leonardo] def asTruth(v: _Value, symmetric: Boolean = false): Option[Dou
  *  too — without that case `0 and not 0` would wrongly fold to `false` by complement.
  *  The digits `-1` and `1` stay crisp.
  *
+ *  A [[_Membership]] node counts as graded whatever its arguments: a hedge or a curve
+ *  produces an arbitrary degree, and `truth(0.3)` is a graded value that simply has not
+ *  been evaluated yet.  Erring towards "graded" only ever *blocks* a rewrite, which is
+ *  the safe direction.
+ *
  *  @param e         the expression to test
  *  @param symmetric whether the symmetric ternary digits are in scope
  */
 private[logic] def isCrisp(e: _Expression, symmetric: Boolean = false): Boolean = e match
   case _: _Truth                          => false
+  case _: _Membership                     => false
   case _Number(0.0) if symmetric          => false
   case other                              => other.children.forall(isCrisp(_, symmetric))
 
 
-/** Conjunction kernel: the t-norm `min(a, b)`.
- *  @param a left truth degree
- *  @param b right truth degree
+/** Reads a membership *degree* from a concrete value.
+ *
+ *  Wider than [[asTruth]] on purpose: a bare number in `[0, 1]` is accepted regardless of
+ *  the encoding, because a hedge or a membership curve has no other domain — `very(0.5)`
+ *  is unambiguous in a way `0.5 and x` is not.  The connectives keep using the strict
+ *  [[asTruth]].
+ *
+ *  @param v         the concrete value to read
+ *  @param symmetric whether the symmetric ternary digits are in scope
+ *  @return the degree in `[0, 1]`, or `None` when `v` is not a degree
+ */
+private[logic] def asDegree(v: _Value, symmetric: Boolean = false): Option[Double] =
+  asTruth(v, symmetric).orElse(v match
+    case _Number(d) if d >= 0.0 && d <= 1.0 => Some(d)
+    case _                                  => None)
+
+
+/** Conjunction kernel (t-norm) for `semantics`.
+ *
+ *  `min` under `LogicSemantics.MinMax`, `a * b` under `Product`,
+ *  `max(0, a + b - 1)` under `Lukasiewicz`.  All three agree on `{0, 1}` and all three
+ *  have `0` as annihilator and `1` as unit, which is what keeps the `And` short-circuit
+ *  sound under each.
+ *
+ *  @param semantics the active t-norm family
+ *  @param a         left truth degree
+ *  @param b         right truth degree
  *  @return the conjunction degree
  */
-private[logic] def kleeneAnd(a: Double, b: Double): Double = math.min(a, b)
+private[logic] def kleeneAnd(semantics: LogicSemantics)(a: Double, b: Double): Double =
+  semantics match
+    case LogicSemantics.MinMax      => math.min(a, b)
+    case LogicSemantics.Product     => a * b
+    case LogicSemantics.Lukasiewicz => math.max(0.0, a + b - 1.0)
 
-/** Disjunction kernel: the t-conorm `max(a, b)`.
- *  @param a left truth degree
- *  @param b right truth degree
+/** Disjunction kernel (t-conorm) for `semantics`: `max`, `a + b - a * b`, or
+ *  `min(1, a + b)`.  Dual of [[kleeneAnd]]; `1` annihilates each, keeping the `Or`
+ *  short-circuit sound.
+ *
+ *  @param semantics the active t-conorm family
+ *  @param a         left truth degree
+ *  @param b         right truth degree
  *  @return the disjunction degree
  */
-private[logic] def kleeneOr(a: Double, b: Double): Double = math.max(a, b)
+private[logic] def kleeneOr(semantics: LogicSemantics)(a: Double, b: Double): Double =
+  semantics match
+    case LogicSemantics.MinMax      => math.max(a, b)
+    case LogicSemantics.Product     => a + b - a * b
+    case LogicSemantics.Lukasiewicz => math.min(1.0, a + b)
 
-/** Negation kernel: `1 - a`.  `0.5` is its fixpoint, so `not unknown = unknown`.
+/** Negation kernel: the strong negation `1 - a`, shared by all three semantics.
+ *  `0.5` is its fixpoint, so `not unknown = unknown`.
+ *
  *  @param a the truth degree to negate
  *  @return the negated degree
  */
 private[logic] def kleeneNot(a: Double): Double = 1.0 - a
 
-/** Implication kernel: `max(1 - a, b)`, the Kleene reading of `(not a) or b`.
- *  @param a antecedent degree
- *  @param b consequent degree
+/** Implication kernel: the S-implication `tconorm(1 - a, b)` of the active semantics,
+ *  i.e. the reading of `(not a) or b` in that algebra.
+ *
+ *  @param semantics the active semantics
+ *  @param a         antecedent degree
+ *  @param b         consequent degree
  *  @return the implication degree
  */
-private[logic] def kleeneImplies(a: Double, b: Double): Double = math.max(1.0 - a, b)
+private[logic] def kleeneImplies(semantics: LogicSemantics)(a: Double, b: Double): Double =
+  kleeneOr(semantics)(kleeneNot(a), b)
 
-/** Exclusive-disjunction kernel: `max(min(a, 1 - b), min(1 - a, b))`.
+/** Exclusive-disjunction kernel: the reading of `(a and not b) or (not a and b)` in the
+ *  active semantics.
  *
- *  This is the lattice reading of `(a and not b) or (not a and b)` — the same
- *  desugaring [[toCNF]] / [[toDNF]] apply — so the eval kernel and the normal-form
- *  rewrite agree on every input.  On `{0, 1}` it is exactly classical xor; at
- *  `unknown xor unknown` it yields `unknown`, since two unknown operands cannot be
- *  known to differ.  (The naive `|a - b|` would answer `false` there, contradicting
- *  both the Kleene reading and the desugaring.)
+ *  Defining it through the same desugaring [[toCNF]] / [[toDNF]] apply keeps the eval
+ *  kernel and the normal-form rewrite in agreement for every semantics.  On `{0, 1}` it
+ *  is exactly classical xor; under min–max `unknown xor unknown` is `unknown`, since two
+ *  unknown operands cannot be known to differ.  (The naive `|a - b|` would answer `false`
+ *  there, contradicting both the Kleene reading and the desugaring.)
  *
- *  @param a left truth degree
- *  @param b right truth degree
+ *  @param semantics the active semantics
+ *  @param a         left truth degree
+ *  @param b         right truth degree
  *  @return the exclusive-disjunction degree
  */
-private[logic] def kleeneXor(a: Double, b: Double): Double =
-  math.max(math.min(a, 1.0 - b), math.min(1.0 - a, b))
+private[logic] def kleeneXor(semantics: LogicSemantics)(a: Double, b: Double): Double =
+  kleeneOr(semantics)(
+    kleeneAnd(semantics)(a, kleeneNot(b)),
+    kleeneAnd(semantics)(kleeneNot(a), b))

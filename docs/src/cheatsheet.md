@@ -30,6 +30,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `truth <expr>` | Truth table over the expression's free variables |
 | `truth3 <expr>` | Three-valued (Kleene) truth table: false / unknown / true |
 | `logic symmetric on|off` | Spell truth values as -1 / 0 / 1 (default: off) |
+| `logic minmax|product|lukasiewicz` | Fuzzy t-norm family (default: minmax) |
 | `unset <name>` | Remove a binding or definition |
 | `:save <file>` | Write session to a replayable script |
 | `:load <file>` | Replay a session script from file |
@@ -215,6 +216,32 @@ not 0                           -> 0
 
 Related by `t = (s + 1) / 2`; the rule table is identical either way.
 `:save` persists the toggle but always writes the word spelling.
+### Fuzzy logic ([0, 1] degrees)
+
+```
+truth(0.3)                      a graded degree (also how one prints, so it round-trips)
+truth(0.3) and truth(0.7)       -> truth(0.3)   (min-max)
+not truth(0.3)                  -> truth(0.7)
+very(0.5)                       -> truth(0.25)  concentration: d^2
+somewhat(0.25)                  -> unknown      dilation: sqrt(d) = 0.5
+trimf(x, a, b, c)               triangular membership curve
+trapmf(x, a, b, c, d)           trapezoidal
+gaussmf(x, mean, sigma)         gaussian
+sigmf(x, a, c)                  sigmoid
+defuzz(trimf(x,0,5,10), x, 0, 10)  -> 5.0   crisp value by centre of gravity
+```
+
+### t-norm families
+
+```
+logic minmax                    and = min, or = max (default; the only lattice)
+logic product                   and = a*b, or = a+b-a*b
+logic lukasiewicz               and = max(0,a+b-1), or = min(1,a+b)
+logic                           show both logic settings
+```
+
+All three agree with classical logic on true/false, so the boolean and ternary tiers
+are unaffected.  Idempotence and absorption hold for graded degrees under minmax only.
 ### Simplification & truth tables
 
 ```

@@ -16,10 +16,12 @@ import core.*
  *  to `_Bool`.  Any other concrete operand (a `_Number`, a matrix) leaves the node
  *  symbolic.
  *
- *  `eval` consults its `Environment` only for the truth-value *encoding*
- *  (`symmetricLogic`, which additionally admits the digits `{-1, 0, 1}` as truth values):
- *  the rule table itself is the same for every encoding, so symmetric ternary is a change
- *  of digits, never a second semantics.
+ *  `eval` consults its `Environment` for two knobs, neither of which is a second node
+ *  hierarchy: the truth-value *encoding* (`symmetricLogic`, which additionally admits the
+ *  digits `{-1, 0, 1}` as truth values -- a change of digits, never a change of meaning)
+ *  and the *semantics* (`LogicSemantics`, selecting the t-norm / t-conorm pair: min-max,
+ *  product, or Lukasiewicz).  All three semantics agree with classical logic on the crisp
+ *  values, so the boolean and three-valued tiers are unaffected by the default.
  *
  *  Deliberately NOT marked `core._ElementWise`: that marker means derive/simplify/
  *  expand/integrate distribute over children (linear containers only), and the
@@ -37,7 +39,7 @@ sealed trait _Connective extends _Expression
  *
  *  @param ra   the evaluated left operand
  *  @param rb   the evaluated right operand
- *  @param rule the min–max kernel to apply to the two degrees
+ *  @param rule the kernel family to apply to the two degrees, selected by `env.semantics`
  *  @param wrap factory rebuilding the symbolic residual node
  *  @param env  evaluation environment, consulted for the truth-value encoding
  *  @return `Right(value)` when both operands are truth-valued, `Left(residual)` otherwise
@@ -45,14 +47,14 @@ sealed trait _Connective extends _Expression
 private def combine(
     ra:   Either[_Expression, _Value],
     rb:   Either[_Expression, _Value],
-    rule: (Double, Double) => Double,
+    rule: LogicSemantics => (Double, Double) => Double,
     wrap: (_Expression, _Expression) => _Expression,
     env:  Environment
 ): Either[_Expression, _Value] =
   (ra, rb) match
     case (Right(x: _Value), Right(y: _Value)) =>
       (asTruth(x, env.symmetricLogic), asTruth(y, env.symmetricLogic)) match
-        case (Some(p), Some(q)) => Right(_Truth.of(rule(p, q)))
+        case (Some(p), Some(q)) => Right(_Truth.of(rule(env.semantics)(p, q)))
         case _                  => Left(wrap(x, y))
     case (l, r) => Left(wrap(l.toExpression, r.toExpression))
 
@@ -109,7 +111,7 @@ case class Not(a: _Expression) extends _Connective:
   override def eval(env: Environment): Either[_Expression, _Value] =
     a.eval(env) match
       case Right(v) => asTruth(v, env.symmetricLogic) match
-        case Some(p) => Right(_Truth.of(kleeneNot(p)))
+        case Some(p) => Right(_Truth.of(kleeneNot(p)))   // strong negation: all semantics agree
         case None    => Left(Not(v))
       case ra       => Left(Not(ra.toExpression))
 

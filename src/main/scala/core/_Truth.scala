@@ -86,17 +86,23 @@ case class _Truth private (d: Double) extends _Value:
   override def rebuild(c: List[_Expression]): _Expression = this
 
   /** Renders this truth value at [[Environment.DefaultPrecision]] decimal places;
-   *  the Kleene midpoint prints as `"unknown"`.
+   *  the Kleene midpoint prints as `"unknown"`, any other degree as `"truth(d)"`.
    */
   override def toString: String = display(Environment.DefaultPrecision)
 
   /** Renders this truth value at `precision` decimal places for REPL display.
+   *
+   *  Both spellings are grammar literals, so the rendering round-trips: `unknown` parses
+   *  back to [[_Truth.Unknown]] and `truth(d)` to the same degree.  Without the
+   *  `truth(...)` form a fuzzy degree would print as a bare number and re-parse as a
+   *  plain `_Number`, silently losing its truth-valued nature across a `:save`/`:load`.
+   *
    *  @param precision number of decimal places to show
-   *  @return `"unknown"` when the rounded degree is `0.5`, the rounded number otherwise
+   *  @return `"unknown"` when the rounded degree is `0.5`, `"truth(d)"` otherwise
    */
   def display(precision: Int): String =
     val r = _Number.round(d, precision)
-    if r == 0.5 then "unknown" else r.toString
+    if r == 0.5 then "unknown" else s"truth($r)"
 
   /** This degree written as a symmetric ternary digit: `2 * d - 1`, so `0.5` is `0`.
    *  The inverse of [[_Truth.fromSymmetric]].
