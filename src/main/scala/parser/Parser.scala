@@ -8,6 +8,7 @@ import matrix.*
 import equation.*
 import transform.*
 import ode.*
+import logic.*
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -19,7 +20,13 @@ import ode.*
  *
  *  Grammar summary:
  *  {{{
- *  topLevel     ::= equationExpr
+ *  topLevel     ::= logicExpr
+ *  logicExpr    ::= implExpr                    -- boolean connectives bind loosest
+ *  implExpr     ::= orExpr ["implies" implExpr] -- right-associative, loosest connective
+ *  orExpr       ::= xorExpr ("or" xorExpr)*
+ *  xorExpr      ::= andExpr ("xor" andExpr)*
+ *  andExpr      ::= notExpr ("and" notExpr)*
+ *  notExpr      ::= "not" notExpr | equationExpr | "(" logicExpr ")"
  *  equationExpr ::= expr [("==" | "=") expr]   -- "==" -> _EqualityCheck; "=" -> _Equation
  *  expr         ::= ["+" | "-"] simpleExpr
  *  simpleExpr   ::= term (("+" | "-") term)*
@@ -60,24 +67,31 @@ object Parser extends JavaTokenParsers:
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
-    "pi", "e", "i", "inf",                               // constants (inf = +inf)
+    "and", "or", "not", "implies", "xor",                // logic connectives
+    "pi", "e", "i", "inf", "true", "false",              // constants (inf = +inf; true/false = _Bool)
     "simplify", "expand", "eval", "env", "vars", "precision",
-    "unset", "samples", "colors", "pretty", "help", "quit", "exit" // REPL commands
+    "unset", "samples", "colors", "pretty", "truth", "help", "quit", "exit" // REPL commands
   )
 
   private val MaxDepth = 500
   private val depth = new ThreadLocal[Int]:
     override def initialValue(): Int = 0
 
-  /** Guards `equationExpr` against unbounded parenthesis nesting. */
-  private def guardedExpr: Parser[_Expression] = Parser { in =>
+  /** Wraps a production with the shared `ThreadLocal` depth guard so recursive
+   *  positions fail cleanly instead of blowing the JVM stack.
+   *  @param p the production to guard (by-name: productions are `lazy val`s)
+   */
+  private def depthGuarded(p: => Parser[_Expression]): Parser[_Expression] = Parser { in =>
     val d = depth.get()
     if d >= MaxDepth then Failure(s"expression exceeds maximum nesting depth of $MaxDepth", in)
     else
       depth.set(d + 1)
-      try equationExpr(in)
+      try p(in)
       finally depth.set(d)
   }
+
+  /** Guards `equationExpr` against unbounded parenthesis nesting. */
+  private def guardedExpr: Parser[_Expression] = depthGuarded(equationExpr)
 
   /** Guards `signedPower` against unbounded `^` chaining.
    *
@@ -85,14 +99,16 @@ object Parser extends JavaTokenParsers:
    *  (which is only entered via explicit parentheses and function argument lists),
    *  so `2^-2^-2^-...` would blow the JVM stack without this wrapper.
    */
-  private def guardedSignedPower: Parser[_Expression] = Parser { in =>
-    val d = depth.get()
-    if d >= MaxDepth then Failure(s"expression exceeds maximum nesting depth of $MaxDepth", in)
-    else
-      depth.set(d + 1)
-      try signedPower(in)
-      finally depth.set(d)
-  }
+  private def guardedSignedPower: Parser[_Expression] = depthGuarded(signedPower)
+
+  /** Guards the parenthesised-logic branch of `notExpr` against unbounded nesting. */
+  private def guardedLogicExpr: Parser[_Expression] = depthGuarded(logicExpr)
+
+  /** Guards the `not` right-recursion (`not not not ...`) against unbounded chaining. */
+  private def guardedNotExpr: Parser[_Expression] = depthGuarded(notExpr)
+
+  /** Guards the `implies` right-recursion against unbounded chaining. */
+  private def guardedImplExpr: Parser[_Expression] = depthGuarded(implExpr)
 
   /** Returns `true` when `e` is syntactically a matrix (literal or matrix operation). */
   private def isMatrixShaped(e: _Expression): Boolean =
@@ -133,6 +149,58 @@ object Parser extends JavaTokenParsers:
     case (Some("-"), MatScale(_Number(k), m))   => MatScale(_Number(-k), m)
     case (Some("-"), _)                         => mkNeg(e)
     case _                                      => e
+
+  /** A word-boundary-guarded keyword: matches `word` only when not followed by an
+   *  identifier character, so `and` never captures the prefix of a variable `andrew`.
+   *  @param word the keyword text
+   */
+  private def kw(word: String): Parser[String] = (word + """(?![a-zA-Z0-9_])""").r
+
+  /** A full logic expression -- the boolean connectives bind loosest, below `=`/`==`.
+   *
+   *  Precedence (tightest to loosest): `not` > `and` > `xor` > `or` > `implies`;
+   *  `implies` is right-associative, the others left-fold.  So
+   *  `a or b and c` is `a or (b and c)` and `x = 1 and y = 2` is `(x = 1) and (y = 2)`.
+   */
+  lazy val logicExpr: Parser[_Expression] = implExpr
+
+  /** Implication level: right-associative and the loosest connective. */
+  lazy val implExpr: Parser[_Expression] = orExpr ~ opt(kw("implies") ~> guardedImplExpr) ^^
+    {
+      case l ~ Some(r) => Implies(l, r)
+      case l ~ None    => l
+    }
+
+  /** Disjunction level: left-folding `or`. */
+  lazy val orExpr: Parser[_Expression] = xorExpr ~ rep(kw("or") ~> xorExpr) ^^
+    {
+      case l ~ rs => rs.foldLeft(l)(Or.apply)
+    }
+
+  /** Exclusive-disjunction level: left-folding `xor`. */
+  lazy val xorExpr: Parser[_Expression] = andExpr ~ rep(kw("xor") ~> andExpr) ^^
+    {
+      case l ~ rs => rs.foldLeft(l)(Xor.apply)
+    }
+
+  /** Conjunction level: left-folding `and`. */
+  lazy val andExpr: Parser[_Expression] = notExpr ~ rep(kw("and") ~> notExpr) ^^
+    {
+      case l ~ rs => rs.foldLeft(l)(And.apply)
+    }
+
+  /** Negation level and the descent into the arithmetic grammar.
+   *
+   *  `equationExpr` is tried before the parenthesised-logic branch so ordinary
+   *  arithmetic parentheses (`(x + 1) * 2`) keep parsing through `factor`; only when
+   *  the arithmetic parse fails (`(a and b)`) is the group re-read as logic.
+   *  `guardedExpr` stays bound to `equationExpr`, so `2 * (x = 1)` remains a parse
+   *  error and equations stay top-level only.
+   */
+  lazy val notExpr: Parser[_Expression] =
+    kw("not") ~> guardedNotExpr ^^ Not.apply |
+    equationExpr                             |
+    "(" ~> guardedLogicExpr <~ ")"
 
   /** Top-level grammar: an optional equation or equality relation.
    *
@@ -287,16 +355,21 @@ object Parser extends JavaTokenParsers:
    */
   lazy val number:   Parser[_Number]    = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s => _Number(s.toDouble) }
 
-  /** The built-in constants `pi`, `e`, `i`, and `inf`, all word-boundary guarded.
+  /** The built-in constants `pi`, `e`, `i`, `inf`, `true`, and `false`, all
+   *  word-boundary guarded.
    *
    *  `i` is the imaginary unit (`_Complex(0, 1)`); `3i` is implicit multiplication
    *  yielding `_Complex(0, 3)`, while `im` or `i1` stay ordinary variables.
+   *  `true`/`false` are the boolean literals (`_Bool`); the guard keeps `truex` an
+   *  ordinary variable.
    */
   lazy val constant: Parser[_Value]     =
-    """pi(?![a-zA-Z0-9])""".r  ^^^ _Number(math.Pi)                |
-    """e(?![a-zA-Z0-9])""".r   ^^^ _Number(math.E)                 |
-    """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)               |
-    """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity)
+    """pi(?![a-zA-Z0-9])""".r  ^^^ _Number(math.Pi)                 |
+    """e(?![a-zA-Z0-9])""".r   ^^^ _Number(math.E)                  |
+    """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)                |
+    """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity) |
+    """true(?![a-zA-Z0-9_])""".r  ^^^ _Bool(true)                   |
+    """false(?![a-zA-Z0-9_])""".r ^^^ _Bool(false)
 
   /** A user-defined variable name.
    *
@@ -308,8 +381,10 @@ object Parser extends JavaTokenParsers:
     s => s"'$s' is a reserved word and cannot be used as a variable"
   )
 
-  /** The top-level production: a full equation expression. */
-  lazy val topLevel: Parser[_Expression] = equationExpr
+  /** The top-level production: a full logic expression (connectives bind loosest;
+   *  a plain arithmetic or equation expression passes through unchanged).
+   */
+  lazy val topLevel: Parser[_Expression] = logicExpr
 
   /** Parses `str` and returns a `ParseResult` containing the AST or an error message.
    *

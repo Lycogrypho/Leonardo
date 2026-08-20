@@ -1,6 +1,6 @@
 ---
 title: Architecture
-nav_order: 8
+nav_order: 9
 ---
 
 <img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>

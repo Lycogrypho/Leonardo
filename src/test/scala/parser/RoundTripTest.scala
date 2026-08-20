@@ -140,3 +140,19 @@ class RoundTripTest extends AnyFlatSpec:
       assert(printed1 == printed2,
         s"toString not stable for \"$input\": \"$printed1\" vs \"$printed2\"")
     }
+
+  // --- issue 4.E: boolean connectives ---
+
+  "round-trip of connective expressions" should "re-parse to the identical AST" in
+  {
+    val inputs = List(
+      "a and b", "a or b", "not a", "a implies b", "a xor b",
+      "not (a and b) or c", "a or b and c", "true and false",
+      "x = 1 and y = 2", "a implies b implies c")
+    for input <- inputs do
+      val ast1    = parse(input)
+      val printed = ast1.toString
+      val pr      = Parser.parse(printed)
+      assert(pr.successful, s"toString output did not re-parse: \"$printed\" ($pr)")
+      assert(pr.get == ast1, s"round-trip changed \"$input\" -> \"$printed\": ${pr.get}")
+  }

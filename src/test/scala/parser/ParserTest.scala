@@ -4,6 +4,7 @@ package parser
 import core.*
 import scalar.*
 import parser.Parser
+import logic.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
@@ -91,7 +92,7 @@ class ParserTest extends AnyFlatSpec:
       assert(!Parser.parse(w).successful, s"'$w' must not parse as a variable")
   }
 
-  "\"sin x\" (function without parentheses)" should "be a parse error, not sinÂ·x" in
+  "\"sin x\" (function without parentheses)" should "be a parse error, not sinÃ‚Â·x" in
   {
     assert(!Parser.parse("sin x").successful)
   }
@@ -233,7 +234,7 @@ class ParserTest extends AnyFlatSpec:
 
   "a short ^ chain" should "still parse correctly" in
   {
-    // right-associative: 2^3^2 = 2^(3^2) â€” uses the standard positive-exponent path
+    // right-associative: 2^3^2 = 2^(3^2) Ã¢â‚¬â€ uses the standard positive-exponent path
     assert(parse("2^3^2") == Power(_Number(2), Power(_Number(3), _Number(2))))
   }
 
@@ -366,12 +367,12 @@ class ParserTest extends AnyFlatSpec:
     assert(parse(parsed.toString) == parsed)
   }
 
-  "log(x)" should "parse as LogBase(x, 10.0) â€” base-10 shorthand" in
+  "log(x)" should "parse as LogBase(x, 10.0) Ã¢â‚¬â€ base-10 shorthand" in
   {
     assert(parse("log(x)") == LogBase(_Variable("x"), _Number(10.0)))
   }
 
-  "log(x, 2)" should "parse as LogBase(x, 2.0) â€” binary logarithm" in
+  "log(x, 2)" should "parse as LogBase(x, 2.0) Ã¢â‚¬â€ binary logarithm" in
   {
     assert(parse("log(x, 2)") == LogBase(_Variable("x"), _Number(2.0)))
   }
@@ -460,3 +461,45 @@ class ParserTest extends AnyFlatSpec:
       case Right(_Number(v)) => assert(v == 1.0)
       case other             => fail(s"expected _Number(1.0), got $other")
   }
+
+  // --- issue 4.E: boolean connectives (precedence: not > and > xor > or > implies) ---
+
+  "\"a or b and c\"" should "parse with and binding tighter than or" in
+  {
+    assert(parse("a or b and c") ==
+      Or(_Variable("a"), And(_Variable("b"), _Variable("c"))))
+  }
+
+  "\"not a and b\"" should "parse as (not a) and b" in
+  {
+    assert(parse("not a and b") == And(Not(_Variable("a")), _Variable("b")))
+  }
+
+  "\"x = 1 and y = 2\"" should "parse as a conjunction of two equations" in
+  {
+    assert(parse("x = 1 and y = 2") ==
+      And(equation._Equation(_Variable("x"), _Number(1.0)),
+          equation._Equation(_Variable("y"), _Number(2.0))))
+  }
+
+  "\"a and b implies c or d\"" should "parse with implies as the loosest level" in
+  {
+    assert(parse("a and b implies c or d") ==
+      Implies(And(_Variable("a"), _Variable("b")),
+              Or(_Variable("c"), _Variable("d"))))
+  }
+
+  "\"true\" and \"false\"" should "parse to the _Bool literals" in
+  {
+    assert(parse("true") == _Bool(true))
+    assert(parse("false") == _Bool(false))
+    assert(parse("truex") == _Variable("truex"))   // word-boundary guard
+  }
+
+  "logic keywords" should "be reserved words" in
+  {
+    for word <- List("and", "or", "not", "implies", "xor", "true", "false", "truth") do
+      assert(Parser.ReservedWords.contains(word), s"'$word' must be reserved")
+    assert(!Parser.parse("or").successful)
+  }
+

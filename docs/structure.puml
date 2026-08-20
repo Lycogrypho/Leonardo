@@ -618,6 +618,68 @@ package "equation" {
 }
 
 ' ===================================================
+' PACKAGE: logic - boolean logic domain (imports core)
+' ===================================================
+package "logic" {
+
+    interface "_Connective" <<trait>> [[logic.html]]
+
+    class "And" <<case>> [[logic.html]] {
+        a : _Expression
+        b : _Expression
+        __ short-circuit __
+        false and X = false (X not evaluated)
+    }
+    class "Or" <<case>> [[logic.html]] {
+        a : _Expression
+        b : _Expression
+        __ short-circuit __
+        true or X = true (X not evaluated)
+    }
+    class "Not" <<case>> [[logic.html]] {
+        a : _Expression
+    }
+    class "Implies" <<case>> [[logic.html]] {
+        a : _Expression
+        b : _Expression
+        __ short-circuit __
+        false implies X = true (X not evaluated)
+    }
+    class "Xor" <<case>> [[logic.html]] {
+        a : _Expression
+        b : _Expression
+    }
+
+    class "SimplifyLogic" <<utility>> [[logic.html]] {
+        + simplifyLogic(e, leaf): _Expression
+        + simplifyLogicFully(e, leaf): _Expression
+        __ rules __
+        constant folding, double negation,
+        idempotence, complement, absorption
+        leaf pass injected (cli passes scalar simplifyFully)
+    }
+    class "NormalForm" <<utility>> [[logic.html]] {
+        + toCNF(e): _Expression
+        + toDNF(e): _Expression
+        __ pipeline __
+        desugar implies/xor -> NNF (De Morgan) -> distribute
+        clause cap 1024 -> input unchanged
+    }
+    class "TruthTableLogic" <<utility>> [[logic.html]] {
+        + truthTable(e, vars, env): Vector
+        max 16 variables; None per non-reducing row
+    }
+
+    "_Connective" --|> "_Expression"
+    "And"     --|> "_Connective"
+    "Or"      --|> "_Connective"
+    "Not"     --|> "_Connective"
+    "Implies" --|> "_Connective"
+    "Xor"     --|> "_Connective"
+
+    "_Connective" ..> "_Bool" : reduces to at eval
+}
+' ===================================================
 ' PACKAGE: parser
 ' ===================================================
 package "parser" {
@@ -648,6 +710,7 @@ package "parser" {
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
 "Parser" ..> "_ODE"            : ode(rhs, y, t, t0, y0, target)
 "Parser" ..> "_Heaviside"      : step(expr)
+"Parser" ..> "_Connective"     : and / or / not / implies / xor; true / false literals
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)
@@ -701,5 +764,7 @@ package "cli" {
 "Session" ..> "Simplify"    : simplify command
 "Session" ..> "Expand"      : expand command
 "Session" ..> "Substitute"  : resolves definitions
+"Session" ..> "SimplifyLogic" : simplify post-pass
+"Session" ..> "TruthTableLogic" : truth command
 
 @enduml

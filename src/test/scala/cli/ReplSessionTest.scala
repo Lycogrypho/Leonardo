@@ -558,22 +558,23 @@ class ReplSessionTest extends AnyFlatSpec:
       s"expected full-precision serialization but script was:\n${s.script}")
   }
 
-  "session.script" should "serialize _Bool(true) as '0 = 0', not as bare 'true'" in
+  // Since the boolean-logic domain, `true`/`false` are grammar literals (_Bool
+  // constants), so a _Bool binding serializes directly as the literal and round-trips.
+
+  "session.script" should "serialize _Bool(true) as the literal 'true'" in
   {
     val s = session
     s.execute("h := 2 = 2")   // evaluates to _Bool(true)
     val sc = s.script
-    assert(!sc.contains("true"), s"Bool(true) must not be serialized as 'true'; got:\n$sc")
-    assert(sc.contains("h := 0 = 0"), s"expected 'h := 0 = 0'; got:\n$sc")
+    assert(sc.contains("h := true"), s"expected 'h := true'; got:\n$sc")
   }
 
-  "session.script" should "serialize _Bool(false) as '0 = 1', not as bare 'false'" in
+  "session.script" should "serialize _Bool(false) as the literal 'false'" in
   {
     val s = session
     s.execute("h := 2 = 3")   // evaluates to _Bool(false)
     val sc = s.script
-    assert(!sc.contains("false"), s"Bool(false) must not be serialized as 'false'; got:\n$sc")
-    assert(sc.contains("h := 0 = 1"), s"expected 'h := 0 = 1'; got:\n$sc")
+    assert(sc.contains("h := false"), s"expected 'h := false'; got:\n$sc")
   }
 
   "a _Bool binding saved and reloaded" should "still evaluate as a boolean" in
@@ -1265,4 +1266,89 @@ class ReplSessionTest extends AnyFlatSpec:
     // still frozen after reload: redefining a does not disturb h
     restored.execute("a := 9")
     assert(restored.execute("h") == "(3.0 * y)")
+  }
+  // --- issue 4.E: boolean logic domain ---
+
+  "a boolean expression" should "evaluate at the REPL" in
+  {
+    val s = session
+    assert(s.execute("true and false") == "false")
+    assert(s.execute("true or false") == "true")
+    assert(s.execute("not true") == "false")
+    assert(s.execute("true implies false") == "false")
+    assert(s.execute("true xor true") == "false")
+  }
+
+  "a boolean expression over bindings" should "reduce through the environment" in
+  {
+    val s = session
+    s.execute("a := 2 = 2")     // _Bool(true)
+    s.execute("b := 2 = 3")     // _Bool(false)
+    assert(s.execute("a and b") == "false")
+    assert(s.execute("a or b") == "true")
+    assert(s.execute("a and c") == "(true and c)")   // c free: stays symbolic, a reduced
+  }
+
+  "simplify with connectives" should "run the logic pass after the scalar pass" in
+  {
+    val s = session
+    assert(s.execute("simplify a and true") == "a")
+    assert(s.execute("simplify not not a") == "a")
+    assert(s.execute("simplify a or (a and b)") == "a")
+    // the injected scalar leaf pass reaches inside the connective
+    assert(s.execute("simplify not (x + 0 = x)") == "(not x = x)")
+  }
+
+  "simplify without connectives" should "behave exactly as before" in
+  {
+    val s = session
+    assert(s.execute("simplify x + 0") == "x")
+  }
+
+  "the truth command" should "print the table over the free variables" in
+  {
+    val s = session
+    val out = s.execute("truth a and b")
+    val lines = out.linesIterator.toList
+    assert(lines.size == 5, s"expected header + 4 rows; got:\n$out")
+    assert(lines.head.startsWith("a     b     | "), s"unexpected header: ${lines.head}")
+    assert(lines(1).startsWith("false false | false"))
+    assert(lines(4).startsWith("true  true  | true"))
+  }
+
+  "the truth command on a definition" should "substitute it first" in
+  {
+    val s = session
+    s.execute("f := a and b")
+    val out = s.execute("truth f or a")
+    assert(out.linesIterator.toList.size == 5, s"expected header + 4 rows; got:\n$out")
+  }
+
+  "the bare truth command" should "print a usage message" in
+  {
+    val s = session
+    assert(s.execute("truth") == "usage: truth <expr>")
+  }
+
+  "assigning to a logic keyword" should "be rejected" in
+  {
+    val s = session
+    assert(s.execute("true := 3").contains("reserved word"))
+    assert(s.execute("and := 3").contains("reserved word"))
+    assert(s.execute("truth := 3").contains("reserved word"))
+  }
+
+  "a _Bool literal binding" should "round-trip through a script" in
+  {
+    val s1 = session
+    s1.execute("ok := true")
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("ok") == "true")
+  }
+
+  "the highlighter" should "accept logic keywords without error" in
+  {
+    val h = LeonardoHighlighter(() => "dark")
+    assert(h.highlightBuffer("truth a and not b or true").toString == "truth a and not b or true")
   }

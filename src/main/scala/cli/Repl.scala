@@ -5,6 +5,7 @@ import core.*
 import scalar.*
 import matrix.*
 import equation.{_Equation, _Solve}
+import logic.{_Connective, simplifyLogicFully, truthTable, MaxTruthTableVars}
 import parser.Parser
 
 import scala.util.control.NonFatal
@@ -107,10 +108,12 @@ final class Session:
     case s"colors $name"        => setColors(name.trim)
     case "pretty"               => s"pretty = ${if prettyMatrix then "on" else "off"}"
     case s"pretty $mode"        => setPretty(mode.trim)
-    case s"simplify $rest"      => withParsed(rest)(e => simplify(resolveMatrixOps(substitute(e, definitions))).toString)
+    case s"simplify $rest"      => withParsed(rest)(e => simplifyPipeline(e).toString)
     case s"expand $rest"        => withParsed(rest)(e => expand(resolveMatrixOps(substitute(e, definitions))).toString)
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
+    case "truth"                => "usage: truth <expr>"
+    case s"truth $rest"         => withParsed(rest)(doTruthTable)
     case s":$_"                 => ":load and :save are only available at the interactive prompt"
     // Precedes the generic assignment: the reserved-name guards above already matched the
     // broader `assignment` pattern for this input, so `name` is validated by the time we
@@ -124,13 +127,13 @@ final class Session:
   /** Serialises a `_Value` for a `:save` script so that it round-trips exactly.
    *
    *  `_Number` uses the raw `Double` (`d.toString`), not the display-rounded value, so
-   *  no digits are lost regardless of session precision.  `_Bool` is written as a
-   *  concrete equation (`0 = 0` / `0 = 1`) rather than the bare words `true`/`false`,
-   *  which the grammar re-parses as free variables.
+   *  no digits are lost regardless of session precision.  `_Bool` is written as the
+   *  `true`/`false` literal, which the grammar parses back to `_Bool` (word-boundary
+   *  guarded constants, like `pi`/`e`).
    */
   private def serializeValue(v: _Value): String = v match
     case _Number(d) => d.toString
-    case _Bool(b)   => if b then "0 = 0" else "0 = 1"
+    case _Bool(b)   => if b then "true" else "false"
     case other      => other.toString
 
   /** Shared line-builder for `script` (replayable) and `state` (human-readable). */
@@ -231,6 +234,43 @@ final class Session:
   private def containsSolve(e: _Expression): Boolean = e match
     case _: _Solve => true
     case _         => e.children.exists(containsSolve)
+
+  /** Returns `true` when the expression tree contains a boolean connective node. */
+  private def containsConnective(e: _Expression): Boolean = e match
+    case _: _Connective => true
+    case _              => e.children.exists(containsConnective)
+
+  /** The `simplify` command pipeline: matrix algebra first, then the scalar structural
+   *  pass, then -- only when connectives are present -- the logic pass, with
+   *  `scalar.simplifyFully` injected as its leaf pass so scalar bodies nested inside
+   *  connectives are simplified too.  The connective gate keeps purely scalar input
+   *  byte-identical to the scalar-only pipeline.
+   */
+  private def simplifyPipeline(e: _Expression): _Expression =
+    val prepared = simplify(resolveMatrixOps(substitute(e, definitions)))
+    if containsConnective(prepared) then simplifyLogicFully(prepared, simplifyFully) else prepared
+
+  /** Handles the `truth <expr>` command: tabulates the expression over its free
+   *  variables (definitions substituted first; session numeric bindings are ignored --
+   *  every free variable is enumerated as a boolean).  Rows that do not reduce to a
+   *  boolean show `?` in the result column.
+   */
+  private def doTruthTable(e: _Expression): String =
+    val body = substitute(e, definitions)
+    val vars = body.freeVars.toList.sorted.map(_Variable.apply)
+    if vars.sizeIs > MaxTruthTableVars then
+      s"truth: too many variables (${vars.size}); the limit is $MaxTruthTableVars"
+    else
+      val names  = vars.map(_.variable)
+      val widths = names.map(n => math.max(n.length, 5))  // "false" is 5 characters
+      def row(cells: List[String], result: String): String =
+        val vals = cells.zip(widths).map((c, w) => c.padTo(w, ' ')).mkString(" ")
+        if vals.isEmpty then s"| $result" else s"$vals | $result"
+      val header = row(names, body.toString)
+      val lines  = truthTable(body, vars, new Environment(precision)).map { (assignment, result) =>
+        row(names.map(n => assignment(n).toString), result.map(_.toString).getOrElse("?"))
+      }
+      (header +: lines).mkString("\n")
 
   /** Auto-binds the solved variable when `solve` produces a result at the REPL top level.
    *
@@ -538,6 +578,13 @@ object Session:
          |  pretty on           stack rows on separate lines, right-align columns
          |  pretty off          single-line [[...], [...]] form (default)
          |  pretty              show the current setting""".stripMargin,
+    "truth" ->
+      """|Print the truth table of a boolean expression over its free variables.
+         |Variables are enumerated as true/false (the first variable varies slowest);
+         |rows that do not reduce to a boolean show "?".  Limit: 16 variables.
+         |Connective precedence (tightest to loosest): not, and, xor, or, implies.
+         |  truth a and (b or not a)
+         |  truth (a or b) and not (a and b)     equivalent to a xor b""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -654,6 +701,9 @@ object Session:
       |simplify <expr>      structural simplification (matrix algebra is carried out,
       |                     then each element is simplified; scalars ignore bindings)
       |expand <expr>        distribute products over sums (matrix algebra as above)
+      |a and b, not a, ...  boolean connectives (loosest first): implies, or, xor, and,
+      |                     not; literals true/false; see "help truth" for truth tables
+      |truth <expr>         print the truth table over the expression's free variables
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)

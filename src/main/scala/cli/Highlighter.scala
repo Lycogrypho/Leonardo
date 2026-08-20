@@ -14,9 +14,9 @@ import java.util.regex.Pattern
  *
  *  @param command  REPL command keywords (`simplify`, `derive`, `colors`, ...)
  *  @param function mathematical function names (`sin`, `cos`, `exp`, ...)
- *  @param constant named constants (`pi`, `e`, `i`)
+ *  @param constant named constants (`pi`, `e`, `i`) and the boolean literals (`true`, `false`)
  *  @param number   numeric literals
- *  @param operator arithmetic operators and `:=`
+ *  @param operator arithmetic operators, `:=`, and the word connectives (`and`, `or`, `not`, `implies`, `xor`)
  *  @param equation bare `=` (equation relation)
  *  @param paren    parentheses and square brackets
  *  @param variable user identifiers and everything else
@@ -98,12 +98,13 @@ object ColorScheme:
 class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
 
   private val Commands  = Set("simplify", "expand", "eval", "precision", "env",
-                               "unset", "help", "samples", "colors", "pretty", "quit", "exit")
+                               "unset", "help", "samples", "colors", "pretty", "truth", "quit", "exit")
   private val Functions = Set("sin", "cos", "tan", "tg", "asin", "acos", "atan",
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",
                                "limit", "laplace", "fourier", "invlaplace", "ode")
-  private val Constants = Set("pi", "e", "i")
+  private val LogicOps  = Set("and", "or", "not", "implies", "xor")
+  private val Constants = Set("pi", "e", "i", "true", "false")
 
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
   private val WordPat = raw"[a-zA-Z][a-zA-Z0-9_]*".r
@@ -146,6 +147,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
             val style =
               if pos == firstNonWs && Commands.contains(word) then cs.command
               else if Functions.contains(word)                then cs.function
+              else if LogicOps.contains(word)                 then cs.operator
               else if Constants.contains(word)               then cs.constant
               else                                                cs.variable
             put(style, word)

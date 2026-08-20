@@ -1,6 +1,6 @@
 ---
 title: Cheatsheet
-nav_order: 9
+nav_order: 10
 ---
 
 <img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
@@ -27,6 +27,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `expand <expr>` | Distribute products over sums |
 | `eval <expr>` | Evaluate substituting current bindings |
 | `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts) |
+| `truth <expr>` | Truth table over the expression's free variables |
 | `unset <name>` | Remove a binding or definition |
 | `:save <file>` | Write session to a replayable script |
 | `:load <file>` | Replay a session script from file |
@@ -169,6 +170,30 @@ solveSystem([[2*x + y = 3, x - y = 0]], x, y)   -> [[x = 1.0, y = 1.0]]
 
 ---
 
+## Boolean logic
+
+### Connectives
+
+```
+true and false                  -> false   (true/false are literals)
+not a                           negation
+a implies b                     material implication (right-associative)
+a xor b                         exclusive or
+a or b and c                    = a or (b and c)
+x = 1 and y = 2                 connectives bind looser than "="
+false and (1/0 = 0)             -> false   (short-circuit: right side never evaluated)
+```
+
+Precedence (tightest to loosest): `not` > `and` > `xor` > `or` > `implies`.
+
+### Simplification & truth tables
+
+```
+simplify a and true             -> a
+simplify not not a              -> a
+simplify a or (a and b)         -> a   (absorption)
+truth a and b                   truth table over the free variables (max 16)
+```
 ## Complex numbers
 
 `i` is the imaginary unit; arithmetic with `i` produces complex results automatically.
