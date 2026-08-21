@@ -742,6 +742,18 @@ object Session:
          |  logic product             and = a*b, or = a+b-a*b
          |  logic lukasiewicz         and = max(0,a+b-1), or = min(1,a+b)
          |  logic                     show both settings""".stripMargin,
+    "taylor" ->
+      """|Expand an expression as a truncated Taylor polynomial about a point.
+         |maclaurin(e, v, n) is sugar for taylor(e, v, 0, n).  Order is capped at 20.
+         |  maclaurin(exp(x), x, 4)     -> 1 + x + x^2/2 + x^3/6 + x^4/24
+         |  maclaurin(sin(x), x, 7)     odd powers only
+         |  taylor(exp(x), x, 1, 4)     expanded about x = 1
+         |  taylor(x^2, x, a, 2)        a symbolic centre is fine; the result is
+         |                              a polynomial in (x - a)
+         |The expansion variable stays FREE in the result, so binding it evaluates the
+         |polynomial.  Stays symbolic when the order is not an integer in 0..20, or when
+         |a coefficient cannot be differentiated -- maclaurin(Gamma(x), x, 3) needs the
+         |digamma function and so returns unevaluated rather than a bogus series.""".stripMargin,
     "fact" ->
       """|Factorial and the gamma family.
          |  fact(5)             -> 120.0      exact for integers up to 170!
@@ -877,6 +889,7 @@ object Session:
       |truth <expr>         print the truth table over the expression's free variables
       |truth3 <expr>        three-valued table: false / unknown / true per variable
       |fact(n), Gamma(z)    factorial and gamma family; see "help fact"
+      |taylor(e,v,pt,n)     Taylor/Maclaurin expansion; see "help taylor"
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)

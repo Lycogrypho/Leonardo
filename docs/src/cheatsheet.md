@@ -156,6 +156,23 @@ samples f x 0 10 500            500 points for defined function f
 
 ---
 
+## Series expansions
+
+```
+maclaurin(exp(x), x, 4)     -> 1 + x + x^2/2 + x^3/6 + x^4/24
+maclaurin(sin(x), x, 7)     odd powers only
+maclaurin(cos(x), x, 6)     even powers only
+maclaurin(1/(1-x), x, 5)    the geometric series
+taylor(exp(x), x, 1, 4)     expanded about x = 1
+taylor(x^2, x, a, 2)        symbolic centre: a polynomial in (x - a)
+```
+
+`maclaurin(e, v, n)` is sugar for `taylor(e, v, 0, n)`.  The expansion variable stays
+free in the result, so binding it evaluates the polynomial.  Order is capped at 20;
+an expression whose derivative stays symbolic (`Gamma`, `fact`) returns unevaluated
+rather than a bogus series.
+
+---
 ## Equations & solving
 
 ### Equation relations

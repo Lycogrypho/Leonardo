@@ -157,3 +157,42 @@ case class _Limit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDi
     val result = evalLimit(e, v, point, dir, env)
     if result == this then Left(this)
     else result.eval(env)
+
+
+/** Taylor expansion of `e` in `v` about `point`, truncated after order `n`:
+ *  `taylor(e, v, point, n)`.
+ *
+ *  `v` is the *expansion* variable, not a binder: unlike `_Derivative`'s or `_Integral`'s
+ *  variable it appears **free in the result**, which is a polynomial in `(v - point)` —
+ *  the same role the output variable plays in `_Laplace`.  It is nevertheless kept out of
+ *  `children` and carried through `rebuild`, so `substitute` cannot rewrite the variable
+ *  the expansion is taken in.
+ *
+ *  `eval` builds the series with [[taylorSeries]] and evaluates the result, so a bound `v`
+ *  folds the polynomial to a number while a free one leaves it symbolic.  It stays
+ *  symbolic when `n` does not reduce to an integer in `0 .. MaxTaylorOrder`, or when some
+ *  coefficient cannot be differentiated (`Gamma`, `fact`, ... — see `hasDerivative`).
+ *
+ *  `maclaurin(e, v, n)` in the grammar is sugar for `taylor(e, v, 0, n)` and prints in
+ *  that form, exactly as `log(x)` prints as `log(x, 10)`.
+ *
+ *  @param e     the expression to expand
+ *  @param v     the expansion variable
+ *  @param point the centre of the expansion
+ *  @param n     the truncation order
+ */
+case class _Taylor(e: _Expression, v: _Variable, point: _Expression, n: _Expression)
+    extends _Functional:
+  override def toString: String = s"taylor($e, $v, $point, $n)"
+  override def children: List[_Expression] = List(e, point, n)
+  override def rebuild(c: List[_Expression]): _Expression = _Taylor(c.head, v, c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    n.eval(env) match
+      case Right(_Number(d)) if d.isWhole && d >= 0 && d <= MaxTaylorOrder =>
+        // point is NOT required to reduce: expanding about a symbolic centre is
+        // meaningful, so it is passed through as it stands.
+        taylorSeries(e, v, point, d.toInt) match
+          case Some(series) => series.eval(env)
+          case None         => Left(this)
+      case _ => Left(this)
