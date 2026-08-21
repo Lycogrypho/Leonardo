@@ -229,3 +229,69 @@ class SolveTest extends AnyFlatSpec:
     assert(roots.forall(r => math.abs(math.sin(r)) < 1e-5),
       s"all found values must be genuine roots: $roots")
   }
+
+  // --- issue 1.1: ill-conditioned quadratics must not lose the small root ---
+
+  /** Relative error of `actual` against `expected` (which must be non-zero). */
+  def relError(actual: Double, expected: Double): Double =
+    math.abs((actual - expected) / expected)
+
+  "solve(x^2 + 1e8*x + 1 = 0)" should "recover BOTH roots, not just the large one" in
+  {
+    // Textbook (-b +- sqrt(delta))/2a cancels catastrophically here: sqrt(delta) is
+    // equal to b to within a few ulps, so the subtracting branch kept only ~1 digit
+    // and returned -7.45e-9 for a root whose true value is -1e-8 (25% error).
+    val roots = num(solve(parseEq("x^2 + 1e8*x + 1 = 0"), x))
+    assert(roots.size == 2, s"expected two roots, got: $roots")
+    assert(relError(roots.head, -1e8) < 1e-12, s"large root wrong: ${roots.head}")
+    assert(relError(roots(1), -1e-8) < 1e-12, s"small root wrong: ${roots(1)}")
+  }
+
+  it should "hold for the mirrored sign of b as well" in
+  {
+    // exercises the opposite branch of the sign(b) selection
+    val roots = num(solve(parseEq("x^2 - 1e8*x + 1 = 0"), x))
+    assert(roots.size == 2, s"expected two roots, got: $roots")
+    assert(relError(roots.head, 1e-8) < 1e-12, s"small root wrong: ${roots.head}")
+    assert(relError(roots(1), 1e8) < 1e-12, s"large root wrong: ${roots(1)}")
+  }
+
+  "the roots of an ill-conditioned quadratic" should "satisfy the equation they came from" in
+  {
+    // the property that actually matters: substituting the root back must give ~0
+    // relative to the scale of the terms involved
+    for eq <- List("x^2 + 1e8*x + 1 = 0", "x^2 - 1e8*x + 1 = 0", "x^2 + 1e6*x + 4 = 0") do
+      for r <- num(solve(parseEq(eq), x)) do
+        val residual = r * r + (if eq.contains("- 1e8") then -1e8 * r else if eq.contains("1e6") then 1e6 * r else 1e8 * r) +
+                       (if eq.contains("1e6") then 4.0 else 1.0)
+        assert(math.abs(residual) < 1e-6 * math.max(1.0, math.abs(r)),
+          s"$eq: root $r leaves residual $residual")
+  }
+
+  "Vieta's relations" should "hold for an ill-conditioned quadratic" in
+  {
+    // product of roots = c/a = 1, sum = -b/a = -1e8; the product is the relation the
+    // stable form is built on, so it is the sharpest check available
+    val roots = num(solve(parseEq("x^2 + 1e8*x + 1 = 0"), x))
+    assert(relError(roots.head * roots(1), 1.0) < 1e-12, s"product: ${roots.head * roots(1)}")
+    assert(relError(roots.head + roots(1), -1e8) < 1e-12, s"sum: ${roots.head + roots(1)}")
+  }
+
+  "the well-conditioned cases" should "be unaffected by the stable form" in
+  {
+    assert(num(solve(parseEq("x^2 = 4"), x)) == List(-2.0, 2.0))
+    assert(num(solve(parseEq("x^2 - 3 * x + 2 = 0"), x)) == List(1.0, 2.0))
+    assert(num(solve(parseEq("x^2 - 2 * x + 1 = 0"), x)) == List(1.0))
+    assert(solve(parseEq("x^2 + 1 = 0"), x).isEmpty)
+  }
+
+  "a quadratic with b = 0" should "still work (signum(0) would collapse the stable form)" in
+  {
+    assert(num(solve(parseEq("x^2 - 9 = 0"), x)) == List(-3.0, 3.0))
+    assert(num(solve(parseEq("2 * x^2 - 8 = 0"), x)) == List(-2.0, 2.0))
+  }
+
+  "a quadratic with c = 0" should "give the zero root exactly" in
+  {
+    assert(num(solve(parseEq("x^2 + 5 * x = 0"), x)) == List(-5.0, 0.0))
+  }

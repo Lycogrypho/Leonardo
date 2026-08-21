@@ -235,8 +235,18 @@ final class Session:
   private def symmetricDigit(s: Double): String =
     if s == s.round.toDouble then s.round.toString else _Number(s).display(precision)
 
-  /** Renders a truth value for a table cell or an assignment echo, honouring the toggle. */
-  private def truthCell(v: _Value): String = symmetricSpelling(v).getOrElse(v.toString)
+  /** Renders a value for a table cell or an assignment echo, honouring the symmetric
+   *  toggle and the session precision.
+   *
+   *  A `_Number` goes through `display(precision)` rather than `toString`, which is fixed
+   *  at `Environment.DefaultPrecision`.  Without this a small result renders as `0.0`
+   *  however high the session precision is set -- which is exactly how the `solve`
+   *  quadratic defect looked like a 100% error when it was in fact 25%.  Everything else
+   *  keeps `toString`, so matrix echoes are unchanged.
+   */
+  private def truthCell(v: _Value): String = symmetricSpelling(v).getOrElse(v match
+    case n: _Number => n.display(precision)
+    case other      => other.toString)
 
   /** Formats `e` for display, applying session precision recursively.
    *

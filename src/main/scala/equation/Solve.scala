@@ -357,6 +357,14 @@ private def sameValue(a: _Value, b: _Value, tol: Double): Boolean = (a, b) match
 /** Returns the real roots of `c2*x^2 + c1*x + c0 = 0`.
  *  Numeric coefficients: 0, 1, or 2 `_Number` roots.
  *  Symbolic coefficients: both +/-sqrt(delta) closed forms.
+ *
+ *  The numeric branch uses the **stable** form rather than the textbook
+ *  `(-b +/- sqrt(delta)) / 2a`.  When `b*b` dominates `4ac` the square root is nearly
+ *  equal to `|b|`, so whichever of the `+/-` branches *subtracts* them loses almost all
+ *  of its significant digits -- for `x^2 + 1e8*x + 1` the small root came out 25% wrong.
+ *  Forming the root of larger magnitude first (where the two terms have the same sign and
+ *  therefore add) and recovering the other from the root product `x1 * x2 = c/a` avoids
+ *  the subtraction entirely.
  */
 private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): List[_Expression] =
   (c0, c1, c2) match
@@ -366,7 +374,14 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): L
       else if delta == 0.0 then List(_Number(-a1 / (2.0 * a2)))
       else
         val sq = math.sqrt(delta)
-        List(_Number((-a1 - sq) / (2.0 * a2)), _Number((-a1 + sq) / (2.0 * a2)))
+        // signum(0) is 0, which would collapse q; with b = 0 the two terms cannot
+        // cancel anyway, so take the plain form there.
+        val q  = if a1 == 0.0 then -sq / 2.0 else -(a1 + math.signum(a1) * sq) / 2.0
+        // q is never 0 here: delta > 0 forces sq > 0, and a1 + signum(a1)*sq has the
+        // magnitude of |a1| + sq.  So both divisions are safe.
+        val r1 = q / a2
+        val r2 = a0 / q
+        List(_Number(math.min(r1, r2)), _Number(math.max(r1, r2)))
     case _ =>
       // Symbolic coefficients: both +-sqrt(delta) closed forms (sign of delta unknown).
       val delta = Sum(Power(c1, _Number(2)), Product(_Number(-4), Product(c2, c0)))
