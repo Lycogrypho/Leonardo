@@ -45,4 +45,15 @@ def compile(e: _Expression, v: _Variable, env: Environment): Option[Double => Do
   case Asin(a)       => compile(a, v, env).map(fa => (x: Double) => asin(fa(x)))
   case Acos(a)       => compile(a, v, env).map(fa => (x: Double) => acos(fa(x)))
   case Atan(a)       => compile(a, v, env).map(fa => (x: Double) => atan(fa(x)))
+  // Special functions: an undefined point yields NaN, which `sample` and Simpson
+  // already drop -- the same contract `Ln` has for a negative argument.
+  case Factorial(a) => compile(a, v, env).map(fa => (x: Double) => factorialOf(fa(x)).getOrElse(Double.NaN))
+  case Gamma(a)     => compile(a, v, env).map(fa => (x: Double) => gammaOf(fa(x)).getOrElse(Double.NaN))
+  case LogGamma(a)  => compile(a, v, env).map(fa => (x: Double) => lgammaOf(fa(x)).getOrElse(Double.NaN))
+  case MultiFactorial(a, b) =>
+    for fa <- compile(a, v, env); fb <- compile(b, v, env)
+    yield (x: Double) => multiFactorialOf(fa(x), fb(x)).getOrElse(Double.NaN)
+  case Beta(a, b)   =>
+    for fa <- compile(a, v, env); fb <- compile(b, v, env)
+    yield (x: Double) => betaOf(fa(x), fb(x)).getOrElse(Double.NaN)
   case _             => None  // _Derivative, _Integral, _DefIntegral, unresolvable

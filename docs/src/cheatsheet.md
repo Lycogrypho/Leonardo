@@ -92,6 +92,24 @@ L, U, P := lu(A)       tuple binding from a 1×n decomposition result
 
 ---
 
+## Special functions
+
+```
+fact(5)                 -> 120.0    exact for integers up to 170!; 171! stays symbolic
+fact(0.5)               -> 0.88623  analytic continuation, = Gamma(1.5) = sqrt(pi)/2
+dfact(7)                -> 105.0    double factorial 7!! = 7*5*3*1
+mfact(10, 3)            -> 280.0    multifactorial, step 3: 10*7*4*1
+Gamma(5)                -> 24.0     Gamma(n) = (n-1)!
+Gamma(0.5)              -> 1.77245  = sqrt(pi)
+lgamma(1e5)                         ln|Gamma| -- finite where Gamma overflows
+Beta(1, 4)              -> 0.25     Gamma(a)Gamma(b)/Gamma(a+b)
+```
+
+`Gamma` and `Beta` are **capitalised** so that lowercase `gamma` and `beta` remain
+usable as ordinary variable names.  Poles (0, -1, -2, ...), overflow and complex
+arguments all stay symbolic rather than returning infinities.
+
+---
 ## Calculus
 
 ### Differentiation

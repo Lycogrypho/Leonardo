@@ -732,6 +732,20 @@ object Session:
          |  logic product             and = a*b, or = a+b-a*b
          |  logic lukasiewicz         and = max(0,a+b-1), or = min(1,a+b)
          |  logic                     show both settings""".stripMargin,
+    "fact" ->
+      """|Factorial and the gamma family.
+         |  fact(5)             -> 120.0      exact for integers up to 170!
+         |  fact(0.5)           -> 0.88623    analytic continuation: Gamma(1.5)
+         |  dfact(7)            -> 105.0      double factorial 7!! = 7*5*3*1
+         |  mfact(10, 3)        -> 280.0      multifactorial, step 3: 10*7*4*1
+         |  Gamma(5)            -> 24.0       Gamma(n) = (n-1)!
+         |  lgamma(1e5)                       ln|Gamma| -- finite where Gamma overflows
+         |  Beta(1, 4)          -> 0.25       Beta(a,b) = Gamma(a)Gamma(b)/Gamma(a+b)
+         |Gamma and Beta are capitalised so that lowercase "gamma" and "beta" stay
+         |available as ordinary variable names.  Poles (0, -1, -2, ...), 171! and
+         |beyond, and complex arguments all stay symbolic rather than returning
+         |infinities.  Differentiating Gamma needs the digamma function, which is not
+         |implemented, so derive(Gamma(x), x) stays symbolic.""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -852,6 +866,7 @@ object Session:
       |                     not; literals true/false/unknown (three-valued Kleene)
       |truth <expr>         print the truth table over the expression's free variables
       |truth3 <expr>        three-valued table: false / unknown / true per variable
+      |fact(n), Gamma(z)    factorial and gamma family; see "help fact"
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)

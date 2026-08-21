@@ -246,3 +246,116 @@ case class Atan(e: _Expression) extends _Function:
       case Right(mv: _MatrixValue) => mapMatrix(mv, atan)
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
       case other             => Left(Atan(other.toExpression))
+
+
+/** The factorial `fact(e)` = `e!`.
+ *
+ *  A non-negative integer argument uses the exact table; a non-integer argument is the
+ *  analytic continuation `Gamma(e + 1)`, so `fact(0.5)` is `sqrt(pi)/2`.  Stays symbolic
+ *  at the poles (negative integers), past the `170!` overflow bound, and on a complex
+ *  argument (the `Asin` convention).  Distributes element-wise over a matrix argument
+ *  like every other `_Function`.
+ *
+ *  Differentiating it needs the digamma function, which is not implemented, so
+ *  `derive(fact(x), x)` stays symbolic.
+ *
+ *  @param e the argument expression
+ */
+case class Factorial(e: _Expression) extends _Function:
+  override def toString: String = s"fact($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Factorial(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(_Number(x))       => factorialOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => factorialOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Factorial(other.toExpression))
+
+
+/** The multifactorial `mfact(e, k)` = `e * (e-k) * (e-2k) * ...`.
+ *
+ *  `mfact(n, 1)` is the ordinary factorial and `mfact(n, 2)` the double factorial, which
+ *  the grammar spells `dfact(n)` and desugars to `mfact(n, 2)` -- the same sugar
+ *  relationship `log(x)` has with `LogBase(x, 10)`.  Defined for a non-negative integer
+ *  argument and a positive integer step; anything else stays symbolic.
+ *
+ *  @param e the argument expression
+ *  @param k the step expression
+ */
+case class MultiFactorial(e: _Expression, k: _Expression) extends _Function:
+  override def toString: String = s"mfact($e, $k)"
+  override def children: List[_Expression] = List(e, k)
+  override def rebuild(c: List[_Expression]): _Expression = MultiFactorial(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (e.eval(env), k.eval(env)) match
+      case (Right(_Number(x)), Right(_Number(s))) =>
+        multiFactorialOf(x, s).map(r => Right(_Number(r))).getOrElse(Left(this))
+      case (ra, rk) => Left(MultiFactorial(ra.toExpression, rk.toExpression))
+
+
+/** The gamma function `Gamma(e)`, the analytic continuation of the factorial.
+ *
+ *  Spelled with a capital `G` in the grammar on purpose: it keeps the lowercase `gamma`
+ *  free as an ordinary variable name, which it very commonly is (Lorentz factor,
+ *  Euler-Mascheroni constant, regression coefficients).  `Beta` follows the same rule;
+ *  `lgamma` does not need it, since it is not a name anyone binds.
+ *
+ *  Stays symbolic at the poles `0, -1, -2, ...`, on overflow, and on complex arguments.
+ *
+ *  @param e the argument expression
+ */
+case class Gamma(e: _Expression) extends _Function:
+  override def toString: String = s"Gamma($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Gamma(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Gamma(other.toExpression))
+
+
+/** The log-gamma function `lgamma(e)` = `ln|Gamma(e)|`.
+ *
+ *  Stays finite well past the point where `Gamma` itself overflows, which is what it is
+ *  for.  Lowercase because, unlike `Gamma`/`Beta`, it collides with nothing.
+ *
+ *  @param e the argument expression
+ */
+case class LogGamma(e: _Expression) extends _Function:
+  override def toString: String = s"lgamma($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = LogGamma(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(_Number(x))       => lgammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => lgammaOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(LogGamma(other.toExpression))
+
+
+/** The beta function `Beta(a, b)` = `Gamma(a)Gamma(b) / Gamma(a+b)`.
+ *
+ *  Capitalised for the same reason as [[Gamma]]: lowercase `beta` stays available as a
+ *  variable.  Computed through `lgamma` for positive arguments so it survives large
+ *  inputs; stays symbolic when any factor is undefined.
+ *
+ *  @param a the first argument
+ *  @param b the second argument
+ */
+case class Beta(a: _Expression, b: _Expression) extends _Function:
+  override def toString: String = s"Beta($a, $b)"
+  override def children: List[_Expression] = List(a, b)
+  override def rebuild(c: List[_Expression]): _Expression = Beta(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (a.eval(env), b.eval(env)) match
+      case (Right(_Number(x)), Right(_Number(y))) =>
+        betaOf(x, y).map(r => Right(_Number(r))).getOrElse(Left(this))
+      case (ra, rb) => Left(Beta(ra.toExpression, rb.toExpression))

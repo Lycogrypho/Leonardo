@@ -103,7 +103,8 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",
                                "limit", "laplace", "fourier", "invlaplace", "ode",
-                               "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz")
+                               "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz",
+                               "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta")
   private val LogicOps  = Set("and", "or", "not", "implies", "xor")
   private val Constants = Set("pi", "e", "i", "true", "false", "unknown")
 

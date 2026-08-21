@@ -69,6 +69,9 @@ object Parser extends JavaTokenParsers:
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
+    "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
+                                                         // Gamma/Beta are capitalised so the
+                                                         // lowercase names stay free as variables
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
     "unset", "samples", "colors", "pretty", "truth3", "logic", "help", "quit", "exit" // REPL commands
@@ -314,6 +317,14 @@ object Parser extends JavaTokenParsers:
     "eig("    ~> guardedExpr <~ ")"                                       ^^ _EigDecomposition.apply       |
     "jordan(" ~> guardedExpr <~ ")"                                       ^^ _JordanDecomposition.apply    |
     "step("   ~> guardedExpr <~ ")"                                       ^^ _Heaviside.apply           |
+    // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
+    // log(x) has with LogBase(x, 10).
+    "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |
+    "dfact("  ~> guardedExpr <~ ")"       ^^ { n => MultiFactorial(n, _Number(2)) }                        |
+    "mfact("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case n ~ _ ~ k => MultiFactorial(n, k) }      |
+    "lgamma(" ~> guardedExpr <~ ")"                                       ^^ LogGamma.apply                |
+    "Gamma("  ~> guardedExpr <~ ")"                                       ^^ Gamma.apply                   |
+    "Beta("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case x ~ _ ~ y => Beta(x, y) }                |
     // Fuzzy tier: truth(x) converts a scalar degree into a truth value (and is the
     // printed form of a graded _Truth); the hedges and curves produce degrees directly.
     "truth("    ~> guardedExpr <~ ")"                                     ^^ _TruthOf.apply                |
