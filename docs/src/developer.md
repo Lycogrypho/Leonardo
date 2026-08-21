@@ -17,24 +17,25 @@ conventions, and a step-by-step recipe for adding new features.
 
 ## Table of contents
 
-1. [Project overview](#project-overview)
-2. [Package layering](#package-layering)
-3. [Core abstractions](#core-abstractions)
-4. [Dual evaluation model](#dual-evaluation-model)
-5. [Generic traversal: children / rebuild](#generic-traversal-children--rebuild)
-6. [Marker traits](#marker-traits)
-7. [Environment and precision](#environment-and-precision)
-8. [Algorithm modules](#algorithm-modules)
-9. [Memoisation](#memoisation)
-10. [The parser](#the-parser)
-11. [The REPL and Session](#the-repl-and-session)
-12. [Algorithm references](#algorithm-references)
-13. [Code conventions](#code-conventions)
-14. [How to add a new AST node](#how-to-add-a-new-ast-node)
-15. [How to add a new integration rule](#how-to-add-a-new-integration-rule)
-16. [How to add a new domain package](#how-to-add-a-new-domain-package)
-17. [Test conventions](#test-conventions)
-18. [Build system](#build-system)
+ 1. [Project overview](#project-overview)
+ 2. [Package layering](#package-layering)
+ 3. [Core abstractions](#core-abstractions)
+ 4. [Dual evaluation model](#dual-evaluation-model)
+ 5. [Generic traversal: children / rebuild](#generic-traversal-children--rebuild)
+ 6. [Marker traits](#marker-traits)
+ 7. [Environment and precision](#environment-and-precision)
+ 8. [Recurring design patterns](#recurring-design-patterns)
+ 9. [Algorithm modules](#algorithm-modules)
+10. [Memoisation](#memoisation)
+11. [The parser](#the-parser)
+12. [The REPL and Session](#the-repl-and-session)
+13. [Algorithm references](#algorithm-references)
+14. [Code conventions](#code-conventions)
+15. [How to add a new AST node](#how-to-add-a-new-ast-node)
+16. [How to add a new integration rule](#how-to-add-a-new-integration-rule)
+17. [How to add a new domain package](#how-to-add-a-new-domain-package)
+18. [Test conventions](#test-conventions)
+19. [Build system](#build-system)
 
 ---
 
@@ -194,7 +195,168 @@ val env2 = env.withBinding("x", _Number(3.14))   // scoped copy — original unc
 `withBinding` into recursive `eval` calls is how binder variables are scoped during
 `_DefIntegral`, `_ODE`, etc.
 
-`Environment.DefaultPrecision = 5` is the single source of truth for rounding.
+`Environment` carries four fields today — `precision`, the variable bindings,
+`symmetricLogic` and `semantics` — the last two added as *defaulted* parameters so
+existing call sites keep compiling (see [Recurring design patterns](#recurring-design-patterns),
+pattern 4).
+
+`Environment.DefaultPrecision = 5` is the single source of truth for rounding, and one
+point is easy to get wrong: **rounding is a display concern only**.  `_Number.eval` is
+`Right(this)` and never rounds — the only `_Number.round` call sites are in `toString`
+and `display(p)`, and the same holds for `_Complex` and `_Truth`.  A computation
+therefore carries full `Double` precision from end to end; `precision` decides only how a
+result is *shown*.
+
+The single place `precision` changes **semantics** is the equality tolerance in
+`equation.compareSides` (`0.5 · 10⁻ᵖ`), which is what makes `sin(pi) = 0` evaluate to
+`true` despite the floating-point residue.
+
+A related trap: `_Number.toString` is fixed at `DefaultPrecision` and ignores the session
+setting, so anything rendered through it — rather than through `Session.formatExpression`
+or `truthCell` — will print at 5 decimals however the session is configured.
+
+---
+
+## Recurring design patterns
+
+These eight patterns recur across the domains.  Recognising them is usually enough to
+predict how a new feature should be built, and most review comments on this codebase come
+down to one of them.
+
+### 1. Sibling value types with a collapsing factory
+
+When a richer numeric domain is added, it becomes a **sibling** of the simpler one rather
+than replacing it, and its companion carries a smart `of` factory that **collapses back to
+the simpler type whenever nothing is lost**:
+
+```scala
+_Complex.of(3.0, 0.0)   // _Number(3.0)   — a zero imaginary part is just a real
+_Truth.of(1.0)          // _Bool(true)    — a crisp degree is just a boolean
+_Truth.of(0.3)          // _Truth(0.3)    — genuinely graded, so it stays
+```
+
+The payoff is that **every `case _Number(x)` and `case _Bool(b)` already written keeps
+firing**.  Adding complex numbers did not invalidate the real fast path, and adding fuzzy
+degrees did not invalidate the boolean one.  The constructors are `private`, so `of` is the
+only route in and the invariant cannot be broken from outside.
+
+Do this rather than widening the existing type in place — the latter is a rewrite of every
+pattern match in the library.  Worked examples: `core/_Complex.scala` and `core/_Truth.scala`.
+
+### 2. Widening readers
+
+The dual of pattern 1.  Where a factory narrows on the way *out*, a reader **widens on the
+way in**, so one rule table serves every value in the tower:
+
+```scala
+asTruth(_Bool(true))   // Some(1.0)
+asTruth(_Truth(0.3))   // Some(0.3)
+asTruth(_Number(2))    // None  -> the node stays symbolic
+```
+
+This is the `Int` → `Double` analogy: you do not write `+` twice, you widen the `Int`.
+Because of it the boolean, Kleene and fuzzy logics share *literally* one implementation of
+`And` — the boolean truth table is not a special case in the code, it is a special case of
+the arithmetic.
+
+### 3. Domain errors stay symbolic — the "Asin convention"
+
+A function that cannot produce a correct concrete answer returns `Left` (stays symbolic)
+rather than guessing, throwing, or propagating a non-finite value:
+
+| Situation | Result |
+|---|---|
+| `ln(0)`, `x/0` | stays symbolic — not `-Infinity`, not `NaN` |
+| `fact(171)` | stays symbolic — `171!` overflows a `Double` |
+| `Gamma(0)` | stays symbolic — a pole |
+| `asin` of a complex argument | stays symbolic — outside the implemented domain |
+| `trimf` with out-of-order feet | stays symbolic — not a curve |
+
+Numeric kernels signal this by returning `Option[Double]`; the node maps `None` to
+`Left(this)`.  A symbolic result is a *useful* answer — the user can see what did not
+reduce — whereas an infinity silently poisons everything downstream.
+
+### 4. Defaulted `Environment` fields for behaviour toggles
+
+New evaluation modes are added as **defaulted** fields on `Environment`, never as new node
+types or forked packages:
+
+```scala
+class Environment(precision:      Int             = DefaultPrecision,
+                  variables:      Map[String, _Value] = Map(),
+                  symmetricLogic: Boolean         = false,           // 4.G
+                  semantics:      LogicSemantics  = MinMax)          // 4.H
+```
+
+Defaulting keeps roughly 500 existing positional call sites compiling untouched, and the
+default path stays byte-identical, which makes "the whole existing suite still passes" a
+meaningful check rather than a coincidence.  `withBinding` must thread **every** field
+through, or a mode silently evaporates inside a scoped evaluation.
+
+Put a knob here — not in `cli` — when a *bound variable* has to participate.  A
+parse-time-only encoding would convert literals but not `a` after `a := 0`.
+
+### 5. Injected passes to preserve layering
+
+`logic` may not import `scalar`, yet `simplifyLogic` must simplify scalar sub-expressions
+nested inside connectives.  Rather than weaken the layering, the pass is **injected**:
+
+```scala
+simplifyLogic(e, simplifyLeaf = scalar.simplifyFully)   // the REPL supplies it
+simplifyLogic(e)                                        // default: identity
+```
+
+The caller that already depends on both packages (`cli`) supplies the missing capability.
+Reach for this whenever a lower layer needs a higher one's behaviour.
+
+### 6. Give-up guards and hard caps
+
+Every algorithm that can blow up carries an explicit bound, and exceeding it returns the
+input **unchanged** rather than a wrong or enormous answer:
+
+| Guard | Where | Bound |
+|---|---|---|
+| `MaxTaylorOrder` | `Series.scala` | 20 |
+| power expansion | `Expand.scala` | 20 |
+| `MaxNormalFormClauses` | `NormalForm.scala` | 1024 (checked *before* materialising) |
+| `MaxTruthTableVars` / `MaxKleeneTableVars` | `TruthTable.scala` | 16 / 10 |
+| `MaxSymbolicDim` | `_MatrixOperation.scala` | 6 |
+| `MaxDepth` | `Parser.scala` | 500 |
+
+Alongside the size caps sit **content** guards, which abort when a sub-result is not good
+enough to build on: `hasDerivative` in `Series.scala` refuses to emit a Taylor polynomial
+whose coefficients still contain an unevaluated `_Derivative`, exactly as `hasIntegral` in
+`SolveODESymbolic.scala` refuses a solution containing an unevaluated `_Integral`.  A
+partial answer that *looks* complete is worse than an honest symbolic one.
+
+### 7. Binders versus free variables
+
+Most `_Functional` nodes take a variable that is a **binder** — it is excluded from
+`children` so `substitute` cannot rewrite it, and it does not appear in the result:
+`derive(e, x)`, `integral(e, x)`, `defuzz(e, v, lo, hi)`.
+
+`_Taylor` is the deliberate exception, and it is worth understanding before adding another
+series node.  Its variable is the *expansion* variable: it appears **free in the result**,
+which is a polynomial in `(v − point)` — the role `_Laplace`'s output variable plays.  It
+is still kept out of `children` and carried through `rebuild`, because `substitute` must
+not rewrite the variable an expansion is taken in.  So the two questions are independent:
+
+- *in `children`?* — can `substitute` and friends rewrite it?
+- *free in the result?* — does it survive into the output?
+
+### 8. Protecting the variable namespace
+
+Grammar keywords are reserved, which permanently removes them as variable names.  For
+`sin` or `defuzz` that is free; for a name mathematicians actually bind it is not.
+
+`gamma` and `beta` are among the most common variable names in physics and statistics, and
+`ParserTest` documents `alpha + beta` parsing as two variables.  So the functions are
+spelled **`Gamma(z)` and `Beta(x, y)`** — capitalised, and reserved in that form only.  The
+grammar is case-sensitive, so the lowercase names stay available.  `lgamma` needs no such
+treatment: nobody binds it.
+
+Weigh this whenever a new keyword is added.  Names that merely *start* with a reserved word
+(`gamma1`, `betaX`, `sina`) are always still legal.
 
 ---
 
@@ -418,6 +580,126 @@ long integration spans.
 
 ---
 
+### Logic: boolean, three-valued, and fuzzy (`logic/`)
+
+One node hierarchy and **one rule table** cover all four logics; the *values* select which
+logic you are in.  That is the whole design, and it is why `logic` has no per-tier
+branching:
+
+| Values | Logic | Carrier |
+|---|---|---|
+| `{0, 1}` | boolean | `core._Bool` |
+| `{0, ½, 1}` | three-valued (Kleene) | `+ core._Truth.Unknown` |
+| `{-1, 0, 1}` | symmetric ternary — an *encoding* of the above | same, different spelling |
+| `[0, 1]` | fuzzy | `core._Truth` |
+
+| Topic | Reference |
+|---|---|
+| De Morgan's laws (used by `nnf`) | [Wikipedia — De Morgan's laws](https://en.wikipedia.org/wiki/De_Morgan%27s_laws) |
+| Negation normal form | [Wikipedia — Negation normal form](https://en.wikipedia.org/wiki/Negation_normal_form) |
+| Conjunctive normal form | [Wikipedia — Conjunctive normal form](https://en.wikipedia.org/wiki/Conjunctive_normal_form) |
+| Disjunctive normal form | [Wikipedia — Disjunctive normal form](https://en.wikipedia.org/wiki/Disjunctive_normal_form) |
+| Kleene's strong three-valued logic | [Wikipedia — Three-valued logic](https://en.wikipedia.org/wiki/Three-valued_logic#Kleene_and_Priest_logics) |
+| Balanced (symmetric) ternary | [Wikipedia — Balanced ternary](https://en.wikipedia.org/wiki/Balanced_ternary) |
+| Fuzzy sets and membership functions | [Wikipedia — Fuzzy set](https://en.wikipedia.org/wiki/Fuzzy_set) · [Membership function](https://en.wikipedia.org/wiki/Membership_function_(mathematics)) |
+| t-norms and t-conorms | [Wikipedia — t-norm](https://en.wikipedia.org/wiki/T-norm) · [t-conorm](https://en.wikipedia.org/wiki/T-norm#T-conorms) |
+| Łukasiewicz logic | [Wikipedia — Łukasiewicz logic](https://en.wikipedia.org/wiki/%C5%81ukasiewicz_logic) |
+| Defuzzification (centroid, mean-of-maxima, bisector) | [Wikipedia — Defuzzification](https://en.wikipedia.org/wiki/Defuzzification) |
+
+**The three t-norm families** are selected by `Environment.semantics` and share the strong
+negation `1 − a`:
+
+| Semantics | `and` (t-norm) | `or` (t-conorm) |
+|---|---|---|
+| `MinMax` (Zadeh, default) | `min(a, b)` | `max(a, b)` |
+| `Product` | `a · b` | `a + b − a·b` |
+| `Lukasiewicz` | `max(0, a + b − 1)` | `min(1, a + b)` |
+
+All three agree with classical logic on `{0, 1}`, which is why the boolean and ternary
+tiers are unaffected by the choice.  Each has `0` as t-norm annihilator and `1` as t-conorm
+annihilator, which is exactly what makes the `false and X` / `true or X` short-circuits
+sound under every one of them.
+
+**Two gates protect simplification**, and the distinction matters:
+
+- *Classical-only* rules — complement (`a and not a = false`), `a implies a`, `a xor a` —
+  fail already at `unknown`, so they are gated on `isCrisp`.
+- *Lattice-only* rules — idempotence and absorption — hold for graded values under
+  min–max but **not** under product or Łukasiewicz, where `a and a` is `a²`.  They carry
+  the additional `semantics == MinMax` gate.
+
+Everything else (constant folding, identity and annihilator elements, double negation) is
+valid under every t-norm and fires unconditionally.  `xor` is defined *through* the same
+`(a and not b) or (not a and b)` desugaring that `toCNF`/`toDNF` apply, so eval and the
+normal forms cannot disagree — the naive `|a − b|` would answer `false` at
+`unknown xor unknown`, contradicting both.
+
+### Special functions (`SpecialFunctions.scala`)
+
+| Function | Method | Reference |
+|---|---|---|
+| `fact(n)` | exact table for integers `0..170`; `Γ(n+1)` beyond | [Wikipedia — Factorial](https://en.wikipedia.org/wiki/Factorial) |
+| `dfact(n)`, `mfact(n, k)` | step-`k` product | [Wikipedia — Double factorial](https://en.wikipedia.org/wiki/Double_factorial) |
+| `Gamma(z)` | Lanczos approximation, `g = 7`, `n = 9` | [Wikipedia — Gamma function](https://en.wikipedia.org/wiki/Gamma_function) · [Lanczos approximation](https://en.wikipedia.org/wiki/Lanczos_approximation) |
+| — negative arguments | reflection formula `Γ(z)Γ(1−z) = π/sin(πz)` | [Wikipedia — Reflection formula](https://en.wikipedia.org/wiki/Reflection_formula) |
+| `lgamma(z)` | the same series evaluated **in log space** | [Wikipedia — Log-gamma](https://en.wikipedia.org/wiki/Gamma_function#Log-gamma_function) |
+| `Beta(a, b)` | `exp(lgamma a + lgamma b − lgamma (a+b))` | [Wikipedia — Beta function](https://en.wikipedia.org/wiki/Beta_function) |
+
+Two decisions here are worth copying elsewhere.  **The exact integer path is kept** rather
+than routing everything through `Γ(n+1)`, so small factorials stay bit-accurate instead of
+inheriting Lanczos error.  And **`lgamma` is computed in log space, not as `log(gamma z)`**
+— that is the entire point of having it: `Γ(10⁵)` overflows a `Double` while `ln Γ(10⁵)` is
+an ordinary number.  Working in logarithms is the standard remedy when magnitudes, not
+precision, are the problem.
+
+### Series expansions (`Series.scala`)
+
+| Topic | Reference |
+|---|---|
+| Taylor series | [Wikipedia — Taylor series](https://en.wikipedia.org/wiki/Taylor_series) |
+| Maclaurin series (centre 0) | [Wikipedia — Maclaurin series of common functions](https://en.wikipedia.org/wiki/Taylor_series#List_of_Maclaurin_series_of_some_common_functions) |
+| Truncation error / Lagrange remainder | [Wikipedia — Taylor's theorem](https://en.wikipedia.org/wiki/Taylor%27s_theorem#Explicit_formulas_for_the_remainder) |
+
+`taylorSeries` folds
+
+```
+Σ(k = 0 .. n)  f⁽ᵏ⁾(point) / k! · (v − point)ᵏ
+```
+
+over the **memoised** `deriveN`, so the k-th derivative reuses the (k−1)-th; each
+coefficient is instantiated at the centre with `substitute`, and `simplifyFully` collapses
+the `k = 0` term's `(v − point)⁰`.  The centre need not be numeric — expanding about a
+symbolic `a` gives a genuine polynomial in `(v − a)`.
+
+### Numerical stability
+
+Floating-point pitfalls the library has already been bitten by, worth recognising before
+adding a numeric routine:
+
+| Pitfall | Reference |
+|---|---|
+| Loss of significance (catastrophic cancellation) | [Wikipedia — Loss of significance](https://en.wikipedia.org/wiki/Catastrophic_cancellation) |
+| The stable quadratic formula | [Wikipedia — Avoiding loss of significance](https://en.wikipedia.org/wiki/Quadratic_equation#Avoiding_loss_of_significance) |
+| Vieta's formulas (the root product used to recover the small root) | [Wikipedia — Vieta's formulas](https://en.wikipedia.org/wiki/Vieta%27s_formulas) |
+| IEEE 754 and machine epsilon | [Wikipedia — IEEE 754](https://en.wikipedia.org/wiki/IEEE_754) · [Machine epsilon](https://en.wikipedia.org/wiki/Machine_epsilon) |
+
+**A worked example from this codebase.**  `solve(x^2 + 1e8*x + 1 = 0, x)` used to return
+the small root 25% wrong.  With `b² ≫ 4ac`, `√Δ` equals `b` to within a few ulps, so
+whichever of the `(-b ± √Δ)/2a` branches *subtracts* them keeps almost no significant
+digits.  `quadraticRoots` now forms the larger-magnitude root first — where the terms share
+a sign and therefore **add** — and recovers the other from the root product `x₁x₂ = c/a`:
+
+```
+q  = -(b + sign(b)·√Δ) / 2
+x₁ = q / a
+x₂ = c / q
+```
+
+The general lesson: when two nearly-equal quantities must be subtracted, look for an
+algebraically equivalent form that adds instead.  Note also what this is *not* — an
+exact-arithmetic tier would not have rescued it, because `√(10¹⁶ − 4)` is irrational either
+way.
+
 ## Code conventions
 
 ### `Option` not `null`
@@ -580,6 +862,31 @@ class MyFeatureTest extends AnyFlatSpec with BeforeAndAfter:
     assert(result == expected)
   }
 ```
+
+### Assert mathematical bounds, not magic tolerances
+
+When a numeric result is approximate, assert against the **bound the mathematics
+guarantees** rather than a hand-picked constant.  A tolerance someone chose says nothing
+about why the residual is the size it is, and it fails for the wrong reason the moment an
+order or a sample count changes.
+
+```scala
+// weak: 1e-6 is arbitrary, and this FAILS for a correct order-7 series at x = 1
+assert(math.abs(series - math.sin(at)) < 1e-6)
+
+// strong: sin is alternating with decreasing terms, so the error is bounded by the
+// first omitted term. Self-explaining, and sharper.
+val bound = math.pow(at, 9) / (1 to 9).product
+assert(math.abs(series - math.sin(at)) <= bound + 1e-12)
+```
+
+Useful bounds: the **first omitted term** for an alternating series with decreasing
+terms, the **Lagrange remainder** `e^a·a^(n+1)/(n+1)!` for `exp` on `[0, a]`, and
+**Vieta's formulas** for polynomial roots.  Where no bound exists, prefer a *relative*
+claim ("raising the order buys at least six decades") over an absolute one.
+
+This is not hypothetical: three first-draft assertions in `SeriesTest` failed while the
+implementation was correct — the residuals were exactly the truncation error.
 
 Run a single suite:
 ```
