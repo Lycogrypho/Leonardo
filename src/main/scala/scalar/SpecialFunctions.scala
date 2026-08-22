@@ -14,6 +14,49 @@ import scala.math.{abs, exp, log, sin, sqrt, Pi}
  */
 val MaxFactorial: Int = 170
 
+/** Largest argument the *exact* factorial family will evaluate.
+ *
+ *  A different kind of limit from [[MaxFactorial]], and worth the distinction: 170 is where
+ *  a `Double` stops being able to *represent* the answer, whereas this is where computing
+ *  it stops being instant.  `10000!` is a 35 660-digit integer and takes a few
+ *  milliseconds; a few orders of magnitude more would hang the REPL, and an unbounded
+ *  `fact` is exactly the sort of thing a user types by accident.  Past the cap the node
+ *  stays symbolic, the same give-up rule the rest of the library uses.
+ */
+val MaxExactFactorial: Int = 10000
+
+/** The exact factorial `n!` as an arbitrary-precision integer.
+ *
+ *  The exact-tier counterpart of [[factorialOf]], which is capped at `170!` only because a
+ *  `Double` overflows there.
+ *
+ *  @param n the argument
+ *  @return `Some(n!)`, or `None` for a negative `n` or one above [[MaxExactFactorial]]
+ */
+def factorialExact(n: BigInt): Option[BigInt] =
+  multiFactorialExact(n, BigInt(1))
+
+/** The exact multifactorial `n!!…!` stepping down by `k`.
+ *
+ *  `k = 1` is the factorial and `k = 2` the double factorial, matching
+ *  [[multiFactorialOf]].
+ *
+ *  @param n the argument
+ *  @param k the step
+ *  @return `Some(n!^(k))`, or `None` for a negative `n`, a non-positive `k`, or an `n`
+ *          above [[MaxExactFactorial]]
+ */
+def multiFactorialExact(n: BigInt, k: BigInt): Option[BigInt] =
+  if n.signum < 0 || k.signum <= 0 || n > BigInt(MaxExactFactorial) then None
+  else
+    // n <= MaxExactFactorial, so the loop count is bounded and the Int conversion is safe.
+    var acc = BigInt(1)
+    var i   = n
+    while i.signum > 0 do
+      acc *= i
+      i -= k
+    Some(acc)
+
 
 /** Exact integer factorials `0!` through `170!`, computed once.
  *

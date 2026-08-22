@@ -9,6 +9,24 @@ import scala.math.pow
 trait _Operation extends _Expression
 
 
+/** Reads a symbolic matrix node as a dense `Double` one.
+ *
+ *  Goes through the `_MatrixShaped` marker rather than `matrix._Matrix`, which `scalar`
+ *  cannot see — the same route `_Function.mapMatrixExpr` takes.
+ *
+ *  Needed because issue 4.L slice B stopped an exactly-written matrix from collapsing into
+ *  the dense carrier: operations here that used to receive a `Right(_MatrixValue)` now get a
+ *  `Left(_Matrix)` instead, and the ones that cannot be exact have to demote or they would
+ *  silently stop working in exact mode.
+ *
+ *  @param m the symbolic matrix node
+ *  @return the dense matrix, or `None` if any cell is not a real number
+ */
+private def denseFromShaped(m: _MatrixShaped): Option[_MatrixValue] =
+  val ds = m.children.collect { case _Number(d) => d }
+  if ds.size == m.children.size then Some(_MatrixValue(m.rows, m.cols, ds.toArray)) else None
+
+
 /** Addition of two expressions: `a + b`.
  *
  *  Also evaluates concrete matrix operands via `_MatrixValue.add` (conforming dimensions)
@@ -114,6 +132,19 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
         y.inverse match
           case Some(yi) if x.cols == yi.rows => x.multiply(yi).guarded(this)
           case _                             => Left(this)
+      // Since issue 4.L slice B an exactly-written matrix stays symbolic, so these three
+      // shapes now arrive as `Left`s.  M / k divides cell by cell and so stays EXACT --
+      // `_MatrixShaped` is a core marker, so this needs no scalar -> matrix dependency.
+      case (Left(m: _MatrixShaped), Right(k @ _Number(_))) =>
+        m.rebuild(m.children.map(c => Ratio(c, k))).eval(env)
+      // k / M and M / N both need a matrix inverse, which `scalar` cannot build, so they
+      // demote to the dense kernel rather than lose the operation.
+      case (Right(_Number(k)), Left(m: _MatrixShaped)) =>
+        denseFromShaped(m).flatMap(_.inverse).map(_.scale(k).guarded(this)).getOrElse(Left(this))
+      case (Left(x: _MatrixShaped), Left(y: _MatrixShaped)) =>
+        (denseFromShaped(x), denseFromShaped(y).flatMap(_.inverse)) match
+          case (Some(a), Some(bi)) if a.cols == bi.rows => a.multiply(bi).guarded(this)
+          case _                                        => Left(this)
       // Both operands are concrete: try complex field division; None on non-numeric or zero denominator.
       case (Right(av: _Value), Right(bv: _Value)) =>
         _Complex.div(av, bv).map(Right(_)).getOrElse(Left(Ratio(av, bv)))
@@ -161,6 +192,14 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       // Exact matrix ENTRIES are slice B; this only keeps the existing feature working.
       case (Right(m: _MatrixValue), Right(r: _Rational)) =>
         matrixPower(m, r.toDouble).getOrElse(Left(this))
+      // Since issue 4.L slice B a matrix with exact entries stays a symbolic `_Matrix`
+      // rather than collapsing, so it arrives here as a `Left`.  Read it as dense: `A^n`
+      // therefore computes in `Double` even in exact mode, because `scalar` cannot build a
+      // matrix product and so cannot do exact repeated multiplication from this node.
+      // `A * A` is the exact form, and `matrix.MatProduct` handles that one exactly.
+      // Demoting is still much better than the alternative, which is losing `A^n` entirely.
+      case (Left(m: _MatrixShaped), Right(_Number(e))) =>
+        denseFromShaped(m).flatMap(mv => matrixPower(mv, e)).getOrElse(Left(this))
       // Both operands are concrete: try principal complex power; None → stay symbolic.
       case (Right(bv: _Value), Right(ev: _Value)) =>
         _Complex.pow(bv, ev).map(Right(_)).getOrElse(Left(Power(bv, ev)))

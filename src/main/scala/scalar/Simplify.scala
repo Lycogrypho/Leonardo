@@ -31,6 +31,30 @@ private val simplifyMemo = new Memo[_Expression, _Expression](10000)
 def simplify(e: _Expression): _Expression =
   simplifyMemo.getOrElseUpdate(e)(simplifyImpl(e))
 
+/** The environment constant folding runs in — empty, because `simplify` ignores bindings
+ *  by design.  Its working precision is the default, which only matters for a fractional
+ *  power of an exact base.
+ */
+private val foldEnv = new Environment()
+
+/** Folds a node whose operands are already concrete, by *evaluating* it.
+ *
+ *  Delegating to `eval` rather than re-implementing `+`/`*`/`/`/`^` here is what keeps
+ *  `simplify` and `eval` from disagreeing — which stopped being cosmetic once "concrete"
+ *  covered both `_Number` and the exact `_Rational` (issue 4.L).  Re-implemented folding
+ *  produced `0.66667` for `simplify 1/3 + 1/3` while `eval` gave `1/2` on the same input.
+ *
+ *  A node that does not reduce (division by zero, a non-finite power) comes back unchanged,
+ *  which is exactly what the hand-written guards used to do.
+ *
+ *  @param node the operation to fold, with both operands concrete
+ *  @return the folded value, or `node` when it does not reduce
+ */
+private def fold(node: _Expression): _Expression =
+  node.eval(foldEnv) match
+    case Right(v) => v
+    case Left(_)  => node
+
 private def simplifyImpl(e: _Expression): _Expression = e match
   case _: _Number   => e
   case _: _Complex  => e
@@ -40,15 +64,17 @@ private def simplifyImpl(e: _Expression): _Expression = e match
     (simplify(a), simplify(b)) match
       case (_Number(d), y) if d == 0.0 => y
       case (x, _Number(d)) if d == 0.0 => x
-      case (_Number(da), _Number(db))  => _Number(da + db)
+      case (x @ _Number(_), y @ _Number(_)) => fold(Sum(x, y))
       case (x, y) if x == y            => simplify(Product(_Number(2), x))
       case (x, Product(_Number(d), y)) if d == -1.0 && x == y => _Number(0)
       case (Product(_Number(d), x), y) if d == -1.0 && x == y => _Number(0)
       // Constant folding in nested sums: (x + c1) + c2 → x + (c1+c2)
-      case (Sum(x, _Number(c1)), _Number(c2)) => simplify(Sum(x, _Number(c1 + c2)))
-      case (Sum(_Number(c1), x), _Number(c2)) => simplify(Sum(x, _Number(c1 + c2)))
-      case (_Number(c1), Sum(x, _Number(c2))) => simplify(Sum(x, _Number(c1 + c2)))
-      case (_Number(c1), Sum(_Number(c2), x)) => simplify(Sum(x, _Number(c1 + c2)))
+      // The constants are bound whole and re-folded through `fold`, rather than taken as
+      // their Doubles, so merging two exact coefficients does not produce an inexact one.
+      case (Sum(x, c1 @ _Number(_)), c2 @ _Number(_)) => simplify(Sum(x, fold(Sum(c1, c2))))
+      case (Sum(c1 @ _Number(_), x), c2 @ _Number(_)) => simplify(Sum(x, fold(Sum(c1, c2))))
+      case (c1 @ _Number(_), Sum(x, c2 @ _Number(_))) => simplify(Sum(x, fold(Sum(c1, c2))))
+      case (c1 @ _Number(_), Sum(c2 @ _Number(_), x)) => simplify(Sum(x, fold(Sum(c1, c2))))
       case (x, y)                      => Sum(x, y)
 
   case Product(a, b) =>
@@ -57,7 +83,7 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (_, _Number(d)) if d == 0.0              => _Number(0)
       case (_Number(d), y) if d == 1.0              => y
       case (x, _Number(d)) if d == 1.0              => x
-      case (_Number(da), _Number(db))               => _Number(da * db)
+      case (x @ _Number(_), y @ _Number(_))         => fold(Product(x, y))
       // double negation, all four shapes: -1 * (-1 * x) → x and mirrors
       case (_Number(da), Product(_Number(db), x))
         if da == -1.0 && db == -1.0                 => x
@@ -68,10 +94,10 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (Product(x, _Number(da)), _Number(db))
         if da == -1.0 && db == -1.0                 => x
       // Constant folding in nested products: (c1 * x) * c2 → (c1·c2) * x and mirrors
-      case (Product(_Number(c1), x), _Number(c2)) => simplify(Product(_Number(c1 * c2), x))
-      case (Product(x, _Number(c1)), _Number(c2)) => simplify(Product(_Number(c1 * c2), x))
-      case (_Number(c1), Product(_Number(c2), x)) => simplify(Product(_Number(c1 * c2), x))
-      case (_Number(c1), Product(x, _Number(c2))) => simplify(Product(_Number(c1 * c2), x))
+      case (Product(c1 @ _Number(_), x), c2 @ _Number(_)) => simplify(Product(fold(Product(c1, c2)), x))
+      case (Product(x, c1 @ _Number(_)), c2 @ _Number(_)) => simplify(Product(fold(Product(c1, c2)), x))
+      case (c1 @ _Number(_), Product(c2 @ _Number(_), x)) => simplify(Product(fold(Product(c1, c2)), x))
+      case (c1 @ _Number(_), Product(x, c2 @ _Number(_))) => simplify(Product(fold(Product(c1, c2)), x))
       case (x, y) if x == y                         => simplify(Power(x, _Number(2)))
       case (x, y)                                   => Product(x, y)
 
@@ -79,8 +105,9 @@ private def simplifyImpl(e: _Expression): _Expression = e match
     (simplify(a), simplify(b)) match
       case (_Number(d), y) if d == 0.0 && y != _Number(0) => _Number(0)
       case (x, _Number(d)) if d == 1.0  => x
-      case (x, _Number(d)) if d == -1.0 => simplify(Product(_Number(-1), x))
-      case (_Number(da), _Number(db)) if db != 0.0 => _Number(da / db)
+      // Reuses the matched -1 rather than building a fresh one, so an exact -1 stays exact.
+      case (x, c @ _Number(d)) if d == -1.0 => simplify(Product(c, x))
+      case (x @ _Number(_), y @ _Number(_)) => fold(Ratio(x, y))
       case (x, y) if x == y && x != _Number(0) => _Number(1)
       case (x, y)                      => Ratio(x, y)
 
@@ -92,9 +119,7 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (x, _Number(d)) if d == 0.0 => _Number(1)
       case (x, _Number(d)) if d == 1.0 => x
       case (_Number(d), _) if d == 1.0 => _Number(1)
-      case (_Number(da), _Number(db))  =>
-        val r = pow(da, db)
-        if r.isFinite then _Number(r) else Power(_Number(da), _Number(db))
+      case (x @ _Number(_), y @ _Number(_)) => fold(Power(x, y))
       case (x, y)                      => Power(x, y)
 
   case Exp(a) =>

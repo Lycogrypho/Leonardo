@@ -181,10 +181,21 @@ object Parser extends JavaTokenParsers:
    *  `3 - 5` would leave the exact tier before it ever entered it.  The matrix form below
    *  stays a `_Number` deliberately — matrix entries are `Double` until slice B.
    */
-  private def negOne: _Value =
+  private def negOne: _Value = literalInt(-1)
+
+  /** An integer literal synthesised by the grammar, in whichever tier is in force.
+   *
+   *  Any constant the *parser* invents — the `-1` of a negation, the `2` of `dfact`, the
+   *  `10` of bare `log` — has to be built through here.  A hard-coded `_Number` would mix
+   *  tiers and quietly pull the surrounding expression out of the exact one.
+   *
+   *  @param n the integer value
+   *  @return a `_Rational` in exact mode, a `_Number` otherwise
+   */
+  private def literalInt(n: Int): _Value =
     exactPrecision.get() match
-      case Some(_) => _Rational(-1)
-      case None    => _Number(-1)
+      case Some(_) => _Rational(n)
+      case None    => _Number(n)
 
   /** Negates `e`, choosing `MatScale(-1, e)` when `e` is matrix-shaped. */
   private def mkNeg(e: _Expression): _Expression =
@@ -335,7 +346,7 @@ object Parser extends JavaTokenParsers:
     "exp(" ~> guardedExpr <~ ")"                                              ^^ Exp.apply      |
     "ln("  ~> guardedExpr <~ ")"                                              ^^ Ln.apply       |
     "log(" ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ {
-      case e ~ None    => LogBase(e, _Number(10))
+      case e ~ None    => LogBase(e, literalInt(10))
       case e ~ Some(b) => LogBase(e, b)
     }                                                                                           |
     "sin(" ~> guardedExpr <~ ")"                                              ^^ Sin.apply      |
@@ -364,7 +375,9 @@ object Parser extends JavaTokenParsers:
     // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
     // log(x) has with LogBase(x, 10).
     "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |
-    "dfact("  ~> guardedExpr <~ ")"       ^^ { n => MultiFactorial(n, _Number(2)) }                        |
+    // The step is built in the tier currently in force: an inexact 2 here would make
+    // dfact(n) mix tiers and fall out of the exact path that mfact(n, 2) takes.
+    "dfact("  ~> guardedExpr <~ ")"       ^^ { n => MultiFactorial(n, literalInt(2)) }                     |
     "mfact("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case n ~ _ ~ k => MultiFactorial(n, k) }      |
     "lgamma(" ~> guardedExpr <~ ")"                                       ^^ LogGamma.apply                |
     "Gamma("  ~> guardedExpr <~ ")"                                       ^^ Gamma.apply                   |
@@ -436,7 +449,7 @@ object Parser extends JavaTokenParsers:
       case e ~ _ ~ v ~ _ ~ p ~ _ ~ n => _Taylor(e, v, p, n)
     }                                                                                             |
     "maclaurin(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr <~ ")" ^^ {
-      case e ~ _ ~ v ~ _ ~ n => _Taylor(e, v, _Number(0), n)
+      case e ~ _ ~ v ~ _ ~ n => _Taylor(e, v, literalInt(0), n)
     }                                                                                             |
     // pade(e, v, m, n): the [m/n] rational approximant about zero.
     "pade(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {

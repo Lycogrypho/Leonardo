@@ -45,6 +45,18 @@ abstract class _Function extends _Expression:
    *  @param env  supplies the working precision
    *  @return the result lifted back to a `_Rational`, or whatever non-real result came out
    */
+  /** The exact non-negative integer an argument denotes, if it denotes one.
+   *
+   *  The gate on every exact path in the factorial family: those functions are only closed
+   *  over the rationals at non-negative integers, and everywhere else (`Gamma(0.5)`,
+   *  `fact(-1)`) the analytic kernels remain the right answer.
+   *
+   *  @param r the exact argument
+   *  @return `Some(n)` when `r` is a non-negative integer, `None` otherwise
+   */
+  protected def exactIntArg(r: _Rational): Option[BigInt] =
+    r.toBigIntExact.filter(_.signum >= 0)
+
   protected def viaDouble(args: List[_Expression], env: Environment): Either[_Expression, _Value] =
     rebuild(args).eval(env) match
       case Right(_Number(d)) =>
@@ -306,6 +318,10 @@ case class Factorial(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      // An exact non-negative integer argument is computed exactly and without the 170!
+      // ceiling, which exists only because a Double overflows there (issue 4.L slice B).
+      case Right(r: _Rational) if exactIntArg(r).isDefined =>
+        exactIntArg(r).flatMap(factorialExact).map(n => Right(_Rational(n))).getOrElse(Left(this))
       case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x))       => factorialOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => factorialOf(d).getOrElse(Double.NaN))
@@ -333,6 +349,14 @@ case class MultiFactorial(e: _Expression, k: _Expression) extends _Function:
       // Exact tier first -- `_Number` is a widening extractor, so anything below it never
       // sees a `_Rational`.  Two cases rather than a guard: by the second, the first
       // argument is known inexact and only the second is exact.
+      // Both arguments exact integers: compute exactly, no 170! ceiling.
+      case (Right(rx: _Rational), Right(rk: _Rational))
+        if exactIntArg(rx).isDefined && exactIntArg(rk).isDefined =>
+        (for
+          n <- exactIntArg(rx)
+          s <- exactIntArg(rk)
+          v <- multiFactorialExact(n, s)
+        yield Right(_Rational(v))).getOrElse(Left(this))
       case (Right(rx: _Rational), Right(sv: _Value)) => viaDouble(List(_Number(rx.toDouble), sv), env)
       case (Right(xv: _Value), Right(rs: _Rational)) => viaDouble(List(xv, _Number(rs.toDouble)), env)
       case (Right(_Number(x)), Right(_Number(s))) =>
@@ -358,6 +382,10 @@ case class Gamma(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      // Gamma(n) = (n-1)! at a positive integer, so the exact factorial covers it; every
+      // other argument is genuinely transcendental and goes through Lanczos as before.
+      case Right(r: _Rational) if exactIntArg(r).exists(_.signum > 0) =>
+        exactIntArg(r).flatMap(n => factorialExact(n - 1)).map(n => Right(_Rational(n))).getOrElse(Left(this))
       case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))

@@ -822,6 +822,60 @@ class ReplSessionTest extends AnyFlatSpec:
     val s = session
     assert(s.execute("exact := 5").contains("reserved word"))
   }
+  // --- issue 4.L slice B: exact matrices and factorials through the REPL ---
+
+  "an exact matrix" should "display as fractions rather than rounded decimals" in
+  {
+    val s = session
+    s.execute("exact on")
+    assert(s.execute("[[1/2, 1/3], [1/4, 1/5]]") == "[[1/2, 1/3], [1/4, 1/5]]")
+    assert(s.execute("det([[1/2, 1/3], [1/4, 1/5]])") == "1/60")
+  }
+
+  it should "invert exactly, so A * inv(A) is exactly the identity" in
+  {
+    val s = session
+    s.execute("exact on")
+    s.execute("H := [[1, 1/2, 1/3], [1/2, 1/3, 1/4], [1/3, 1/4, 1/5]]")
+    assert(s.execute("inv(H)") == "[[9, -36, 30], [-36, 192, -180], [30, -180, 180]]")
+    assert(s.execute("H * inv(H)") == "[[1, 0, 0], [0, 1, 0], [0, 0, 1]]")
+  }
+
+  it should "survive a save/load round-trip" in
+  {
+    val s = session
+    s.execute("exact on")
+    s.execute("M := [[1/2, 1/3], [1/4, 1/5]]")
+    val restored = session
+    restored.load(s.script)
+    assert(restored.execute("det(M)") == "1/60")
+  }
+
+  "an exact factorial" should "print the whole integer past the Double ceiling" in
+  {
+    val s = session
+    s.execute("exact on")
+    // 171! overflows a Double, so the plain path gives up; the exact one prints all 310
+    // digits. Rendering it through toDouble would have printed "Infinity" for an exact value.
+    val f = s.execute("fact(171)")
+    assert(f.length == 310, s"171! should be 310 digits, got ${f.length}: ${f.take(40)}...")
+    assert(f.forall(_.isDigit), s"expected a plain integer, got ${f.take(40)}...")
+  }
+
+  it should "stay symbolic past the compute cap" in
+  {
+    val s = session
+    s.execute("exact on")
+    assert(s.execute("fact(20000)").contains("fact"), "past the cap it stays symbolic")
+  }
+
+  "simplify" should "agree with eval about exact values" in
+  {
+    val s = session
+    s.execute("exact on")
+    assert(s.execute("simplify 1/3 + 1/3") == "2/3")
+    assert(s.execute("1/3 + 1/3") == "2/3")
+  }
   // --- issue 4.6: pretty-print matrices (multi-line, column-aligned) ---
 
   "pretty on" should "enable multi-line matrix display and report it" in

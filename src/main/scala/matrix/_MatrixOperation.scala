@@ -29,22 +29,48 @@ private def asLiteral(r: Either[_Expression, _Value]): Option[_Matrix] = r match
   case Right(v: _MatrixValue) => Some(_Matrix.fromValue(v))
   case _                      => None
 
-/** Folds two already-reduced operands with `+`, avoiding a redundant eval pass. */
+/** Folds two already-reduced operands with `+`, avoiding a redundant eval pass.
+ *
+ *  The exact case comes first because `_Number` is a widening extractor; without it every
+ *  element-wise matrix sum would drop out of the exact tier (issue 4.L slice B).  The
+ *  reduction policy is the benchmarked default rather than the environment's, since these
+ *  helpers take no `Environment` — the policy is a cost knob, never a semantic one.
+ */
 private def sumOf(a: _Expression, b: _Expression): _Expression = (a, b) match
-  case (_Number(x), _Number(y)) => _Number(x + y)
-  case _                        => Sum(a, b)
+  case (x: _Rational, y: _Rational) => x.add(y, _Rational.DefaultPolicy)
+  case (_Number(x), _Number(y))     => _Number(x + y)
+  case _                            => Sum(a, b)
 
 /** Folds two already-reduced operands with `*`, applying the zero short-circuit. */
 private def productOf(a: _Expression, b: _Expression): _Expression = (a, b) match
-  case (_Number(0.0), _) | (_, _Number(0.0)) => _Number(0)
-  case (_Number(x), _Number(y))              => _Number(x * y)
-  case _                                     => Product(a, b)
+  // An exact zero stays exact: it is the additive identity of the sums this feeds, so
+  // demoting it here would make one zero entry infect a whole exact row.
+  case (z: _Rational, _) if z.isZero          => z
+  case (_, z: _Rational) if z.isZero          => z
+  case (x: _Rational, y: _Rational)           => x.multiply(y, _Rational.DefaultPolicy)
+  case (_Number(0.0), _) | (_, _Number(0.0))  => _Number(0)
+  case (_Number(x), _Number(y))               => _Number(x * y)
+  case _                                      => Product(a, b)
 
-/** Collapses a combined [[_Matrix]] literal to a dense value if all elements are `_Number`s. */
+/** Collapses a combined [[_Matrix]] literal to a dense value if all elements are `_Number`s.
+ *
+ *  Exact elements block the collapse, for the reason given in `matrix.Exact`: the dense
+ *  carrier is an `Array[Double]`, so collapsing an exact matrix would silently throw the
+ *  exactness away.  Same rule as `_Matrix.eval`.
+ */
 private def collapse(m: _Matrix, orElse: _Expression): Either[_Expression, _Value] =
   val numbers = m.elems.collect { case _Number(d) => d }
-  if numbers.size == m.elems.size then _MatrixValue(m.rows, m.cols, numbers.toArray).guarded(orElse)
+  if m.elems.exists(_.isInstanceOf[_Rational]) then Left(m)
+  else if numbers.size == m.elems.size then _MatrixValue(m.rows, m.cols, numbers.toArray).guarded(orElse)
   else Left(m)
+
+/** Whether an evaluated operand is a real scalar — a `_Number` **or** an exact `_Rational`.
+ *
+ *  A type test on `_Number` alone would miss the exact case and leave `2 * A` symbolic in
+ *  exact mode; the widening extractor covers both.
+ */
+private def isScalarValue(r: Either[_Expression, _Value]): Boolean =
+  r.exists { case _Number(_) => true; case _ => false }
 
 
 /** Maximum matrix dimension for symbolic cofactor expansion (n! grows fast above this). */
@@ -121,9 +147,9 @@ private def reduceProduct(ra: Either[_Expression, _Value], rb: Either[_Expressio
             (0 until x.cols).map(k => productOf(x(i, k), y(k, j))).reduce(sumOf)
         collapse(_Matrix(x.rows, y.cols, elems.toVector), orElse)
       case (Some(_), Some(_)) => Left(orElse)   // dimension mismatch
-      case (Some(lit), None) if rb.exists(_.isInstanceOf[_Number]) =>
+      case (Some(lit), None) if isScalarValue(rb) =>
         collapse(_Matrix(lit.rows, lit.cols, lit.elems.map(productOf(_, rb.toExpression))), orElse)
-      case (None, Some(lit)) if ra.exists(_.isInstanceOf[_Number]) =>
+      case (None, Some(lit)) if isScalarValue(ra) =>
         collapse(_Matrix(lit.rows, lit.cols, lit.elems.map(productOf(ra.toExpression, _))), orElse)
       case _ => Left(MatProduct(ra.toExpression, rb.toExpression))
 
@@ -294,6 +320,11 @@ case class Determinant(m: _Expression) extends _Expression:
       case Right(mv: _MatrixValue) =>
         mv.determinant.map(d => Right(_Number(d))).getOrElse(Left(this))
       case r => asLiteral(r) match
+        // Exact entries go to Gaussian elimination, not the cofactor expansion: O(n^3)
+        // rather than O(n!), so this path carries no dimension cap (issue 4.L slice B).
+        case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
+          exactCells(lit).map(c => Right(exactDeterminant(c, lit.rows, env.rationalPolicy)))
+            .getOrElse(Left(this))
         case Some(lit) if lit.rows == lit.cols && lit.rows <= MaxSymbolicDim =>
           symbolicDet(lit).eval(env)
         case Some(_) => Left(this)   // non-square or over the cofactor cap
@@ -320,6 +351,12 @@ case class Inverse(m: _Expression) extends _MatrixOperation:
       case Right(mv: _MatrixValue) =>
         mv.inverse.map(_.guarded(this)).getOrElse(Left(this))
       case r => asLiteral(r) match
+        // Exact entries: Gauss-Jordan over the rationals, uncapped, singular -> symbolic
+        // (the same rule the dense kernel follows).
+        case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
+          exactCells(lit).flatMap(c => exactInverse(c, lit.rows, env.rationalPolicy)) match
+            case Some(inv) => Left(_Matrix(lit.rows, lit.cols, inv.map(x => x: _Expression)))
+            case None      => Left(Inverse(r.toExpression))
         case Some(lit) => symbolicInverse(lit) match
           case Some(inv) => inv.eval(env)
           case None      => Left(Inverse(r.toExpression))
@@ -381,6 +418,23 @@ case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOpe
  *
  *  @param m the matrix expression to decompose
  */
+/** The operand of a decomposition as a **dense** matrix, demoting exact entries.
+ *
+ *  `lu`, `qr`, `eigen`, `eig` and `jordan` are iterative `Double` algorithms — QR iteration,
+ *  Gram–Schmidt — so they cannot be exact whatever their input.  Since issue 4.L slice B an
+ *  exactly-written matrix stays a symbolic `_Matrix` rather than collapsing, which would
+ *  otherwise make every one of them silently stop working in exact mode.  Demoting here
+ *  keeps the feature and is honest about what these kernels can deliver.
+ *
+ *  @param r the evaluated operand
+ *  @return the dense matrix, or `None` when the operand is not a matrix of real numbers
+ */
+private def denseOperand(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
+  case Right(mv: _MatrixValue) => Some(mv)
+  case Left(lit: _Matrix)      => denseOf(lit)
+  case _                       => None
+
+
 case class _LUDecomposition(m: _Expression) extends _Expression:
   override def toString: String = s"lu($m)"
   override def children: List[_Expression] = List(m)
@@ -388,8 +442,8 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
-      case Right(mv: _MatrixValue) =>
-        mv.luDecompose match
+      case r0 if denseOperand(r0).isDefined =>
+        denseOperand(r0).flatMap(_.luDecompose) match
           case Some((l, u, p)) => Left(_Matrix(1, 3, Vector(l, u, p)))
           case None            => Left(this)
       case Left(expr) => Left(_LUDecomposition(expr))
@@ -414,8 +468,8 @@ case class _QRDecomposition(m: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
-      case Right(mv: _MatrixValue) =>
-        mv.qrDecompose match
+      case r0 if denseOperand(r0).isDefined =>
+        denseOperand(r0).flatMap(_.qrDecompose) match
           case Some((q, r)) => Left(_Matrix(1, 2, Vector(q, r)))
           case None         => Left(this)
       case Left(expr) => Left(_QRDecomposition(expr))
@@ -442,8 +496,8 @@ case class _EigenDecomposition(m: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
-      case Right(mv: _MatrixValue) =>
-        mv.eigenDecompose match
+      case r0 if denseOperand(r0).isDefined =>
+        denseOperand(r0).flatMap(_.eigenDecompose) match
           case Some(eigs) => Left(_Matrix(1, eigs.size, eigs))
           case None       => Left(this)
       case Left(expr) => Left(_EigenDecomposition(expr))
@@ -469,8 +523,8 @@ case class _EigDecomposition(m: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
-      case Right(mv: _MatrixValue) =>
-        buildVD(mv) match
+      case r0 if denseOperand(r0).isDefined =>
+        denseOperand(r0).flatMap(buildVD) match
           case Some((v, d)) => Left(_Matrix(1, 2, Vector(v, d)))
           case None         => Left(this)
       case Left(expr) => Left(_EigDecomposition(expr))
@@ -494,8 +548,8 @@ case class _JordanDecomposition(m: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
-      case Right(mv: _MatrixValue) =>
-        buildVD(mv).flatMap { case (v, d) =>
+      case r0 if denseOperand(r0).isDefined =>
+        denseOperand(r0).flatMap(mv => buildVD(mv).flatMap { case (v, d) =>
           // Verify that P is invertible (non-singular) so P*J*P^-1 = A is valid.
           // For a dense V (all-real eigenvectors) we test invertibility scale-relatively
           // (isJordanInvertible); for symbolic V (complex entries) we accept it -- the
@@ -506,7 +560,7 @@ case class _JordanDecomposition(m: _Expression) extends _Expression:
             val vDense = _MatrixValue(mv.rows, mv.cols, vData.toArray)
             if isJordanInvertible(vDense) then Some((v, d)) else None   // defective: stay symbolic
           else Some((v, d))   // complex eigenvectors -- accept
-        } match
+        }) match
           case Some((p, j)) => Left(_Matrix(1, 2, Vector(p, j)))
           case None         => Left(this)
       case Left(expr) => Left(_JordanDecomposition(expr))

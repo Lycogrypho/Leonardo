@@ -455,10 +455,18 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
    */
   def display(precision: Int): String =
     val (rn, rd) = _Rational.reduce(num, den)
-    if rd == BigInt(1) && rn.abs.bitLength <= 63 then rn.toString
+    // An integer prints as itself at ANY size.  The exact factorial family reaches values a
+    // `Double` cannot hold (`171!` is the first), and rendering those through `toDouble`
+    // would print `Infinity` for a value that is perfectly exact -- the display losing what
+    // the arithmetic kept.  Long, but long is the honest answer.
+    if rd == BigInt(1) then rn.toString
     else if digitsOf(rn) <= _Rational.MaxDisplayDigits && digitsOf(rd) <= _Rational.MaxDisplayDigits
     then s"$rn/$rd"
-    else _Number.round(toDouble, precision).toString
+    else
+      val d = toDouble
+      // Out of `Double` range entirely: the fraction is the only form left that says
+      // anything true.
+      if d.isFinite then _Number.round(d, precision).toString else s"$rn/$rd"
 
   /** Decimal digit count of `n`, sign excluded. */
   private def digitsOf(n: BigInt): Int =

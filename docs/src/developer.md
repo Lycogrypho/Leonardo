@@ -745,10 +745,37 @@ until the answer stops moving.
 | Hilbert matrix (the benchmark's worst case) | [Wikipedia](https://en.wikipedia.org/wiki/Hilbert_matrix) |
 | Gaussian elimination (where denominators blow up) | [Wikipedia](https://en.wikipedia.org/wiki/Gaussian_elimination) |
 
-**Status.**  Slice A of the tier ships: `_Rational` is a sibling `_Value` of `_Number`, exact
-for `+ - * /` and integer powers, with an `exact on | off` mode in the REPL.  Exact matrix
-entries and an unbounded `fact` are slice B; genuinely high-precision transcendentals are
-tier 2.  Off by default, so the `Double` path is unchanged.
+**Status.**  Tier 1 ships in full: `_Rational` is a sibling `_Value` of `_Number`, exact for
+`+ - * /` and integer powers, with an `exact on | off` mode in the REPL (slice A); exact
+matrices and an unbounded factorial family followed (slice B).  Genuinely high-precision
+transcendentals are tier 2.  Off by default, so the `Double` path is unchanged.
+
+#### Where exact matrices live, and why there is no second dense type
+
+`core._MatrixValue` holds a private `Array[Double]` and has to keep it — the block-tiled
+multiply, the QR iteration and Gram–Schmidt are all `Double` algorithms, and making them
+arbitrary-precision would be far slower for no gain, since none of them is exact anyway.
+
+So rather than maintain a parallel exact dense carrier forever, an exactly-written matrix
+simply **does not collapse**: `_Matrix.eval` keeps it symbolic when any cell is a `_Rational`,
+and `matrix/Exact.scala` operates on that.  The same instinct that put `_Rational` beside
+`_Number` instead of widening it, applied one level up.
+
+Two consequences worth knowing before extending this:
+
+- A finished exact matrix is a `Left(_Matrix)` of concrete cells, **not** a `Right`.  Code
+  that tests "did this reduce?" with `isRight` will get the wrong answer, and the test suite
+  says so explicitly rather than leaving it to be rediscovered.
+- The exact `det` and `inv` are **Gaussian elimination**, not the cofactor expansion beside
+  them.  That one is `O(n!)` and capped at `MaxSymbolicDim = 6`, which would have made
+  "exact matrices" mean "exact matrices up to 6×6, slowly".  Elimination over an exact field
+  also needs no pivoting-for-stability — there is no rounding to be unstable about — so the
+  pivot search only looks for a non-zero entry.
+
+What still computes in `Double`, by demoting an exact operand rather than losing the
+operation: the five iterative decompositions (`lu`, `qr`, `eigen`, `eig`, `jordan`), which
+cannot be exact whatever their input, and `A^n` — `Power` lives in `scalar`, which cannot
+build a matrix product and so cannot do exact repeated multiplication.  `A * A` is exact.
 
 #### The decision that made it affordable: a widening `_Number`
 

@@ -3,6 +3,7 @@ package core
 
 import parser.Parser
 import scalar.{Sum, Product, Ratio}
+import matrix._Matrix
 import org.scalatest.flatspec.AnyFlatSpec
 
 
@@ -206,9 +207,22 @@ class ExactModeTest extends AnyFlatSpec:
     )
     for input <- corpus do
       if plain(input).isRight then
-        assert(exact(input).isRight,
+        assert(fullyReduced(exact(input)),
                s"""exact mode lost "$input": plain=${plain(input)} exact=${exact(input)}""")
   }
+
+  /** Whether an eval result carries a finished answer.
+   *
+   *  Not simply `isRight`.  Since slice B an exact matrix deliberately does **not** collapse
+   *  into the dense `_MatrixValue` carrier — that one holds `Array[Double]` and would throw
+   *  the exactness away — so it comes back as a `Left(_Matrix)` whose cells are all concrete.
+   *  That is a finished answer carried symbolically, not a failure to reduce, and the
+   *  distinction is exactly what this suite has to get right or it stops guarding anything.
+   */
+  private def fullyReduced(r: Either[_Expression, _Value]): Boolean = r match
+    case Right(_)          => true
+    case Left(m: _Matrix)  => m.elems.forall(_.isInstanceOf[_Value])
+    case _                 => false
 
   it should "not make any expression evaluate to a different number" in
   {

@@ -135,6 +135,22 @@ writes the exact fraction, so nothing is lost across a round-trip:
 e.execute("pi")            // readable
 ```
 
+Matrices and factorials are exact too:
+
+```scala mdoc
+e.execute("exact precision 30")
+e.execute("H := [[1, 1/2, 1/3], [1/2, 1/3, 1/4], [1/3, 1/4, 1/5]]")
+e.execute("det(H)")        // exactly 1/2160; the Double path reports 4.6E-4
+e.execute("H * inv(H)")    // exactly the identity
+```
+
+`fact` loses the `170!` ceiling that existed only because a `Double` overflows there —
+though a compute cap remains, since an unbounded factorial is easy to type by accident.
+
+What still computes in `Double`: the iterative decompositions (`lu`, `qr`, `eigen`, `eig`,
+`jordan`), which cannot be exact whatever their input, and `A^n`.  They demote an exact
+operand rather than refuse it; write `A * A` for an exact product.
+
 Mixing an exact value with an inexact one gives an inexact result.  That is deliberate:
 absorbing the `Double` would be lossless, but it would dress representation error up as an
 exact answer.

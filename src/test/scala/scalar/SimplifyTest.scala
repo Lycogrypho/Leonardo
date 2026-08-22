@@ -315,11 +315,25 @@ class SimplifyTest extends AnyFlatSpec:
 
   // --- issue 1.3: Power constant-fold must not produce NaN / Infinity ---
 
-  "simplify((-2)^0.5)" should "stay symbolic rather than fold to NaN" in
+  "simplify((-2)^0.5)" should "fold to the principal complex value, never to NaN" in
   {
+    // This test used to require the node to stay symbolic, which was right when the real
+    // `pow` returned NaN and symbolic-or-NaN were the only outcomes.  Complex closure added
+    // a third and better one: `eval` has returned i*sqrt(2) here ever since, and now that
+    // `simplify` folds by *evaluating* (issue 4.L slice B) the two finally agree.  The
+    // original concern -- never produce NaN -- is what the assertions below actually pin.
     val e = Power(_Number(-2), _Number(0.5))
     val s = e.simplify()
-    assert(s == e, s"expected Power(-2, 0.5) but got $s")
+    // The property that matters, and the reason the change was made: the two agree.
+    assert(e.eval(new Environment()) == Right(s), s"simplify and eval must agree, got $s")
+    s match
+      case c: _Complex =>
+        // Not exactly (0, sqrt 2): the principal complex power leaves a ~9e-17 real part,
+        // which is why this is a bound and not an equality.
+        assert(math.abs(c.re) < 1e-15, s"real part should vanish, got ${c.re}")
+        assert(math.abs(c.im - math.sqrt(2.0)) < 1e-12, s"imaginary part should be sqrt 2, got ${c.im}")
+        assert(!c.re.isNaN && !c.im.isNaN, "the original concern: never NaN")
+      case other => fail(s"expected the principal complex value, got $other")
   }
 
   "simplify(10^400)" should "stay symbolic rather than fold to Infinity" in

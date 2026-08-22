@@ -1,4 +1,6 @@
-@startuml
+@        exact entries do NOT collapse to _MatrixValue:
+        this IS the exact matrix carrier (matrix/Exact.scala)
+startuml
 
 ' Layout engine: Graphviz dot (default).
 ' If dot is not on PATH, set GRAPHVIZ_DOT before running `sbt puml`
@@ -95,7 +97,9 @@ package "core" {
         + fromDouble(d): Option[_Rational]  (exact dyadic)
         DefaultPolicy = Threshold(256)      chosen by the 4.M benchmark
         + thresholdFor(digits) = max(256, 8 * digits)
-        sibling _Value of _Number (issue 4.L slice A)
+        sibling _Value of _Number (issue 4.L)
+        _Number.unapply WIDENS to match this too:
+        "case _Number(x)" means "reads as real x"
         equality by cross-multiplication: 2/6 == 1/3
     }
 
