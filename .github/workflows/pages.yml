@@ -32,11 +32,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── Scaladoc API reference (the /api subfolder) ──────────────────────────
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -58,7 +58,10 @@ jobs:
 
       - name: Build Jekyll site
         working-directory: docs
-        run: bundle exec jekyll build --source src --destination ../_site --config _config.yml
+        # --trace prints a full backtrace when the build fails. Without it Jekyll reports
+        # only 'Process completed with exit code 1', which is what let this step fail five
+        # times before anyone could see why.
+        run: bundle exec jekyll build --source src --destination ../_site --config _config.yml --trace
         env:
           JEKYLL_ENV: production
 

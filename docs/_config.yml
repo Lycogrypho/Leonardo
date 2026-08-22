@@ -25,6 +25,10 @@ plugins:
   - jekyll-remote-theme
   - jekyll-relative-links
   - jekyll-seo-tag
+  # Provides the `{% include_cached %}` tag that the Just the Docs layouts use. The theme
+  # declares it as a runtime dependency, but `remote_theme` fetches only the theme's files,
+  # so it has to be requested here and in the Gemfile explicitly.
+  - jekyll-include-cache
 
 # Turn the existing inter-page `foo.md` links into permalinks (so both the Scaladoc
 # site and the Jekyll site can share the same markdown source unchanged).

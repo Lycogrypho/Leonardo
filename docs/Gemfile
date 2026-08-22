@@ -14,5 +14,12 @@ gem "jekyll-remote-theme", "~> 0.4"
 gem "jekyll-relative-links", "~> 0.7"
 gem "jekyll-seo-tag", "~> 2.8"
 
+# REQUIRED BY THE THEME, and easy to miss.  Just the Docs declares
+# `jekyll-include-cache` as a runtime dependency and its `_includes/head.html` uses the
+# `{% include_cached %}` tag that gem provides -- but `remote_theme` only downloads the
+# theme's FILES, never its gems, so nothing installs it on our behalf.  Without it every
+# `jekyll build` dies with "Liquid Exception: Unknown tag 'include_cached'".
+gem "jekyll-include-cache", "~> 0.2"
+
 # Windows / JRuby time-zone data (harmless elsewhere).
 gem "tzinfo-data", platforms: [:mingw, :x64_mingw, :mswin, :jruby]
