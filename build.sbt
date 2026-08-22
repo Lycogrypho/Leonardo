@@ -120,3 +120,6 @@ libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.19" % "tes
 addCommandAlias("repl", "runMain it.grypho.scala.leonardo.cli.repl")
 // Full site: regenerate UML diagram → validate code examples → Scaladoc site + CSS.
 addCommandAlias("site", ";puml;mdoc;doc;injectApiStyles")
+// The gcd-policy sweep of issue 4.M. Test-scoped and on demand: it takes minutes, so it
+// must not run under `sbt test` — only its cross-policy equality check does, in RationalTest.
+addCommandAlias("bench", "Test/runMain it.grypho.scala.leonardo.core.RationalBenchmark")

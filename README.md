@@ -164,6 +164,10 @@ bindings, definitions) as a script that `:load` replays.
 
 - Broader indefinite integration (non-linear substitution; repeated/complex roots at degree ≥ 3 for rational functions)
 - Additional mathematical functions and constants
+- An exact-arithmetic mode: a user-controlled *working precision* backed by rational
+  numbers, so a result you distrust can be recomputed at a higher precision instead of
+  silently carrying `Double` rounding.  The arithmetic kernel (`core._Rational`) is in
+  place; wiring it into the expression tree is the remaining step
 
 ## Credits
 

@@ -1,0 +1,121 @@
+gcd-policy benchmark for issue 4.M -- Leonardo exact-arithmetic tier
+Recorded 2026-08-22.  Reproduce with: sbt bench
+Source: src/test/scala/core/RationalBenchmark.scala
+
+Read the maxBits columns, not the sub-millisecond timings: bit lengths are
+deterministic and repeat exactly across runs, while wall-clock at these
+magnitudes carries JIT and scheduler noise of roughly a factor of two.  The
+effects the decision rests on are 100x-6600x and sit far outside that.
+JVM 26.0.2 / OpenJDK 64-Bit Server VM
+OS  Windows 10 amd64
+CPU 4 cores
+
+== chain(n=3000) =======================================================
+precision policy             ms   maxBits  meanBits   allocMB
+10d       Eager            1.74        12      10.6      1.59
+10d       Lazy             1.51        35      30.8      2.56
+10d       Thr(256)         1.50        35      30.8      2.56
+30d       Eager            2.74        12      10.6      4.64
+30d       Lazy             1.51        35      30.8      3.95
+30d       Thr(256)         1.51        35      30.8      3.95
+100d      Eager            2.33        12      10.6      4.34
+100d      Lazy             2.19        35      30.8      4.20
+100d      Thr(256)         1.80        35      30.8      4.20
+exact     Eager            0.73        12      10.6      1.23
+exact     Lazy            19.41     60675   28193.6     89.58
+exact     Thr(256)         0.80       256     127.8      2.69
+
+== hilbert(n=8) ========================================================
+precision policy             ms   maxBits  meanBits   allocMB
+10d       Eager            0.41        30       8.9      0.15
+10d       Lazy             0.20        75      21.0      0.16
+10d       Thr(256)         0.22        75      21.0      0.16
+30d       Eager            0.32        30       8.9      0.32
+30d       Lazy             0.29        75      21.0      0.33
+30d       Thr(256)         0.33        75      21.0      0.33
+100d      Eager            0.46        30       8.9      0.34
+100d      Lazy             0.43        75      21.0      0.35
+100d      Thr(256)         0.45        75      21.0      0.35
+exact     Eager            0.16        30       8.9      0.10
+exact     Lazy           757.03   2497057  131378.5   2650.37
+exact     Thr(256)         0.06       256      51.4      0.15
+
+== expSeries(n=150) ====================================================
+precision policy             ms   maxBits  meanBits   allocMB
+10d       Eager            0.08        38      16.6      0.11
+10d       Lazy             0.07        62      20.3      0.10
+10d       Thr(256)         0.05        62      20.3      0.10
+30d       Eager            0.36       105      48.8      0.43
+30d       Lazy             0.19       186      54.8      0.38
+30d       Thr(256)         0.20       186      54.8      0.38
+100d      Eager            1.13       338     158.4      0.54
+100d      Lazy             0.60       654     187.3      0.47
+100d      Thr(256)         0.91       338     165.5      0.51
+exact     Eager            2.51      1102     501.6      0.56
+exact     Lazy             1.47     74890   12042.0      2.22
+exact     Thr(256)         2.42      1102     507.0      0.53
+
+== verdict =============================================================
+Read at the candidate default working precision: 30d.
+
+  Lazy speedup vs Eager on chain(n=3000)         :  1.82x
+  Lazy speedup vs Eager on hilbert(n=8)          :  1.11x
+  Lazy speedup vs Eager on expSeries(n=150)      :  1.88x
+
+  Worst Lazy/Eager operand size: 83235.23x  (at hilbert(n=8) @ exact)
+
+  REJECT Lazy - its operand size reaches 83235.23x Eager's (criterion: > 4x rejects regardless of timing).  Choose Threshold, and record the bit bound.
+
+  Cross-policy value agreement: OK on every cell
+
+== threshold bound sweep ===============================================
+Swept on BOTH arms.  On `exact` the bound is the only thing bounding growth, so
+it is where a bad bound is dangerous.  At a finite precision it decides something
+different: a bound BELOW the operand size implied by that precision fires on every
+operation, which is Eager wearing a different name -- so the two arms pull opposite
+ways and the default has to clear the higher of them.
+
+workload                 prec   bound       ms  maxBits  vs Eager
+chain(n=3000)           exact      16     0.10       16     6.99x
+chain(n=3000)           exact      32     0.12       32     6.01x
+chain(n=3000)           exact      64     0.29       64     2.49x
+chain(n=3000)           exact     128     0.34      128     2.17x
+chain(n=3000)           exact     256     0.41      256     1.80x
+chain(n=3000)           exact    1024     0.55     1024     1.34x
+
+chain(n=3000)             30d      16     0.61       16     4.50x
+chain(n=3000)             30d      32     0.63       32     4.34x
+chain(n=3000)             30d      64     0.62       35     4.43x
+chain(n=3000)             30d     128     0.61       35     4.47x
+chain(n=3000)             30d     256     0.62       35     4.45x
+chain(n=3000)             30d    1024     0.61       35     4.46x
+
+hilbert(n=8)            exact      16     0.02       30     8.72x
+hilbert(n=8)            exact      32     0.02       32    10.06x
+hilbert(n=8)            exact      64     0.04       64     3.67x
+hilbert(n=8)            exact     128     0.05      122     3.30x
+hilbert(n=8)            exact     256     0.05      256     3.31x
+hilbert(n=8)            exact    1024     0.07     1021     2.51x
+
+hilbert(n=8)              30d      16     0.07       30     4.71x
+hilbert(n=8)              30d      32     0.06       32     5.15x
+hilbert(n=8)              30d      64     0.06       63     5.19x
+hilbert(n=8)              30d     128     0.06       75     5.21x
+hilbert(n=8)              30d     256     0.06       75     5.24x
+hilbert(n=8)              30d    1024     0.06       75     5.17x
+
+expSeries(n=150)        exact      16     2.61     1102     0.96x
+expSeries(n=150)        exact      32     2.63     1102     0.96x
+expSeries(n=150)        exact      64     2.54     1102     0.99x
+expSeries(n=150)        exact     128     2.53     1102     0.99x
+expSeries(n=150)        exact     256     2.55     1102     0.99x
+expSeries(n=150)        exact    1024     2.33     1102     1.08x
+
+expSeries(n=150)          30d      16     0.21      105     1.76x
+expSeries(n=150)          30d      32     0.21      105     1.71x
+expSeries(n=150)          30d      64     0.20      105     1.80x
+expSeries(n=150)          30d     128     0.13      124     2.69x
+expSeries(n=150)          30d     256     0.13      186     2.69x
+expSeries(n=150)          30d    1024     0.13      186     2.68x
+
+[0J

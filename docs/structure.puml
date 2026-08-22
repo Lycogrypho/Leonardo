@@ -83,6 +83,27 @@ package "core" {
         + expc/logc/sinc/cosc/tanc
     }
 
+    class "_Rational" [[developer.html]] {
+        + num: BigInt   (carries the sign)
+        + den: BigInt   (always > 0, may be unreduced)
+        + add/subtract/multiply/divide/pow  (each takes a GcdPolicy)
+        + approximate(maxDen): _Rational
+        + approximateToDigits(digits): _Rational
+        + maxBitLength: Int
+        __ companion __
+        + of(n, d, policy): Option[_Rational]
+        + fromDouble(d): Option[_Rational]  (exact dyadic)
+        DefaultPolicy = Threshold(256)      chosen by the 4.M benchmark
+        + thresholdFor(digits) = max(256, 8 * digits)
+        NOT a _Value yet -- AST promotion is issue 4.L
+        equality by cross-multiplication: 2/6 == 1/3
+    }
+
+    enum "GcdPolicy" [[developer.html]] {
+        Eager             reduce on every construction
+        Lazy              never reduce (rejected by 4.M)
+        Threshold(maxBits) reduce past a bit bound  <-- chosen
+    }
     class "_Variable" <<case>> [[expressions.html]] {
         + variable: String
     }
@@ -131,6 +152,7 @@ package "core" {
     "_Complex"     ..|> "_Value"
     "_MatrixValue" ..|> "_Value"
     "_Variable"    ..|> "_Expression"
+    "_Rational"    ..>  "GcdPolicy"    : reduction policy per operation
 
     class "_Heaviside" <<case>> [[expressions.html]] {
         + arg: _Expression

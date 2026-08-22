@@ -714,9 +714,102 @@ x₂ = c / q
 ```
 
 The general lesson: when two nearly-equal quantities must be subtracted, look for an
-algebraically equivalent form that adds instead.  Note also what this is *not* — an
-exact-arithmetic tier would not have rescued it, because `√(10¹⁶ − 4)` is irrational either
-way.
+algebraically equivalent form that adds instead.  Worth being precise about what an exact
+tier would and would not have done here: `√(10¹⁶ − 4)` is irrational, so no rational
+representation stores it exactly — but a *lazily* evaluated algebraic number does recover
+the small root, because it defers rounding to the very end instead of at every step.  A
+probe of spire's `Algebraic` returns `-1.00000000000000010000000000000E-8` for exactly this
+equation.  That is the distinction between tiers 1 and 2 of the exact-arithmetic plan
+below, and the reason tier 2 exists at all.
+
+### Exact arithmetic — the rational tier (`core/_Rational.scala`)
+
+The counterpart of the section above.  Numerical stability is about rearranging a formula so
+that `Double` survives it, one formula at a time; this tier is about not using `Double` in
+the first place, for every path at once.
+
+**The model is bounded-denominator rational arithmetic** — not "exact irrationals", which is
+impossible by definition.  Every value carries a rational approximation whose error is
+bounded by a *working precision*, irrationals met along the way are re-approximated to that
+bound, and the arithmetic runs on numerator and denominator as `BigInt`s.  Precision stops
+being purely a display setting and becomes a knob a user who distrusts a result can raise
+until the answer stops moving.
+
+| Concept | Reference |
+|---|---|
+| Arbitrary-precision arithmetic | [Wikipedia](https://en.wikipedia.org/wiki/Arbitrary-precision_arithmetic) |
+| Continued fractions (the approximation algorithm) | [Wikipedia](https://en.wikipedia.org/wiki/Continued_fraction) · [Simple continued fraction](https://en.wikipedia.org/wiki/Simple_continued_fraction) |
+| Stern–Brocot tree (the same enumeration, seen as a tree) | [Wikipedia](https://en.wikipedia.org/wiki/Stern%E2%80%93Brocot_tree) |
+| Diophantine approximation (what "best under a bound" means) | [Wikipedia](https://en.wikipedia.org/wiki/Diophantine_approximation) |
+| Euclidean algorithm (the `gcd` whose cost drives the policy below) | [Wikipedia](https://en.wikipedia.org/wiki/Euclidean_algorithm) |
+| Hilbert matrix (the benchmark's worst case) | [Wikipedia](https://en.wikipedia.org/wiki/Hilbert_matrix) |
+| Gaussian elimination (where denominators blow up) | [Wikipedia](https://en.wikipedia.org/wiki/Gaussian_elimination) |
+
+**Status.**  What ships today is the arithmetic kernel *only*.  `_Rational` is deliberately
+**not** a `_Value`, so nothing can construct one inside an expression and no existing
+evaluation path is touched — which is what makes "the default behaviour is byte-identical"
+true by construction rather than by testing.  Promoting it (the promotion lattice, an exact
+mode in the parser, a REPL toggle) is issue 4.L.
+
+**Why the representation is an in-house `BigInt` pair.**  spire is the intended engine for
+*irrationals* (`Real` / `Algebraic`), but its `Rational` normalises to lowest terms on every
+construction.  Adopting it as the representation would have settled the reduction question
+below by fiat, before it could be measured.
+
+#### The reduction policy, and why it was measured rather than chosen
+
+`gcd` is the expensive step of rational arithmetic; skipping it makes each operation cheaper
+but roughly *doubles* operand size.  Which wins is not obvious, so `GcdPolicy` offers three
+answers — `Eager` (reduce always, what spire does), `Lazy` (never), `Threshold(bits)` (only
+once an operand outgrows a bound) — and issue 4.M benchmarked them, with the exit criteria
+written down *before* the numbers existed.  Run it with `sbt bench`; the full record is in
+`docs/benchmarks/gcd-policy-2026-08.txt`.
+
+The hypothesis under test was **not** "which is faster".  It was: *re-approximation to the
+working threshold already caps operand size, so `Eager`'s advantage shrinks as
+re-approximation runs more often.*  That is why every workload is swept across working
+precisions rather than measured at one.
+
+**The hypothesis held — and then its premise failed.**  At every finite working precision,
+`Lazy` stayed within 2–3× of `Eager`'s operand size and was marginally *faster*.  But the
+`exact` arm — no re-approximation at all — is not a synthetic control: it is the **normal**
+mode for the operations that are closed over the rationals (`Sum`, `Product`, `Ratio`,
+integer `Power`, and all of `matrix`), which never need to approximate anything.  There:
+
+| 8×8 Hilbert solve, exact | max operand bits | ms | allocated |
+|---|---|---|---|
+| `Eager` | 30 | 0.16 | 0.10 MB |
+| `Lazy` | **2 497 057** | **757** | **2 650 MB** |
+| `Threshold(256)` | 256 | 0.06 | 0.15 MB |
+
+An 83 000× operand-size ratio and a 4 700× slowdown, against an exit criterion that rejected
+`Lazy` outright past 4×.  So: **`Threshold` wins, and it is not close.**  It keeps `Lazy`'s
+cheapness wherever re-approximation is already bounding growth, and acts as a guard where
+nothing else is — note that it beats `Eager` on that row too, because most operations never
+reach the bound and skip the `gcd` entirely.
+
+**The bound is coupled to the working precision, which is the subtle part.**  A bound *below*
+the operand size a precision implies fires on every operation, making `Threshold` into
+`Eager` under another name.  The sweep shows this directly in the deterministic `maxBits`
+column: at 30 working digits a 64-bit bound reproduces `Eager`'s operand sizes exactly
+(105 and 30 bits), while a 256-bit bound reproduces `Lazy`'s (186 and 75).  Since a
+`d`-digit value needs `d·log₂10 ≈ 3.32d` bits and a product of two reaches twice that,
+`_Rational.thresholdFor(digits)` uses `max(256, 8·digits)`.  Hard-coding a bound without
+reference to the precision would silently give the benefit back.
+
+**Read that benchmark honestly.**  Bit lengths are deterministic and repeat exactly across
+runs; the sub-millisecond wall-clock figures carry JIT and scheduler noise of roughly a
+factor of two, and the harness is a plain warm-up-and-take-the-minimum loop, not JMH.  The
+effects the decision rests on are 100×–4 700× and sit far outside that noise; the 1.0–1.9×
+ratios in the finite-precision rows do not, and should not be read as rankings.  This is why
+the plan asked for operand size *alongside* time — it is the variable that explains the
+wall-clock and predicts precisions that were never measured.
+
+**All three policies are kept**, though only one is the default.  The plan said to delete the
+losers, but a policy is one `match` arm each, and deleting them would delete the cross-policy
+equality test — which asserts that all three produce *equal values* on every workload, and is
+the only thing exercising the `Lazy` path at all.  That test outlives the decision; the
+implementations it needs cost twenty lines.
 
 ## Code conventions
 
