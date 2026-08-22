@@ -104,9 +104,9 @@ object Parser extends JavaTokenParsers:
    *  @param d the constant's `Double` value
    *  @return a `_Rational` approximation in exact mode, the `_Number` otherwise
    */
-  private def irrational(d: Double): _Value =
+  private def irrational(d: Double, exactly: Int => Option[_Rational]): _Value =
     exactPrecision.get() match
-      case Some(digits) => _Rational.fromApproximation(d, digits).getOrElse(_Number(d))
+      case Some(digits) => exactly(digits).getOrElse(_Number(d))
       case None         => _Number(d)
 
   /** Wraps a production with the shared `ThreadLocal` depth guard so recursive
@@ -495,8 +495,8 @@ object Parser extends JavaTokenParsers:
    *  truth value (`_Truth.Unknown`); the guard keeps `truex` an ordinary variable.
    */
   lazy val constant: Parser[_Value]     =
-    """pi(?![a-zA-Z0-9])""".r  ^^ { _ => irrational(math.Pi) }      |
-    """e(?![a-zA-Z0-9])""".r   ^^ { _ => irrational(math.E)  }      |
+    """pi(?![a-zA-Z0-9])""".r  ^^ { _ => irrational(math.Pi, piAt) } |
+    """e(?![a-zA-Z0-9])""".r   ^^ { _ => irrational(math.E, eAt)   } |
     """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)                |
     """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity) |
     """true(?![a-zA-Z0-9_])""".r    ^^^ _Bool(true)                 |

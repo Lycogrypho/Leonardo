@@ -51,9 +51,24 @@ lazy val root = (project in file("."))
       val src      = (baseDirectory.value / "docs" / "structure.puml").getAbsolutePath
       val out      = (baseDirectory.value / "docs" / "src").getAbsolutePath
       val dotArgs  = sys.env.get("GRAPHVIZ_DOT").toList.flatMap(d => List("-graphvizdot", d))
+      // PlantUML reports a SYNTAX ERROR as a warning ("no image in ...") and still exits 0,
+      // so the exit code alone is not evidence that anything was produced. Left unchecked
+      // this task claims success while silently leaving the previous SVG in place -- which
+      // is exactly what happened once, and a stale diagram was committed before anyone
+      // noticed. Capture the output and treat that warning as the failure it is, and verify
+      // the file was actually rewritten.
+      val svg      = baseDirectory.value / "docs" / "src" / "structure.svg"
+      val before   = if (svg.exists) svg.lastModified else 0L
+      val output   = new StringBuilder
+      val collect  = (s: String) => { output.append(s).append('\n'); () }
       val rc       = (Seq("java", "-jar", jar.getAbsolutePath) ++ dotArgs ++ Seq(src, "-tsvg", "-o", out))
-                       .!(ProcessLogger(log.info(_), log.warn(_)))
+                       .!(ProcessLogger(s => { collect(s); log.info(s) }, s => { collect(s); log.warn(s) }))
       if (rc != 0) sys.error(s"PlantUML exited with code $rc")
+      if (output.toString.contains("no image in"))
+        sys.error("PlantUML found no diagram in docs/structure.puml -- it is a syntax error, " +
+                  "and the previous structure.svg is now stale. Fix the .puml and re-run.")
+      if (!svg.exists || svg.lastModified == before)
+        sys.error(s"PlantUML reported success but did not write ${svg.getName}")
       log.success("Generated docs/src/structure.svg")
     },
 
@@ -111,6 +126,16 @@ libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % 
 // is not on the library's public API, and the read loop degrades to a plain dumb
 // terminal when no interactive console is attached (piped input, CI).
 libraryDependencies += "org.jline" % "jline" % "3.30.15"
+
+// Spire powers the exact-arithmetic tier's irrational engine (issue 4.N): `Real` computes a
+// transcendental to any requested precision, replacing the ~15-digit `Double` ceiling that
+// tier 1 had to live with. MIT licensed, so one-way compatible with Leonardo's GPL-3.
+//
+// PINNED DELIBERATELY. spire_3 has exactly one stable release, 0.18.0 of June 2022, and the
+// transitive `typelevel/algebra` is archived. The licence is what bounds that risk: if spire
+// is ever truly abandoned, the handful of `Real` sources can be vendored in under GPL-3 with
+// the MIT notice preserved. Do not plan on upgrades.
+libraryDependencies += "org.typelevel" %% "spire" % "0.18.0"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
 

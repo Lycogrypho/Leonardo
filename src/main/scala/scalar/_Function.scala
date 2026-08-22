@@ -2,6 +2,8 @@ package it.grypho.scala.leonardo
 package scalar
 
 import core.*
+import spire.math.Real
+import spire.algebra.Trig
 import scala.math.{exp, log, log10, sin, cos, tan, asin, acos, atan}
 
 
@@ -25,6 +27,50 @@ abstract class _Function extends _Expression:
   protected def mapMatrix(mv: _MatrixValue, f: Double => Double): Either[_Expression, _Value] =
     _MatrixValue(mv.rows, mv.cols, mv.toVector.map(f).toArray).guarded(this)
 
+  /** The exact non-negative integer an argument denotes, if it denotes one.
+   *
+   *  The gate on every exact path in the factorial family: those functions are only closed
+   *  over the rationals at non-negative integers, and everywhere else (`Gamma(0.5)`,
+   *  `fact(-1)`) the analytic kernels remain the right answer.
+   *
+   *  @param r the exact argument
+   *  @return `Some(n)` when `r` is a non-negative integer, `None` otherwise
+   */
+  protected def exactIntArg(r: _Rational): Option[BigInt] =
+    r.toBigIntExact.filter(_.signum >= 0)
+
+  /** This function as an arbitrary-precision kernel, when it has one (issue 4.N).
+   *
+   *  Returning `None` means "not defined here", and covers both cases: a function with no
+   *  `Real` counterpart at all, and an argument outside the real domain — `ln` of a negative,
+   *  `asin` beyond `±1`.  The domain is checked **explicitly** per function rather than by
+   *  computing in `Double` first and seeing whether it came back finite, because that oracle
+   *  gets `exp(1000)` exactly wrong: `Double` overflows to an infinity there while the true
+   *  value is a perfectly finite 435-digit number, which is the acceptance case.
+   *
+   *  Out-of-domain arguments fall through to [[viaDouble]], which owns the complex fallback.
+   */
+  protected def exactKernel: Option[_Rational => Option[Real]] = None
+
+  /** Evaluates this function on an exact argument, at the working precision.
+   *
+   *  Uses the `Double` kernel when the working precision is inside `Double`'s reliable range:
+   *  there is nothing to gain there and roughly 110× to lose, since a `Real` transcendental
+   *  costs about 0.6 ms against 0.006 ms.  The two agree to within the precision either
+   *  claims, so which one ran is not observable — only how long it took.
+   *
+   *  @param r   the exact argument
+   *  @param env supplies the working precision
+   *  @return the result at the working precision, or the `Double` path's answer
+   */
+  protected def viaExact(r: _Rational, env: Environment): Either[_Expression, _Value] =
+    def fallback = viaDouble(List(_Number(r.toDouble)), env)
+    if env.workingPrecision <= _Rational.DoubleReliableDigits then fallback
+    else
+      exactKernel.flatMap(_(r)).flatMap(fromReal(_, env.workingPrecision)) match
+        case Some(v) => Right(v)
+        case None    => fallback
+
   /** Evaluates this function on exact arguments by way of the `Double` kernel, lifting the
    *  result back into the exact tier.
    *
@@ -41,22 +87,13 @@ abstract class _Function extends _Expression:
    *  A complex or symbolic result passes through untouched — a complex value is inexact, so
    *  float contagion is already the right answer for it.
    *
+   *  Since issue 4.N this is the *fallback*: [[viaExact]] is what the transcendentals reach
+   *  first, and it comes back here for an out-of-domain argument or a low working precision.
+   *
    *  @param args the same children, with every exact argument replaced by its `Double`
    *  @param env  supplies the working precision
    *  @return the result lifted back to a `_Rational`, or whatever non-real result came out
    */
-  /** The exact non-negative integer an argument denotes, if it denotes one.
-   *
-   *  The gate on every exact path in the factorial family: those functions are only closed
-   *  over the rationals at non-negative integers, and everywhere else (`Gamma(0.5)`,
-   *  `fact(-1)`) the analytic kernels remain the right answer.
-   *
-   *  @param r the exact argument
-   *  @return `Some(n)` when `r` is a non-negative integer, `None` otherwise
-   */
-  protected def exactIntArg(r: _Rational): Option[BigInt] =
-    r.toBigIntExact.filter(_.signum >= 0)
-
   protected def viaDouble(args: List[_Expression], env: Environment): Either[_Expression, _Value] =
     rebuild(args).eval(env) match
       case Right(_Number(d)) =>
@@ -89,9 +126,13 @@ case class Exp(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Exp(c.head)
 
+  /** exp is defined on the whole real line. */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(Real.exp(toReal(r))))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) => Right(_Number(exp(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, exp)
       case Right(c: _Complex) => _Complex.expc(c).map(Right(_)).getOrElse(Left(Exp(c)))
@@ -112,9 +153,15 @@ case class Ln(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Ln(c.head)
 
+  /** ln needs a strictly positive argument; a negative one is the complex case, which
+   *  `viaDouble` already owns, and ln(0) is undefined either way.
+   */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.signum > 0 then Some(Real.log(toReal(r))) else None)
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) =>
         val r = log(x)
         // ln of a negative number is now the principal complex value ln|x| + i*pi;
@@ -175,9 +222,13 @@ case class Sin(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sin(c.head)
 
+  /** sin is defined on the whole real line. */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(Real.sin(toReal(r))))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) => Right(_Number(sin(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, sin)
       case Right(c: _Complex) => _Complex.sinc(c).map(Right(_)).getOrElse(Left(Sin(c)))
@@ -196,9 +247,13 @@ case class Cos(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Cos(c.head)
 
+  /** cos is defined on the whole real line. */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(Real.cos(toReal(r))))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) => Right(_Number(cos(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, cos)
       case Right(c: _Complex) => _Complex.cosc(c).map(Right(_)).getOrElse(Left(Cos(c)))
@@ -218,9 +273,15 @@ case class Tg(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Tg(c.head)
 
+  /** 	an has poles at odd multiples of pi/2, but those are irrational and the argument
+   *  here is exactly rational, so it can never land on one.
+   */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(Real.tan(toReal(r))))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) =>
         val r = tan(x)
         if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
@@ -243,9 +304,13 @@ case class Asin(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Asin(c.head)
 
+  /** sin is real only on [-1, 1]. */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.abs <= _Rational.One then Some(Real.asin(toReal(r))) else None)
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) =>
         val r = asin(x)
         if r.isNaN then Left(this) else Right(_Number(r))
@@ -266,9 +331,13 @@ case class Acos(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Acos(c.head)
 
+  /** cos is real only on [-1, 1]. */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.abs <= _Rational.One then Some(Real.acos(toReal(r))) else None)
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) =>
         val r = acos(x)
         if r.isNaN then Left(this) else Right(_Number(r))
@@ -289,9 +358,13 @@ case class Atan(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Atan(c.head)
 
+  /** tan is defined on the whole real line. */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(Real.atan(toReal(r))))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x)) => Right(_Number(atan(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, atan)
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
@@ -322,7 +395,7 @@ case class Factorial(e: _Expression) extends _Function:
       // ceiling, which exists only because a Double overflows there (issue 4.L slice B).
       case Right(r: _Rational) if exactIntArg(r).isDefined =>
         exactIntArg(r).flatMap(factorialExact).map(n => Right(_Rational(n))).getOrElse(Left(this))
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x))       => factorialOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => factorialOf(d).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
@@ -386,7 +459,7 @@ case class Gamma(e: _Expression) extends _Function:
       // other argument is genuinely transcendental and goes through Lanczos as before.
       case Right(r: _Rational) if exactIntArg(r).exists(_.signum > 0) =>
         exactIntArg(r).flatMap(n => factorialExact(n - 1)).map(n => Right(_Rational(n))).getOrElse(Left(this))
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
@@ -407,7 +480,7 @@ case class LogGamma(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
-      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
+      case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x))       => lgammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => lgammaOf(d).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)

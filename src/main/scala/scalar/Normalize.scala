@@ -40,7 +40,12 @@ private val MaxPowerExpansion = 20
  *  @return `Some` coefficient vector (length = degree + 1) or `None` for non-polynomial shapes
  */
 def collect(e: _Expression, v: _Variable): Option[Vector[_Expression]] =
-  val zero: _Expression = _Number(0)
+  // The padding zero and the unit coefficient are synthesised, so they must join the tier of
+  // the expression being collected.  Hard-coded `_Number`s here would demote every
+  // coefficient the moment they were summed in, and the exact tier would never reach any
+  // caller of `collect` -- which is most of the solver (issue 4.N).
+  val zero: _Expression = _Rational.literalLike(0, e)
+  val one:  _Expression = _Rational.literalLike(1, e)
 
   def add(a: Vector[_Expression], b: Vector[_Expression]): Vector[_Expression] =
     a.zipAll(b, zero, zero).map((p, q) => Sum(p, q))
@@ -53,21 +58,31 @@ def collect(e: _Expression, v: _Variable): Option[Vector[_Expression]] =
 
   def loop(e: _Expression): Option[Vector[_Expression]] = e match
     case _ if !dependsOn(e, v)                    => Some(Vector(e))
-    case x: _Variable if x.variable == v.variable => Some(Vector(zero, _Number(1)))
+    case x: _Variable if x.variable == v.variable => Some(Vector(zero, one))
     case Sum(a, b)                                => for ca <- loop(a); cb <- loop(b) yield add(ca, cb)
     case Product(a, b)                            => for ca <- loop(a); cb <- loop(b) yield mul(ca, cb)
     case Ratio(a, b) if !dependsOn(b, v)          => loop(a).map(_.map(c => Ratio(c, b)))
-    case Power(_, _Number(0.0))                   => Some(Vector(_Number(1)))
+    case Power(_, _Number(0.0))                   => Some(Vector(one))
     case Power(a, _Number(n)) if n >= 1 && n == n.toInt && n <= MaxPowerExpansion =>
       loop(a).map(ca => (1 until n.toInt).foldLeft(ca)((acc, _) => mul(acc, ca)))
     case _                                        => None   // sin(v), 1/v, 2^v, v^2.5, ...
 
   loop(e).map(cs => trimTrailingZeros(cs.map(simplifyFully)))
 
-/** Drops trailing zero coefficients; always returns at least `Vector(_Number(0))`. */
+/** Drops trailing zero coefficients; always returns at least a single zero. */
 private def trimTrailingZeros(cs: Vector[_Expression]): Vector[_Expression] =
-  val last = cs.lastIndexWhere(_ != _Number(0))
-  if last < 0 then Vector(_Number(0)) else cs.take(last + 1)
+  // Tested by VALUE, not by `!= _Number(0)`: an exact zero is a different object of a
+  // different type, so the identity comparison would leave exact trailing zeros in place.
+  val last = cs.lastIndexWhere(c => !isZeroLiteral(c))
+  if last < 0 then Vector(cs.headOption.getOrElse(_Number(0))) else cs.take(last + 1)
+
+/** Whether `e` is a literal zero in either numeric tier.
+ *
+ *  `_Number` is a widening extractor, so this one pattern covers the exact zero too.
+ */
+private def isZeroLiteral(e: _Expression): Boolean = e match
+  case _Number(0.0) => true
+  case _            => false
 
 /** Rebuilds `e` as a sum of like terms collected as a polynomial in `v`.
  *

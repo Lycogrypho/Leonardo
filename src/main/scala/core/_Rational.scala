@@ -148,6 +148,35 @@ object _Rational:
     try Some(fromBigDecimal(new java.math.BigDecimal(s)))
     catch case _: NumberFormatException => None
 
+  /** Whether `e` carries an exact value anywhere in it.
+   *
+   *  The question every algorithm that *synthesises* a numeric constant has to answer.
+   *  Float contagion is about the **tier**, not the value: `_Number(-1)` is an exact integer
+   *  but an inexact-tier one, so multiplying an exact operand by it correctly demotes the
+   *  result.  That is right when the `-1` came from user input and wrong when the algorithm
+   *  invented it — `Sum(lhs, Product(_Number(-1), rhs))` would silently pull an entire
+   *  exactly-stated equation into `Double` before the solver ever saw it.
+   *
+   *  @param e the expression to inspect
+   *  @return `true` when any node is a `_Rational`
+   */
+  def containsExact(e: _Expression): Boolean =
+    e.isInstanceOf[_Rational] || e.children.exists(containsExact)
+
+  /** An integer constant in the same tier as `like`.
+   *
+   *  Use wherever an algorithm needs a constant of its own — a `-1` to negate with, the `2`
+   *  of a quadratic denominator — so that it joins the expression it is about to combine
+   *  with rather than dragging it down a tier.  The parser's `literalInt` is the
+   *  parse-time counterpart of this.
+   *
+   *  @param n    the integer value
+   *  @param like an expression from the surrounding computation
+   *  @return a `_Rational` when `like` is exact, a `_Number` otherwise
+   */
+  def literalLike(n: Int, like: _Expression): _Value =
+    if containsExact(like) then _Rational(n) else _Number(n)
+
   /** Significant decimal digits a `Double` actually carries.
    *
    *  The ceiling on [[fromApproximation]], and an honest one: an operation that leaves the
@@ -464,9 +493,19 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
     then s"$rn/$rd"
     else
       val d = toDouble
-      // Out of `Double` range entirely: the fraction is the only form left that says
-      // anything true.
-      if d.isFinite then _Number.round(d, precision).toString else s"$rn/$rd"
+      // Beyond `Double`'s range: `exp(1000)` is about 1.97e434 and perfectly exact, but its
+      // fraction is an 800-digit wall.  `BigDecimal` has no such range limit, so the decimal
+      // form still says something useful where the fraction does not.
+      if !d.isFinite then toBigDecimal(math.max(precision, 1)).toString
+      else
+        val rounded = _Number.round(d, precision)
+        // A non-zero value must never *display* as zero.  Rounding `-1e-8` to five decimals
+        // gives `0.0`, which for a `_Number` is only ambiguous but for an exact value is
+        // plainly false — we know it is not zero.  This is exactly the case the exact tier
+        // exists to make visible: the small root of an ill-conditioned quadratic.  Fall back
+        // to `precision` SIGNIFICANT digits, which keeps the magnitude.
+        if rounded == 0.0 && !isZero then toBigDecimal(math.max(precision, 1)).toString
+        else rounded.toString
 
   /** Decimal digit count of `n`, sign excluded. */
   private def digitsOf(n: BigInt): Int =

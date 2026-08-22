@@ -745,10 +745,54 @@ until the answer stops moving.
 | Hilbert matrix (the benchmark's worst case) | [Wikipedia](https://en.wikipedia.org/wiki/Hilbert_matrix) |
 | Gaussian elimination (where denominators blow up) | [Wikipedia](https://en.wikipedia.org/wiki/Gaussian_elimination) |
 
-**Status.**  Tier 1 ships in full: `_Rational` is a sibling `_Value` of `_Number`, exact for
-`+ - * /` and integer powers, with an `exact on | off` mode in the REPL (slice A); exact
-matrices and an unbounded factorial family followed (slice B).  Genuinely high-precision
-transcendentals are tier 2.  Off by default, so the `Double` path is unchanged.
+**Status.**  Complete.  `_Rational` is a sibling `_Value` of `_Number`, exact for `+ - * /`
+and integer powers, with an `exact on | off` mode in the REPL (slice A); exact matrices and
+an unbounded factorial family followed (slice B); and the transcendentals are
+arbitrary-precision through spire (tier 2).  Off by default, so the `Double` path is
+unchanged.
+
+#### The irrational engine, and why it is eager
+
+Tier 2's job was to make the working precision mean what a user expects.  Before it,
+everything that left the rationals was computed in `Double` and re-approximated — so
+`exact precision 60` sharpened the arithmetic *around* a `sin()` and nothing about the
+`sin()`, and `exp(1000)` overflowed to an infinity and stayed symbolic.
+
+The plan called for holding irrational sub-results as unevaluated spire `Real`s inside the
+AST, materialising at the end.  That was reconsidered on two grounds:
+
+- **`Real`'s equality is only semi-decidable.**  A `_Value` wrapping one could loop forever
+  on `==` or inside a pattern match — a hazard with no good answer, in a type the whole
+  library pattern-matches on constantly.
+- It would have meant a **fourth** pass through the promotion lattice, the widening
+  extractor, display, serialization and the parser.
+
+So `core/Irrational.scala` materialises immediately, at `workingPrecision + GuardDigits`.
+That costs a little accuracy across very long chains and buys both acceptance cases outright:
+`exp(1000)` is an exact 435-digit rational, and the ill-conditioned quadratic improves
+monotonically (residual `1.1e-16` on the `Double` path, then `1.9e-40` at 20 digits and
+`1.4e-80` at 60).  Where a single algorithm genuinely needs to stay exact longer it can use
+`Algebraic` locally, with no AST involvement.
+
+The `Double` kernels are kept when the working precision is inside their reliable range:
+nothing to gain there, and roughly 110× to lose, since a `Real` transcendental costs about
+0.6 ms against 0.006 ms.  The two agree to within the precision either claims, so which one
+ran is not observable — only how long it took.
+
+#### The trap that recurred at every step
+
+Three times across this tier, the same bug: **an algorithm inventing a numeric constant in
+the wrong tier**.  `_Number(-1)` is an inexact-tier value even though `-1` is exactly
+representable, so combining it with an exact operand correctly demotes the result — which is
+right for a user's `-1` and wrong for one the code made up.  It hit subtraction (built as
+`a + (-1)·b`, so *every* subtraction left the tier), `dfact`'s step, bare `log`'s base, the
+solver's `lhs - rhs`, and every coefficient `collect` padded with a zero.
+
+`core._Rational.literalLike(n, like)` and `Parser.literalInt(n)` exist to make this hard to
+get wrong; `_Rational.containsExact` is the underlying test.  A related one: comparing a
+coefficient against `_Number(0)` by identity silently fails for an exact zero, because it is
+a different type — compare through the widening pattern instead.
+
 
 #### Where exact matrices live, and why there is no second dense type
 

@@ -113,16 +113,22 @@ class ExactModeTest extends AnyFlatSpec:
     assert(rational("dfact(7)") == _Rational(105))
   }
 
-  it should "claim no more digits than a Double actually carries" in
+  it should "deliver the digits the working precision asks for" in
   {
-    // The working precision bounds the ARITHMETIC, not the transcendental kernels, which
-    // are still Double-accurate.  Asking for 60 digits of sin must not manufacture 45.
+    // This test used to assert the OPPOSITE -- that a result could claim no more than a
+    // Double's ~15 digits -- which was the honest statement of slice A's limitation.  Issue
+    // 4.N removed it by routing the transcendentals through spire's arbitrary-precision
+    // Real, so the assertion inverts: 60 digits requested must be 60 digits delivered.
+    // sin(1/3) to 40 places, independently computed:
+    val reference = BigDecimal("0.3271946967961522441733440852676206060643")
     val e = new Environment(workingPrecision = 60)
     Parser.parse("sin(1/3)", Some(60)) match
       case Parser.Success(x, _) => x.eval(e) match
         case Right(v: _Rational) =>
-          assert(v.den <= BigInt(10).pow(_Rational.DoubleReliableDigits),
-                 s"denominator claims more precision than a Double has: $v")
+          assert(v.den > BigInt(10).pow(_Rational.DoubleReliableDigits),
+                 s"a Double-limited result would not need this many digits: $v")
+          assert((v.toBigDecimal(45) - reference).abs < BigDecimal("1e-39"),
+                 s"got ${v.toBigDecimal(45)}, expected $reference")
         case other => fail(s"expected an exact result, got $other")
       case other => fail(s"parse failed: $other")
   }

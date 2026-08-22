@@ -125,8 +125,13 @@ e.execute("exact precision 40")
 e.execute("exact")
 ```
 
-Those kernels are still `Double`-accurate to about 15 digits whatever the working precision
-says, so raising it sharpens the arithmetic *around* a `sin()`, not the `sin()` itself.
+Those kernels are genuinely arbitrary-precision, so raising the working precision sharpens
+the `sin()` itself and not merely the arithmetic around it:
+
+```scala mdoc
+e.execute("exact precision 40")
+e.execute("exp(1000)")     // 435 digits; floating point gives Infinity
+```
 
 A short result displays as a fraction and a long one as a decimal, but `:save` always
 writes the exact fraction, so nothing is lost across a round-trip:

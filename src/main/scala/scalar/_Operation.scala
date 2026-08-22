@@ -221,11 +221,30 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
   private def ratPow(b: _Rational, e: _Rational, env: Environment): Either[_Expression, _Value] =
     e.toBigIntExact.filter(_.isValidInt) match
       case Some(k) => b.pow(k.toInt, env.rationalPolicy).map(Right(_)).getOrElse(Left(this))
-      case None    =>
-        val r = pow(b.toDouble, e.toDouble)
-        if r.isNaN || r.isInfinite then
-          _Complex.pow(_Number(b.toDouble), _Number(e.toDouble)).map(Right(_)).getOrElse(Left(this))
-        else _Rational.fromApproximation(r, env.workingPrecision).map(Right(_)).getOrElse(Left(this))
+      case None    => fractionalPow(b, e, env)
+
+  /** A rational base to a genuinely fractional power.
+   *
+   *  Not closed over the rationals — `2^(1/2)` is irrational — so it is computed and
+   *  re-approximated to the working precision, like every transcendental.  A positive base
+   *  goes through spire's `Real` (issue 4.N), which is what lets a high working precision
+   *  mean something here; a negative base with a fractional exponent is the complex case and
+   *  keeps the `Double` route, which owns the principal-value fallback.
+   *
+   *  @param b   the exact base
+   *  @param e   the exact, non-integer exponent
+   *  @param env supplies the working precision
+   *  @return the power at the working precision, or `Left(this)` when undefined
+   */
+  private def fractionalPow(b: _Rational, e: _Rational, env: Environment): Either[_Expression, _Value] =
+    def viaDouble: Either[_Expression, _Value] =
+      val r = pow(b.toDouble, e.toDouble)
+      if r.isNaN || r.isInfinite then
+        _Complex.pow(_Number(b.toDouble), _Number(e.toDouble)).map(Right(_)).getOrElse(Left(this))
+      else _Rational.fromApproximation(r, env.workingPrecision).map(Right(_)).getOrElse(Left(this))
+
+    if b.signum <= 0 || env.workingPrecision <= _Rational.DoubleReliableDigits then viaDouble
+    else exactPow(b, e, env.workingPrecision).map(Right(_)).getOrElse(viaDouble)
 
   /** Raises a square dense matrix to an integer power `e`.
    *

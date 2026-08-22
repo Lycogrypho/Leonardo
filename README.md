@@ -66,8 +66,11 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
   `0.1 + 0.2` is exactly `3/10` and `1/3 * 3` is exactly `1`. Matrices are exact too —
   `det` of the 3×3 Hilbert matrix is exactly `1/2160` where floating point reports
   `4.6E-4`, and `A * inv(A)` is exactly the identity — and `fact` loses the `170!`
-  ceiling that a `Double` imposes. A user-settable *working precision* bounds how tightly
-  irrationals are approximated. Off by default, so the floating-point path is unchanged.
+  ceiling that a `Double` imposes. Transcendentals are arbitrary-precision, so a
+  user-settable *working precision* genuinely sharpens `sin` and `exp` themselves:
+  `exp(1000)` is an exact 435-digit value where floating point overflows to infinity, and
+  the small root of `x² + 10⁸x + 1 = 0` gets steadily more accurate as you raise it. Off by
+  default, so the floating-point path is unchanged.
 
 - **Clean API**: Environment-aware evaluation with no implicit global state. Expressions are immutable and composable. `Environment` is immutable — `withBinding` returns a new instance, enabling safe concurrent evaluation.
 
@@ -171,8 +174,6 @@ bindings, definitions) as a script that `:load` replays.
 
 - Broader indefinite integration (non-linear substitution; repeated/complex roots at degree ≥ 3 for rational functions)
 - Additional mathematical functions and constants
-- Arbitrary-precision transcendental functions, so a higher working precision sharpens
-  `sin` and `exp` themselves rather than only the arithmetic around them
 
 ## Credits
 

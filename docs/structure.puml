@@ -1,6 +1,4 @@
-@        exact entries do NOT collapse to _MatrixValue:
-        this IS the exact matrix carrier (matrix/Exact.scala)
-startuml
+@startuml
 
 ' Layout engine: Graphviz dot (default).
 ' If dot is not on PATH, set GRAPHVIZ_DOT before running `sbt puml`
@@ -98,15 +96,16 @@ package "core" {
         DefaultPolicy = Threshold(256)      chosen by the 4.M benchmark
         + thresholdFor(digits) = max(256, 8 * digits)
         sibling _Value of _Number (issue 4.L)
+        transcendentals via spire Real (core/Irrational)
         _Number.unapply WIDENS to match this too:
-        "case _Number(x)" means "reads as real x"
+        case _Number(x) means: reads as real x
         equality by cross-multiplication: 2/6 == 1/3
     }
 
     enum "GcdPolicy" [[developer.html]] {
         Eager             reduce on every construction
         Lazy              never reduce (rejected by 4.M)
-        Threshold(maxBits) reduce past a bit bound  <-- chosen
+        Threshold(maxBits) reduce past a bound (CHOSEN)
     }
     class "_Variable" <<case>> [[expressions.html]] {
         + variable: String
@@ -349,6 +348,8 @@ package "scalar" {
 package "matrix" {
 
     class "_Matrix" <<case>> [[matrix.html]] {
+        exact entries do NOT collapse to _MatrixValue:
+        this IS the exact matrix carrier (matrix/Exact.scala)
         + rows: Int
         + cols: Int
         + elems: Vector[_Expression]

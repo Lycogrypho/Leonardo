@@ -69,13 +69,17 @@ def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): Li
 
 /** Scalar linear/quadratic/numeric tiers for a non-matrix equation. */
 private def solveScalar(eq: _Equation, v: _Variable, env: Environment): List[_Equation] =
-  val difference = Sum(eq.lhs, Product(_Number(-1), eq.rhs))
+  // The -1 must join the equation's own tier.  A hard-coded `_Number(-1)` here would demote
+  // an exactly-stated equation through float contagion before the solver ever ran, and the
+  // exact quadratic branch below would then never see an exact coefficient (issue 4.N).
+  val minusOne   = _Rational.literalLike(-1, eq)
+  val difference = Sum(eq.lhs, Product(minusOne, eq.rhs))
 
   val roots: List[_Expression] = collect(difference, v) match
     case Some(cs) if cs.size == 1 => Nil   // constant in v: nothing to solve for
     case Some(cs) if cs.size == 2 =>
-      List(simplifyFully(Ratio(Product(_Number(-1), cs(0)), cs(1))))
-    case Some(cs) if cs.size == 3 => quadraticRoots(cs(0), cs(1), cs(2))
+      List(simplifyFully(Ratio(Product(minusOne, cs(0)), cs(1))))
+    case Some(cs) if cs.size == 3 => quadraticRoots(cs(0), cs(1), cs(2), env)
     case _                        => numericRoots(difference, v, env)
 
   roots.map(r => _Equation(v, r.eval(env).toExpression))
@@ -366,8 +370,16 @@ private def sameValue(a: _Value, b: _Value, tol: Double): Boolean = (a, b) match
  *  therefore add) and recovering the other from the root product `x1 * x2 = c/a` avoids
  *  the subtraction entirely.
  */
-private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): List[_Expression] =
+private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression,
+                           env: Environment): List[_Expression] =
   (c0, c1, c2) match
+    // Exact coefficients first -- `_Number` is a widening extractor, so without this the
+    // exact tier's coefficients would be read as Doubles and the roots would be no better
+    // than they ever were, however high the working precision (issue 4.N).
+    case (a0: _Rational, a1: _Rational, a2: _Rational)
+      if env.workingPrecision > _Rational.DoubleReliableDigits =>
+      exactQuadraticRoots(a0, a1, a2, env.workingPrecision)
+        .getOrElse(quadraticRoots(_Number(a0.toDouble), _Number(a1.toDouble), _Number(a2.toDouble), env))
     case (_Number(a0), _Number(a1), _Number(a2)) =>
       val delta = a1 * a1 - 4.0 * a2 * a0
       if delta < 0.0 then Nil
@@ -391,6 +403,45 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression): L
         simplifyFully(Ratio(Sum(Product(_Number(-1), c1), Product(_Number(-1), sqrtD)), denom)),
         simplifyFully(Ratio(Sum(Product(_Number(-1), c1), sqrtD), denom))
       )
+
+/** The roots of `a2·x² + a1·x + a0 = 0` with exact coefficients, at the working precision.
+ *
+ *  The same numerically stable rearrangement the `Double` branch uses, but carried out in
+ *  exact rational arithmetic with only `√Δ` approximated.  That is what makes the result
+ *  improve **monotonically** as the working precision rises: the stable form has no
+ *  subtraction of near-equal quantities left in it, so the error in each root is just the
+ *  error in `√Δ`, and that is exactly what the precision controls.
+ *
+ *  The discriminant's *sign* is decided exactly, before any approximation — so "no real
+ *  roots" and "a repeated root" are conclusions here, not guesses about a rounded value.
+ *
+ *  @param a0     the constant coefficient
+ *  @param a1     the linear coefficient
+ *  @param a2     the quadratic coefficient
+ *  @param digits the working precision in decimal digits
+ *  @return the roots in ascending order, or `None` if the root of the discriminant is
+ *          unavailable (the caller then falls back to the `Double` branch)
+ */
+private def exactQuadraticRoots(a0: _Rational, a1: _Rational, a2: _Rational,
+                                digits: Int): Option[List[_Expression]] =
+  val policy = _Rational.thresholdFor(digits)
+  val four   = _Rational(4)
+  val two    = _Rational(2)
+  val delta  = a1.multiply(a1, policy).subtract(four.multiply(a2, policy).multiply(a0, policy), policy)
+
+  if delta.signum < 0 then Some(Nil)
+  else if delta.isZero then
+    a1.negate.divide(two.multiply(a2, policy), policy).map(r => List(r))
+  else
+    for
+      sq <- exactSqrt(delta, digits)
+      // Form the larger-magnitude root first, where the two terms share a sign and so ADD.
+      signed = if a1.signum >= 0 then sq else sq.negate
+      q  <- a1.add(signed, policy).negate.divide(two, policy)
+      r1 <- q.divide(a2, policy)
+      // ...and recover the other from the root product x1*x2 = c/a, never by subtracting.
+      r2 <- a0.divide(q, policy)
+    yield if r1 <= r2 then List(r1, r2) else List(r2, r1)
 
 /** Sign-change scan over `[SearchLo, SearchHi]` followed by bisection; up to `MaxNumericRoots` roots. */
 private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_Expression] =
