@@ -41,6 +41,8 @@ import org.jline.terminal.TerminalBuilder
  *  simplify <expr>      structural simplification, no numeric evaluation
  *  expand <expr>        distribute products over sums
  *  precision <n>        set decimal precision
+ *  exact on | off       exact rational arithmetic (default: off); see "help exact"
+ *  exact precision <n>  digits an irrational is approximated to (default: 30)
  *  pretty on | off      multi-line, column-aligned matrix display (default: off)
  *  logic symmetric on|off  spell truth values as -1 / 0 / 1 (default: off)
  *  logic minmax|product|lukasiewicz   fuzzy t-norm family (default: minmax)
@@ -67,6 +69,13 @@ final class Session:
   // Fuzzy t-norm family (issue 4.H). MinMax is the default and the only lattice of the
   // three, so the boolean and three-valued tiers are unaffected by it.
   private var semantics: LogicSemantics = LogicSemantics.MinMax
+  // Exact arithmetic (issue 4.L). Off by default so the Double path is byte-identical.
+  // Held HERE rather than in Environment because it is a *parse-time* decision -- what a
+  // literal becomes -- and by eval time exactness is carried by the value's own type.
+  // `workingPrecision` is the separate quantity that eval does need, and that one IS an
+  // Environment field.
+  private var exactMode: Boolean = false
+  private var workingPrecision: Int = Environment.DefaultWorkingPrecision
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
 
@@ -74,7 +83,7 @@ final class Session:
   def currentColorScheme: String = colorSchemeName
 
   /** Builds a fresh `Environment` from the current precision and numeric bindings. */
-  private def env: Environment = new Environment(precision, bindings, symmetricLogic, semantics)
+  private def env: Environment = new Environment(precision, bindings, symmetricLogic, semantics, workingPrecision)
 
   private val emptyEnv = new Environment()
 
@@ -116,6 +125,9 @@ final class Session:
     case s"unset $name"         => unset(name.trim)
     case "colors"               => s"colors = $colorSchemeName"
     case s"colors $name"        => setColors(name.trim)
+    case "exact"                => exactState
+    case s"exact precision $n"  => setWorkingPrecision(n.trim)
+    case s"exact $mode"         => setExact(mode.trim)
     case "pretty"               => s"pretty = ${if prettyMatrix then "on" else "off"}"
     case s"pretty $mode"        => setPretty(mode.trim)
     case "logic"                => logicState
@@ -153,6 +165,10 @@ final class Session:
    *  back (word-boundary guarded constants, like `pi`/`e`).
    */
   private def serializeValue(v: _Value): String = v match
+    // Before the _Number arm: _Number is a widening extractor and would otherwise write a
+    // rounded Double for an exact value. `exact` is the full fraction in lowest terms, so a
+    // rational that DISPLAYS as a decimal still round-trips through :save exactly.
+    case r: _Rational => r.exact
     case _Number(d) => d.toString
     case _Bool(b)   => if b then "true" else "false"
     case other      => other.toString
@@ -172,7 +188,9 @@ final class Session:
   def script: String = buildLines(
     List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}",
          s"logic ${semanticsName(semantics)}",
-         s"logic symmetric ${if symmetricLogic then "on" else "off"}"),
+         s"logic symmetric ${if symmetricLogic then "on" else "off"}",
+         s"exact precision $workingPrecision",
+         s"exact ${if exactMode then "on" else "off"}"),
     serializeValue)
 
   /** Execute a whole script body (e.g. the contents of a `:load` file), returning the
@@ -199,7 +217,7 @@ final class Session:
    *  up front, and catching a fatal error would leave the JVM in an unknown state.
    */
   private def withParsed(input: String)(f: _Expression => String): String =
-    scala.util.Try(Parser.parse(input)).fold(
+    scala.util.Try(Parser.parse(input, exactPrecision)).fold(
       e => s"parse error: ${e.getMessage}",
       result =>
         if result.successful then
@@ -259,6 +277,9 @@ final class Session:
 
   /** [[formatExpression]] in the default truth alphabet. */
   private def formatDefault(e: _Expression, pretty: Boolean): String = e match
+    // Before the _Number arm, for the same reason serializeValue is: the widening extractor
+    // would round an exact value away before `display` ever chose a form for it.
+    case r: _Rational    => r.display(precision)
     case n: _Number      => n.display(precision)
     case c: _Complex     => c.display(precision)
     case t: _Truth       => t.display(precision)
@@ -607,6 +628,37 @@ final class Session:
     case "off" | "false" => symmetricLogic = false; "logic symmetric = off"
     case _               => s"logic symmetric expects 'on' or 'off', got: $text"
 
+  /** The working precision handed to the parser, or `None` when exact mode is off.
+   *
+   *  `Option[Int]` rather than a flag beside a number, matching `Parser.parse`: the mode
+   *  and the precision are one fact, and "off but at 30 digits" should not be sayable.
+   */
+  private def exactPrecision: Option[Int] =
+    if exactMode then Some(workingPrecision) else None
+
+  /** Both exact-arithmetic settings, for the bare `exact` command. */
+  private def exactState: String =
+    s"exact = ${if exactMode then "on" else "off"}, working precision = $workingPrecision"
+
+  /** Sets the exact-arithmetic flag from `"on"`/`"off"` (case-insensitive). */
+  private def setExact(text: String): String = text.toLowerCase match
+    case "on"  | "true"  => exactMode = true;  exactState
+    case "off" | "false" => exactMode = false; exactState
+    case _               => s"exact expects 'on', 'off' or 'precision <n>', got: $text"
+
+  /** Sets the working precision — the digits an irrational is approximated to.
+   *
+   *  Deliberately unbounded above, unlike display `precision`, which is capped at
+   *  `MaxPrecision` because past that a `Double` has no more digits to show.  Working
+   *  precision has the opposite character: raising it is the entire remedy the exact tier
+   *  offers, so capping it would remove the point.  It is floored at 1.
+   */
+  private def setWorkingPrecision(text: String): String =
+    text.toIntOption match
+      case Some(n) if n >= 1 => workingPrecision = n; exactState
+      case Some(n)           => s"working precision must be at least 1, got: $n"
+      case None              => s"working precision expects an integer, got: $text"
+
   /** Sets the pretty-matrix flag from `"on"`/`"off"` (case-insensitive). */
   private def setPretty(text: String): String = text.toLowerCase match
     case "on"  | "true"  => prettyMatrix = true;  "pretty = on"
@@ -685,6 +737,25 @@ object Session:
          |  colors light        bold blue commands, green functions, magenta constants, red numbers
          |  colors none         disable highlighting
          |  colors              show the active scheme""".stripMargin,
+    "exact" ->
+      """|Exact rational arithmetic.  Off by default; both settings are persisted by :save.
+         |  exact on            numeric literals become exact rationals
+         |  exact off           literals are Doubles (default)
+         |  exact precision <n> digits an irrational is approximated to (default: 30)
+         |  exact               show both settings
+         |With it on, 0.1 + 0.2 is exactly 3/10 and 1/3 * 3 is exactly 1 -- neither of which
+         |a Double can represent.  The mode is decided at PARSE time because it has to be:
+         |once 0.1 has been read as a Double the tenth that was meant is already gone.
+         |WHAT STAYS EXACT: +, -, *, /, and integer powers.  Everything else -- every
+         |transcendental function, any fractional power -- is irrational, so it is computed
+         |and then re-approximated to the working precision.  Those kernels are still
+         |Double-accurate (~15 digits) whatever the working precision says, so raising it
+         |sharpens the ARITHMETIC around a sin(), not the sin() itself.
+         |DISPLAY: a short fraction shows as n/d, a long one as a decimal at the display
+         |precision -- but :save always writes the exact fraction, so nothing is lost.
+         |MIXING: an exact value combined with an inexact one gives an inexact result.
+         |That is deliberate -- absorbing the Double would be lossless but would dress up
+         |representation error as an exact answer.""".stripMargin,
     "pretty" ->
       """|Toggle multi-line, column-aligned display of matrices with 2+ rows.
          |Off by default; the setting is persisted by :save / :load.
@@ -930,6 +1001,8 @@ object Session:
       |pade(e,v,m,n)        Pade [m/n] rational approximant; see "help pade"
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
+      |exact on | off       exact rational arithmetic; see "help exact" (default: off)
+      |exact precision <n>  digits an irrational is approximated to (default: 30)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)
       |logic symmetric on|off  spell truth values as -1 / 0 / 1 instead of
       |                     false / unknown / true (symmetric ternary; default: off)

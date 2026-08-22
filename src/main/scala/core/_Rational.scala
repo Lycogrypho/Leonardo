@@ -106,27 +106,81 @@ object _Rational:
    */
   def apply(n: Int): _Rational = new _Rational(BigInt(n), BigInt(1))
 
+  /** Longest numerator or denominator, in decimal digits, still shown as a fraction.
+   *
+   *  Beyond this a `_Rational` displays as a decimal instead.  The bound exists because the
+   *  two things a rational can be are very different to read: `1/3` is clearer as a
+   *  fraction than as `0.33333`, while a 30-digit rational approximation of `pi` is a
+   *  31-over-31-digit wall that tells the reader nothing.  Display only — `Session`
+   *  serializes the exact fraction regardless, so `:save` never loses the value.
+   */
+  val MaxDisplayDigits: Int = 12
+
   /** Converts a `Double` to the exact rational it denotes.
    *
    *  Every finite `Double` *is* a dyadic rational, so this conversion is lossless — it
    *  recovers the value the hardware actually holds, not the decimal literal that was
    *  written.  `fromDouble(0.1)` is therefore `3602879701896397/36028797018963968`, which
-   *  is the honest answer and the reason [[_Rational]] cannot repair a number that was
-   *  already parsed as a `Double` (see issue 4.L: the parser needs an exact mode of its own).
+   *  is the honest answer and the reason a number that was already parsed as a `Double`
+   *  cannot be repaired after the fact — hence the parser's own exact mode, and hence
+   *  [[fromDecimalString]] beside this.
    *
    *  @param d the value to convert
    *  @return the exact rational, or `None` when `d` is NaN or infinite
    */
   def fromDouble(d: Double): Option[_Rational] =
-    if d.isNaN || d.isInfinite then None
-    else
-      val bd    = new java.math.BigDecimal(d)
-      val scale = bd.scale
-      val un    = BigInt(bd.unscaledValue)
-      Some(
-        if scale >= 0 then make(un, BigInt(10).pow(scale), GcdPolicy.Eager)
-        else new _Rational(un * BigInt(10).pow(-scale), BigInt(1))
-      )
+    if d.isNaN || d.isInfinite then None else Some(fromBigDecimal(new java.math.BigDecimal(d)))
+
+  /** Converts a *decimal literal* to the exact rational it denotes.
+   *
+   *  The counterpart of [[fromDouble]], and the one the parser uses.  The distinction is
+   *  the whole reason exact mode has to live at parse time: `fromDecimalString("0.1")` is
+   *  `1/10`, while `fromDouble(0.1)` is the dyadic the hardware rounded it to.  Only the
+   *  first makes `0.1 + 0.2 == 0.3` come out exactly.
+   *
+   *  Exponents are handled exactly too, so `1e-320` is `1/10^320` rather than the `Double`
+   *  denormal it would otherwise become.
+   *
+   *  @param s the literal as written
+   *  @return the exact rational, or `None` when `s` is not a decimal literal
+   */
+  def fromDecimalString(s: String): Option[_Rational] =
+    try Some(fromBigDecimal(new java.math.BigDecimal(s)))
+    catch case _: NumberFormatException => None
+
+  /** Significant decimal digits a `Double` actually carries.
+   *
+   *  The ceiling on [[fromApproximation]], and an honest one: an operation that leaves the
+   *  rationals — every transcendental, and any fractional power — is currently evaluated in
+   *  `Double` and re-approximated, so asking for thirty digits of `sin(1/3)` would
+   *  manufacture fifteen digits that are not there.  Lifting this needs an arbitrary
+   *  precision engine for the functions themselves (issue 4.L tier 2, spire's `Real`); the
+   *  working precision meanwhile bounds the *arithmetic* around them, which is where the
+   *  cancellation lives.
+   */
+  val DoubleReliableDigits: Int = 15
+
+  /** Brings a `Double` result of a non-closed operation back into the exact tier.
+   *
+   *  Used wherever the rationals are left and re-entered — fractional powers and the
+   *  transcendental functions.  The requested precision is capped at
+   *  [[DoubleReliableDigits]] so the result claims no more accuracy than its source had;
+   *  without that cap the "approximation" would faithfully reproduce the `Double`'s dyadic
+   *  expansion and call it thirty digits.
+   *
+   *  @param d      the computed value
+   *  @param digits the working precision requested
+   *  @return the rational approximation, or `None` when `d` is NaN or infinite
+   */
+  def fromApproximation(d: Double, digits: Int): Option[_Rational] =
+    fromDouble(d).map(_.approximateToDigits(math.min(digits, DoubleReliableDigits)))
+
+  /** Shared exact extraction: a `BigDecimal` is `unscaled · 10^-scale` by construction. */
+  private def fromBigDecimal(bd: java.math.BigDecimal): _Rational =
+    val scale = bd.scale
+    val un    = BigInt(bd.unscaledValue)
+    if scale >= 0 then make(un, BigInt(10).pow(scale), GcdPolicy.Eager)
+    else new _Rational(un * BigInt(10).pow(-scale), BigInt(1))
 
   /** Reduces `n/d` to lowest terms.  `gcd` is non-negative and `gcd(0, d) == d`, so a zero
    *  numerator normalises to `0/1`.
@@ -149,17 +203,26 @@ object _Rational:
 /** An exact rational number, held as an unreduced `BigInt` pair with the sign in the
  *  numerator and a strictly positive denominator.
  *
- *  **Not a [[_Value]] yet.**  This is the arithmetic kernel delivered by the gcd-policy
- *  spike (issue 4.M); promoting it to a sibling `_Value` of [[_Number]] — with the
- *  promotion lattice, the parser's exact mode and the REPL toggle — is issue 4.L's tier 1.
- *  Keeping the two steps apart is what lets the spike run without touching a single
- *  existing evaluation path.
+ *  A **sibling** [[_Value]] of [[_Number]], exactly as [[_Complex]] and [[_Truth]] are —
+ *  `_Number` is not replaced and not widened, so every existing `_Number(x)` pattern match
+ *  keeps firing unchanged and the `Double` path stays byte-identical.  A `_Rational` only
+ *  ever enters an expression through the parser's exact mode; see `Environment` for the
+ *  working precision that bounds it.
+ *
+ *  **The promotion lattice** (the `Int → Double` analogy `logic.asTruth` already uses):
+ *  rational ⊕ rational is exact, rational ⊕ number is a `_Number` — *float contagion*.
+ *  Contagion is deliberate and it is the asymmetric choice: absorbing the `_Number` into
+ *  the rational would be perfectly lossless, since every finite `Double` is a dyadic
+ *  rational, but it would launder representation error into an exact-looking value.  Once
+ *  a value is inexact it should stay visibly inexact.  The contagion needs no code of its
+ *  own: [[_Complex.parts]] reads a `_Rational` as a `Double`, so the existing complex
+ *  kernels produce it for free.
  *
  *  **Why a private `BigInt` pair rather than spire's `Rational`.**  spire normalises to
- *  lowest terms on every construction, which would settle [[GcdPolicy]] at
- *  [[GcdPolicy.Eager]] by fiat and make the spike unrunnable.  spire remains the intended
- *  engine for *irrationals* (`Real` / `Algebraic`); the rational representation stays
- *  in-house.
+ *  lowest terms on every construction, which would have settled [[GcdPolicy]] at
+ *  [[GcdPolicy.Eager]] by fiat and made the 4.M benchmark unrunnable.  spire remains the
+ *  intended engine for *irrationals* (`Real` / `Algebraic`, issue 4.L tier 2); the
+ *  rational representation stays in-house.
  *
  *  Equality is by value, not by representation: `2/6 == 1/3` holds under every policy.
  *  `hashCode` therefore has to reduce, which means a [[GcdPolicy.Lazy]] rational used as a
@@ -168,7 +231,15 @@ object _Rational:
  *  @param num the numerator, carrying the sign
  *  @param den the denominator, always strictly positive
  */
-final class _Rational private (val num: BigInt, val den: BigInt) extends Ordered[_Rational]:
+final class _Rational private (val num: BigInt, val den: BigInt) extends _Value with Ordered[_Rational]:
+
+  /** Returns `Right(this)` — a concrete rational needs no further reduction.
+   *  @param env unused; a literal value is independent of the bindings
+   */
+  override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
+
+  override def children: List[_Expression] = List.empty
+  override def rebuild(c: List[_Expression]): _Expression = this
 
   /** Sum: `(a·d' + a'·d) / (d·d')`.
    *
@@ -236,6 +307,18 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends Ordered
 
   /** Whether this is exactly zero. */
   def isZero: Boolean = num.signum == 0
+
+  /** This value as an exact integer, when it is one.
+   *
+   *  Reduces first, because a policy that defers `gcd` can leave an integer-valued rational
+   *  looking like `6/3` — testing `den == 1` on the raw representation would miss it and
+   *  silently downgrade an exact integer power to an approximation.
+   *
+   *  @return `Some(n)` when this is the integer `n`, `None` otherwise
+   */
+  def toBigIntExact: Option[BigInt] =
+    val (rn, rd) = _Rational.reduce(num, den)
+    if rd == BigInt(1) then Some(rn) else None
 
   /** The larger of the two terms' bit lengths — the size measure the 4.M benchmark
    *  records, since it is what explains the wall-clock and predicts behaviour at
@@ -340,9 +423,44 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends Ordered
     val (rn, rd) = _Rational.reduce(num, den)
     31 * rn.hashCode + rd.hashCode
 
-  /** Renders as `n/d`, or as `n` when the denominator is `1`.  Shows the representation as
-   *  it stands, so an unreduced value prints unreduced — which is what makes a policy's
-   *  effect visible while debugging.
+  /** The exact fraction, always, in lowest terms: `n/d`, or `n` when the denominator is 1.
+   *
+   *  The **serialization** form, kept apart from [[display]] on purpose.  `Session` writes
+   *  this into a `:save` script, so a rational that displays as a rounded decimal still
+   *  round-trips exactly — the same split that lets a graded truth value display as
+   *  `unknown` while saving as a portable literal.
+   *
+   *  Reduces first, so the reduction policy in force never leaks into a saved script.
    */
-  override def toString: String =
-    if den == BigInt(1) then num.toString else s"$num/$den"
+  def exact: String =
+    val (rn, rd) = _Rational.reduce(num, den)
+    if rd == BigInt(1) then rn.toString else s"$rn/$rd"
+
+  /** Renders at [[Environment.DefaultPrecision]] decimal places, matching [[_Number]]. */
+  override def toString: String = display(Environment.DefaultPrecision)
+
+  /** Renders this rational for reading: the exact fraction when it is short enough to take
+   *  in, a decimal at `precision` places otherwise.
+   *
+   *  The two things a rational can be are very different to read.  `1/3` says more as a
+   *  fraction than `0.33333` does; a rational approximation of `pi` at 30 working digits
+   *  says nothing at all as `31415.../10000...`, and everything as `3.14159`.  So the
+   *  threshold is [[_Rational.MaxDisplayDigits]] digits on either term, applied to the
+   *  *reduced* form so an unreduced representation cannot push a short value over it.
+   *
+   *  This is display only.  [[exact]] is what gets serialized, so nothing is lost.
+   *
+   *  @param precision decimal places for the decimal form
+   *  @return the fraction or the decimal, whichever reads better
+   */
+  def display(precision: Int): String =
+    val (rn, rd) = _Rational.reduce(num, den)
+    if rd == BigInt(1) && rn.abs.bitLength <= 63 then rn.toString
+    else if digitsOf(rn) <= _Rational.MaxDisplayDigits && digitsOf(rd) <= _Rational.MaxDisplayDigits
+    then s"$rn/$rd"
+    else _Number.round(toDouble, precision).toString
+
+  /** Decimal digit count of `n`, sign excluded. */
+  private def digitsOf(n: BigInt): Int =
+    val s = n.abs.toString
+    s.length

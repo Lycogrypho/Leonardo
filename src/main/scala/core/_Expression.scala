@@ -75,6 +75,34 @@ trait _MatrixShaped extends _Expression:
 
 /** Companion for the concrete real scalar value [[_Number]]. */
 object _Number:
+
+  /** Matches any value that **reads as a real number**, including an exact
+   *  [[_Rational]] — the widening reader for the numeric tier.
+   *
+   *  This replaces the synthesized case-class extractor deliberately, and it is the single
+   *  decision that let the exact tier (issue 4.L) be added without editing the hundred-odd
+   *  `case _Number(x)` sites across the library.  The rule it establishes:
+   *
+   *  > `case _Number(x)` means "reads as the real number `x`".  Code that must *preserve*
+   *  > exactness matches `case r: _Rational` explicitly, **and must place that case first**.
+   *
+   *  The default is therefore float contagion and exactness is opt-in, which is the safe
+   *  direction: the worst a missed opt-in can do is degrade a result to the `Double`
+   *  behaviour it already had, never produce a wrong one.  `scalar._Operation` is where the
+   *  opt-in lives, and `RationalTest` pins the ordering it depends on.
+   *
+   *  Note this cannot change any existing behaviour: outside the parser's exact mode no
+   *  `_Rational` is ever constructed, so the extra arm is unreachable and the `Double` path
+   *  stays byte-identical.
+   *
+   *  @param e the expression to read
+   *  @return `Some(d)` for a `_Number` or a `_Rational`, `None` otherwise
+   */
+  def unapply(e: _Expression): Option[Double] = e match
+    case n: _Number   => Some(n.d)
+    case r: _Rational => Some(r.toDouble)
+    case _            => None
+
   private val factorTable: Array[Double] = Array.tabulate(16)(i => scala.math.pow(10.0, i))
 
   /** Rounds `d` to `precision` decimal places for display; returns `d` unchanged when it

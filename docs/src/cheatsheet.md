@@ -23,6 +23,8 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `precision <n>` | Set display/comparison precision (default 5) |
 | `colors dark\|light\|none` | Syntax-highlight scheme (default `dark`) |
 | `pretty on\|off` | Multi-line matrix display (default `off`) |
+| `exact on\|off` | Exact rational arithmetic (default `off`) |
+| `exact precision <n>` | Digits an irrational is approximated to (default 30) |
 | `simplify <expr>` | Structural simplification |
 | `expand <expr>` | Distribute products over sums |
 | `eval <expr>` | Evaluate substituting current bindings |

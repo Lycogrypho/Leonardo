@@ -25,6 +25,32 @@ abstract class _Function extends _Expression:
   protected def mapMatrix(mv: _MatrixValue, f: Double => Double): Either[_Expression, _Value] =
     _MatrixValue(mv.rows, mv.cols, mv.toVector.map(f).toArray).guarded(this)
 
+  /** Evaluates this function on exact arguments by way of the `Double` kernel, lifting the
+   *  result back into the exact tier.
+   *
+   *  No transcendental function is closed over the rationals — `exp(1)` and `sin(1/3)` are
+   *  irrational — so the exact tier's contract for them is "compute, then re-approximate to
+   *  the working precision", and this is that step.
+   *
+   *  Implemented by rebuilding the node with `_Number` arguments and re-evaluating, rather
+   *  than by taking a `Double => Double` kernel: that reuses each node's *own* logic,
+   *  including its domain handling and its complex fallback, instead of duplicating a
+   *  function reference at fourteen call sites and getting one of them wrong.  The
+   *  rebuilt node hits its `_Number` case, so there is no recursion.
+   *
+   *  A complex or symbolic result passes through untouched — a complex value is inexact, so
+   *  float contagion is already the right answer for it.
+   *
+   *  @param args the same children, with every exact argument replaced by its `Double`
+   *  @param env  supplies the working precision
+   *  @return the result lifted back to a `_Rational`, or whatever non-real result came out
+   */
+  protected def viaDouble(args: List[_Expression], env: Environment): Either[_Expression, _Value] =
+    rebuild(args).eval(env) match
+      case Right(_Number(d)) =>
+        _Rational.fromApproximation(d, env.workingPrecision).map(Right(_)).getOrElse(Left(this))
+      case other => other
+
   /** Applies this single-argument function element-wise over a symbolic matrix argument.
    *
    *  Rebuilds the matrix with this function wrapped around each cell and re-evaluates.
@@ -53,6 +79,7 @@ case class Exp(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) => Right(_Number(exp(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, exp)
       case Right(c: _Complex) => _Complex.expc(c).map(Right(_)).getOrElse(Left(Exp(c)))
@@ -75,6 +102,7 @@ case class Ln(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) =>
         val r = log(x)
         // ln of a negative number is now the principal complex value ln|x| + i*pi;
@@ -112,6 +140,10 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function:
       // Symbolic matrix argument (any base): distribute log_base element-wise.
       case (Left(m: _MatrixShaped), rb) =>
         m.rebuild(m.children.map(el => LogBase(el, rb.toExpression))).eval(env)
+      // Exact tier: two cases, not a guard -- the first catches an exact argument under
+      // any base, so by the second the argument is known inexact and only the base is exact.
+      case (Right(re: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(re.toDouble), bv), env)
+      case (Right(ev: _Value), Right(rb: _Rational)) => viaDouble(List(ev, _Number(rb.toDouble)), env)
       case (Right(ev: _Value), Right(bv: _Value)) =>
         (_Complex.logc(ev), _Complex.logc(bv)) match
           case (Some(le), Some(lb)) =>
@@ -133,6 +165,7 @@ case class Sin(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) => Right(_Number(sin(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, sin)
       case Right(c: _Complex) => _Complex.sinc(c).map(Right(_)).getOrElse(Left(Sin(c)))
@@ -153,6 +186,7 @@ case class Cos(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) => Right(_Number(cos(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, cos)
       case Right(c: _Complex) => _Complex.cosc(c).map(Right(_)).getOrElse(Left(Cos(c)))
@@ -174,6 +208,7 @@ case class Tg(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) =>
         val r = tan(x)
         if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
@@ -198,6 +233,7 @@ case class Asin(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) =>
         val r = asin(x)
         if r.isNaN then Left(this) else Right(_Number(r))
@@ -220,6 +256,7 @@ case class Acos(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) =>
         val r = acos(x)
         if r.isNaN then Left(this) else Right(_Number(r))
@@ -242,6 +279,7 @@ case class Atan(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x)) => Right(_Number(atan(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, atan)
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
@@ -268,6 +306,7 @@ case class Factorial(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x))       => factorialOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => factorialOf(d).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
@@ -291,6 +330,11 @@ case class MultiFactorial(e: _Expression, k: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (e.eval(env), k.eval(env)) match
+      // Exact tier first -- `_Number` is a widening extractor, so anything below it never
+      // sees a `_Rational`.  Two cases rather than a guard: by the second, the first
+      // argument is known inexact and only the second is exact.
+      case (Right(rx: _Rational), Right(sv: _Value)) => viaDouble(List(_Number(rx.toDouble), sv), env)
+      case (Right(xv: _Value), Right(rs: _Rational)) => viaDouble(List(xv, _Number(rs.toDouble)), env)
       case (Right(_Number(x)), Right(_Number(s))) =>
         multiFactorialOf(x, s).map(r => Right(_Number(r))).getOrElse(Left(this))
       case (ra, rk) => Left(MultiFactorial(ra.toExpression, rk.toExpression))
@@ -314,6 +358,7 @@ case class Gamma(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
@@ -334,6 +379,7 @@ case class LogGamma(e: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(r: _Rational)     => viaDouble(List(_Number(r.toDouble)), env)
       case Right(_Number(x))       => lgammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => lgammaOf(d).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
@@ -356,6 +402,9 @@ case class Beta(a: _Expression, b: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
+      // Exact tier first -- see MultiFactorial.
+      case (Right(rx: _Rational), Right(yv: _Value)) => viaDouble(List(_Number(rx.toDouble), yv), env)
+      case (Right(xv: _Value), Right(ry: _Rational)) => viaDouble(List(xv, _Number(ry.toDouble)), env)
       case (Right(_Number(x)), Right(_Number(y))) =>
         betaOf(x, y).map(r => Right(_Number(r))).getOrElse(Left(this))
       case (ra, rb) => Left(Beta(ra.toExpression, rb.toExpression))

@@ -745,11 +745,46 @@ until the answer stops moving.
 | Hilbert matrix (the benchmark's worst case) | [Wikipedia](https://en.wikipedia.org/wiki/Hilbert_matrix) |
 | Gaussian elimination (where denominators blow up) | [Wikipedia](https://en.wikipedia.org/wiki/Gaussian_elimination) |
 
-**Status.**  What ships today is the arithmetic kernel *only*.  `_Rational` is deliberately
-**not** a `_Value`, so nothing can construct one inside an expression and no existing
-evaluation path is touched — which is what makes "the default behaviour is byte-identical"
-true by construction rather than by testing.  Promoting it (the promotion lattice, an exact
-mode in the parser, a REPL toggle) is issue 4.L.
+**Status.**  Slice A of the tier ships: `_Rational` is a sibling `_Value` of `_Number`, exact
+for `+ - * /` and integer powers, with an `exact on | off` mode in the REPL.  Exact matrix
+entries and an unbounded `fact` are slice B; genuinely high-precision transcendentals are
+tier 2.  Off by default, so the `Double` path is unchanged.
+
+#### The decision that made it affordable: a widening `_Number`
+
+Adding a new `_Value` has a cost nobody budgets for.  A `_Rational` matches none of the
+~108 `case _Number(x)` sites across the library, so on the first end-to-end run **eleven
+features silently stopped working in exact mode** — matrix literals no longer collapsed,
+`integral`, `limit`, `step`, the fuzzy membership curves and `derive`'s own power rule all
+fell through to their symbolic fallbacks.  Nothing crashed; the answers just quietly got
+worse, which is the failure mode worth fearing.
+
+The fix is one extractor.  `core._Number.unapply` replaces the synthesized case-class one
+and matches a `_Rational` as well, reading it as a `Double`:
+
+```scala
+def unapply(e: _Expression): Option[Double] = e match
+  case n: _Number   => Some(n.d)
+  case r: _Rational => Some(r.toDouble)
+  case _            => None
+```
+
+which establishes the rule:
+
+> `case _Number(x)` means **"reads as the real number `x`"**.  Code that must *preserve*
+> exactness matches `case r: _Rational` explicitly — **and must place that case first**.
+
+So float contagion is the default and exactness is opt-in.  That is the safe direction: a
+missed opt-in degrades a result to the `Double` behaviour it already had, never produces a
+wrong one.  And it cannot disturb existing code at all — outside exact mode no `_Rational` is
+ever constructed, so the extra arm is unreachable.
+
+The cost is that ordering became load-bearing in the four arithmetic operations and the
+fourteen functions, which is exactly the kind of invariant that rots.  `ExactModeTest` pins
+it from the outside: *turning exact mode on must not make any expression less reducible, and
+must not change any number it produces.*  Both bugs above were found by that test, not by
+reading the code.
+
 
 **Why the representation is an in-house `BigInt` pair.**  spire is the intended engine for
 *irrationals* (`Real` / `Algebraic`), but its `Rational` normalises to lowest terms on every

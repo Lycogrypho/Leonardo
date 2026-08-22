@@ -75,12 +75,39 @@ object Parser extends JavaTokenParsers:
                                                          // lowercase names stay free as variables
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
-    "unset", "samples", "colors", "pretty", "truth3", "logic", "help", "quit", "exit" // REPL commands
+    "unset", "samples", "colors", "pretty", "exact", "truth3", "logic", "help", "quit", "exit" // REPL commands
   )
 
   private val MaxDepth = 500
   private val depth = new ThreadLocal[Int]:
     override def initialValue(): Int = 0
+
+  /** Working precision in force for the current parse, or `None` for the `Double` path.
+   *
+   *  A `ThreadLocal` for the same reason `depth` above is one: the grammar is a tree of
+   *  `lazy val` productions on a singleton, so per-parse state cannot be a constructor
+   *  parameter without rebuilding the whole grammar per call, and it must not be a plain
+   *  `var` on a shared object.  Set and cleared by [[parse]].
+   *
+   *  `Option[Int]` rather than a boolean beside an `Int`: the mode and the precision are
+   *  one fact, and "exact off but precision 30" should not be representable.
+   */
+  private val exactPrecision = new ThreadLocal[Option[Int]]:
+    override def initialValue(): Option[Int] = None
+
+  /** Renders an irrational constant for the mode in force.
+   *
+   *  In exact mode `pi` and `e` need no symbolic-atom redesign: they become *requests for
+   *  a rational approximation at the working precision*, which is all the exact tier ever
+   *  promises about an irrational.  Outside exact mode they stay the `Double` they were.
+   *
+   *  @param d the constant's `Double` value
+   *  @return a `_Rational` approximation in exact mode, the `_Number` otherwise
+   */
+  private def irrational(d: Double): _Value =
+    exactPrecision.get() match
+      case Some(digits) => _Rational.fromApproximation(d, digits).getOrElse(_Number(d))
+      case None         => _Number(d)
 
   /** Wraps a production with the shared `ThreadLocal` depth guard so recursive
    *  positions fail cleanly instead of blowing the JVM stack.
@@ -147,9 +174,21 @@ object Parser extends JavaTokenParsers:
         case _          => MatProduct(x, y)
       case (false, false) => Product(x, y)
 
+  /** The literal `-1` in whichever arithmetic tier is in force.
+   *
+   *  Subtraction is built as `a + (-1)·b`, so getting this wrong would quietly route
+   *  *every* subtraction and negation through the promotion lattice's float contagion:
+   *  `3 - 5` would leave the exact tier before it ever entered it.  The matrix form below
+   *  stays a `_Number` deliberately — matrix entries are `Double` until slice B.
+   */
+  private def negOne: _Value =
+    exactPrecision.get() match
+      case Some(_) => _Rational(-1)
+      case None    => _Number(-1)
+
   /** Negates `e`, choosing `MatScale(-1, e)` when `e` is matrix-shaped. */
   private def mkNeg(e: _Expression): _Expression =
-    if isMatrixShaped(e) then MatScale(_Number(-1), e) else Product(_Number(-1), e)
+    if isMatrixShaped(e) then MatScale(_Number(-1), e) else Product(negOne, e)
 
   /** Applies `sign` to `e`, folding negation into leading numeric coefficients.
    *
@@ -158,6 +197,10 @@ object Parser extends JavaTokenParsers:
    *  keeping negated products round-trip stable.
    */
   private def applySign(sign: Option[String], e: _Expression): _Expression = (sign, e) match
+    // Exact literals first: `_Number` is a widening extractor, so without these two a
+    // negated exact literal would fold into an inexact one at parse time (issue 4.L).
+    case (Some("-"), r: _Rational)                => r.negate
+    case (Some("-"), Product(r: _Rational, rest)) => Product(r.negate, rest)
     case (Some("-"), _Number(n))                => _Number(-n)
     case (Some("-"), Product(_Number(k), rest)) => Product(_Number(-k), rest)
     case (Some("-"), MatScale(_Number(k), m))   => MatScale(_Number(-k), m)
@@ -421,7 +464,14 @@ object Parser extends JavaTokenParsers:
    *  Unsigned by design — a `-` is always a grammar operator, never part of the token.
    *  Scientific notation exponent signs (`3E-5`) are handled by the regex and are unaffected.
    */
-  lazy val number:   Parser[_Number]    = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s => _Number(s.toDouble) }
+  lazy val number:   Parser[_Value]     = """(\d+(\.\d*)?|\d*\.\d+)([eE][+-]?\d+)?""".r ^^ { s =>
+    // Exact mode reads the literal AS WRITTEN, which is the whole reason the mode has to
+    // exist at parse time: "0.1".toDouble is already the nearest dyadic, and no later stage
+    // can recover the tenth that was meant.  _Rational.fromDecimalString keeps it a tenth.
+    exactPrecision.get() match
+      case Some(_) => _Rational.fromDecimalString(s).getOrElse(_Number(s.toDouble))
+      case None    => _Number(s.toDouble)
+  }
 
   /** The built-in constants `pi`, `e`, `i`, `inf`, `true`, `false`, and `unknown`, all
    *  word-boundary guarded.
@@ -432,8 +482,8 @@ object Parser extends JavaTokenParsers:
    *  truth value (`_Truth.Unknown`); the guard keeps `truex` an ordinary variable.
    */
   lazy val constant: Parser[_Value]     =
-    """pi(?![a-zA-Z0-9])""".r  ^^^ _Number(math.Pi)                 |
-    """e(?![a-zA-Z0-9])""".r   ^^^ _Number(math.E)                  |
+    """pi(?![a-zA-Z0-9])""".r  ^^ { _ => irrational(math.Pi) }      |
+    """e(?![a-zA-Z0-9])""".r   ^^ { _ => irrational(math.E)  }      |
     """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)                |
     """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity) |
     """true(?![a-zA-Z0-9_])""".r    ^^^ _Bool(true)                 |
@@ -457,7 +507,17 @@ object Parser extends JavaTokenParsers:
 
   /** Parses `str` and returns a `ParseResult` containing the AST or an error message.
    *
-   *  @param str the input string to parse
+   *  @param str   the input string to parse
+   *  @param exact `Some(digits)` builds exact literals (`core._Rational`) and approximates
+   *               the irrational constants to that working precision; `None`, the default,
+   *               is the unchanged `Double` path.  Passed explicitly rather than read from
+   *               an `Environment`, mirroring `logic.simplifyLogic`'s `symmetric` and
+   *               `semantics` parameters — the parser predates any environment and has no
+   *               business depending on one.
    *  @return `Success(expr)` on success, or `Failure`/`Error` with a description
    */
-  def parse(str: String): ParseResult[_Expression] = parseAll(topLevel, str)
+  def parse(str: String, exact: Option[Int] = None): ParseResult[_Expression] =
+    val previous = exactPrecision.get()
+    exactPrecision.set(exact)
+    try parseAll(topLevel, str)
+    finally exactPrecision.set(previous)

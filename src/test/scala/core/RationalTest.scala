@@ -181,15 +181,32 @@ class RationalTest extends AnyFlatSpec:
     assert(math.abs(huge.toDouble - 0.5) < 1e-12, s"got ${huge.toDouble}")
   }
 
-  // --- the layering claim ---
+  // --- participation in the AST (4.L slice A; 4.M shipped the kernel alone) ---
 
-  "the exact tier" should "not yet participate in the AST" in
+  "the exact tier" should "be a concrete value that evaluates to itself" in
   {
-    // 4.M delivers the arithmetic kernel only; promoting _Rational to a _Value -- with the
-    // promotion lattice, the parser's exact mode and the REPL toggle -- is 4.L's tier 1.
-    // Until then nothing can construct one inside an expression, which is what makes the
-    // "existing behaviour is byte-identical" claim trivially true rather than tested.
-    assert(!_Rational.One.isInstanceOf[_Value])
+    assert(_Rational.One.isInstanceOf[_Value])
+    assert(_Rational.One.eval(new Environment()) == Right(_Rational.One))
+    assert(_Rational.One.children.isEmpty)
+    assert(_Rational.One.freeVars.isEmpty)
+  }
+
+  it should "be read as a plain real number by the widening _Number extractor" in
+  {
+    // The one decision that let the tier be added without editing the ~108 `case _Number(x)`
+    // sites: the pattern means "reads as a real number", so every node that does not opt in
+    // to exactness keeps working and merely degrades to the Double it already used.
+    r(1, 2) match
+      case _Number(d) => assert(d == 0.5)
+      case other      => fail(s"a rational must read as a number, got $other")
+  }
+
+  it should "still be distinguishable from a _Number by type" in
+  {
+    // Degrading is opt-out, not irreversible: the exact cases in scalar._Operation select
+    // on the type, which is why they must be matched BEFORE any _Number case.
+    assert(!r(1, 2).isInstanceOf[_Number])
+    assert(r(1, 2) != _Number(0.5), "exact and inexact halves are different values")
   }
 
   // --- cross-policy agreement on the benchmark workloads ---

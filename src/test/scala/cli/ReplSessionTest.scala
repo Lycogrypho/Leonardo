@@ -729,6 +729,99 @@ class ReplSessionTest extends AnyFlatSpec:
     finally tmp.delete()
   }
 
+  // --- issue 4.L slice A: exact rational arithmetic ---
+
+  "exact mode" should "be off by default, leaving the Double path untouched" in
+  {
+    val s = session
+    assert(s.execute("0.1 + 0.2") == "0.3", "display rounding hides it, but this is a Double")
+    assert(s.execute("exact") == "exact = off, working precision = 30")
+  }
+
+  it should "report both settings when switched on" in
+  {
+    val s = session
+    assert(s.execute("exact on") == "exact = on, working precision = 30")
+    assert(s.execute("exact off") == "exact = off, working precision = 30")
+  }
+
+  it should "make tenths add exactly, and show the fraction" in
+  {
+    val s = session
+    s.execute("exact on")
+    assert(s.execute("0.1 + 0.2") == "3/10")
+    assert(s.execute("1/3 * 3") == "1")
+    assert(s.execute("1/3 + 1/6") == "1/2")
+  }
+
+  it should "fall back to a decimal once a fraction stops being readable" in
+  {
+    val s = session
+    s.execute("exact on")
+    // Exact, but a 30-digit-over-30-digit fraction tells the reader nothing.
+    assert(s.execute("pi") == "3.14159")
+  }
+
+  it should "accept a working precision and keep it separate from display precision" in
+  {
+    val s = session
+    assert(s.execute("exact precision 50") == "exact = off, working precision = 50")
+    assert(s.execute("precision 3") == "precision = 3")
+    assert(s.execute("exact") == "exact = off, working precision = 50",
+           "display precision must not disturb the working precision")
+  }
+
+  it should "reject a non-numeric or non-positive working precision" in
+  {
+    val s = session
+    assert(s.execute("exact precision zero").contains("expects an integer"))
+    assert(s.execute("exact precision 0").contains("at least 1"))
+  }
+
+  it should "reject an unrecognised mode with a helpful message" in
+  {
+    val s = session
+    assert(s.execute("exact maybe").contains("expects 'on', 'off' or 'precision <n>'"))
+  }
+
+  "an exact binding" should "serialize as the exact fraction even when it displays rounded" in
+  {
+    val s = session
+    s.execute("exact on")
+    s.execute("p := pi")
+    assert(s.execute("p") == "3.14159", "displays readably")
+    val saved = s.script
+    assert(saved.linesIterator.exists(l => l.startsWith("p := ") && l.contains("/")),
+           s"the saved script must carry the exact fraction:\n$saved")
+  }
+
+  it should "survive a save/load round-trip unchanged" in
+  {
+    val s = session
+    s.execute("exact on")
+    s.execute("q := 1/3")
+    val saved   = s.script
+    val restored = session
+    restored.load(saved)
+    assert(restored.execute("q") == "1/3")
+    assert(restored.execute("exact") == "exact = on, working precision = 30")
+  }
+
+  "the exact setting" should "be persisted by the session script" in
+  {
+    val s = session
+    s.execute("exact on")
+    s.execute("exact precision 40")
+    val saved = s.script
+    assert(saved.linesIterator.contains("exact on"), s"missing 'exact on':\n$saved")
+    assert(saved.linesIterator.contains("exact precision 40"), s"missing precision:\n$saved")
+  }
+
+  "exact" should "be a reserved word, like every other command word" in
+  {
+    val s = session
+    assert(s.execute("exact := 5").contains("reserved word"))
+  }
   // --- issue 4.6: pretty-print matrices (multi-line, column-aligned) ---
 
   "pretty on" should "enable multi-line matrix display and report it" in

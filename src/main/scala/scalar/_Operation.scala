@@ -25,6 +25,12 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
+      // ORDER IS LOAD-BEARING: `_Number` is a widening extractor that also matches a
+      // `_Rational` (see core._Number.unapply), so the exact case has to come first or two
+      // rationals would be read as Doubles and silently lose their exactness.  A MIXED pair
+      // has no case of its own on purpose — it falls through to `_Number` and comes back a
+      // `_Number`, which is exactly the promotion lattice's float contagion.
+      case (Right(x: _Rational), Right(y: _Rational)) => Right(x.add(y, env.rationalPolicy))
       case (Right(_Number(x)), Right(_Number(y))) => Right(_Number(x + y))
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
         if x.rows == y.rows && x.cols == y.cols then x.add(y).guarded(this) else Left(this)
@@ -51,11 +57,20 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
-      // matrix cases precede the zero short-circuit: 0 * M is the zero MATRIX
+      // matrix cases precede the zero short-circuit: 0 * M is the zero MATRIX.
+      // `_Number(k)` here also matches an exact scalar, so `2 * A` keeps working in exact
+      // mode; exact matrix ENTRIES are slice B.
       case (Right(_Number(k)), Right(m: _MatrixValue))      => m.scale(k).guarded(this)
       case (Right(m: _MatrixValue), Right(_Number(k)))      => m.scale(k).guarded(this)
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
         if x.cols == y.rows then x.multiply(y).guarded(this) else Left(this)
+      // Exact tier first — see the ORDER note in Sum.  The exact zero gets its own
+      // short-circuit because `_Number(0.0)` matches on the *value*, and returning
+      // `_Number(0.0)` for it would demote an exact operand for no reason: nothing about
+      // multiplying by zero makes an exact zero less exact.
+      case (Right(z: _Rational), _) if z.isZero => Right(z)
+      case (_, Right(z: _Rational)) if z.isZero => Right(z)
+      case (Right(x: _Rational), Right(y: _Rational)) => Right(x.multiply(y, env.rationalPolicy))
       // zero short-circuit for everything scalar or unreducible: 0 * e folds to 0
       case (Right(_Number(0.0)), _) | (_, Right(_Number(0.0))) => Right(_Number(0.0))
       case (Right(_Number(x)), Right(_Number(y)))           => Right(_Number(x * y))
@@ -81,6 +96,10 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
+      // Exact tier first — see the ORDER note in Sum.  A zero denominator is the same
+      // domain error as below: `divide` returns None and the node stays symbolic.
+      case (Right(x: _Rational), Right(y: _Rational)) =>
+        x.divide(y, env.rationalPolicy).map(Right(_)).getOrElse(Left(this))
       case (Right(_Number(x)), Right(_Number(y))) =>
         val r = x / y
         // x/0 and 0/0 are domain errors: stay symbolic instead of propagating ±Infinity/NaN
@@ -121,6 +140,8 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (base.eval(env), exp.eval(env)) match
+      // Exact tier first -- see the ORDER note in Sum.
+      case (Right(b: _Rational), Right(e: _Rational)) => ratPow(b, e, env)
       case (Right(_Number(b)), Right(_Number(e))) =>
         val r = pow(b, e)
         // A non-finite real result means the real power is undefined: fall back to the
@@ -135,10 +156,37 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       // _MatrixValue is itself a _Value and would otherwise hit the complex fallback.
       case (Right(m: _MatrixValue), Right(_Number(e))) =>
         matrixPower(m, e).getOrElse(Left(this))
+      // Same, with an exact exponent: in exact mode `A^2` carries a _Rational, and without
+      // this arm it would fall through to the complex kernel and lose matrix power entirely.
+      // Exact matrix ENTRIES are slice B; this only keeps the existing feature working.
+      case (Right(m: _MatrixValue), Right(r: _Rational)) =>
+        matrixPower(m, r.toDouble).getOrElse(Left(this))
       // Both operands are concrete: try principal complex power; None → stay symbolic.
       case (Right(bv: _Value), Right(ev: _Value)) =>
         _Complex.pow(bv, ev).map(Right(_)).getOrElse(Left(Power(bv, ev)))
       case (rb, re)                               => Left(Power(rb.toExpression, re.toExpression))
+
+  /** Raises an exact rational to an exact rational power.
+   *
+   *  Integer exponents are closed over the rationals and stay exact — including negative
+   *  ones, which invert.  A fractional exponent is not closed (`2^(1/2)` is irrational), so
+   *  it is evaluated and re-approximated to the working precision, which is the documented
+   *  behaviour for every operation outside the exact set.  A non-finite real result falls
+   *  back to the principal complex value exactly as the `Double` path does.
+   *
+   *  @param b   the exact base
+   *  @param e   the exact exponent
+   *  @param env supplies the working precision and the reduction policy
+   *  @return the reduced power, or `Left(this)` when the result is undefined
+   */
+  private def ratPow(b: _Rational, e: _Rational, env: Environment): Either[_Expression, _Value] =
+    e.toBigIntExact.filter(_.isValidInt) match
+      case Some(k) => b.pow(k.toInt, env.rationalPolicy).map(Right(_)).getOrElse(Left(this))
+      case None    =>
+        val r = pow(b.toDouble, e.toDouble)
+        if r.isNaN || r.isInfinite then
+          _Complex.pow(_Number(b.toDouble), _Number(e.toDouble)).map(Right(_)).getOrElse(Left(this))
+        else _Rational.fromApproximation(r, env.workingPrecision).map(Right(_)).getOrElse(Left(this))
 
   /** Raises a square dense matrix to an integer power `e`.
    *

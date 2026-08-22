@@ -101,6 +101,44 @@ Reset to default:
 s.execute("precision 5")
 ```
 
+## Exact arithmetic
+
+`exact on` switches numeric literals from `Double` to exact rationals, so results that a
+binary float cannot represent come out right:
+
+```scala mdoc
+val e = new Session()
+e.execute("exact on")
+e.execute("0.1 + 0.2")     // exactly three tenths, not 0.30000000000000004
+e.execute("1/3 * 3")       // exactly one
+```
+
+The mode is decided when the input is *parsed*, and it has to be: once `0.1` has been read
+as a `Double` the tenth that was meant is already gone, and no later stage can recover it.
+
+Exact are `+`, `-`, `*`, `/` and integer powers.  Everything else is irrational — every
+transcendental function, any fractional power — so it is computed and then re-approximated
+to the **working precision**, a separate setting from the display precision:
+
+```scala mdoc
+e.execute("exact precision 40")
+e.execute("exact")
+```
+
+Those kernels are still `Double`-accurate to about 15 digits whatever the working precision
+says, so raising it sharpens the arithmetic *around* a `sin()`, not the `sin()` itself.
+
+A short result displays as a fraction and a long one as a decimal, but `:save` always
+writes the exact fraction, so nothing is lost across a round-trip:
+
+```scala mdoc
+e.execute("pi")            // readable
+```
+
+Mixing an exact value with an inexact one gives an inexact result.  That is deliberate:
+absorbing the `Double` would be lossless, but it would dress representation error up as an
+exact answer.
+
 ## Matrix display
 
 Matrices with two or more rows can be shown multi-line with right-aligned columns
@@ -186,6 +224,8 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `eval <expr>` | Force numeric evaluation |
 | `samples e v lo hi [n]` | Sample function over range |
 | `precision <n>` | Set decimal digits |
+| `exact on\|off` | Exact rational arithmetic (default `off`) |
+| `exact precision <n>` | Digits an irrational is approximated to |
 | `pretty on` / `off` | Multi-line, column-aligned matrix display |
 | `env` | Show session state |
 | `unset <name>` | Remove binding or definition |

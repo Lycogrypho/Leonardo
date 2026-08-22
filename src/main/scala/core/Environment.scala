@@ -30,6 +30,18 @@ object Environment:
    */
   val DefaultPrecision: Int = 5
 
+  /** Canonical default *working* precision, in decimal digits, for the exact-arithmetic
+   *  tier (issue 4.L).
+   *
+   *  A different quantity from [[DefaultPrecision]], and deliberately a separate field
+   *  rather than an overload of it: `precision` decides how a result is *shown*, working
+   *  precision decides how tightly an irrational is *approximated* before exact arithmetic
+   *  continues.  Showing five decimals of a value computed to thirty is the normal case,
+   *  and conflating the two would make raising the display precision silently change
+   *  results.
+   */
+  val DefaultWorkingPrecision: Int = 30
+
 
 /** Immutable variable-binding context shared across all domains.
  *
@@ -50,11 +62,28 @@ object Environment:
  *  @param semantics      the t-norm / t-conorm pair the logic connectives evaluate with;
  *                        defaults to [[LogicSemantics.MinMax]].  Like `symmetricLogic`
  *                        this is a knob on `eval`, not a separate node hierarchy.
+ *  @param workingPrecision decimal digits an irrational is approximated to before exact
+ *                        arithmetic continues (issue 4.L).  Read by `eval` wherever a
+ *                        [[_Rational]] meets an operation that is not closed over the
+ *                        rationals.  Note this is *not* the exact-mode switch: whether a
+ *                        value is exact is carried by its own type, so the only component
+ *                        that has to be told is the parser, which decides what a literal
+ *                        becomes.  That flag lives in `cli.Session` beside `pretty`; an
+ *                        `Environment.exact` field would be read by nothing.
  */
 class Environment(val precision: Int = Environment.DefaultPrecision,
                   private val variables: Map[String, _Value] = Map(),
                   val symmetricLogic: Boolean = false,
-                  val semantics: LogicSemantics = LogicSemantics.MinMax):
+                  val semantics: LogicSemantics = LogicSemantics.MinMax,
+                  val workingPrecision: Int = Environment.DefaultWorkingPrecision):
+
+  /** The reduction policy sized for this environment's working precision.
+   *
+   *  Derived rather than stored: the 4.M benchmark showed that a bound below the operand
+   *  size a precision implies degenerates [[GcdPolicy.Threshold]] into [[GcdPolicy.Eager]],
+   *  so the two have to move together.
+   */
+  def rationalPolicy: GcdPolicy = _Rational.thresholdFor(workingPrecision)
 
   /** Returns the value bound to `variable`, or `None` if it is free.
    *  @param variable the name to look up
@@ -73,4 +102,4 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
    *  @param value    the concrete value to associate
    */
   def withBinding(variable: String, value: _Value): Environment =
-    new Environment(precision, variables + (variable -> value), symmetricLogic, semantics)
+    new Environment(precision, variables + (variable -> value), symmetricLogic, semantics, workingPrecision)

@@ -62,6 +62,10 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 - **Precision Control**: Configurable decimal precision for numeric results, with rational approximation semantics.
 
+- **Exact arithmetic mode** (`exact on`): numeric literals become exact rationals, so
+  `0.1 + 0.2` is exactly `3/10` and `1/3 * 3` is exactly `1`. A user-settable *working
+  precision* bounds how tightly irrationals are approximated. Off by default.
+
 - **Clean API**: Environment-aware evaluation with no implicit global state. Expressions are immutable and composable. `Environment` is immutable — `withBinding` returns a new instance, enabling safe concurrent evaluation.
 
 - **Performance**: Rounding is deferred to display time only (no mid-computation precision loss). Every AST node caches its free-variable set (`freeVars`) after the first traversal, making `dependsOn` O(1). Definite-integral evaluation (Simpson's rule) uses a compiled `Double => Double` closure when the integrand has no unresolvable symbolic nodes, eliminating per-step allocations. `derive` and `simplify` are memoized behind bounded thread-safe caches — repeated derivatives of the same tree (e.g. Simpson's-rule fallback sampling) and `simplifyFully`'s fixpoint passes are paid once.
@@ -164,10 +168,10 @@ bindings, definitions) as a script that `:load` replays.
 
 - Broader indefinite integration (non-linear substitution; repeated/complex roots at degree ≥ 3 for rational functions)
 - Additional mathematical functions and constants
-- An exact-arithmetic mode: a user-controlled *working precision* backed by rational
-  numbers, so a result you distrust can be recomputed at a higher precision instead of
-  silently carrying `Double` rounding.  The arithmetic kernel (`core._Rational`) is in
-  place; wiring it into the expression tree is the remaining step
+- Exact arithmetic over matrices (exact `det` / `inv` / `solveSystem` on rational entries)
+  and an unbounded factorial, extending the `exact` mode below
+- Arbitrary-precision transcendental functions, so a higher working precision sharpens
+  `sin` and `exp` themselves rather than only the arithmetic around them
 
 ## Credits
 

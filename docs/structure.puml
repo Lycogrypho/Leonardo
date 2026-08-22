@@ -95,7 +95,7 @@ package "core" {
         + fromDouble(d): Option[_Rational]  (exact dyadic)
         DefaultPolicy = Threshold(256)      chosen by the 4.M benchmark
         + thresholdFor(digits) = max(256, 8 * digits)
-        NOT a _Value yet -- AST promotion is issue 4.L
+        sibling _Value of _Number (issue 4.L slice A)
         equality by cross-multiplication: 2/6 == 1/3
     }
 
@@ -134,13 +134,15 @@ package "core" {
     }
 
     class "Environment" [[expressions.html]] {
-        + precision: Int
+        + precision: Int   (display)
+        + workingPrecision: Int  (exact tier; default 30)
         + symmetricLogic: Boolean  (truth-value encoding)
         + semantics: LogicSemantics  (t-norm family)
         + get(name: String): Option
         + withBinding(name, v): Environment
         __ companion __
         DefaultPrecision: Int = 5
+        DefaultWorkingPrecision: Int = 30
     }
 
     "_Value"        --|> "_Expression"
@@ -152,7 +154,9 @@ package "core" {
     "_Complex"     ..|> "_Value"
     "_MatrixValue" ..|> "_Value"
     "_Variable"    ..|> "_Expression"
+    "_Rational"    ..|> "_Value"
     "_Rational"    ..>  "GcdPolicy"    : reduction policy per operation
+    "_Rational"    ..>  "Environment"  : workingPrecision + rationalPolicy
 
     class "_Heaviside" <<case>> [[expressions.html]] {
         + arg: _Expression
