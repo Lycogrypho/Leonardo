@@ -196,3 +196,37 @@ case class _Taylor(e: _Expression, v: _Variable, point: _Expression, n: _Express
           case Some(series) => series.eval(env)
           case None         => Left(this)
       case _ => Left(this)
+
+/** Truncated Fourier series of `e` in `v` over one period centred on zero:
+ *  `fourierSeries(e, v, period, n)`.
+ *
+ *  Like [[_Taylor]], `v` is the *expansion* variable rather than a binder: it appears
+ *  free in the result.  It is kept out of `children` and carried through `rebuild` so
+ *  `substitute` cannot rewrite the variable the expansion is taken in.
+ *
+ *  Unlike `_Taylor`, the coefficients are **numeric**: each is a definite integral
+ *  evaluated by Simpson's rule, so `period` must reduce to a concrete positive number and
+ *  the integrand must be evaluable over `[-period/2, period/2]`.  Anything else leaves
+ *  the node symbolic, the fixpoint convention shared with the transforms.
+ *
+ *  Not to be confused with `transform._Fourier` (`fourier(e, t, w)`), which is the
+ *  Fourier *transform* -- a different operation with a different result type.
+ *
+ *  @param e      the expression to expand
+ *  @param v      the expansion variable
+ *  @param period the period, `T`
+ *  @param n      the highest harmonic retained
+ */
+case class _FourierSeries(e: _Expression, v: _Variable, period: _Expression, n: _Expression)
+    extends _Functional:
+  override def toString: String = s"fourierSeries($e, $v, $period, $n)"
+  override def children: List[_Expression] = List(e, period, n)
+  override def rebuild(c: List[_Expression]): _Expression = _FourierSeries(c.head, v, c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (period.eval(env), n.eval(env)) match
+      case (Right(_Number(t)), Right(_Number(d))) if d.isWhole && d >= 0 && d <= MaxFourierOrder =>
+        fourierSeries(e, v, t, d.toInt, env) match
+          case Some(series) => series.eval(env)
+          case None         => Left(this)
+      case _ => Left(this)

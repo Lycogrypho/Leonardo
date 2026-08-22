@@ -240,3 +240,127 @@ class SeriesTest extends AnyFlatSpec:
     assert(pts.size == 11)
     for (px, py) <- pts do assertClose(py, math.cos(px), 1e-6, s"at $px:")
   }
+
+  // --- 4.J tier 2: Fourier series ---
+
+  /** The Fourier series of `src` sampled at `at`. */
+  def fourierAt(src: String, at: Double): Double = valueAt(parse(src), at)
+
+  "the Fourier series of a constant" should "be that constant" in
+  {
+    // a0/2 = 1, every harmonic vanishes
+    val s = parse("fourierSeries(1, x, 2*pi, 3)")
+    for at <- List(-2.0, 0.0, 1.5, 3.0) do
+      assertClose(valueAt(s, at), 1.0, 1e-9, s"constant at $at:")
+  }
+
+  "the Fourier series of the sawtooth x on [-pi, pi]" should "have b_k = 2(-1)^(k+1)/k" in
+  {
+    // f(x) = x has the classic expansion 2*sin(x) - sin(2x) + (2/3)sin(3x) - ...
+    // Compare against the analytic partial sum rather than against x itself: the series
+    // converges to x only in the mean, and Gibbs oscillation near +-pi is real, not error.
+    val s = parse("fourierSeries(x, x, 2*pi, 4)")
+    def analytic(t: Double): Double =
+      (1 to 4).map(k => 2.0 * math.pow(-1, k + 1) / k * math.sin(k * t)).sum
+    for at <- List(-2.0, -0.5, 0.0, 0.5, 2.0) do
+      assertClose(valueAt(s, at), analytic(at), 1e-6, s"sawtooth partial sum at $at:")
+  }
+
+  it should "be odd, so every cosine coefficient vanishes" in
+  {
+    // f(x) = x is odd => a_k = 0 for all k, so the partial sum is an odd function
+    val s = parse("fourierSeries(x, x, 2*pi, 4)")
+    for at <- List(0.3, 1.0, 2.5) do
+      assertClose(valueAt(s, at), -valueAt(s, -at), 1e-6, s"oddness at $at:")
+    assertClose(valueAt(s, 0.0), 0.0, 1e-6, "an odd series vanishes at 0:")
+  }
+
+  "the Fourier series of x^2 on [-pi, pi]" should "have a_0/2 = pi^2/3 and a_k = 4(-1)^k/k^2" in
+  {
+    val s = parse("fourierSeries(x^2, x, 2*pi, 4)")
+    def analytic(t: Double): Double =
+      math.Pi * math.Pi / 3.0 +
+      (1 to 4).map(k => 4.0 * math.pow(-1, k) / (k * k) * math.cos(k * t)).sum
+    for at <- List(-2.5, -1.0, 0.0, 1.0, 2.5) do
+      assertClose(valueAt(s, at), analytic(at), 1e-6, s"x^2 partial sum at $at:")
+  }
+
+  it should "be even, so every sine coefficient vanishes" in
+  {
+    val s = parse("fourierSeries(x^2, x, 2*pi, 3)")
+    for at <- List(0.4, 1.2, 2.8) do
+      assertClose(valueAt(s, at), valueAt(s, -at), 1e-6, s"evenness at $at:")
+  }
+
+  "a pure harmonic" should "be reproduced exactly by its own coefficient" in
+  {
+    // sin(x) over period 2pi is already a Fourier series: b_1 = 1, everything else 0
+    val s = parse("fourierSeries(sin(x), x, 2*pi, 3)")
+    for at <- List(-2.0, -0.7, 0.0, 0.7, 2.0) do
+      assertClose(valueAt(s, at), math.sin(at), 1e-6, s"sin reproduced at $at:")
+    val c = parse("fourierSeries(cos(2*x), x, 2*pi, 3)")
+    for at <- List(-1.5, 0.0, 1.5) do
+      assertClose(valueAt(c, at), math.cos(2 * at), 1e-6, s"cos(2x) reproduced at $at:")
+  }
+
+  "a non-2pi period" should "scale the harmonics correctly" in
+  {
+    // period 2 => omega = pi; sin(pi*x) is the first harmonic and must come back as itself
+    val s = parse("fourierSeries(sin(pi*x), x, 2, 3)")
+    for at <- List(-0.8, -0.25, 0.0, 0.25, 0.8) do
+      assertClose(valueAt(s, at), math.sin(math.Pi * at), 1e-6, s"period-2 harmonic at $at:")
+  }
+
+  "raising the Fourier order" should "not worsen the approximation of a smooth periodic function" in
+  {
+    // cos(x) + 0.5*sin(2x) is exactly representable from order 2 onwards
+    def err(n: Int): Double =
+      val s = parse(s"fourierSeries(cos(x) + 0.5 * sin(2*x), x, 2*pi, $n)")
+      List(-2.0, -0.6, 0.4, 1.7).map(at =>
+        math.abs(valueAt(s, at) - (math.cos(at) + 0.5 * math.sin(2 * at)))).max
+    assert(err(2) < 1e-6, s"order 2 should already be exact: ${err(2)}")
+    assert(err(4) <= err(2) + 1e-9, s"order 4 should not be worse: ${err(2)} -> ${err(4)}")
+  }
+
+  // --- guards ---
+
+  "a non-positive or non-numeric period" should "stay symbolic" in
+  {
+    assert(parse("fourierSeries(x, x, 0, 3)").eval(env).isLeft, "zero period")
+    assert(parse("fourierSeries(x, x, -1, 3)").eval(env).isLeft, "negative period")
+    assert(parse("fourierSeries(x, x, T, 3)").eval(env).isLeft, "symbolic period")
+  }
+
+  "a bad Fourier order" should "stay symbolic" in
+  {
+    assert(parse("fourierSeries(x, x, 2*pi, -1)").eval(env).isLeft)
+    assert(parse("fourierSeries(x, x, 2*pi, 1.5)").eval(env).isLeft)
+    assert(parse(s"fourierSeries(x, x, 2*pi, ${MaxFourierOrder + 1})").eval(env).isLeft)
+  }
+
+  "an integrand with another free variable" should "stay symbolic" in
+  {
+    // the coefficient integrals cannot reduce to numbers
+    assert(parse("fourierSeries(a * x, x, 2*pi, 2)").eval(env).isLeft)
+  }
+
+  "fourierSeries" should "not be shadowed by the fourier transform keyword" in
+  {
+    // both must parse, to their own node types
+    assert(parse("fourierSeries(x, x, 2*pi, 2)").isInstanceOf[_FourierSeries])
+    assert(parse("fourier(exp(-2*t), t, w)").isInstanceOf[transform._Fourier])
+    assert(Parser.ReservedWords.contains("fourierSeries"))
+  }
+
+  it should "round-trip through toString" in
+  {
+    // An exactly-representable period: _Number.toString rounds at DefaultPrecision, so
+    // an irrational literal such as pi cannot survive an exact AST round-trip -- that is a
+    // pre-existing property of _Number, not of this node.
+    for e <- List[_Expression](
+          _FourierSeries(Sin(x), x, _Number(2), _Number(3)),
+          _FourierSeries(Sum(x, _Number(1)), x, _Number(4), _Number(0))) do
+      val reparsed = Parser.parse(e.toString)
+      assert(reparsed.successful, s"did not re-parse: ${e.toString} ($reparsed)")
+      assert(reparsed.get == e, s"round-trip changed it: ${reparsed.get}")
+  }

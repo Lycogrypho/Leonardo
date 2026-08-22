@@ -659,6 +659,8 @@ precision, are the problem.
 | Taylor series | [Wikipedia — Taylor series](https://en.wikipedia.org/wiki/Taylor_series) |
 | Maclaurin series (centre 0) | [Wikipedia — Maclaurin series of common functions](https://en.wikipedia.org/wiki/Taylor_series#List_of_Maclaurin_series_of_some_common_functions) |
 | Truncation error / Lagrange remainder | [Wikipedia — Taylor's theorem](https://en.wikipedia.org/wiki/Taylor%27s_theorem#Explicit_formulas_for_the_remainder) |
+| Fourier series | [Wikipedia — Fourier series](https://en.wikipedia.org/wiki/Fourier_series) |
+| Gibbs phenomenon (why a truncated series overshoots at a jump) | [Wikipedia — Gibbs phenomenon](https://en.wikipedia.org/wiki/Gibbs_phenomenon) |
 
 `taylorSeries` folds
 
@@ -670,6 +672,21 @@ over the **memoised** `deriveN`, so the k-th derivative reuses the (k−1)-th; e
 coefficient is instantiated at the centre with `substitute`, and `simplifyFully` collapses
 the `k = 0` term's `(v − point)⁰`.  The centre need not be numeric — expanding about a
 symbolic `a` gives a genuine polynomial in `(v − a)`.
+
+`fourierSeries` is the **numeric** counterpart, and the contrast is instructive.  Taylor
+coefficients come from differentiation, which is symbolic and exact; Fourier coefficients
+come from *integration over a period*, which here means Simpson's rule — so the period must
+be a concrete number, an Environment is required, and the coefficients carry quadrature
+error.  Two consequences a newcomer should expect rather than treat as bugs:
+
+- **Terms that vanish analytically come back tiny, not zero.**  Every sine coefficient of
+  an even function is   mathematically and about 1e-17 numerically.  They are *not*
+  chopped: picking a threshold would silently discard genuinely small coefficients, and
+  this library treats cleanup as a display concern.
+- **Convergence is in the mean, not pointwise.**  A truncated Fourier series of a function
+  with a jump overshoots near the discontinuity, and refining the order does not remove the
+  overshoot — that is the Gibbs phenomenon, not a defect.  Test such a series against its
+  own analytic partial sum, not against the function it expands.
 
 ### Numerical stability
 

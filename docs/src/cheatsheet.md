@@ -165,7 +165,15 @@ maclaurin(cos(x), x, 6)     even powers only
 maclaurin(1/(1-x), x, 5)    the geometric series
 taylor(exp(x), x, 1, 4)     expanded about x = 1
 taylor(x^2, x, a, 2)        symbolic centre: a polynomial in (x - a)
+fourierSeries(x, x, 2*pi, 4)      sawtooth: 2sin(x) - sin(2x) + (2/3)sin(3x) - ...
+fourierSeries(x^2, x, 2*pi, 4)    even function: cosine terms only, a0/2 = pi^2/3
+fourierSeries(sin(pi*x), x, 2, 3) period 2, so omega = pi
 ```
+
+`fourierSeries` expands over one period centred on 0, with coefficients computed
+numerically by Simpson — so the period must be a concrete positive number.  It is a
+different operation from `fourier(e, t, w)`, the Fourier *transform*.  Coefficients are
+not chopped: a term that vanishes analytically returns at the integrator noise floor.
 
 `maclaurin(e, v, n)` is sugar for `taylor(e, v, 0, n)`.  The expansion variable stays
 free in the result, so binding it evaluates the polynomial.  Order is capped at 20;

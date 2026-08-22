@@ -67,7 +67,7 @@ object Parser extends JavaTokenParsers:
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
-    "taylor", "maclaurin",                               // series expansions (4.J)
+    "taylor", "maclaurin", "fourierSeries",              // series expansions (4.J)
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
@@ -358,6 +358,11 @@ object Parser extends JavaTokenParsers:
     }                                                                                             |
     "laplace(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
       case e ~ _ ~ t ~ _ ~ s              => _Laplace(e, t, s)
+    }                                                                                             |
+    // fourierSeries(...) is listed before fourier(...) so the longer keyword wins; the
+    // two are different operations -- a series in t versus a transform into w.
+    "fourierSeries(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ p ~ _ ~ n      => _FourierSeries(e, v, p, n)
     }                                                                                             |
     "fourier(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
       case e ~ _ ~ t ~ _ ~ w              => _Fourier(e, t, w)

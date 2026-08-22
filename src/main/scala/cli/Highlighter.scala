@@ -105,7 +105,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
                                "limit", "laplace", "fourier", "invlaplace", "ode",
                                "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz",
                                "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",
-                               "taylor", "maclaurin")
+                               "taylor", "maclaurin", "fourierSeries")
   private val LogicOps  = Set("and", "or", "not", "implies", "xor")
   private val Constants = Set("pi", "e", "i", "true", "false", "unknown")
 

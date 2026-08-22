@@ -742,6 +742,16 @@ object Session:
          |  logic product             and = a*b, or = a+b-a*b
          |  logic lukasiewicz         and = max(0,a+b-1), or = min(1,a+b)
          |  logic                     show both settings""".stripMargin,
+    "fourierSeries" ->
+      """|Expand a function as a truncated Fourier series over one period, centred on 0.
+         |Coefficients are computed NUMERICALLY (Simpson), so the period must be a concrete
+         |positive number and the integrand must evaluate over [-period/2, period/2].
+         |  fourierSeries(x, x, 2*pi, 4)        sawtooth: 2sin(x) - sin(2x) + ...
+         |  fourierSeries(x^2, x, 2*pi, 4)      even: cosine terms only, a0/2 = pi^2/3
+         |  fourierSeries(sin(pi*x), x, 2, 3)   period 2, so omega = pi
+         |Coefficients are not chopped: a term that vanishes analytically comes back at the
+         |integrator noise floor rather than exactly zero.  Order is capped at 20.
+         |NOT the same as fourier(e, t, w), which is the Fourier TRANSFORM.""".stripMargin,
     "taylor" ->
       """|Expand an expression as a truncated Taylor polynomial about a point.
          |maclaurin(e, v, n) is sugar for taylor(e, v, 0, n).  Order is capped at 20.
@@ -890,6 +900,7 @@ object Session:
       |truth3 <expr>        three-valued table: false / unknown / true per variable
       |fact(n), Gamma(z)    factorial and gamma family; see "help fact"
       |taylor(e,v,pt,n)     Taylor/Maclaurin expansion; see "help taylor"
+      |fourierSeries(...)   Fourier series over one period; see "help fourierSeries"
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)
