@@ -11,7 +11,7 @@ import parser.Parser
 
 import scala.util.control.NonFatal
 
-import org.jline.reader.{EndOfFileException, LineReader, LineReaderBuilder, UserInterruptException}
+import org.jline.reader.{EndOfFileException, LineReader, LineReaderBuilder, Reference, UserInterruptException}
 import org.jline.terminal.TerminalBuilder
 
 
@@ -776,6 +776,19 @@ object Session:
          |polynomial.  Stays symbolic when the order is not an integer in 0..20, or when
          |a coefficient cannot be differentiated -- maclaurin(Gamma(x), x, 3) needs the
          |digamma function and so returns unevaluated rather than a bogus series.""".stripMargin,
+    "greek" ->
+      """|Greek aliases for the special functions, and how to type them.
+         |  Γ(z)   same as Gamma(z)     ALT-\ g   or   ALT-G
+         |  β(x, y)   same as Beta(x, y)   ALT-\ b
+         |ALT-\ is a PREFIX: press it, then the letter.  A prefix was chosen over one chord
+         |per symbol because ALT-B is already backward-word in emacs-style line editing
+         |(and ALT-B redirects to it), and because a prefix extends to further symbols
+         |without re-checking for collisions.
+         |Capital Greek Beta is deliberately NOT accepted: U+0392 is a homoglyph of Latin B,
+         |so it would be invisible which of the two you had typed.  Lowercase beta is used
+         |instead, and is visually distinct from every Latin letter.
+         |Both spellings parse to the same node, and toString always emits the ASCII form,
+         |so :save scripts stay portable to terminals that cannot render or type these.""".stripMargin,
     "fact" ->
       """|Factorial and the gamma family.
          |  fact(5)             -> 120.0      exact for integers up to 170!
@@ -911,6 +924,7 @@ object Session:
       |truth <expr>         print the truth table over the expression's free variables
       |truth3 <expr>        three-valued table: false / unknown / true per variable
       |fact(n), Gamma(z)    factorial and gamma family; see "help fact"
+      |Γ(z), β(x,y)   Greek aliases; ALT-\ g / ALT-\ b; see "help greek"
       |taylor(e,v,pt,n)     Taylor/Maclaurin expansion; see "help taylor"
       |fourierSeries(...)   Fourier series over one period; see "help fourierSeries"
       |pade(e,v,m,n)        Pade [m/n] rational approximant; see "help pade"
@@ -961,6 +975,64 @@ object Session:
       case Some(other)                        => Some(session.execute(other))
 
 
+/** The escape byte an `ALT-<key>` press sends; built from its code point rather than
+ *  written literally so the source stays free of control characters.
+ */
+private val Esc: String = 27.toChar.toString
+
+/** The Greek symbols reachable from the `ALT-\` prefix, paired with the letter that
+ *  selects them: `ALT-\ g` inserts `Γ`, `ALT-\ b` inserts `β`.
+ *
+ *  A **prefix** scheme rather than one direct chord per symbol, for two reasons.  `ALT-b`
+ *  is already `backward-word` in JLine's emacs key map -- and `ALT-B` redirects to it via
+ *  `do-lowercase-version`, so the capital does not dodge the clash -- while a prefix
+ *  extends to further symbols without ever having to re-check for a collision.  `ALT-\`
+ *  itself is verified unbound.
+ *
+ *  Only symbols the grammar actually accepts belong here: the variable regex is ASCII-only,
+ *  so inserting a character the parser cannot read would just manufacture parse errors.
+ *  Today that means the two special-function aliases and nothing else.
+ */
+private[cli] val GreekChords: List[(Char, String)] = List('g' -> "Γ", 'b' -> "β")
+
+/** Key sequences JLine's emacs map already owns, from a direct dump of that map.
+ *
+ *  Kept as data so the "we never steal an editing shortcut" rule is a *testable* claim
+ *  rather than a comment.  `ALT-B` is absent on purpose: it resolves to `ALT-b` through
+ *  `do-lowercase-version`, so binding the capital would take `backward-word` just the same.
+ */
+private[cli] val EmacsReservedChords: Map[String, String] = Map(
+  "a" -> "accept-and-hold", "b" -> "backward-word",  "c" -> "capitalize-word",
+  "d" -> "kill-word",       "f" -> "forward-word")
+
+/** The chords to install, as `(key sequence, widget name)` pairs.
+ *
+ *  Pure, and deliberately so: the invariant worth guarding -- that none of these collides
+ *  with an editing shortcut -- is a property of this list, not of a live terminal.  Testing
+ *  it here means the suite never has to build a JLine `Terminal`, which loads a native
+ *  library and, inside sbt's in-process runner, intermittently crashed the JVM with an
+ *  EXCEPTION_ACCESS_VIOLATION during native library load.
+ */
+private[cli] def greekKeySequences: List[(String, String)] =
+  GreekChords.map((letter, _) => (s"$Esc\\$letter", s"insert-greek-$letter")) :+
+    // ALT-G as well: verified free, and the direct shortcut for the commoner symbol.
+    ((s"${Esc}g", "insert-greek-g"))
+
+/** Binds the Greek insertion chords on `reader`, leaving every existing binding intact.
+ *
+ *  Thin glue over [[greekKeySequences]] and [[GreekChords]]; `repl()`'s interactive loop
+ *  cannot be exercised by the suite, so the decisions live in those two values where they
+ *  can be, and this function only applies them.
+ *
+ *  @param reader the line reader whose MAIN key map is extended
+ */
+private[cli] def installGreekChords(reader: LineReader): Unit =
+  val keyMap = reader.getKeyMaps.get(LineReader.MAIN)
+  for (letter, symbol) <- GreekChords do
+    reader.getWidgets.put(s"insert-greek-$letter", () => { reader.getBuffer.write(symbol); true })
+  for (seq, widget) <- greekKeySequences do keyMap.bind(new Reference(widget), seq)
+
+
 /** Entry point for the interactive Leonardo REPL. */
 @main def repl(): Unit =
   val session = Session()
@@ -977,6 +1049,7 @@ object Session:
     .variable(LineReader.HISTORY_FILE, historyFile)
     .highlighter(highlighter)
     .build()
+  installGreekChords(reader)
   val out = terminal.writer()
   out.println("Leonardo CAS -- type 'help' for commands, 'quit' to leave")
   out.flush()

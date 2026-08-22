@@ -103,10 +103,14 @@ Gamma(5)                -> 24.0     Gamma(n) = (n-1)!
 Gamma(0.5)              -> 1.77245  = sqrt(pi)
 lgamma(1e5)                         ln|Gamma| -- finite where Gamma overflows
 Beta(1, 4)              -> 0.25     Gamma(a)Gamma(b)/Gamma(a+b)
+Γ(5)                -> 24.0     Greek alias; type it with ALT-\ g or ALT-G
+β(1, 4)                -> 0.25     Greek alias; type it with ALT-\ b
 ```
 
 `Gamma` and `Beta` are **capitalised** so that lowercase `gamma` and `beta` remain
-usable as ordinary variable names.  Poles (0, -1, -2, ...), overflow and complex
+usable as ordinary variable names.  The Greek aliases Γ and β parse to the same
+nodes; `toString` always emits the ASCII spelling, so `:save` scripts stay portable.
+Capital Greek Beta is not accepted: it is a homoglyph of Latin `B`.  Poles (0, -1, -2, ...), overflow and complex
 arguments all stay symbolic rather than returning infinities.
 
 ---

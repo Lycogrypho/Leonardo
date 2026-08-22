@@ -1661,3 +1661,58 @@ class ReplSessionTest extends AnyFlatSpec:
     val line = "defuzz(very(trimf(x, 0, 5, 10)), x, 0, 10)"
     assert(h.highlightBuffer(line).toString == line)
   }
+  // --- issue 4.K: Greek-letter aliases and their insertion chords ---
+
+  "the Greek aliases" should "parse to the same nodes as the ASCII spellings" in
+  {
+    val s = session
+    assert(s.execute("Γ(5)") == s.execute("Gamma(5)"))
+    assert(s.execute("β(1, 4)") == s.execute("Beta(1, 4)"))
+    assert(s.execute("Γ(5)") == "24.0")
+    assert(s.execute("β(1, 4)") == "0.25")
+  }
+
+  it should "compose like any other function" in
+  {
+    val s = session
+    assert(s.execute("Γ(3) + 1") == "3.0")          // 2! + 1
+    assert(s.execute("2 * Γ(4)") == "12.0")         // 2 * 3!
+  }
+
+  "the ASCII spelling" should "remain what toString emits, so :save stays portable" in
+  {
+    val s1 = session
+    s1.execute("g := Γ(4) + x")
+    val script = s1.script
+    assert(script.contains("Gamma("), s"expected the ASCII spelling in:\n$script")
+    assert(!script.contains("Γ"), s"the Greek glyph must not reach a script:\n$script")
+    // and the script still replays
+    val s2 = session
+    s2.load(script)
+    s2.execute("x := 0")
+    assert(s2.execute("g") == "6.0")
+  }
+
+  "lowercase gamma and beta" should "still be ordinary variables alongside the aliases" in
+  {
+    val s = session
+    s.execute("gamma := 3")
+    s.execute("beta := 4")
+    assert(s.execute("gamma + beta") == "7.0")
+  }
+
+  "capital Latin B" should "NOT be the Beta function (the homoglyph we refused to add)" in
+  {
+    val s = session
+    // B is an ordinary variable; B(1,4) is not a function call
+    s.execute("B := 5")
+    assert(s.execute("B") == "5.0")
+    assert(!parser.Parser.parse("B(1, 4)").successful, "B(...) must not be a Beta call")
+  }
+
+  "the highlighter" should "accept the Greek glyphs without error" in
+  {
+    val h = LeonardoHighlighter(() => "dark")
+    val line = "Γ(5) + β(1, 2)"
+    assert(h.highlightBuffer(line).toString == line)
+  }

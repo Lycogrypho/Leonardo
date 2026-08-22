@@ -325,6 +325,14 @@ object Parser extends JavaTokenParsers:
     "mfact("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case n ~ _ ~ k => MultiFactorial(n, k) }      |
     "lgamma(" ~> guardedExpr <~ ")"                                       ^^ LogGamma.apply                |
     "Gamma("  ~> guardedExpr <~ ")"                                       ^^ Gamma.apply                   |
+    // Greek aliases (4.K). No ReservedWords entry is needed: the variable regex is
+    // ASCII-only, so no Greek letter can ever be a variable name and there is nothing to
+    // collide with. toString keeps emitting the ASCII spelling, so :save scripts stay
+    // portable to terminals that cannot render or type these.
+    // Capital Beta is NOT offered: U+0392 is a homoglyph of Latin B, so BETA(2,3) and
+    // B(2,3) would be indistinguishable on screen; lowercase beta is visually distinct.
+    "Γ("  ~> guardedExpr <~ ")"                                          ^^ Gamma.apply                   |
+    "β("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case x ~ _ ~ y => Beta(x, y) }                |
     "Beta("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case x ~ _ ~ y => Beta(x, y) }                |
     // Fuzzy tier: truth(x) converts a scalar degree into a truth value (and is the
     // printed form of a graded _Truth); the hedges and curves produce degrees directly.

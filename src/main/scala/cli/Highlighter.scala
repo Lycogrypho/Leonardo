@@ -108,6 +108,8 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
                                "taylor", "maclaurin", "fourierSeries", "pade")
   private val LogicOps  = Set("and", "or", "not", "implies", "xor")
   private val Constants = Set("pi", "e", "i", "true", "false", "unknown")
+  /** Greek aliases of the special functions (issue 4.K); single characters, not words. */
+  private val GreekFunctions = Set('Γ', 'β')
 
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
   private val WordPat = raw"[a-zA-Z][a-zA-Z0-9_]*".r
@@ -157,6 +159,9 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
             pos += word.length
           case None =>
             val style = buffer(pos) match
+              // Greek function aliases: WordPat is ASCII-only, so these arrive here as
+              // single characters rather than as word tokens.
+              case c if GreekFunctions.contains(c) => cs.function
               case '+' | '-' | '*' | '/' | '^' => cs.operator
               case '='                          => cs.equation
               case '(' | ')' | '[' | ']'       => cs.paren
