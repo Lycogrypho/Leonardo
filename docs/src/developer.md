@@ -661,6 +661,7 @@ precision, are the problem.
 | Truncation error / Lagrange remainder | [Wikipedia — Taylor's theorem](https://en.wikipedia.org/wiki/Taylor%27s_theorem#Explicit_formulas_for_the_remainder) |
 | Fourier series | [Wikipedia — Fourier series](https://en.wikipedia.org/wiki/Fourier_series) |
 | Gibbs phenomenon (why a truncated series overshoots at a jump) | [Wikipedia — Gibbs phenomenon](https://en.wikipedia.org/wiki/Gibbs_phenomenon) |
+| Pade approximant | [Wikipedia — Padé approximant](https://en.wikipedia.org/wiki/Pad%C3%A9_approximant) |
 
 `taylorSeries` folds
 

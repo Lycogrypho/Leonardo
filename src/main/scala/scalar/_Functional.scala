@@ -230,3 +230,37 @@ case class _FourierSeries(e: _Expression, v: _Variable, period: _Expression, n: 
           case Some(series) => series.eval(env)
           case None         => Left(this)
       case _ => Left(this)
+
+/** Padé approximant `[m/n]` of `e` about zero: `pade(e, v, m, n)`.
+ *
+ *  The rational function `P/Q` with `deg P <= m`, `deg Q <= n` and `Q(0) = 1` whose
+ *  Maclaurin series agrees with `e`'s through order `m + n`.  Frequently a much better
+ *  approximation than the Taylor polynomial of the same total degree, because a rational
+ *  function can model a nearby pole that no polynomial can.
+ *
+ *  Follows [[_Taylor]]'s convention that `v` is the expansion variable rather than a
+ *  binder -- free in the result, but excluded from `children` so `substitute` cannot
+ *  rewrite it.  Like `_FourierSeries` the coefficients are numeric, so `m` and `n` must
+ *  fold to non-negative integers with `m + n <= MaxTaylorOrder` and every Maclaurin
+ *  coefficient must reduce; anything else leaves the node symbolic, including the case
+ *  where the linear system is singular and no `[m/n]` approximant exists.
+ *
+ *  @param e the expression to approximate
+ *  @param v the expansion variable
+ *  @param m the numerator degree
+ *  @param n the denominator degree
+ */
+case class _Pade(e: _Expression, v: _Variable, m: _Expression, n: _Expression)
+    extends _Functional:
+  override def toString: String = s"pade($e, $v, $m, $n)"
+  override def children: List[_Expression] = List(e, m, n)
+  override def rebuild(c: List[_Expression]): _Expression = _Pade(c.head, v, c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (m.eval(env), n.eval(env)) match
+      case (Right(_Number(a)), Right(_Number(b)))
+          if a.isWhole && b.isWhole && a >= 0 && b >= 0 && a + b <= MaxTaylorOrder =>
+        padeApproximant(e, v, a.toInt, b.toInt, env) match
+          case Some(r) => r.eval(env)
+          case None    => Left(this)
+      case _ => Left(this)

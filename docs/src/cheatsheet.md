@@ -168,6 +168,9 @@ taylor(x^2, x, a, 2)        symbolic centre: a polynomial in (x - a)
 fourierSeries(x, x, 2*pi, 4)      sawtooth: 2sin(x) - sin(2x) + (2/3)sin(3x) - ...
 fourierSeries(x^2, x, 2*pi, 4)    even function: cosine terms only, a0/2 = pi^2/3
 fourierSeries(sin(pi*x), x, 2, 3) period 2, so omega = pi
+pade(exp(x), x, 1, 1)             -> (2 + x)/(2 - x)   rational [m/n] approximant
+pade(exp(x), x, 2, 2)             beats maclaurin(exp(x), x, 4) away from 0
+pade(1/(1+x), x, 0, 1)            a rational function reproduces itself exactly
 ```
 
 `fourierSeries` expands over one period centred on 0, with coefficients computed

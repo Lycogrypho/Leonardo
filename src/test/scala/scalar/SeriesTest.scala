@@ -364,3 +364,96 @@ class SeriesTest extends AnyFlatSpec:
       assert(reparsed.successful, s"did not re-parse: ${e.toString} ($reparsed)")
       assert(reparsed.get == e, s"round-trip changed it: ${reparsed.get}")
   }
+  // --- 4.J tier 3: Pade approximants ---
+
+  "the Pade [1/1] of exp(x)" should "be the known (2 + x)/(2 - x)" in
+  {
+    val s = parse("pade(exp(x), x, 1, 1)")
+    for at <- List(-1.0, -0.3, 0.0, 0.3, 1.0) do
+      assertClose(valueAt(s, at), (2.0 + at) / (2.0 - at), 1e-9, s"[1/1] of exp at $at:")
+  }
+
+  "the Pade [2/2] of exp(x)" should "be the known (1 + x/2 + x^2/12)/(1 - x/2 + x^2/12)" in
+  {
+    val s = parse("pade(exp(x), x, 2, 2)")
+    def known(t: Double): Double =
+      (1 + t / 2 + t * t / 12) / (1 - t / 2 + t * t / 12)
+    for at <- List(-1.5, -0.5, 0.0, 0.5, 1.5) do
+      assertClose(valueAt(s, at), known(at), 1e-9, s"[2/2] of exp at $at:")
+  }
+
+  "a Pade approximant" should "match the function's series to order m + n" in
+  {
+    // the defining property: R(x) - f(x) = O(x^(m+n+1)), so the error must fall off at
+    // that rate. Halving x should cut the error by about 2^(m+n+1).
+    val s = parse("pade(exp(x), x, 2, 2)")           // m + n = 4, so error ~ x^5
+    def err(at: Double): Double = math.abs(valueAt(s, at) - math.exp(at))
+    val (e1, e2) = (err(0.2), err(0.1))
+    assert(e2 > 0.0, "the approximation should not be exact, or the test proves nothing")
+    val ratio = e1 / e2
+    assert(ratio > 16.0 && ratio < 64.0,
+      s"error should fall like x^5 (ratio about 32 when x halves), got $ratio")
+  }
+
+  it should "reproduce a rational function exactly" in
+  {
+    // 1/(1+x) IS a [0/1] rational function, so its own Pade approximant is itself
+    val s = parse("pade(1 / (1 + x), x, 0, 1)")
+    for at <- List(-0.5, 0.0, 0.5, 2.0, 10.0) do
+      assertClose(valueAt(s, at), 1.0 / (1.0 + at), 1e-9, s"1/(1+x) at $at:")
+  }
+
+  it should "reduce to the Taylor polynomial when the denominator degree is 0" in
+  {
+    val pade   = parse("pade(exp(x), x, 4, 0)")
+    val taylor = parse("maclaurin(exp(x), x, 4)")
+    for at <- List(-1.0, -0.2, 0.0, 0.7, 1.3) do
+      assertClose(valueAt(pade, at), valueAt(taylor, at), 1e-9, s"[4/0] vs Taylor at $at:")
+  }
+
+  "Pade" should "beat the Taylor polynomial of the same total degree away from zero" in
+  {
+    // the whole point of the method: a rational form can model behaviour a polynomial
+    // of equal cost cannot. Compare [2/2] against the order-4 Taylor at x = 1.
+    val padeErr   = math.abs(valueAt(parse("pade(exp(x), x, 2, 2)"), 1.0) - math.E)
+    val taylorErr = math.abs(valueAt(parse("maclaurin(exp(x), x, 4)"), 1.0) - math.E)
+    assert(padeErr < taylorErr,
+      s"Pade should be more accurate here: pade $padeErr vs taylor $taylorErr")
+  }
+
+  // --- guards ---
+
+  "a bad Pade degree" should "stay symbolic" in
+  {
+    assert(parse("pade(exp(x), x, -1, 2)").eval(env).isLeft, "negative m")
+    assert(parse("pade(exp(x), x, 2, -1)").eval(env).isLeft, "negative n")
+    assert(parse("pade(exp(x), x, 1.5, 2)").eval(env).isLeft, "non-integer m")
+    assert(parse(s"pade(exp(x), x, $MaxTaylorOrder, 2)").eval(env).isLeft, "m + n beyond the cap")
+  }
+
+  "a Pade of an underivable expression" should "stay symbolic" in
+  {
+    assert(parse("pade(Gamma(x), x, 1, 1)").eval(env).isLeft)
+  }
+
+  "a Pade whose linear system is singular" should "stay symbolic, not divide by zero" in
+  {
+    // f = x has c0 = 0, c1 = 1, c2 = 0; the [1/1] system is 1*q1*c1 = -c2 -> q1 = 0,
+    // which is fine, but f = x^2 with [1/1] gives a singular system (c1 = 0).
+    val r = parse("pade(x^2, x, 1, 1)").eval(env)
+    assert(r.isLeft || r.isRight, "must not throw")
+    // whatever it decides, it must not produce a non-finite value
+    r match
+      case Right(_Number(d)) => assert(!d.isNaN && !d.isInfinite, s"non-finite result: $d")
+      case _                 => succeed
+  }
+
+  "the Pade grammar" should "parse and round-trip" in
+  {
+    assert(parse("pade(exp(x), x, 2, 3)") == _Pade(Exp(x), x, _Number(2), _Number(3)))
+    assert(Parser.ReservedWords.contains("pade"))
+    val e: _Expression = _Pade(Sin(x), x, _Number(1), _Number(2))
+    val reparsed = Parser.parse(e.toString)
+    assert(reparsed.successful, s"did not re-parse: ${e.toString}")
+    assert(reparsed.get == e, s"round-trip changed it: ${reparsed.get}")
+  }

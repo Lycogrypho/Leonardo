@@ -742,6 +742,18 @@ object Session:
          |  logic product             and = a*b, or = a+b-a*b
          |  logic lukasiewicz         and = max(0,a+b-1), or = min(1,a+b)
          |  logic                     show both settings""".stripMargin,
+    "pade" ->
+      """|The Pade [m/n] approximant about 0: the rational P/Q, deg P <= m, deg Q <= n,
+         |Q(0) = 1, whose series matches the function through order m + n.
+         |Often far more accurate than the Taylor polynomial of the same total degree,
+         |because a rational function can model a nearby pole that no polynomial can.
+         |  pade(exp(x), x, 1, 1)       -> (2 + x)/(2 - x)
+         |  pade(exp(x), x, 2, 2)       beats maclaurin(exp(x), x, 4) away from 0
+         |  pade(1/(1+x), x, 0, 1)      a rational function reproduces itself exactly
+         |  pade(f, x, m, 0)            with no denominator, this IS the Taylor polynomial
+         |Coefficients are numeric, so m + n is capped at 20 and every Maclaurin
+         |coefficient must reduce.  A singular coefficient system (no [m/n] approximant in
+         |normal form) leaves the node symbolic rather than dividing by zero.""".stripMargin,
     "fourierSeries" ->
       """|Expand a function as a truncated Fourier series over one period, centred on 0.
          |Coefficients are computed NUMERICALLY (Simpson), so the period must be a concrete
@@ -901,6 +913,7 @@ object Session:
       |fact(n), Gamma(z)    factorial and gamma family; see "help fact"
       |taylor(e,v,pt,n)     Taylor/Maclaurin expansion; see "help taylor"
       |fourierSeries(...)   Fourier series over one period; see "help fourierSeries"
+      |pade(e,v,m,n)        Pade [m/n] rational approximant; see "help pade"
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)

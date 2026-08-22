@@ -67,7 +67,7 @@ object Parser extends JavaTokenParsers:
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
-    "taylor", "maclaurin", "fourierSeries",              // series expansions (4.J)
+    "taylor", "maclaurin", "fourierSeries", "pade",      // series expansions (4.J)
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
@@ -386,6 +386,10 @@ object Parser extends JavaTokenParsers:
     }                                                                                             |
     "maclaurin(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ n => _Taylor(e, v, _Number(0), n)
+    }                                                                                             |
+    // pade(e, v, m, n): the [m/n] rational approximant about zero.
+    "pade(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ m ~ _ ~ n => _Pade(e, v, m, n)
     }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |

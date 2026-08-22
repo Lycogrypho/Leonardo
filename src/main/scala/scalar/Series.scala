@@ -147,3 +147,80 @@ def fourierSeries(
       }
       terms.map(ts => simplifyFully(ts.reduceLeft(Sum.apply)))
     }
+
+/** The Maclaurin coefficients `c_k = f⁽ᵏ⁾(0)/k!` for `k = 0 .. upTo`, as plain numbers.
+ *
+ *  Every coefficient must fold to a finite number in `env`; a symbolic one, or a
+ *  derivative outside `derive`'s rule table, aborts the whole vector.  Used by
+ *  [[padeApproximant]], which needs the coefficients numerically to solve a linear system.
+ */
+private def maclaurinCoefficients(
+    e: _Expression, v: _Variable, upTo: Int, env: Environment
+): Option[Vector[Double]] =
+  (0 to upTo).foldLeft(Option(Vector.empty[Double])) { (acc, k) =>
+    acc.flatMap { built =>
+      val dk = deriveN(e, v, k)
+      if hasDerivative(dk) then None
+      else
+        val atZero = substitute(dk, Map(v.variable -> _Number(0)))
+        (atZero.eval(env), factorialOf(k.toDouble)) match
+          case (Right(_Number(d)), Some(f)) if !d.isNaN && !d.isInfinite => Some(built :+ d / f)
+          case _                                                         => None
+    }
+  }
+
+
+/** The Padé approximant `[m/n]` of `e` about zero: the rational function `P/Q` with
+ *  `deg P ≤ m`, `deg Q ≤ n` and `Q(0) = 1` whose Maclaurin series agrees with `e`'s
+ *  through order `m + n`.
+ *
+ *  Often a far better approximation than the Taylor polynomial of the same total degree,
+ *  because a rational function can model a nearby pole that no polynomial can.
+ *
+ *  Construction: normalising `q₀ = 1`, matching the series through order `m + n` gives the
+ *  `n × n` linear system `Σ(j = 1..n) q_j·c_{m+k-j} = −c_{m+k}` for `k = 1..n` (with
+ *  `c_i = 0` for `i < 0`), after which `p_k = c_k + Σ(j = 1..min(k,n)) q_j·c_{k-j}`.
+ *
+ *  The system is solved with `core._MatrixValue.inverse`, **not** `equation.solveSystem`:
+ *  `equation` imports `scalar`, so reaching the other way would be a dependency cycle.
+ *  `core` is the common layer both can use.
+ *
+ *  @param e   the expression to approximate
+ *  @param v   the variable; free in the result
+ *  @param m   the numerator degree
+ *  @param n   the denominator degree
+ *  @param env environment in which the coefficients must fold to numbers
+ *  @return the rational approximant, or `None` when a degree is out of range, a
+ *          coefficient will not reduce, or the system is singular (no `[m/n]` approximant
+ *          exists in normal form)
+ */
+def padeApproximant(
+    e: _Expression, v: _Variable, m: Int, n: Int, env: Environment
+): Option[_Expression] =
+  if m < 0 || n < 0 || m + n > MaxTaylorOrder then None
+  else
+    maclaurinCoefficients(e, v, m + n, env).flatMap { coeffs =>
+      def c(i: Int): Double = if i < 0 then 0.0 else coeffs(i)
+
+      // Denominator coefficients q_1..q_n; with n = 0 there is no system and Q = 1.
+      val denominator: Option[Vector[Double]] =
+        if n == 0 then Some(Vector.empty)
+        else
+          val a   = Array.tabulate(n * n)(idx => c(m + (idx / n + 1) - (idx % n + 1)))
+          val rhs = Array.tabulate(n)(k => -c(m + k + 1))
+          _MatrixValue(n, n, a).inverse
+            .map(inv => inv.multiply(_MatrixValue(n, 1, rhs)).toVector)
+            .filter(_.forall(d => !d.isNaN && !d.isInfinite))
+
+      denominator.map { q =>
+        // p_k = c_k + sum over j of q_j * c_{k-j}
+        val p = (0 to m).map(k => c(k) + (1 to math.min(k, n)).map(j => q(j - 1) * c(k - j)).sum)
+        def poly(cs: Seq[Double], constant: Double): _Expression =
+          cs.zipWithIndex.foldLeft(_Number(constant): _Expression) { case (acc, (coef, i)) =>
+            Sum(acc, Product(_Number(coef), Power(v, _Number(i + 1))))
+          }
+        val numerator   = poly(p.drop(1), p.head)
+        val denominator = poly(q, 1.0)
+        simplifyFully(Ratio(numerator, denominator))
+      }
+    }
