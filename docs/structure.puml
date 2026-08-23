@@ -786,6 +786,53 @@ package "logic" {
 ' ===================================================
 ' PACKAGE: parser
 ' ===================================================
+package "probability" <<Rectangle>> {
+
+    class "_Distribution" <<case>> [[developer.html]] {
+        + kind: DistKind
+        + params: Vector[Double]
+        + pdf / cdf / mean / variance / probability
+        __ companion __
+        + of(kind, params): Option   VALIDATES; invalid -> stays symbolic
+        a _Value, but cheap to add: nothing has to
+        read it AS a number (contrast _Rational)
+    }
+
+    enum "DistKind" [[developer.html]] {
+        Normal  Uniform  Exponential
+        Binomial  Poisson
+    }
+
+    class "_DistributionOf" <<case>> [[developer.html]] {
+        symbolic constructor: normal(m, s)
+        evals to _Distribution once params are numeric
+    }
+
+    class "_DistributionQuery" <<case>> [[developer.html]] {
+        pdf / cdf / prob / quantile
+    }
+
+    class "_Expectation" <<case>> [[developer.html]] {
+        expect(e, X)  or  expect(d)
+        X is a BINDER (excluded from children)
+    }
+
+    class "_Variance" <<case>> [[developer.html]]
+
+    class "Moments" <<object>> [[developer.html]] {
+        linearity rule table (Derive.scala's shape)
+        E[a+b]=E[a]+E[b]   E[cX]=cE[X]   Var(aX+b)=a^2 Var(X)
+        isConstant: NOT merely "free of X" --
+        another random variable is not a constant
+    }
+
+    "_Distribution"      ..|> "_Value"
+    "_Distribution"      ..>  "DistKind"
+    "_DistributionOf"    ..>  "_Distribution" : eval
+    "_DistributionQuery" ..>  "_Distribution" : pdf/cdf/quantile
+    "_Expectation"       ..>  "Moments"
+    "_Variance"          ..>  "Moments"
+}
 package "parser" {
     class "Parser" <<object>> [[getting-started.html]] {
         + parse(str: String): ParseResult

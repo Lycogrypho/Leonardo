@@ -24,6 +24,16 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `colors dark\|light\|none` | Syntax-highlight scheme (default `dark`) |
 | `pretty on\|off` | Multi-line matrix display (default `off`) |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
+| `erf(x)` `erfc(x)` | Error function and its complement |
+| `digamma(z)` | Logarithmic derivative of Gamma; makes `Gamma`/`fact` differentiable |
+| `gammaP(a,x)` `gammaQ(a,x)` | Regularised incomplete gamma (lower / upper) |
+| `betaI(x,a,b)` | Regularised incomplete beta |
+| `normal(m,s)` `uniform(a,b)` `exponential(l)` | Continuous distributions |
+| `binomial(n,p)` `poisson(l)` | Discrete distributions |
+| `pdf(d,x)` `cdf(d,x)` | Density/mass and cumulative distribution |
+| `prob(d,lo,hi)` `quantile(d,p)` | Interval probability and inverse cdf |
+| `expect(d)` `variance(d)` | A distribution's own moments |
+| `expect(e,X)` `variance(e,X)` | Moments of an expression, by linearity |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30) |
 | `simplify <expr>` | Structural simplification |
 | `expand <expr>` | Distribute products over sums |

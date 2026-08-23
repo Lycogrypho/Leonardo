@@ -281,12 +281,22 @@ class SpecialFunctionsTest extends AnyFlatSpec:
       assert(!Parser.ReservedWords.contains(w), s"'$w' must stay available as a variable")
   }
 
-  // --- derivative: needs digamma, so it stays symbolic rather than being wrong ---
+  // --- derivative: unblocked by 4.O's digamma ---
 
-  "differentiating gamma or factorial" should "stay symbolic (digamma is not implemented)" in
+  "differentiating gamma or factorial" should "now reduce, since digamma exists" in
   {
-    assert(derive(parse("Gamma(x)"), x).isInstanceOf[_Derivative])
-    assert(derive(parse("fact(x)"), x).isInstanceOf[_Derivative])
+    // This test asserted the OPPOSITE until 4.O.  d/dx Gamma(x) = Gamma(x)*psi(x), which
+    // needs the digamma function; without it both fell through to a bare _Derivative.
+    assert(!derive(parse("Gamma(x)"), x).isInstanceOf[_Derivative])
+    assert(!derive(parse("fact(x)"), x).isInstanceOf[_Derivative])
+
+    // ...and the result is numerically right: d/dx Gamma(x) at x = 3 is Gamma(3)*psi(3).
+    val env  = new Environment()
+    val d3   = derive(parse("Gamma(x)"), x).eval(env.withBinding("x", _Number(3.0)))
+    val want = 2.0 * (-0.5772156649015329 + 1.0 + 0.5)   // Gamma(3)=2, psi(3)=-g+1+1/2
+    d3 match
+      case Right(_Number(got)) => assert(math.abs(got - want) < 1e-10, s"got $got, want $want")
+      case other               => fail(s"expected a number, got $other")
   }
 
   // --- round-trip ---

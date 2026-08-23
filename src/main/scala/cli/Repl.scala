@@ -169,6 +169,9 @@ final class Session:
     // rounded Double for an exact value. `exact` is the full fraction in lowest terms, so a
     // rational that DISPLAYS as a decimal still round-trips through :save exactly.
     case r: _Rational => r.exact
+    // A distribution serializes as the grammar call that rebuilds it -- toString is that
+    // call, at full parameter precision, so a bound distribution survives :save/:load.
+    case d: probability._Distribution => d.display(MaxPrecision)
     case _Number(d) => d.toString
     case _Bool(b)   => if b then "true" else "false"
     case other      => other.toString
@@ -280,6 +283,7 @@ final class Session:
     // Before the _Number arm, for the same reason serializeValue is: the widening extractor
     // would round an exact value away before `display` ever chose a form for it.
     case r: _Rational    => r.display(precision)
+    case d: probability._Distribution => d.display(precision)
     case n: _Number      => n.display(precision)
     case c: _Complex     => c.display(precision)
     case t: _Truth       => t.display(precision)

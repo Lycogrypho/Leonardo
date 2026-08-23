@@ -118,6 +118,23 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case Acos(a)              => dmul(dmul(_Number(-1), Ratio(_Number(1), Power(Sum(_Number(1), dmul(_Number(-1), Power(a, _Number(2)))), _Number(0.5)))), derive(a, v))
   // atan'(u) =  u' / (1 + u²)
   case Atan(a)              => dmul(Ratio(_Number(1), Sum(_Number(1), Power(a, _Number(2)))), derive(a, v))
+  // 4.O: with digamma available, the gamma family is finally differentiable.  Before it,
+  // Gamma and fact had no rule at all and fell through to a bare _Derivative wrapper.
+  //   d/dx Gamma(u) = Gamma(u)*psi(u)*u'   and   d/dx u! = Gamma(u+1)*psi(u+1)*u'
+  //   d/dx lgamma(u) = psi(u)*u'           -- the reason lgamma is the tidier one to use
+  case Gamma(a)             => dmul(Product(Gamma(a), Digamma(a)), derive(a, v))
+  case LogGamma(a)          => dmul(Digamma(a), derive(a, v))
+  case Factorial(a)         =>
+    val ap = Sum(a, _Number(1))
+    dmul(Product(Gamma(ap), Digamma(ap)), derive(a, v))
+  // NOTE there is deliberately no rule for `Digamma` itself: its derivative is the
+  // trigamma function, which 4.O does not introduce.  It falls through to the generic
+  // `_Derivative` wrapper, which is the same "no rule" behaviour Gamma had until now.
+  // erf'(u) = 2/sqrt(pi) * e^(-u^2) * u'
+  case Erf(a)               =>
+    dmul(Product(_Number(2.0 / math.sqrt(math.Pi)),
+                 Exp(dmul(_Number(-1), Power(a, _Number(2))))), derive(a, v))
+  case Erfc(a)              => dmul(_Number(-1), derive(Erf(a), v))
   // Functional nodes must be reduced here, not left to fall through to a bare
   // _Derivative wrapper: that wrapper's eval calls derive again on the same node,
   // looping forever (StackOverflow).

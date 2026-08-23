@@ -56,4 +56,17 @@ def compile(e: _Expression, v: _Variable, env: Environment): Option[Double => Do
   case Beta(a, b)   =>
     for fa <- compile(a, v, env); fb <- compile(b, v, env)
     yield (x: Double) => betaOf(fa(x), fb(x)).getOrElse(Double.NaN)
+  // 4.O family: same shape, so sample and Simpson get them on the fast path too.
+  case Erf(a)       => compile(a, v, env).map(fa => (x: Double) => erfOf(fa(x)).getOrElse(Double.NaN))
+  case Erfc(a)      => compile(a, v, env).map(fa => (x: Double) => erfcOf(fa(x)).getOrElse(Double.NaN))
+  case Digamma(a)   => compile(a, v, env).map(fa => (x: Double) => digammaOf(fa(x)).getOrElse(Double.NaN))
+  case GammaP(a, b) =>
+    for fa <- compile(a, v, env); fb <- compile(b, v, env)
+    yield (x: Double) => lowerGammaP(fa(x), fb(x)).getOrElse(Double.NaN)
+  case GammaQ(a, b) =>
+    for fa <- compile(a, v, env); fb <- compile(b, v, env)
+    yield (x: Double) => upperGammaQ(fa(x), fb(x)).getOrElse(Double.NaN)
+  case BetaI(a, b, c) =>
+    for fa <- compile(a, v, env); fb <- compile(b, v, env); fc <- compile(c, v, env)
+    yield (x: Double) => incompleteBetaOf(fa(x), fb(x), fc(x)).getOrElse(Double.NaN)
   case _             => None  // _Derivative, _Integral, _DefIntegral, unresolvable

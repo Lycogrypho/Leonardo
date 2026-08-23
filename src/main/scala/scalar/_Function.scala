@@ -462,6 +462,10 @@ case class Gamma(e: _Expression) extends _Function:
       case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))
+      // 4.O slice 4: Lanczos generalises to the complex plane, so Gamma no longer has to
+      // give up on a complex argument the way Asin and friends still do.
+      case Right(c: _Complex)      =>
+        gammaComplex(c.re, c.im).map((r, i) => Right(_Complex.of(r, i))).getOrElse(Left(this))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
       case other                   => Left(Gamma(other.toExpression))
 
@@ -509,3 +513,132 @@ case class Beta(a: _Expression, b: _Expression) extends _Function:
       case (Right(_Number(x)), Right(_Number(y))) =>
         betaOf(x, y).map(r => Right(_Number(r))).getOrElse(Left(this))
       case (ra, rb) => Left(Beta(ra.toExpression, rb.toExpression))
+
+
+/** The error function `erf(e)`.
+ *
+ *  Like the rest of the 4.O family this has no [[_Function.exactKernel]] — spire supplies no
+ *  special functions, so the kernel is `Double`-based and an exact argument falls back to
+ *  `viaDouble`, capped at `_Rational.DoubleReliableDigits`.
+ *
+ *  @param e the argument expression
+ */
+case class Erf(e: _Expression) extends _Function:
+  override def toString: String = s"erf($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Erf(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => erfOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => erfOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Erf(other.toExpression))
+
+
+/** The complementary error function `erfc(e) = 1 − erf(e)`.
+ *
+ *  Its own node rather than sugar for `1 - erf(x)`, because the kernel computes it without
+ *  that subtraction and so keeps its accuracy far out in the tail.
+ *
+ *  @param e the argument expression
+ */
+case class Erfc(e: _Expression) extends _Function:
+  override def toString: String = s"erfc($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Erfc(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => erfcOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => erfcOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Erfc(other.toExpression))
+
+
+/** The digamma function `digamma(e) = Γ'(e)/Γ(e)`.
+ *
+ *  Spelled lowercase, unlike `Gamma`/`Beta`: those are capitalised because `gamma` and
+ *  `beta` are extremely common variable names, and `digamma` is not.
+ *
+ *  @param e the argument expression
+ */
+case class Digamma(e: _Expression) extends _Function:
+  override def toString: String = s"digamma($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Digamma(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => digammaOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => digammaOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Digamma(other.toExpression))
+
+
+/** The regularised lower incomplete gamma `gammaP(a, x) = P(a, x)`.
+ *
+ *  Exposed directly because it is the chi-squared and gamma cdf, not only an internal step
+ *  towards `erf`.
+ *
+ *  @param a the shape parameter
+ *  @param x the argument
+ */
+case class GammaP(a: _Expression, x: _Expression) extends _Function:
+  override def toString: String = s"gammaP($a, $x)"
+  override def children: List[_Expression] = List(a, x)
+  override def rebuild(c: List[_Expression]): _Expression = GammaP(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (a.eval(env), x.eval(env)) match
+      // Exact tier first -- `_Number` widens, so anything below it never sees a `_Rational`.
+      case (Right(ra: _Rational), Right(xv: _Value)) => viaDouble(List(_Number(ra.toDouble), xv), env)
+      case (Right(av: _Value), Right(rx: _Rational)) => viaDouble(List(av, _Number(rx.toDouble)), env)
+      case (Right(_Number(av)), Right(_Number(xv)))  =>
+        lowerGammaP(av, xv).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case (ra, rx) => Left(GammaP(ra.toExpression, rx.toExpression))
+
+
+/** The regularised upper incomplete gamma `gammaQ(a, x) = Q(a, x) = 1 − P(a, x)`.
+ *
+ *  @param a the shape parameter
+ *  @param x the argument
+ */
+case class GammaQ(a: _Expression, x: _Expression) extends _Function:
+  override def toString: String = s"gammaQ($a, $x)"
+  override def children: List[_Expression] = List(a, x)
+  override def rebuild(c: List[_Expression]): _Expression = GammaQ(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (a.eval(env), x.eval(env)) match
+      case (Right(ra: _Rational), Right(xv: _Value)) => viaDouble(List(_Number(ra.toDouble), xv), env)
+      case (Right(av: _Value), Right(rx: _Rational)) => viaDouble(List(av, _Number(rx.toDouble)), env)
+      case (Right(_Number(av)), Right(_Number(xv)))  =>
+        upperGammaQ(av, xv).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case (ra, rx) => Left(GammaQ(ra.toExpression, rx.toExpression))
+
+
+/** The regularised incomplete beta `betaI(x, a, b) = I_x(a, b)`.
+ *
+ *  The Student-t and F cdfs.  Three arguments, which no other `_Function` has; `children`
+ *  and `rebuild` carry all three, so the generic traversal handles it like any other node.
+ *
+ *  @param x the argument, in `[0, 1]`
+ *  @param a the first shape parameter
+ *  @param b the second shape parameter
+ */
+case class BetaI(x: _Expression, a: _Expression, b: _Expression) extends _Function:
+  override def toString: String = s"betaI($x, $a, $b)"
+  override def children: List[_Expression] = List(x, a, b)
+  override def rebuild(c: List[_Expression]): _Expression = BetaI(c.head, c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (x.eval(env), a.eval(env), b.eval(env)) match
+      case (Right(_Number(xv)), Right(_Number(av)), Right(_Number(bv))) =>
+        // `_Number` widens over `_Rational`, so exact arguments are read as Doubles here --
+        // correct for this tier, which has no arbitrary-precision kernel to offer.
+        incompleteBetaOf(xv, av, bv).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case (rx, ra, rb) => Left(BetaI(rx.toExpression, ra.toExpression, rb.toExpression))

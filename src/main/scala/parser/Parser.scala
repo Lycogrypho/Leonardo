@@ -8,6 +8,7 @@ import matrix.*
 import equation.*
 import transform.*
 import ode.*
+import probability.*
 import logic.*
 
 
@@ -71,6 +72,11 @@ object Parser extends JavaTokenParsers:
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
+    "normal", "uniform", "exponential", "binomial", "poisson",  // 4.P distributions
+    "pdf", "cdf", "prob", "quantile", "expect", "variance",     // 4.P queries + moments
+    "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",  // 4.O; all lowercase-safe --
+                                                         // none is a plausible variable
+                                                         // name, unlike gamma/beta
                                                          // Gamma/Beta are capitalised so the
                                                          // lowercase names stay free as variables
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
@@ -380,6 +386,30 @@ object Parser extends JavaTokenParsers:
     "dfact("  ~> guardedExpr <~ ")"       ^^ { n => MultiFactorial(n, literalInt(2)) }                     |
     "mfact("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case n ~ _ ~ k => MultiFactorial(n, k) }      |
     "lgamma(" ~> guardedExpr <~ ")"                                       ^^ LogGamma.apply                |
+    // Special functions, 4.O tier.
+    // Probability, 4.P.  `expect`/`variance` take a one- OR two-argument form, the same
+    // shape `log(x)` / `log(x, b)` already established; the two-argument form names the
+    // random variable, which is a BINDER and so must be parsed as a variable, not an expr.
+    "normal("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.Normal, List(a, b)) }   |
+    "uniform("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.Uniform, List(a, b)) }  |
+    "binomial("    ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.Binomial, List(a, b)) } |
+    "exponential(" ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Exponential, List(a)) }                            |
+    "poisson("     ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Poisson, List(a)) }                                |
+    "pdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Pdf, d, List(x)) }      |
+    "cdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Cdf, d, List(x)) }      |
+    "quantile(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Quantile, d, List(x)) } |
+    "prob("     ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case d ~ _ ~ lo ~ _ ~ hi => _DistributionQuery(Query.Prob, d, List(lo, hi)) }                                               |
+    "expect("   ~> guardedExpr ~ "," ~ variable <~ ")" ^^ { case e ~ _ ~ v => _Expectation(e, Some(v)) }                          |
+    "expect("   ~> guardedExpr <~ ")"                  ^^ { e => _Expectation(e, None) }                                          |
+    "variance(" ~> guardedExpr ~ "," ~ variable <~ ")" ^^ { case e ~ _ ~ v => _Variance(e, Some(v)) }                             |
+    "variance(" ~> guardedExpr <~ ")"                  ^^ { e => _Variance(e, None) }                                             |    "erf("     ~> guardedExpr <~ ")"                                     ^^ Erf.apply                     |
+    "erfc("    ~> guardedExpr <~ ")"                                     ^^ Erfc.apply                    |
+    "digamma(" ~> guardedExpr <~ ")"                                     ^^ Digamma.apply                 |
+    "gammaP("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ x => GammaP(a, x) }            |
+    "gammaQ("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ x => GammaQ(a, x) }            |
+    "betaI("   ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case x ~ _ ~ a ~ _ ~ b => BetaI(x, a, b) }                                                          |
     "Gamma("  ~> guardedExpr <~ ")"                                       ^^ Gamma.apply                   |
     // Greek aliases (4.K). No ReservedWords entry is needed: the variable regex is
     // ASCII-only, so no Greek letter can ever be a variable name and there is nothing to

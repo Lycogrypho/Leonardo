@@ -876,6 +876,49 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("simplify 1/3 + 1/3") == "2/3")
     assert(s.execute("1/3 + 1/3") == "2/3")
   }
+  // --- issues 4.O / 4.P: special functions and the probability domain ---
+
+  "the 4.O functions" should "evaluate through the REPL" in
+  {
+    val s = session
+    assert(s.execute("erf(1)").startsWith("0.8427"))
+    assert(s.execute("digamma(1)").startsWith("-0.5772"))
+    assert(s.execute("gammaQ(1, 1)") == "0.36788", "Q(1,1) = e^-1")
+  }
+
+  "a distribution" should "bind to a name and answer questions about itself" in
+  {
+    val s = session
+    assert(s.execute("X := normal(0, 1)") == "X := normal(0.0, 1.0)")
+    assert(s.execute("cdf(X, 0)") == "0.5")
+    assert(s.execute("expect(X)") == "0.0")
+    assert(s.execute("variance(X)") == "1.0")
+  }
+
+  it should "survive a save/load round-trip" in
+  {
+    val s = session
+    s.execute("D := binomial(10, 0.3)")
+    val restored = session
+    restored.load(s.script)
+    assert(restored.execute("expect(D)") == "3.0")
+    assert(restored.execute("D") == "binomial(10.0, 0.3)")
+  }
+
+  "expectation" should "apply linearity through the REPL" in
+  {
+    val s = session
+    s.execute("X := normal(5, 2)")
+    assert(s.execute("expect(2*X + 3, X)") == "13.0")
+    assert(s.execute("variance(2*X + 3, X)") == "16.0")
+  }
+
+  it should "stay symbolic where linearity does not apply" in
+  {
+    val s = session
+    s.execute("X := normal(0, 1)")
+    assert(s.execute("expect(X^2, X)").contains("expect"), "E[X^2] is not linear")
+  }
   // --- issue 4.6: pretty-print matrices (multi-line, column-aligned) ---
 
   "pretty on" should "enable multi-line matrix display and report it" in
