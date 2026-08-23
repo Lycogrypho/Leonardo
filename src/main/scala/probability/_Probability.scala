@@ -36,12 +36,20 @@ enum Query:
   case Cdf
   /** `prob(d, lo, hi)` — `P(lo ≤ X ≤ hi)`. */
   case Prob
+  /** `prob(pred)` — the probability that a predicate over a random variable holds (4.R). */
+  case ProbOf
   /** `quantile(d, p)` — the inverse cdf. */
   case Quantile
 
 object Query:
-  /** The grammar keyword for a query. */
-  def keyword(q: Query): String = q.toString.toLowerCase
+  /** The grammar keyword for a query.
+   *
+   *  `ProbOf` shares `prob`: it is the same function seen through a predicate rather than an
+   *  interval, and it has to print that way to round-trip.
+   */
+  def keyword(q: Query): String = q match
+    case ProbOf => "prob"
+    case other  => other.toString.toLowerCase
 
 
 /** A numeric question about a distribution: `pdf`, `cdf`, `prob` or `quantile`.
@@ -67,6 +75,21 @@ case class _DistributionQuery(query: Query, dist: _Expression, args: List[_Expre
     _DistributionQuery(query, c.head, c.tail)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
+    if query == Query.ProbOf then evalPredicate(env) else evalNumeric(env)
+
+  /** `prob(pred)` — the predicate form (issue 4.R slice B).
+   *
+   *  Its single `dist` slot holds the *predicate*, not a distribution, so it takes none of
+   *  the numeric-argument path below.  An unrecognised predicate stays symbolic: the bad
+   *  failure mode here is not an error but silently answering a different question.
+   */
+  private def evalPredicate(env: Environment): Either[_Expression, _Value] =
+    probabilityOfPredicate(dist, env)
+      .map(p => Right(_Number(p)))
+      .getOrElse(Left(this))
+
+  /** `pdf` / `cdf` / `prob(d, lo, hi)` / `quantile` — the numeric-argument forms. */
+  private def evalNumeric(env: Environment): Either[_Expression, _Value] =
     val rd = dist.eval(env)
     val ra = args.map(_.eval(env))
     val xs = ra.collect { case Right(_Number(d)) => d }

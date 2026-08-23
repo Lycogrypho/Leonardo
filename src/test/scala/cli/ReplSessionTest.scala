@@ -919,6 +919,40 @@ class ReplSessionTest extends AnyFlatSpec:
     s.execute("X := normal(0, 1)")
     assert(s.execute("expect(X^2, X)").contains("expect"), "E[X^2] is not linear")
   }
+  // --- issue 4.R: comparison operators ---
+
+  "comparisons" should "evaluate through the REPL" in
+  {
+    val s = session
+    assert(s.execute("2 > 1") == "true")
+    assert(s.execute("2 < 1") == "false")
+    assert(s.execute("2 >= 2") == "true")
+    assert(s.execute("1 != 2") == "true")
+  }
+
+  it should "compose with the logic tier and with bindings" in
+  {
+    val s = session
+    s.execute("x := 5")
+    assert(s.execute("x > 0 and x < 10") == "true")
+    assert(s.execute("not (x > 10)") == "true")
+  }
+
+  it should "reject a chained comparison rather than half-support it" in
+  {
+    val s = session
+    assert(s.execute("0 < x < 1").startsWith("parse error"))
+  }
+
+  "prob with a predicate" should "work through the REPL" in
+  {
+    val s = session
+    s.execute("X := normal(0, 1)")
+    assert(s.execute("prob(X < 0)") == "0.5")
+    assert(s.execute("prob(-1 < X and X < 1)") == "0.68269")
+    // ...and an unrecognised predicate stays symbolic rather than answering something else.
+    assert(s.execute("prob(sin(X) < 1)").contains("prob"))
+  }
   // --- issue 4.6: pretty-print matrices (multi-line, column-aligned) ---
 
   "pretty on" should "enable multi-line matrix display and report it" in

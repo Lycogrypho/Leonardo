@@ -164,7 +164,8 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
               // single characters rather than as word tokens.
               case c if GreekFunctions.contains(c) => cs.function
               case '+' | '-' | '*' | '/' | '^' => cs.operator
-              case '='                          => cs.equation
+              // Relations share the equation style: =, == and the 4.R comparisons.
+              case '=' | '<' | '>' | '!'        => cs.equation
               case '(' | ')' | '[' | ']'       => cs.paren
               case _                            => cs.variable
             put(style, buffer(pos).toString)

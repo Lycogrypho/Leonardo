@@ -212,3 +212,91 @@ class ProbabilityTest extends AnyFlatSpec:
         assert(e.eval(new Environment(workingPrecision = 30)).isRight)
       case other => fail(s"parse failed: $other")
   }
+
+  // --- issue 4.R slice B: the predicate form of prob ---
+
+  "prob with a predicate" should "agree with the cdf" in
+  {
+    val e = env.withBinding("X", dist("normal(0, 1)"))
+    def at(s: String): Double = parse(s).eval(e) match
+      case Right(_Number(d)) => d
+      case other             => fail(s"\"$s\" did not reduce: $other")
+
+    assert(math.abs(at("prob(X < 2)")  - at("cdf(X, 2)")) < 1e-12)
+    assert(math.abs(at("prob(X <= 2)") - at("cdf(X, 2)")) < 1e-12)
+    assert(math.abs(at("prob(X > 2)")  - (1.0 - at("cdf(X, 2)"))) < 1e-12)
+    assert(math.abs(at("prob(X >= 2)") - (1.0 - at("cdf(X, 2)"))) < 1e-12)
+  }
+
+  it should "read the variable on either side" in
+  {
+    val e = env.withBinding("X", dist("normal(0, 1)"))
+    def at(s: String): Double = parse(s).eval(e) match
+      case Right(_Number(d)) => d
+      case other             => fail(s"\"$s\" did not reduce: $other")
+    // `2 > X` is `X < 2`: the operator flips when the variable is on the right.
+    assert(math.abs(at("prob(2 > X)") - at("prob(X < 2)")) < 1e-12)
+    assert(math.abs(at("prob(2 <= X)") - at("prob(X >= 2)")) < 1e-12)
+  }
+
+  it should "intersect an and, giving the two-sided form" in
+  {
+    val e = env.withBinding("X", dist("normal(0, 1)"))
+    def at(s: String): Double = parse(s).eval(e) match
+      case Right(_Number(d)) => d
+      case other             => fail(s"\"$s\" did not reduce: $other")
+    assert(math.abs(at("prob(-1 < X and X < 1)") - 0.6826894921370859) < 1e-11)
+    // ...and agrees with the interval spelling, which is kept and not deprecated.
+    assert(math.abs(at("prob(-1 < X and X < 1)") - at("prob(X, -1, 1)")) < 1e-12)
+  }
+
+  it should "handle point events by family" in
+  {
+    val c = env.withBinding("X", dist("normal(0, 1)"))
+    val d = env.withBinding("K", dist("binomial(10, 0.3)"))
+    def at(s: String, e: Environment): Double = parse(s).eval(e) match
+      case Right(_Number(x)) => x
+      case other             => fail(s"\"$s\" did not reduce: $other")
+    // A single point carries no mass in a continuous family, and its own mass in a discrete one.
+    assert(math.abs(at("prob(X == 0)", c)) < 1e-15)
+    assert(math.abs(at("prob(X != 0)", c) - 1.0) < 1e-15)
+    assert(math.abs(at("prob(K == 3)", d) - at("pdf(K, 3)", d)) < 1e-12)
+    assert(math.abs(at("prob(K != 3)", d) - (1.0 - at("pdf(K, 3)", d))) < 1e-12)
+  }
+
+  it should "snap a discrete bound to the integers it admits" in
+  {
+    val e = env.withBinding("K", dist("binomial(10, 0.3)"))
+    def at(s: String): Double = parse(s).eval(e) match
+      case Right(_Number(d)) => d
+      case other             => fail(s"\"$s\" did not reduce: $other")
+    // P(K < 2) is P(K <= 1) -- the whole mass at 2 is the difference, and it is not small.
+    assert(math.abs(at("prob(K < 2)") - at("cdf(K, 1)")) < 1e-12)
+    assert(math.abs(at("prob(K <= 2)") - at("cdf(K, 2)")) < 1e-12)
+    assert(at("prob(K <= 2)") - at("prob(K < 2)") > 0.2, "the endpoint carries real mass")
+    // ...and the two-sided form includes both endpoints.
+    val direct = (1 to 3).map(k => at(s"pdf(K, $k)")).sum
+    assert(math.abs(at("prob(K >= 1 and K <= 3)") - direct) < 1e-12)
+  }
+
+  it should "stay symbolic rather than answer a different question" in
+  {
+    val e = env.withBinding("X", dist("normal(0, 1)")).withBinding("Y", dist("normal(0, 1)"))
+    for s <- List(
+      "prob(X < Y)",          // two random variables: which one is it about?
+      "prob(2*X < 6)",        // a coefficient whose sign decides whether the bound flips
+      "prob(X < 1 or X > 2)", // a union of intervals is not a Bounds
+      "prob(sin(X) < 1)",     // not a bound on X at all
+      "prob(Z < 1)"           // Z is not random
+    ) do
+      assert(parse(s).eval(e).isLeft, s"$s must stay symbolic")
+  }
+
+  it should "round-trip, printing as prob rather than probof" in
+  {
+    val p = parse("prob(X < 2)")
+    // The enum case is ProbOf, but it must print as `prob` or it could not re-parse.
+    assert(p.toString.startsWith("prob("), s"got ${p.toString}")
+    assert(!p.toString.contains("probof"), s"the enum name must not leak: ${p.toString}")
+    assert(parse(p.toString) == p, s"predicate form must round-trip: ${p.toString}")
+  }

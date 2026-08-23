@@ -26,6 +26,15 @@ private[equation] def compareSides(
 )(wrap: (_Expression, _Expression) => _Expression): Either[_Expression, _Value] =
   val tolerance = 0.5 * math.pow(10, -env.precision)
   (lhs.eval(env), rhs.eval(env)) match
+    // Exact operands compare EXACTLY.  Tolerance exists because Doubles accumulate
+    // representation error; two exact rationals carry none, and in the exact tier
+    // `1/3 == 0.33333` should be false rather than true-within-a-display-precision.
+    //
+    // It also keeps `==` consistent with `<` (issue 4.R): if equality were tolerant here
+    // while ordering was exact, two rationals a hair apart would satisfy BOTH `a == b` and
+    // `a > b`, breaking trichotomy.  Outside exact mode no `_Rational` is ever constructed,
+    // so this arm is unreachable and the `Double` path is byte-identical.
+    case (Right(a: _Rational), Right(b: _Rational)) => Right(_Bool(a.compare(b) == 0))
     case (Right(_Number(a)), Right(_Number(b))) =>
       Right(_Bool(math.abs(a - b) <= tolerance))
     case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>

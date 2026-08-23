@@ -611,6 +611,20 @@ package "equation" {
         + rhs : _Expression
     }
 
+    class "_Comparison" <<case>> [[equations.html]] {
+        + lhs / rhs: _Expression
+        + op: CompareOp   (Lt Gt Le Ge Ne)
+        eval -> _Bool; feeds the logic tier
+        NOT _ElementWise (unlike = and ==):
+          distributing flips an inequality
+          under a negative multiplier
+        toString FULLY PARENTHESISED, because
+          it survives inside a product
+        ordering(): exact for _Rational,
+          tolerant otherwise -- so exactly
+          one of < == > holds
+    }
+
     class "_EqualityCheck" <<case>> [[equations.html]] {
         + lhs : _Expression
         + rhs : _Expression

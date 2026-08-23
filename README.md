@@ -60,6 +60,12 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 - **Differential Equations**: `ode(rhs, y, t, t0, y0, target)` solves the first-order initial-value problem `y' = rhs(t, y)`, `y(t₀) = y₀`, and returns the solution value `y(target)`. Linear equations `y' = a(t)·y + b(t)` are solved in closed form: constant coefficients directly (`y' = y, y(0)=1` gives `e` exactly at `t = 1`; `y' = 2y + 3` gives the affine-plus-exponential form), and variable coefficients via the integrating factor `μ(t) = e^{∫p dt}` (`y' = -y + t` → `t − 1 + 2e^{-t}`; `y' = -y/(1+t)` → `1/(1+t)`), reusing the full indefinite-integration engine (so a forcing term like `t·eᵗ` closes by integration by parts). A free `target`, a free initial condition, or a symbolic coefficient yields a symbolic solution (`ode(k*y, y, t, 0, 1, 1)` → `e^k`). Non-linear shapes (`y' = sin(y)`, `y' = -y²`) and linear ones whose coefficient integral has no closed form (`y' = tan(t)·y`) are integrated numerically with a fourth-order Runge–Kutta scheme (backward integration when `target < t₀`); a non-evaluable right-hand side or a symbolic target with no closed form stays symbolic.
 
+- **Relations and logic**: `=` builds a solvable equation, `==` an equality test, and
+  `<`, `>`, `<=`, `>=`, `!=` compare — all reducing to booleans that compose with
+  `and`/`or`/`not`/`implies`, so `x > 0 and x < 10` is an ordinary expression. Comparisons
+  are exact when both operands are exact and tolerance-based otherwise, with the two
+  agreeing so that precisely one of `<`, `==`, `>` ever holds.
+
 - **Probability**: Distributions are first-class values — `normal(0, 1)`, `binomial(10, 0.3)`,
   `poisson(4)` and friends bind to names like any other value. `pdf`, `cdf`, `prob` and
   `quantile` answer numeric questions about them, with every cumulative distribution a closed

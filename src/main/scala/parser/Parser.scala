@@ -278,14 +278,23 @@ object Parser extends JavaTokenParsers:
 
   /** Top-level grammar: an optional equation or equality relation.
    *
-   *  `==` is tried before `=` so the two-character operator is not shadowed.
-   *  Non-associative: only one optional relation per expression, so `a = b = c`
-   *  is a parse error.  `(a = b)` is valid as a sub-expression so a named
+   *  Operators are tried longest-first (`>=` before `>`, `==` before `=`) so a
+   *  two-character operator is never shadowed by its prefix.
+   *  Non-associative: only one optional relation per expression, so `a = b = c` and
+   *  `0 < x < 1` are both parse errors.  Chained comparisons are a separate feature.  `(a = b)` is valid as a sub-expression so a named
    *  equation can be bound: `h := x = 5`, then `solve(h, x)`.
    */
-  lazy val equationExpr: Parser[_Expression] = expr ~ opt(("==" | "=") ~ expr) ^^
+  lazy val equationExpr: Parser[_Expression] =
+    // ORDER IS LOAD-BEARING: longest operator first, or `a >= b` would match `>` and then
+    // fail on the stray `=`.  Same rule that already put `==` ahead of `=`.
+    expr ~ opt((">=" | "<=" | "!=" | "==" | ">" | "<" | "=") ~ expr) ^^
     {
       case l ~ Some("==" ~ r) => _EqualityCheck(l, r)
+      case l ~ Some(">=" ~ r) => _Comparison(l, CompareOp.Ge, r)
+      case l ~ Some("<=" ~ r) => _Comparison(l, CompareOp.Le, r)
+      case l ~ Some("!=" ~ r) => _Comparison(l, CompareOp.Ne, r)
+      case l ~ Some(">"  ~ r) => _Comparison(l, CompareOp.Gt, r)
+      case l ~ Some("<"  ~ r) => _Comparison(l, CompareOp.Lt, r)
       case l ~ Some(_ ~ r)    => _Equation(l, r)
       case l ~ None           => l
     }
@@ -400,6 +409,10 @@ object Parser extends JavaTokenParsers:
     "quantile(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Quantile, d, List(x)) } |
     "prob("     ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case d ~ _ ~ lo ~ _ ~ hi => _DistributionQuery(Query.Prob, d, List(lo, hi)) }                                               |
+    // The predicate form (4.R): `prob(X < 2)`, `prob(0 < X and X < 1)`.  Takes a full LOGIC
+    // expression so `and` is available, and is tried after the three-argument form so the
+    // interval spelling is not shadowed.
+    "prob("     ~> guardedLogicExpr <~ ")" ^^ { p => _DistributionQuery(Query.ProbOf, p, Nil) } |
     "expect("   ~> guardedExpr ~ "," ~ variable <~ ")" ^^ { case e ~ _ ~ v => _Expectation(e, Some(v)) }                          |
     "expect("   ~> guardedExpr <~ ")"                  ^^ { e => _Expectation(e, None) }                                          |
     "variance(" ~> guardedExpr ~ "," ~ variable <~ ")" ^^ { case e ~ _ ~ v => _Variance(e, Some(v)) }                             |
