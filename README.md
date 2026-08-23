@@ -66,6 +66,12 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
   are exact when both operands are exact and tolerance-based otherwise, with the two
   agreeing so that precisely one of `<`, `==`, `>` ever holds.
 
+- **Statistics**: Descriptive statistics over samples (`mean`, `variance`, `stddev`,
+  `covariance`, `correlation`) that stay *exact* when the sample is written exactly; least
+  squares via `regress(X, y)`, solved by QR rather than the normal equations so the
+  condition number is never squared; and an inference tier — `ttest`, `confint`,
+  `chisqtest` — so `ttest(sample, 5) < 0.05` reads the way statistics is actually written.
+
 - **Probability**: Distributions are first-class values — `normal(0, 1)`, `binomial(10, 0.3)`,
   `poisson(4)` and friends bind to names like any other value. `pdf`, `cdf`, `prob` and
   `quantile` answer numeric questions about them, with every cumulative distribution a closed

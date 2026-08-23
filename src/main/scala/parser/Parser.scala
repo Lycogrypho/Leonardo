@@ -9,6 +9,7 @@ import equation.*
 import transform.*
 import ode.*
 import probability.*
+import statistics.*
 import logic.*
 
 
@@ -74,6 +75,9 @@ object Parser extends JavaTokenParsers:
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
     "normal", "uniform", "exponential", "binomial", "poisson",  // 4.P distributions
     "pdf", "cdf", "prob", "quantile", "expect", "variance",     // 4.P queries + moments
+    "studentt", "chisq",                                       // 4.Q distributions
+    "mean", "pvariance", "stddev", "pstddev", "covariance", "correlation",  // 4.Q descriptive
+    "regress", "ttest", "confint", "chisqtest",                // 4.Q regression + inference
     "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",  // 4.O; all lowercase-safe --
                                                          // none is a plausible variable
                                                          // name, unlike gamma/beta
@@ -404,7 +408,20 @@ object Parser extends JavaTokenParsers:
     "binomial("    ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.Binomial, List(a, b)) } |
     "exponential(" ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Exponential, List(a)) }                            |
     "poisson("     ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Poisson, List(a)) }                                |
-    "pdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Pdf, d, List(x)) }      |
+    // Statistics, 4.Q.  `mean` and `variance` accept a sample OR a distribution.
+    "mean("        ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.Mean, e) }          |
+    "pvariance("   ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.PVariance, e) }     |
+    "stddev("      ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.StdDev, e) }        |
+    "pstddev("     ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.PStdDev, e) }       |
+    "covariance("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _PairStatistic(PairStatKind.Covariance, a, b) }  |
+    "correlation(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _PairStatistic(PairStatKind.Correlation, a, b) } |
+    "regress("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Regress(a, b) }            |
+    "ttest("       ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.TTest, a, b) }     |
+    "confint("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ConfInt, a, b) }   |
+    "chisqtest("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ChiSqTest, a, b) } |
+    // The two distribution families 4.Q needed and 4.P had not shipped.
+    "studentt("    ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.StudentT, List(a)) }   |
+    "chisq("       ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.ChiSquared, List(a)) } |    "pdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Pdf, d, List(x)) }      |
     "cdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Cdf, d, List(x)) }      |
     "quantile(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Quantile, d, List(x)) } |
     "prob("     ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
@@ -416,7 +433,10 @@ object Parser extends JavaTokenParsers:
     "expect("   ~> guardedExpr ~ "," ~ variable <~ ")" ^^ { case e ~ _ ~ v => _Expectation(e, Some(v)) }                          |
     "expect("   ~> guardedExpr <~ ")"                  ^^ { e => _Expectation(e, None) }                                          |
     "variance(" ~> guardedExpr ~ "," ~ variable <~ ")" ^^ { case e ~ _ ~ v => _Variance(e, Some(v)) }                             |
-    "variance(" ~> guardedExpr <~ ")"                  ^^ { e => _Variance(e, None) }                                             |    "erf("     ~> guardedExpr <~ ")"                                     ^^ Erf.apply                     |
+    // The ONE-argument form belongs to `statistics`, which dispatches on the argument:
+    // a distribution delegates back to `probability.Moments`, a matrix is a sample.  The
+    // two-argument form above stays the linearity rule table and is untouched.
+    "variance(" ~> guardedExpr <~ ")"        ^^ { e => _Statistic(StatKind.Variance, e) }        |    "erf("     ~> guardedExpr <~ ")"                                     ^^ Erf.apply                     |
     "erfc("    ~> guardedExpr <~ ")"                                     ^^ Erfc.apply                    |
     "digamma(" ~> guardedExpr <~ ")"                                     ^^ Digamma.apply                 |
     "gammaP("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ x => GammaP(a, x) }            |

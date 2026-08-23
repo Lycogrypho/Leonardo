@@ -34,6 +34,14 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `prob(d,lo,hi)` `quantile(d,p)` | Interval probability and inverse cdf |
 | `prob(X < 2)` | Probability of a predicate; `and` intersects, `or` is not supported |
 | `<` `>` `<=` `>=` `!=` | Comparisons; reduce to `true`/`false` and compose with `and`/`or`/`not` |
+| `studentt(nu)` `chisq(k)` | Student-t and chi-squared distributions |
+| `mean(x)` `variance(x)` `stddev(x)` | Sample or distribution; `variance` of a sample is the unbiased n-1 form |
+| `pvariance(x)` `pstddev(x)` | Population forms, dividing by n |
+| `covariance(x,y)` `correlation(x,y)` | Two-sample statistics |
+| `regress(X, y)` | Least squares by QR; no intercept added, supply a ones column |
+| `ttest(sample, mu)` | Two-sided one-sample t-test p-value |
+| `confint(sample, level)` | Confidence interval for the mean, as `[[lo, hi]]` |
+| `chisqtest(obs, exp)` | Pearson goodness-of-fit p-value |
 | `expect(d)` `variance(d)` | A distribution's own moments |
 | `expect(e,X)` `variance(e,X)` | Moments of an expression, by linearity |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30) |

@@ -953,6 +953,41 @@ class ReplSessionTest extends AnyFlatSpec:
     // ...and an unrecognised predicate stays symbolic rather than answering something else.
     assert(s.execute("prob(sin(X) < 1)").contains("prob"))
   }
+  // --- issue 4.Q: the statistics domain ---
+
+  "descriptive statistics" should "work on a bound sample" in
+  {
+    val s = session
+    s.execute("data := [[2,4,4,4,5,5,7,9]]")
+    assert(s.execute("mean(data)") == "5.0")
+    assert(s.execute("pstddev(data)") == "2.0")
+    assert(s.execute("pvariance(data)") == "4.0")
+  }
+
+  "regression" should "recover a noiseless fit through the REPL" in
+  {
+    val s = session
+    s.execute("X := [[1,1],[1,2],[1,3],[1,4]]")
+    s.execute("y := [[5],[7],[9],[11]]")
+    // y = 3 + 2x; regress adds no intercept, so the ones column is explicit.
+    assert(s.execute("regress(X, y)") == "[[3.0], [2.0]]")
+  }
+
+  "a significance test" should "read the way statistics is written" in
+  {
+    val s = session
+    s.execute("sample := [[5,6,7,8,9]]")
+    assert(s.execute("ttest(sample, 5) < 0.05") == "true")
+    assert(s.execute("ttest(sample, 7) < 0.05") == "false")
+  }
+
+  "the new distributions" should "bind and answer like the others" in
+  {
+    val s = session
+    assert(s.execute("T := studentt(4)") == "T := studentt(4.0)")
+    assert(s.execute("cdf(T, 0)") == "0.5")
+    assert(s.execute("mean(chisq(7))") == "7.0")
+  }
   // --- issue 4.6: pretty-print matrices (multi-line, column-aligned) ---
 
   "pretty on" should "enable multi-line matrix display and report it" in

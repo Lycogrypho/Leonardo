@@ -800,6 +800,48 @@ package "logic" {
 ' ===================================================
 ' PACKAGE: parser
 ' ===================================================
+package "statistics" <<Rectangle>> {
+
+    class "Descriptive" <<object>> [[developer.html]] {
+        sampleOf: reads EITHER matrix carrier,
+          entries row-major (shape irrelevant)
+        sampleMean / sampleVariance(ddof)
+        sampleStdDev / Covariance / Correlation
+        variance is TWO-PASS: E[X^2]-E[X]^2 loses
+          its digits for a large mean (cf. issue 1.1)
+        exact on an exact sample (field ops only);
+          stddev needs a root -> core.exactSqrt
+    }
+
+    class "Regression" <<object>> [[developer.html]] {
+        leastSquares: QR, NOT normal equations --
+          forming X^T X squares the condition number
+        refuses a rank-deficient design
+        adds no intercept column
+    }
+
+    class "_Statistic" <<case>> [[developer.html]] {
+        + kind: StatKind
+        DISPATCHES: distribution -> probability.Moments
+                    matrix       -> sample
+        variance(sample) = n-1 (unbiased)
+        variance(dist)   = population
+    }
+
+    class "_PairStatistic" <<case>> [[developer.html]]
+    class "_Regress" <<case>> [[developer.html]]
+
+    class "_Test" <<case>> [[developer.html]] {
+        ttest / confint / chisqtest
+        p-value as 2*cdf(-|t|), never 2*(1-cdf(|t|))
+    }
+
+    "_Statistic"     ..> "Descriptive"
+    "_PairStatistic" ..> "Descriptive"
+    "_Regress"       ..> "Regression"
+    "_Test"          ..> "Descriptive"
+}
+
 package "probability" <<Rectangle>> {
 
     class "_Distribution" <<case>> [[developer.html]] {
