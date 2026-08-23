@@ -3,8 +3,6 @@ title: Cheatsheet
 nav_order: 10
 ---
 
-<img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
-
 
 # Leonardo Cheatsheet
 
@@ -51,8 +49,8 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts) |
 | `truth <expr>` | Truth table over the expression's free variables |
 | `truth3 <expr>` | Three-valued (Kleene) truth table: false / unknown / true |
-| `logic symmetric on|off` | Spell truth values as -1 / 0 / 1 (default: off) |
-| `logic minmax|product|lukasiewicz` | Fuzzy t-norm family (default: minmax) |
+| `logic symmetric on\|off` | Spell truth values as -1 / 0 / 1 (default: off) |
+| `logic minmax\|product\|lukasiewicz` | Fuzzy t-norm family (default: minmax) |
 | `unset <name>` | Remove a binding or definition |
 | `:save <file>` | Write session to a replayable script |
 | `:load <file>` | Replay a session script from file |

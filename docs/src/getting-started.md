@@ -3,10 +3,7 @@ title: Getting Started
 nav_order: 2
 ---
 
-<img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
-
 # Getting Started
-<div style="clear:both"></div>
 
 ## Prerequisites
 

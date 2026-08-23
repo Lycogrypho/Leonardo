@@ -3,8 +3,6 @@ title: Developer Guide
 nav_order: 11
 ---
 
-<img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
-
 ---
 
 # Leonardo Developer Guide
@@ -681,7 +679,7 @@ be a concrete number, an Environment is required, and the coefficients carry qua
 error.  Two consequences a newcomer should expect rather than treat as bugs:
 
 - **Terms that vanish analytically come back tiny, not zero.**  Every sine coefficient of
-  an even function is   mathematically and about 1e-17 numerically.  They are *not*
+  an even function is `0` mathematically and about 1e-17 numerically.  They are *not*
   chopped: picking a threshold would silently discard genuinely small coefficients, and
   this library treats cleanup as a display concern.
 - **Convergence is in the mean, not pointwise.**  A truncated Fourier series of a function
@@ -1024,11 +1022,16 @@ a rule:
 1. Identify where in the match block to insert it (rules are tried top-to-bottom; more
    specific patterns must come before general ones).
 2. Write the pattern:
+
    ```scala
-   case MyNode(inner) if linearSlope(inner, v).isDefined =>
-     val a = linearSlope(inner, v).get   // safe — just tested
-     // build antiderivative and return it
+   case MyNode(inner) =>
+     linearSlope(inner, v) match
+       case None    => _Integral(e, v)   // not a linear inner argument — stay symbolic
+       case Some(a) =>
+         // build the antiderivative from the slope a and return it
+         ???
    ```
+
 3. If the new rule delegates to `integrate` recursively, ensure it makes progress (reduces
    the expression in some way) to avoid infinite recursion.
 4. Add the rule to `IndefiniteIntegrationTest.scala`.
@@ -1045,11 +1048,13 @@ Follow the `matrix` or `transform` package as a template.
 
 1. Create `src/main/scala/<name>/` and `src/test/scala/<name>/`.
 2. Add a `package.scala` with the package-level ScalaDoc.
-3. Use the chained package declaration:
+3. Use the chained package declaration — shown here for a package named `mydomain`:
+
    ```scala
    package it.grypho.scala.leonardo
-   package <name>
+   package mydomain
    ```
+
 4. Import `core.*` and any other packages the new domain depends on (following the
    layering DAG — never import a package that is at the same level or above in the graph).
 5. Register the new test suite in `build.sbt` if needed (currently discovered automatically).
@@ -1074,9 +1079,14 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.BeforeAndAfter
 
 class MyFeatureTest extends AnyFlatSpec with BeforeAndAfter:
-  "feature" should "do something" in {
-    val result = ...
-    assert(result == expected)
+
+  val x = _Variable("x")
+
+  "eval" should "resolve a bound variable to its value" in
+  {
+    val env    = Environment(variables = Map("x" -> _Number(2.0)))
+    val result = x.eval(env)
+    assert(result == Right(_Number(2.0)))
   }
 ```
 

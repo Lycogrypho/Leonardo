@@ -3,10 +3,7 @@ title: Architecture
 nav_order: 9
 ---
 
-<img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
-
 # Architecture
-<div style="clear:both"></div>
 
 Leonardo is structured as a layered set of packages. Dependencies point inward:
 every domain package imports `core`; nothing imports `cli` or `parser`.

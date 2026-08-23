@@ -28,7 +28,7 @@ sources, or build:
 
 1. `sbt "mdoc; doc; injectApiStyles"` — verifies the `scala mdoc` code samples in the
    prose, renders the Scaladoc API, and applies the logo/CSS.
-2. `bundle exec jekyll build --source src --destination ../_site --config _config.yml`
+2. `bundle exec jekyll build --source ../target/mdoc --destination ../_site --config _config.yml`
    — renders the prose into `_site` with the Just the Docs theme.
 3. Copies `target/scala-3.3.6/api` into `_site/api` and drops `_site/.nojekyll`.
 4. Uploads `_site` and deploys it with `actions/deploy-pages`.
@@ -65,14 +65,56 @@ GitHub Pages must be told to serve the Actions artifact:
 After that, every push to `main` republishes the site automatically. No local
 toolchain is required.
 
+### Why Jekyll builds `target/mdoc` and not `docs/src`
+
+`docs/src` is mdoc's **input**; `target/mdoc` is its **output**, and that is what gets
+published — the same directory Scaladoc renders via `-siteroot`.
+
+Building from the input looks harmless and is not.  A fence in the source reads
+
+    ```scala mdoc:silent
+
+and kramdown does not accept `scala mdoc:silent` as a language, because of the colon.  It
+therefore stops treating the block as code at all: the lines become an ordinary paragraph,
+their newlines collapse into spaces, and the ``` shows up as literal text.  Plain
+`scala mdoc` fences survived that, which is what made the breakage look sporadic rather than
+systematic.
+
+The larger loss was quieter.  mdoc *evaluates* those samples and writes the results back in
+as comments — currently a little over two hundred of them across the prose.  Publishing the
+input threw all of that away, so the site showed code whose output the reader had to imagine,
+which is most of the reason for running mdoc in the first place.
+
+mdoc copies non-markdown files through, so the images and `_assets` are in `target/mdoc`
+too; nothing else about the build changes.
+
+### The sidebar logo, and why the inline ones came out full width
+
+`logo: "/Banner.svg"` in `_config.yml` makes the theme render the banner in place of the
+text site title in the sidebar (Just the Docs switches on that key in `_includes/title.html`,
+and passes the value through `relative_url` — so the leading `/` picks up the `baseurl` and
+must not repeat it).
+
+The prose pages used to open with an inline `logo_bw.svg` floated right at `height="80"`.
+It rendered full width instead.  The reason is that `logo_bw.svg` declares only a
+`viewBox="0 0 120 120"` and no intrinsic `width`/`height`, so it has no natural size; the
+theme's `img { height: auto }` then beats the `height` *attribute* on specificity, and the
+element stretches to fill its column.  `Banner.svg` (402×117) and `logo2.svg` (180×67) carry
+real dimensions and do not behave that way.
+
+Rather than fight the cascade on eleven pages, the inline image was dropped from the ten
+subsidiary pages and the branding moved to the sidebar, where it appears once and on every
+page.  `index.md` keeps its full-width `Banner.svg` header, which was always deliberate.
+
 ## Local preview
 
 Requires Ruby (3.x) and Bundler:
 
 ```bash
+sbt mdoc          # produce target/mdoc first -- it is what the site renders
 cd docs
 bundle install
-bundle exec jekyll serve --source src --config _config.yml
+bundle exec jekyll serve --source ../target/mdoc --config _config.yml
 # → http://127.0.0.1:4000/Leonardo/
 ```
 

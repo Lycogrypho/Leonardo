@@ -14,7 +14,7 @@ package it.grypho.scala.leonardo
  *
  *  > Adding a `_Value` is cheap unless it has to be **readable as an existing one**.
  *
- *  ``_Rational` was costly precisely because every `case _Number(x)` site had a legitimate
+ *  `_Rational` was costly precisely because every `case _Number(x)` site had a legitimate
  *  claim on it.  A distribution is not a number, so nothing needs to read it as one; nodes
  *  that do not understand it stay symbolic, which is the correct answer rather than a
  *  degradation.  `_MatrixValue` and `_Truth` are the precedents here, not `_Rational`.

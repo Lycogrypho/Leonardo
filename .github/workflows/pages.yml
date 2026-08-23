@@ -58,10 +58,22 @@ jobs:
 
       - name: Build Jekyll site
         working-directory: docs
+        # SOURCE IS target/mdoc, NOT docs/src -- that is, mdoc's OUTPUT, not its input.
+        #
+        # Building from the input published the samples unevaluated and with their mdoc
+        # modifiers still in the fence. Two things went wrong with that: `scala mdoc:silent`
+        # is not a language kramdown accepts (the colon), so those blocks rendered as
+        # paragraphs with their newlines collapsed and the ``` visible; and every verified
+        # result -- the whole point of running mdoc -- was missing from the page.
+        #
+        # Scaladoc already renders this directory (see `-siteroot` in build.sbt), so this
+        # also makes the two published views of the prose agree. The `sbt` step above
+        # produces it, so it exists by the time this runs.
+        #
         # --trace prints a full backtrace when the build fails. Without it Jekyll reports
         # only 'Process completed with exit code 1', which is what let this step fail five
         # times before anyone could see why.
-        run: bundle exec jekyll build --source src --destination ../_site --config _config.yml --trace
+        run: bundle exec jekyll build --source ../target/mdoc --destination ../_site --config _config.yml --trace
         env:
           JEKYLL_ENV: production
 

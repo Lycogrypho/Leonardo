@@ -117,5 +117,3 @@ expSeries(n=150)          30d      64     0.20      105     1.80x
 expSeries(n=150)          30d     128     0.13      124     2.69x
 expSeries(n=150)          30d     256     0.13      186     2.69x
 expSeries(n=150)          30d    1024     0.13      186     2.68x
-
-[0J

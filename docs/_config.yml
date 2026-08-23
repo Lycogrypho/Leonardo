@@ -1,10 +1,11 @@
 # Jekyll configuration for the Leonardo documentation site (GitHub Pages).
 #
-# The prose pages live in docs/src (shared with the mdoc / Scaladoc pipeline); this
-# config drives the "Just the Docs" theme over them. The build is run from CI
-# (.github/workflows/pages.yml) as:
+# The prose pages are authored in docs/src (shared with the mdoc / Scaladoc pipeline), but
+# this config drives the "Just the Docs" theme over mdoc's OUTPUT, not that input -- the
+# samples have to be evaluated and their fence modifiers stripped before kramdown sees
+# them. The build is run from CI (.github/workflows/pages.yml) as:
 #
-#   bundle exec jekyll build --source src --destination ../_site --config _config.yml
+#   bundle exec jekyll build --source ../target/mdoc --destination ../_site --config _config.yml
 #
 # The Scaladoc API reference is injected into the built site under /api by the workflow
 # (it is NOT produced by Jekyll). See docs/README.md for the full build story.
@@ -44,6 +45,14 @@ defaults:
       layout: default
 
 # ── Just the Docs options ──────────────────────────────────────────────────────
+# Renders in place of the text site title in the sidebar (the theme's title.html switches
+# on this).  Banner.svg rather than logo.svg for two reasons: it carries the word
+# "Leonardo", which is what a title should do, and it has intrinsic dimensions (402x117)
+# where logo.svg has only a viewBox -- see the note in docs/README.md about why that
+# matters.  The path is passed through `relative_url`, so the leading "/" picks up the
+# baseurl and must NOT include it.
+logo: "/Banner.svg"
+
 search_enabled: true
 heading_anchors: true
 
@@ -55,7 +64,9 @@ aux_links:
 aux_links_new_tab: false
 
 # Large/duplicate source assets and non-site files that must not be published.
-# (logo_bw.svg, Banner.svg and structure.svg ARE referenced by the prose and kept.)
+# Kept: Banner.svg (the sidebar logo, and the index header), structure.svg (referenced by
+# architecture.md), and logo_bw.svg -- no page references it any more now that the inline
+# per-page logos are gone, but it is small and worth keeping addressable.
 exclude:
   - logo.svg
   - logo2.svg

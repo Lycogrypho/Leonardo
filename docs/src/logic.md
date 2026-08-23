@@ -3,10 +3,7 @@ title: Logic
 nav_order: 7
 ---
 
-<img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
-
 # Logic
-<div style="clear:both"></div>
 
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.core.*

@@ -3,10 +3,7 @@ title: Calculus
 nav_order: 4
 ---
 
-<img src="logo_bw.svg" alt="" height="80" style="float:right;margin:0 0 8px 16px"/>
-
 # Calculus
-<div style="clear:both"></div>
 
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.core.*
@@ -124,7 +121,7 @@ pts.length
 ```
 
 ```scala mdoc
-pts.map { case (xi, yi) => f"($xi%.4f, $yi%.4f)" }
+pts.map { (xi: Double, yi: Double) => f"($xi%.4f, $yi%.4f)" }
 ```
 
 The fast path compiles the expression to a `Double ⇒ Double` closure (no

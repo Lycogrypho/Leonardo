@@ -304,7 +304,7 @@ case class Asin(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Asin(c.head)
 
-  /** sin is real only on [-1, 1]. */
+  /** `asin` is real only on `[-1, 1]`. */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
     Some(r => if r.abs <= _Rational.One then Some(Real.asin(toReal(r))) else None)
 
@@ -331,7 +331,7 @@ case class Acos(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Acos(c.head)
 
-  /** cos is real only on [-1, 1]. */
+  /** `acos` is real only on `[-1, 1]`. */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
     Some(r => if r.abs <= _Rational.One then Some(Real.acos(toReal(r))) else None)
 
@@ -358,7 +358,7 @@ case class Atan(e: _Expression) extends _Function:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Atan(c.head)
 
-  /** tan is defined on the whole real line. */
+  /** `atan` is defined on the whole real line. */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
     Some(r => Some(Real.atan(toReal(r))))
 
