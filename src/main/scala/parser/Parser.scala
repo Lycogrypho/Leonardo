@@ -521,8 +521,12 @@ object Parser extends JavaTokenParsers:
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
-    // guardedExpr calls equationExpr, so "solve(x = 5, x)" and "solve(h, x)" both work.
-    "solve("    ~> guardedExpr ~ "," ~ variable <~ ")"                                            ^^ { case e ~ _ ~ v             => _Solve(e, v)                 } |
+    // guardedLogicExpr, not guardedExpr: `logicExpr` sits ABOVE `equationExpr`, so this
+    // accepts everything the narrower rule did -- "solve(x = 5, x)", "solve(h, x)",
+    // "solve(x^2 - 4 > 0, x)" -- and additionally the connectives, which issue 3.2 needs for
+    // "solve(2x > 2 and x < 5, x)".  With guardedExpr the argument stopped below `and`/`or`
+    // and those spelled out as "'and' is a reserved word and cannot be used as a variable".
+    "solve("    ~> guardedLogicExpr ~ "," ~ variable <~ ")"                                       ^^ { case e ~ _ ~ v             => _Solve(e, v)                 } |
     // equations is a matrix of _Equation nodes; variables are listed after the first comma.
     "solveSystem(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")"                          ^^ { case eqs ~ _ ~ vars         => _SolveSystem(eqs, vars)      }
 

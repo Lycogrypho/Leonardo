@@ -3,6 +3,7 @@ package equation
 
 import core.*
 import matrix.*
+import logic.{And, Or}
 
 
 /** AST node for the `solve(eq, v)` functional (parser: `solve(expr = expr, v)`).
@@ -38,4 +39,22 @@ case class _Solve(eq: _Expression, v: _Variable) extends _Expression:
           case Nil           => Left(this)
           case single :: Nil => Left(single)
           case many          => Left(_Matrix(1, many.size, many.toVector))
-      case _ => Left(this)
+      // Inequalities (issue 3.2). The solution set is written in the language itself -- a
+      // comparison, an `or` of two, or a `_Bool` for the universal/empty set -- so unlike
+      // the equality case there is no list to interpret and no `_Matrix` to build.
+      case c: _Comparison =>
+        solveInequality(c, v, env).fold(Left(this))(s => Left(s))
+      // A conjunction or disjunction of relations solves side by side and recombines, so
+      // `solve(2x > 2 and x < 5, x)` gives `(x > 1) and (x < 5)`. A side this cannot solve
+      // makes the whole thing symbolic rather than silently dropping a constraint.
+      case And(a, b) => solveBoth(a, b, env)((l, r) => And(l, r))
+      case Or(a, b)  => solveBoth(a, b, env)((l, r) => Or(l, r))
+      case _         => Left(this)
+
+  /** Solves both operands of a connective and recombines, or stays symbolic. */
+  private def solveBoth(a: _Expression, b: _Expression, env: Environment)
+                       (combine: (_Expression, _Expression) => _Expression)
+                       : Either[_Expression, _Value] =
+    (_Solve(a, v).eval(env), _Solve(b, v).eval(env)) match
+      case (Left(l), Left(r)) if l != _Solve(a, v) && r != _Solve(b, v) => Left(combine(l, r))
+      case _                                                            => Left(this)

@@ -322,6 +322,12 @@ package "scalar" {
         ~ polyRoots(cs): Option[Vector]
         private[leonardo]; shared with transform
     }
+    class "Sign" <<utility>> [[equations.html]] {
+        ~ sign(e, env): Option[Int]
+        ~ isNonZero(e, env): Boolean
+        decides the inequality direction flip
+        private[leonardo]; shared with 6.13
+    }
 
     class "Syntax" <<object>> [[expressions.html]] {
         simplify() / simplifyFully()
@@ -653,6 +659,14 @@ package "equation" {
         scalar in matrix eq: element-wise
     }
 
+    class "SolveInequality" <<utility>> [[equations.html]] {
+        ~ solveInequality(c, v, env): Option
+        __ tiers __
+        constant / linear / quadratic
+        rational: zeros ∪ poles sign chart
+        answer is _Comparison / or / and / _Bool
+    }
+
     class "_SolveSystem" <<case>> [[equations.html]] {
         + equations : _Expression
         + variables : List[_Variable]
@@ -680,7 +694,10 @@ package "equation" {
     "_EqualityCheck"  ..> "compareSides" : delegates eval
     "_EqualityCheck"  ..> "_Bool"     : reduces to at eval
     "_Solve"          --|> "_Expression"
-    "_Solve"          ..> "Solve"     : solve() at eval (eq must be _Equation)
+    "_Solve"          ..> "Solve"     : solve() at eval (an _Equation)
+    "_Solve"          ..> "SolveInequality" : a _Comparison, and/or of them
+    "SolveInequality" ..> "Sign"      : direction flip
+    "SolveInequality" ..> "Polynomial" : polyRoots() critical points
     "Solve"     ..> "Normalize" : collect() linear/quadratic tiers
     "Solve"     ..> "Compile"   : numeric fallback
     "Solve"     ..> "_Matrix"   : element-wise matrix-equation decompose
