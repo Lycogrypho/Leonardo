@@ -164,8 +164,10 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
 // ── High-degree rational inverse: companion-matrix root-finding + residue partial fractions ──
 
 /** Differentiates a polynomial coefficient vector: `[c0, c1, ..., cn]` -> `[c1, 2*c2, ..., n*cn]`. */
-private def derivPoly(coeffs: Vector[Double]): Vector[Double] =
-  coeffs.zipWithIndex.tail.map { (c, i) => i.toDouble * c }
+// `derivPoly` and `polyRoots` were local copies of `scalar.derivCoeffs` / `scalar.polyRoots`;
+// both now come from `scalar/Polynomial.scala` (issue 3.1).  The shared root finder reads a
+// coefficient vector at its *true* degree where this copy used `size - 1`, but `collect`
+// trims trailing zeros before returning, so no reachable input distinguishes the two.
 
 /** Horner evaluation of a real-coefficient polynomial at a complex point `r = (re, im)`. */
 private def evalPolyAt(coeffs: Vector[Double], r: (Double, Double)): (Double, Double) =
@@ -174,19 +176,6 @@ private def evalPolyAt(coeffs: Vector[Double], r: (Double, Double)): (Double, Do
     val (are, aim) = acc
     (are * rre - aim * rim + c, are * rim + aim * rre)
   }
-
-/** Finds the roots of a polynomial (coeffs(i) = coefficient of `s^i`) via its Frobenius companion matrix. */
-private def polyRoots(coeffs: Vector[Double]): Option[Vector[_Value]] =
-  if coeffs.isEmpty then None
-  else
-    val n  = coeffs.size - 1
-    val cn = coeffs(n)
-    if n < 1 || math.abs(cn) < 1e-12 then None
-    else
-      val mat = Array.fill(n * n)(0.0)
-      for i <- 0 until n do mat(i * n + (n - 1)) = -coeffs(i) / cn  // last column
-      for i <- 1 until n do mat(i * n + (i - 1)) = 1.0              // sub-diagonal
-      _MatrixValue(n, n, mat).eigenDecompose
 
 /** Pairs complex roots into conjugate pairs (positive-im, negative-im).
  *  Returns `None` when any root cannot be matched (implies repeated or defective).
@@ -212,7 +201,7 @@ private def pairConjugates(cs: Vector[_Complex]): Option[Vector[(_Complex, _Comp
 private def invHigherDegree(
     ns: Vector[Double], ds: Vector[Double], s: _Variable, t: _Variable
 ): Option[_Expression] =
-  val dp = derivPoly(ds)
+  val dp = derivCoeffs(ds)
   polyRoots(ds).flatMap { roots =>
     val realRoots    = roots.collect { case _Number(re) => re }
     val complexRoots = roots.collect { case c: _Complex => c }

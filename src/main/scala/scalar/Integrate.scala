@@ -226,8 +226,8 @@ private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variab
 // symbolic (non-numeric) coefficients stay symbolic — the same boundary the inverse
 // Laplace transform draws (transform.InverseLaplaceTransform).
 
-/** Numeric tolerance for treating a polynomial coefficient / discriminant as zero. */
-private val RationalEps = 1e-9
+// `RationalEps`, `polyDegree`, `derivCoeffs` and `polyRoots` live in `Polynomial.scala`
+// (issue 3.1) — they are shared with the inverse Laplace transform's residue rule.
 
 /** Evaluates `e` in an empty environment, returning `Some(d)` for a concrete number. */
 private def constValue(e: _Expression): Option[Double] =
@@ -243,15 +243,6 @@ private def polyCoeffs(e: _Expression, v: _Variable): Option[Vector[Double]] =
       for tail <- acc; d <- constValue(c) yield d +: tail
     }
   }
-
-/** Degree of a coefficient vector: the highest index with a non-negligible coefficient,
- *  or `-1` for the zero polynomial. */
-private def polyDegree(cs: Vector[Double]): Int =
-  cs.lastIndexWhere(c => math.abs(c) > RationalEps)
-
-/** Derivative coefficient vector: `[c1, 2*c2, ..., n*cn]`. */
-private def derivCoeffs(cs: Vector[Double]): Vector[Double] =
-  if cs.sizeIs <= 1 then Vector(0.0) else cs.zipWithIndex.tail.map((c, i) => i.toDouble * c)
 
 /** Horner evaluation of a real-coefficient polynomial at a real point. */
 private def evalCoeffsReal(cs: Vector[Double], x: Double): Double =
@@ -277,18 +268,6 @@ private def polyDivide(num: Vector[Double], den: Vector[Double]): (Vector[Double
         i += 1
       k -= 1
     (q.toVector, rr.toVector)
-
-/** Roots of a polynomial (via the Frobenius companion matrix eigenvalues), each a
- *  real `_Number` or a non-real `_Complex`; `None` when degree < 1 or QR fails. */
-private def polyRoots(cs: Vector[Double]): Option[Vector[_Value]] =
-  val n = polyDegree(cs)
-  if n < 1 then None
-  else
-    val cn  = cs(n)
-    val mat = Array.fill(n * n)(0.0)
-    for i <- 0 until n do mat(i * n + (n - 1)) = -cs(i) / cn  // last column
-    for i <- 1 until n do mat(i * n + (i - 1)) = 1.0          // sub-diagonal
-    _MatrixValue(n, n, mat).eigenDecompose
 
 /** Builds `k * ln(arg)`, folding `k = 0` to `0` and `k = 1` to `ln(arg)`. */
 private def logTerm(k: Double, arg: _Expression): _Expression = scaleBy(k, Ln(arg))

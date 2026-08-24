@@ -316,6 +316,12 @@ package "scalar" {
     class "Compile" <<utility>> [[calculus.html]] {
         + compile(e, v, env): Option
     }
+    class "Polynomial" <<utility>> [[equations.html]] {
+        ~ polyDegree(cs): Int
+        ~ derivCoeffs(cs): Vector
+        ~ polyRoots(cs): Option[Vector]
+        private[leonardo]; shared with transform
+    }
 
     class "Syntax" <<object>> [[expressions.html]] {
         simplify() / simplifyFully()
@@ -324,6 +330,10 @@ package "scalar" {
         dependsOn(v) / substitute(defs)
         compile(v)
     }
+
+    ' Dense-coefficient helpers shared by the rational tiers (issue 3.1)
+    "Integrate" ..> "Polynomial" : degree / roots / d-dx
+    "Integrate" ..> "Normalize"  : collect() poly coeffs
 
     ' Functional nodes call algorithm modules at eval time
     "_Limit"       ..> "Limit"     : evalLimit() at eval
@@ -543,6 +553,7 @@ package "transform" {
     "FourierTransform"        ..> "Substitute"              : s -> i*w substitution
     "FourierTransform"        ..> "_Complex"                : imaginary unit i
     "InverseLaplaceTransform" ..> "Normalize"              : collect() poly coeffs
+    "InverseLaplaceTransform" ..> "Polynomial"             : polyRoots() / derivCoeffs()
     "InverseLaplaceTransform" ..> "Simplify"               : simplifyFully() output
     "InverseLaplaceTransform" ..> "_MatrixValue"           : eigenDecompose() root-finding
     "LaplaceTransform"        ..> "_Heaviside"             : matches step(t) / u(t-a)
