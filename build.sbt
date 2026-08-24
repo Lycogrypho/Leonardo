@@ -69,6 +69,36 @@ lazy val root = (project in file("."))
                   "and the previous structure.svg is now stale. Fix the .puml and re-run.")
       if (!svg.exists || svg.lastModified == before)
         sys.error(s"PlantUML reported success but did not write ${svg.getName}")
+
+      // PlantUML decorates the SVG with its own tracking metadata -- data-qualified-name,
+      // data-source-line, data-entity-1/2, data-link-type, codeLine -- plus an HTML-form
+      // `title` on every <a> and two xlink attributes that only restate their own defaults.
+      // None of that is valid SVG 1.1, so an XML schema inspection rejects the committed
+      // file: this is what refused a commit once the regenerated diagram entered a
+      // changeset, even though the same attributes had been sitting in the committed file
+      // all along (the IDE only inspects files being committed).
+      //
+      // It is metadata only. Every attribute the diagram actually needs is left alone --
+      // `href`, `xlink:href`, `target` and `xlink:title` carry the links, and `xlink:show`
+      // is not a default. Strip rather than pin the PlantUML version, so the cleanup keeps
+      // working when the version is bumped.
+      val strip = List(
+        """\s+data-qualified-name="[^"]*"""",
+        """\s+data-source-line="[^"]*"""",
+        """\s+data-entity-1="[^"]*"""",
+        """\s+data-entity-2="[^"]*"""",
+        """\s+data-link-type="[^"]*"""",
+        """\s+codeLine="[^"]*"""",
+        """\s+title="[^"]*"""",           // the <a> duplicate; xlink:title survives
+        """\s+xlink:actuate="onRequest"""",
+        """\s+xlink:type="simple""""
+      )
+      val raw     = IO.read(svg)
+      val cleaned = strip.foldLeft(raw)((s, re) => s.replaceAll(re, ""))
+      if (cleaned != raw) {
+        IO.write(svg, cleaned)
+        log.info(s"Stripped ${raw.length - cleaned.length} bytes of non-standard PlantUML attributes")
+      }
       log.success("Generated docs/src/structure.svg")
     },
 

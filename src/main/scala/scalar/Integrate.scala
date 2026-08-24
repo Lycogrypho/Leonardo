@@ -3,6 +3,8 @@ package scalar
 
 import core.*
 
+import scala.annotation.tailrec
+
 
 /** Symbolic indefinite integration.
  *
@@ -68,6 +70,7 @@ private val MaxPartsDepth = 4
  *  @param v the integration variable
  *  @return `e` with its `v`-independent factors removed
  */
+@tailrec
 private def stripConstantFactors(e: _Expression, v: _Variable): _Expression = e match
   case Product(a, b) if !dependsOn(a, v) => stripConstantFactors(b, v)
   case Product(a, b) if !dependsOn(b, v) => stripConstantFactors(a, v)
