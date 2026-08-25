@@ -150,12 +150,16 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
       case _Number(d) => assert(math.abs(d - math.exp(0.5)) <= 1e-9, s"got $d")
       case other      => fail(s"expected _Number ≈ e^{1/2}, got $other")
 
-  it should "stay fully symbolic when the coefficient integral has no closed form and the target is free" in:
-    // y' = tan(t)*y is linear, but integral(tan(t)) is not in the table, so the
-    // integrating-factor tier declines; a free target blocks RK4 too → fully symbolic.
+  it should "now close through the tan rule the 6.21 table supplies" in:
+    // This previously asserted "fully symbolic, because integral(tan(t)) is not in the
+    // table".  6.21's data-driven table supplies that integral, so the integrating-factor
+    // tier closes: y' = tan(t)*y with y(0) = 1 integrates to y = 1/cos(t).
     val node = _ODE(Product(Tg(_Variable("t")), _Variable("y")), _Variable("y"), _Variable("t"),
                     _Number(0), _Number(1), _Variable("T"))
-    assert(node.eval(emptyEnv) == Left(node))
+    assert(node.eval(emptyEnv) != Left(node), "should no longer be the bare node")
+    node.eval(new Environment(5, Map("T" -> _Number(0.5)))).toExpression match
+      case _Number(d) => assert(math.abs(d - 1.0 / math.cos(0.5)) <= 1e-9, s"got $d")
+      case other      => fail(s"expected 1/cos(0.5), got $other")
 
   // ───────────────────────────── symbolic (closed-form) tier ─────────────────────────────
 

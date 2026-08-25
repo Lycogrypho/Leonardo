@@ -396,7 +396,15 @@ private def integrateRational(numE: _Expression, denE: _Expression, v: _Variable
  *  @return an antiderivative of `e` (constant of integration omitted),
  *          or `_Integral(e, v)` when no rule fires
  */
-def integrate(e: _Expression, v: _Variable): _Expression = integrateImpl(e, v, 0)
+def integrate(e: _Expression, v: _Variable): _Expression =
+  val compiled = integrateImpl(e, v, 0)
+  // Last resort: the data-driven table (6.21).  Hooked HERE rather than at the match's
+  // fallthrough, because an arm that claims a shape and then gives up inside itself -- the
+  // rational tier does exactly that for a `Ratio` -- never reaches the fallthrough at all.
+  // `containsIntegral` is the give-up signal the compiled tiers already use, so consulting
+  // the table on it means a rule can never change an integral that already closes.
+  if containsIntegral(compiled) then integralRules.applyTo(e, v).getOrElse(compiled)
+  else compiled
 
 /** Rule-table implementation of [[integrate]], threading the parts-recursion `depth`.
  *

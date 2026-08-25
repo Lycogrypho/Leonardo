@@ -341,9 +341,12 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
     assert(integrate(Sin(Power(x, _Number(2))), x) == _Integral(Sin(Power(x, _Number(2))), x))
   }
 
-  "âˆ« tan(x) dx (no rule)" should "stay symbolic" in
+  "tan(x) dx" should "now integrate via the 6.21 rule table" in
   {
-    assert(integrate(Tg(x), x) == _Integral(Tg(x), x))
+    // This test previously asserted "stays symbolic (no rule)".  6.21's data-driven table
+    // supplies the rule, so the capability it documented the absence of now exists.  The
+    // compiled arms are unchanged -- only integrands that used to give up can newly match.
+    assert(integrate(Tg(x), x) == simplifyFully(Product(_Number(-1), Ln(Cos(x)))))
   }
 
   // --- constant / independent-variable integrand ---
