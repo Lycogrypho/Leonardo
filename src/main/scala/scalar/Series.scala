@@ -82,6 +82,184 @@ def maclaurinSeries(e: _Expression, v: _Variable, order: Int): Option[_Expressio
   taylorSeries(e, v, _Number(0), order)
 
 
+/** Expands `e` as a Laurent series about an isolated singularity at `point` — issue 3.4.
+ *
+ *  `Σ(k = −m to n) c_k · (v − point)ᵏ` — a Taylor series extended with a **principal part**
+ *  of `m` negative powers, which is what makes it work where Taylor cannot.
+ *
+ *  **The method is one line; the difficulty is entirely in the first step.**  For a pole of
+ *  order `m` at `a`, the function `g(v) = (v − a)^m · f(v)` is *regular* at `a`, so it can be
+ *  expanded by [[taylorSeries]] to order `m + n` and every exponent shifted down by `m`.
+ *
+ *  **Multiplying is not cancelling, and that is the trap.**  Taylor coefficients are
+ *  instantiated with `substitute(v := a)`.  If the product is still *written* as
+ *  `(v − a)^m · N(v)/D(v)` with the factor still present in `D`, then every coefficient
+ *  evaluates `0/0` and comes back `NaN` — the series would be silently wrong rather than
+ *  absent.  So the product is simplified first and then **verified**: any coefficient that
+ *  does not fold to a finite number aborts the whole expansion.  This is the
+ *  [[hasDerivative]] give-up rule of 4.J applied to a different failure mode.
+ *
+ *  @param e     the expression to expand
+ *  @param v     the expansion variable; it appears **free** in the result, like [[taylorSeries]]
+ *  @param point the singularity to expand about
+ *  @param m     the order of the pole, i.e. the length of the principal part
+ *  @param n     the highest non-negative power retained
+ *  @param env   bindings, used to verify the coefficients are finite
+ *  @return the truncated Laurent series, or `None` when it cannot be produced honestly
+ */
+def laurentSeries(
+    e: _Expression, v: _Variable, point: _Expression, m: Int, n: Int, env: Environment
+): Option[_Expression] =
+  if m < 0 || n < 0 || m + n > MaxTaylorOrder then None
+  // A removable singularity has no principal part, so this *is* a Taylor series. Returning
+  // it beats erroring: the caller asked the right question and there simply are no negative
+  // powers.
+  else if m == 0 then taylorSeries(e, v, point, n)
+  else
+    val shifted = simplifyFully(Sum(v, Product(_Number(-1), point)))
+    regularise(e, v, point, shifted, m, env).flatMap { (regular, effectiveM) =>
+      laurentCoefficients(regular, v, point, effectiveM + n, env)
+        .map(cs => simplifyFully(assembleLaurent(cs, shifted, effectiveM)))
+    }
+
+/** Produces `g(v) = (v − a)^m · f(v)` **cancelled**, not merely multiplied out.
+ *
+ *  `simplifyFully` does *not* cancel `(v − a) · 1/(v − a)` — it leaves the product standing —
+ *  and the resulting `0/0` coefficients are then masked by `Product.eval`'s zero
+ *  short-circuit, which answers `0` for `0 · (1/0)`.  So the naive route produces a
+ *  confidently wrong series rather than an obviously broken one, and two real routes are
+ *  needed instead:
+ *
+ *  1. **Structural** — when `f` is `N / (v − a)^k`, the factor is visible and the answer is
+ *     exact by construction.  This is what covers non-rational numerators like `sin(v)/v²`.
+ *  2. **Rational deflation** — divide `(v − a)` out of the denominator `m` times by
+ *     synthetic division, rejecting if any step leaves a remainder (which would mean `a` is
+ *     not a root to that multiplicity).
+ *
+ *  Anything else gives up rather than guessing.
+ *
+ *  Returns the regularised `g` **and the exponent actually used**, which need not be the
+ *  requested `m`: see [[structuralRegularise]].
+ */
+private def regularise(f: _Expression, v: _Variable, point: _Expression, shifted: _Expression,
+                       m: Int, env: Environment): Option[(_Expression, Int)] =
+  structuralRegularise(f, shifted, m)
+    .orElse(rationalRegularise(f, v, point, m, env).map(g => (g, m)))
+
+/** Route 1: recognise `N / (v − a)^k` and cancel the factor symbolically.
+ *
+ *  **`k` may exceed the requested `m`, and that is not an error.**  The pole *order* and the
+ *  denominator's *written power* are different numbers whenever the numerator also vanishes:
+ *  `sin(v)/v²` has a simple pole, because `sin v ~ v`, yet clearing the denominator takes two
+ *  factors.  Regularising by `k` and shifting by `k` yields the same series — the extra
+ *  leading coefficients simply come out zero — so the request is honoured rather than
+ *  refused, and the returned exponent says which was used.
+ */
+private def structuralRegularise(f: _Expression, shifted: _Expression,
+                                 m: Int): Option[(_Expression, Int)] = f match
+  case Ratio(n, d) =>
+    poleFactorPower(d, shifted).map { k =>
+      if k <= m then (simplifyFully(Product(n, Power(shifted, _Number(m - k)))), m)
+      else (n, k)
+    }
+  case _ => None
+
+/** `Some(k)` when `d` is exactly `(v − a)^k`, for a positive integer `k`. */
+private def poleFactorPower(d: _Expression, shifted: _Expression): Option[Int] =
+  simplifyFully(d) match
+    case Power(b, _Number(k)) if k.isWhole && k > 0 && sameExpression(b, shifted) => Some(k.toInt)
+    case other if sameExpression(other, shifted)                                  => Some(1)
+    case _                                                                        => None
+
+/** Structural equality up to simplification: `a - b` collapses to a literal zero. */
+private def sameExpression(a: _Expression, b: _Expression): Boolean =
+  simplifyFully(Sum(a, Product(_Number(-1), b))) match
+    case _Number(0.0) => true
+    case _            => false
+
+/** Route 2: divide `(v − a)` out of the denominator `m` times by synthetic division. */
+private def rationalRegularise(f: _Expression, v: _Variable, point: _Expression,
+                               m: Int, env: Environment): Option[_Expression] =
+  point.eval(env) match
+    case Right(_Number(a)) if !a.isNaN && !a.isInfinite =>
+      asRatio(f, v, env).flatMap { (num, den) =>
+        (1 to m).foldLeft(Option(den))((acc, _) => acc.flatMap(d => deflateExact(d, a)))
+          .map(d => simplifyFully(Ratio(polyToExpr(num, v), polyToExpr(d, v))))
+      }
+    case _ => None
+
+/** Divides `cs` by `(v − root)`, or `None` when that leaves a remainder. */
+private def deflateExact(cs: Vector[Double], root: Double): Option[Vector[Double]] =
+  if polyDegree(cs) < 1 then None
+  else
+    val desc      = cs.reverse
+    val out       = desc.tail.scanLeft(desc.head)((acc, c) => acc * root + c)
+    val remainder = out.last
+    val scale     = math.max(1.0, cs.map(math.abs).max)
+    Option.when(math.abs(remainder) <= 1e-7 * scale)(out.init.reverse)
+
+/** Rebuilds a dense coefficient vector as an expression in `v`. */
+private def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =
+  val terms = cs.zipWithIndex.collect {
+    case (c, 0) if c != 0.0 => _Number(c): _Expression
+    case (c, 1) if c != 0.0 => Product(_Number(c), v): _Expression
+    case (c, k) if c != 0.0 => Product(_Number(c), Power(v, _Number(k))): _Expression
+  }
+  if terms.isEmpty then _Number(0) else terms.reduceLeft(Sum.apply)
+
+/** The Taylor coefficients of the regularised `g`, or `None` if any is not finite.
+ *
+ *  The finiteness check is the whole point: a surviving `(v − a)` in a denominator shows up
+ *  here as a `NaN`, and emitting the series anyway would be worse than refusing.  A
+ *  *symbolic* coefficient is fine — expanding about a free centre is meaningful — so only a
+ *  concrete non-finite value rejects.
+ */
+private def laurentCoefficients(
+    g: _Expression, v: _Variable, point: _Expression, order: Int, env: Environment
+): Option[Vector[_Expression]] =
+  (0 to order).foldLeft(Option(Vector.empty[_Expression])) { (acc, k) =>
+    acc.flatMap { built =>
+      val dk = deriveN(g, v, k)
+      if hasDerivative(dk) then None
+      else
+        val c = simplifyFully(
+          Ratio(substitute(dk, Map(v.variable -> point)),
+                _Number(factorialOf(k.toDouble).getOrElse(Double.NaN))))
+        Option.when(isFiniteCoefficient(c, env))(built :+ c)
+    }
+  }
+
+/** Whether a coefficient is usable.
+ *
+ *  **"Still symbolic" is not good enough**, and getting that wrong is how a bad series
+ *  escapes.  `1.0 / 0.0` and `0.0 / 0.0` do not fold to a number — they stay `Left`, because
+ *  `Ratio.eval` declines a zero denominator rather than producing an infinity.  A guard that
+ *  accepted every `Left` therefore passed exactly the coefficients it existed to reject.
+ *
+ *  The distinction that matters is whether the residue is *genuinely* symbolic.  A
+ *  coefficient with free variables is fine — expanding about a symbolic centre is
+ *  meaningful.  A **closed** expression that still refused to fold is a failed computation,
+ *  and it is rejected.
+ */
+private def isFiniteCoefficient(c: _Expression, env: Environment): Boolean =
+  c.eval(env) match
+    case Right(_Number(d))  => !d.isNaN && !d.isInfinite
+    case Right(_)           => true
+    case Left(residual)     => residual.freeVars.nonEmpty
+
+/** Builds `Σ c_k · (v − a)^(k − m)` from coefficients indexed from `k = 0`. */
+private def assembleLaurent(cs: Vector[_Expression], shifted: _Expression, m: Int): _Expression =
+  val terms = cs.zipWithIndex.map { (c, k) =>
+    val power = k - m
+    if power == 0 then c
+    else if power > 0 then Product(c, Power(shifted, _Number(power)))
+    // A negative power is written as a division rather than `Power(_, -k)`, so the printed
+    // form reads as a principal part and re-parses to the same tree.
+    else Ratio(c, Power(shifted, _Number(-power)))
+  }
+  terms.reduceLeft(Sum.apply)
+
+
 /** Highest Fourier order [[fourierSeries]] will compute.
  *
  *  Each order costs two definite integrations, so the work is linear in the order but the

@@ -71,7 +71,7 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "domain", "differentiable", "singularities",         // domain analysis (3.3)
-    "taylor", "maclaurin", "fourierSeries", "pade",      // series expansions (4.J)
+    "taylor", "maclaurin", "fourierSeries", "pade", "laurent",      // series expansions (4.J)
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
@@ -523,7 +523,11 @@ object Parser extends JavaTokenParsers:
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
-    // Domain analysis (3.3).  The optional third argument selects the number system; it is
+    // Laurent series (3.4).  The five-argument form states the pole order; the four-argument
+    // form omits it and lets `singularitiesOf` detect it.  Longest first, or the 4-arg rule
+    // would match and then choke on the extra comma.
+    "laurent(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case e ~ _ ~ v ~ _ ~ a ~ _ ~ m ~ _ ~ n => _Laurent(e, v, a, Some(m), n) } |
+    "laurent(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")"                     ^^ { case e ~ _ ~ v ~ _ ~ a ~ _ ~ n         => _Laurent(e, v, a, None, n)    } |    // Domain analysis (3.3).  The optional third argument selects the number system; it is
     // matched as a bare literal only in this position, so `real` and `complex` stay usable
     // as ordinary variable names everywhere else and need no `ReservedWords` entry.
     "domain(" ~> guardedExpr ~ "," ~ variable ~ opt("," ~> ("real" | "complex")) <~ ")"        ^^ { case e ~ _ ~ v ~ k          => _Domain(e, v, domainKind(k))          } |

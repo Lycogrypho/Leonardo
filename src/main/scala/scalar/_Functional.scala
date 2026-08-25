@@ -264,3 +264,62 @@ case class _Pade(e: _Expression, v: _Variable, m: _Expression, n: _Expression)
           case Some(r) => r.eval(env)
           case None    => Left(this)
       case _ => Left(this)
+
+/** AST node for `laurent(e, v, point, m, n)` — issue 3.4.
+ *
+ *  Expands `e` about an isolated singularity as `Σ(k = −m to n) c_k·(v − point)ᵏ`.
+ *
+ *  Follows [[_Taylor]]'s convention that `v` is the expansion variable rather than a binder
+ *  — free in the result, but excluded from `children` so `substitute` cannot rewrite the
+ *  variable the expansion is taken in.
+ *
+ *  **`m` is optional.**  When absent the pole order is detected with `singularitiesOf`
+ *  (3.3 slice D), whose `Pole(order)` *is* the length of the principal part.  A `Removable`
+ *  singularity gives `m = 0`, which is an ordinary Taylor series — returned rather than
+ *  refused, since the caller asked a well-formed question that simply has no principal part.
+ *
+ *  Stays symbolic when the order cannot be determined, when a coefficient does not fold
+ *  finite, or when the point is an **essential** singularity: there the principal part is
+ *  infinite, and a truncation would carry a different contract from the polynomial tiers —
+ *  the discarded terms blow up near the point instead of becoming small.
+ *
+ *  @param e     the expression to expand
+ *  @param v     the expansion variable
+ *  @param point the singularity
+ *  @param m     the pole order, or `None` to detect it
+ *  @param n     the highest non-negative power retained
+ */
+case class _Laurent(e: _Expression, v: _Variable, point: _Expression,
+                    m: Option[_Expression], n: _Expression) extends _Functional:
+  override def toString: String =
+    m.fold(s"laurent($e, $v, $point, $n)")(mm => s"laurent($e, $v, $point, $mm, $n)")
+  override def children: List[_Expression] = List(e, point) ++ m.toList :+ n
+  override def rebuild(c: List[_Expression]): _Expression =
+    if m.isDefined then _Laurent(c.head, v, c(1), Some(c(2)), c(3))
+    else _Laurent(c.head, v, c(1), None, c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val order = m match
+      case Some(me) => me.eval(env) match
+        case Right(_Number(d)) if d.isWhole && d >= 0 => Some(d.toInt)
+        case _                                        => None
+      case None => detectedOrder(env)
+    (order, n.eval(env)) match
+      case (Some(mm), Right(_Number(nn))) if nn.isWhole && nn >= 0 =>
+        laurentSeries(e, v, point, mm, nn.toInt, env) match
+          case Some(r) => r.eval(env)
+          case None    => Left(this)
+      case _ => Left(this)
+
+  /** The pole order at `point`, from the 3.3 singularity classifier. */
+  private def detectedOrder(env: Environment): Option[Int] =
+    point.eval(env) match
+      case Right(_Number(a)) if !a.isNaN && !a.isInfinite =>
+        singularitiesOf(e, v, env).flatMap { ss =>
+          ss.find(s => math.abs(s.at - a) < 1e-6).map(_.kind) match
+            case Some(SingularityKind.Pole(o)) => Some(o)
+            case Some(SingularityKind.Removable) => Some(0)
+            // Not a singularity at all: an ordinary Taylor expansion is the right answer.
+            case None => Some(0)
+        }
+      case _ => None
