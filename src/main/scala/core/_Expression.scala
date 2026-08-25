@@ -101,6 +101,9 @@ object _Number:
   def unapply(e: _Expression): Option[Double] = e match
     case n: _Number   => Some(n.d)
     case r: _Rational => Some(r.toDouble)
+    // A based integer reads as its value (3.5): the base is a display property, so every
+    // existing `case _Number(x)` site keeps matching and arithmetic simply yields decimal.
+    case b: _Based    => Some(b.value)
     case _            => None
 
   private val factorTable: Array[Double] = Array.tabulate(16)(i => scala.math.pow(10.0, i))

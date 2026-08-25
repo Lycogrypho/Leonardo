@@ -71,7 +71,8 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "domain", "differentiable", "singularities",         // domain analysis (3.3)
-    "taylor", "maclaurin", "fourierSeries", "pade", "laurent",      // series expansions (4.J)
+    "taylor", "maclaurin", "fourierSeries", "pade", "laurent",
+    "tobase", "balanced",                                // base conversion (3.5)      // series expansions (4.J)
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
@@ -523,7 +524,10 @@ object Parser extends JavaTokenParsers:
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
-    // Laurent series (3.4).  The five-argument form states the pole order; the four-argument
+    // Base conversion (3.5).  `tobase` covers any radix 2..36; `balanced` is ternary with
+    // the {-1, 0, 1} digit set that 4.G's symmetric logic already uses.
+    "tobase(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case e ~ _ ~ b => _ToBase(e, b) } |
+    "balanced(" ~> guardedExpr <~ ")"                   ^^ { e              => _Balanced(e)  } |    // Laurent series (3.4).  The five-argument form states the pole order; the four-argument
     // form omits it and lets `singularitiesOf` detect it.  Longest first, or the 4-arg rule
     // would match and then choke on the extra comma.
     "laurent(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case e ~ _ ~ v ~ _ ~ a ~ _ ~ m ~ _ ~ n => _Laurent(e, v, a, Some(m), n) } |
@@ -553,8 +557,32 @@ object Parser extends JavaTokenParsers:
     }
 
   /** A bare value: number, constant, or variable. */
-  lazy val value:    Parser[_Expression] = number | constant | variable
+  lazy val value:    Parser[_Expression] = basedLiteral | number | constant | variable
 
+  /** A based integer literal: `0b1011`, `0o17`, `0xff`, and `0t1T0` for balanced ternary.
+   *
+   *  **Listed before `number` in `value`**, and it has to be: the ordinary numeric regex
+   *  happily matches the leading `0` of `0xff` and leaves `xff` behind to fail as a stray
+   *  variable, so a later alternative never gets the chance.
+   *
+   *  The digits are word-boundary guarded so `0b1011x` is a parse error rather than a
+   *  literal followed by a variable.
+   */
+  lazy val basedLiteral: Parser[_Value] =
+    """0[bB][01]+(?![a-zA-Z0-9])""".r        ^^ { s => based(s.drop(2), 2)  } |
+    """0[oO][0-7]+(?![a-zA-Z0-9])""".r       ^^ { s => based(s.drop(2), 8)  } |
+    """0[xX][0-9a-fA-F]+(?![a-zA-Z0-9])""".r ^^ { s => based(s.drop(2), 16) } |
+    """0[tT][01Tt]+(?![a-zA-Z0-9])""".r      ^^ { s =>
+      _Based.parseBalanced(s.drop(2)).fold[_Value](_Number(Double.NaN))(n =>
+        _Based.of(n.toDouble, 3, balanced = true))
+    }
+
+  /** Builds a based literal, or NaN when the digits do not parse (unreachable: the regex
+   *  already restricts the digit set for each prefix).
+   */
+  private def based(digits: String, base: Int): _Value =
+    _Based.parseDigits(digits, base).fold[_Value](_Number(Double.NaN))(n =>
+      _Based.of(n.toDouble, base))
   /** An unsigned floating-point literal.
    *
    *  Unsigned by design — a `-` is always a grammar operator, never part of the token.
