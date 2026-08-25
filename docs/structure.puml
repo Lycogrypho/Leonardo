@@ -324,9 +324,23 @@ package "scalar" {
     }
     class "Sign" <<utility>> [[equations.html]] {
         ~ sign(e, env): Option[Int]
-        ~ isNonZero(e, env): Boolean
+        ~ isNonZero / isNonNegative / isNonPositive
         decides the inequality direction flip
-        private[leonardo]; shared with 6.13
+        private[leonardo]; shared with Domain
+    }
+    class "Domain" <<utility>> [[calculus.html]] {
+        ~ domainOf(e, v, kind, env): DomainSet
+        ~ differentiableDomainOf(...)
+        ~ violatedAt(e, v, x, env): Option
+        __ carrier __
+        Requirement / Constraint / Interval
+        DomainSet(constraints, intervals)
+        neutral: rendered above the equation line
+    }
+    class "Singularity" <<utility>> [[calculus.html]] {
+        ~ singularitiesOf(e, v, env): Option
+        Removable | Pole(order)
+        rational tier only
     }
 
     class "Syntax" <<object>> [[expressions.html]] {
@@ -340,6 +354,13 @@ package "scalar" {
     ' Dense-coefficient helpers shared by the rational tiers (issue 3.1)
     "Integrate" ..> "Polynomial" : degree / roots / d-dx
     "Integrate" ..> "Normalize"  : collect() poly coeffs
+
+    ' Domain analysis (issue 3.3)
+    "Domain"      ..> "Sign"       : interval sign chart
+    "Domain"      ..> "Normalize"  : collect() constraint args
+    "Domain"      ..> "Polynomial" : polyRoots() cut points
+    "Domain"      ..> "Derive"     : differentiability
+    "Singularity" ..> "Polynomial" : polyRoots() pole locations
 
     ' Functional nodes call algorithm modules at eval time
     "_Limit"       ..> "Limit"     : evalLimit() at eval

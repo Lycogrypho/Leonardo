@@ -11,6 +11,7 @@ import ode.*
 import probability.*
 import statistics.*
 import logic.*
+import domain.*
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -69,6 +70,7 @@ object Parser extends JavaTokenParsers:
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
+    "domain", "differentiable", "singularities",         // domain analysis (3.3)
     "taylor", "maclaurin", "fourierSeries", "pade",      // series expansions (4.J)
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
@@ -521,6 +523,12 @@ object Parser extends JavaTokenParsers:
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
+    // Domain analysis (3.3).  The optional third argument selects the number system; it is
+    // matched as a bare literal only in this position, so `real` and `complex` stay usable
+    // as ordinary variable names everywhere else and need no `ReservedWords` entry.
+    "domain(" ~> guardedExpr ~ "," ~ variable ~ opt("," ~> ("real" | "complex")) <~ ")"        ^^ { case e ~ _ ~ v ~ k          => _Domain(e, v, domainKind(k))          } |
+    "differentiable(" ~> guardedExpr ~ "," ~ variable ~ opt("," ~> ("real" | "complex")) <~ ")" ^^ { case e ~ _ ~ v ~ k         => _Differentiable(e, v, domainKind(k))  } |
+    "singularities(" ~> guardedExpr ~ "," ~ variable <~ ")"                                     ^^ { case e ~ _ ~ v             => _Singularities(e, v)                  } |
     // guardedLogicExpr, not guardedExpr: `logicExpr` sits ABOVE `equationExpr`, so this
     // accepts everything the narrower rule did -- "solve(x = 5, x)", "solve(h, x)",
     // "solve(x^2 - 4 > 0, x)" -- and additionally the connectives, which issue 3.2 needs for
@@ -529,6 +537,10 @@ object Parser extends JavaTokenParsers:
     "solve("    ~> guardedLogicExpr ~ "," ~ variable <~ ")"                                       ^^ { case e ~ _ ~ v             => _Solve(e, v)                 } |
     // equations is a matrix of _Equation nodes; variables are listed after the first comma.
     "solveSystem(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")"                          ^^ { case eqs ~ _ ~ vars         => _SolveSystem(eqs, vars)      }
+
+  /** The domain-analysis number system, defaulting to the reals when unstated. */
+  private def domainKind(k: Option[String]): DomainKind =
+    if k.contains("complex") then DomainKind.Complex else DomainKind.Real
 
   /** A signed value for integral-limit positions (`integral(x, x, -1, 1)`). */
   lazy val signedValue: Parser[_Expression] = opt("+" | "-") ~ value ^^

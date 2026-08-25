@@ -416,8 +416,39 @@ final class Session:
       case Left(message) => message
       case Right(resolved) =>
         val result = substitute(resolved, definitions).eval(env)
-        if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
-        else formatResult(result)
+        val shown  =
+          if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
+          else formatResult(result)
+        shown + domainNote(result)
+
+  /** Explains a symbolic `limit` / definite integral when a domain violation is the reason.
+   *
+   *  Issue 3.3 slice F.  A fallback that says nothing is the complaint this issue exists to
+   *  answer: `limit(ln(x), x, -1)` echoes itself back with no hint that `-1` is simply
+   *  outside `ln`'s domain.
+   *
+   *  **Appended to the rendering, never folded into `eval`.**  The library's results stay
+   *  byte-identical — this only adds a line to what the REPL prints, so nothing that already
+   *  worked can start failing.
+   */
+  private def domainNote(result: Either[_Expression, _Value]): String =
+    val note = result.left.toOption.flatMap(findDomainViolation)
+    note.fold("")(n => s"\n  note: $n")
+
+  /** The first unevaluated limit or definite integral whose point leaves its own domain. */
+  private def findDomainViolation(e: _Expression): Option[String] =
+    def check(f: _Expression, v: _Variable, points: List[_Expression], what: String): Option[String] =
+      points.flatMap(p => p.eval(env) match
+                            case Right(_Number(d)) if !d.isNaN && !d.isInfinite =>
+                              violatedAt(f, v, d, env).map(c => (d, c))
+                            case _ => None)
+            .headOption
+            .map { (d, c) => s"$f is undefined at ${v.variable} = $d — ${c.arg} ${describe(c.req)} ($what)" }
+
+    e match
+      case l: _Limit       => check(l.e, l.v, List(l.point), "limit point")
+      case d: _DefIntegral => check(d.e, d.v, List(d.low_limit, d.up_limit), "integration limit")
+      case _               => e.children.flatMap(findDomainViolation).headOption
 
   /** Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes
    *  whose operands are matrix-shaped — a matrix literal, a matrix operation node, or

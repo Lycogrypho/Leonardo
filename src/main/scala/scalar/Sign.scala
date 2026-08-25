@@ -98,15 +98,18 @@ private def structuralSign(e: _Expression, env: Environment): Option[Int] = e ma
  *
  *  An even power is the motivating case: it cannot be divided by, because it may be zero,
  *  yet it can safely be *added* to a strictly positive quantity.
+ *
+ *  Widened from `private` to `private[leonardo]` by issue 3.3, whose `NonNegative` domain
+ *  requirement asks exactly this question from the other side.
  */
-private def isNonNegative(e: _Expression, env: Environment): Boolean =
+private[leonardo] def isNonNegative(e: _Expression, env: Environment): Boolean =
   sign(e, env).exists(_ >= 0) || (e match
     case Power(_, _Number(n)) if n > 0 && n == n.toInt && n.toInt % 2 == 0 => true
     case Sum(a, b)                                                        => isNonNegative(a, env) && isNonNegative(b, env)
     case _                                                                => false)
 
 /** Whether `e` is `<= 0`, the mirror of [[isNonNegative]]. */
-private def isNonPositive(e: _Expression, env: Environment): Boolean =
+private[leonardo] def isNonPositive(e: _Expression, env: Environment): Boolean =
   sign(e, env).exists(_ <= 0) || (e match
     case Product(k, r) if sign(k, env).contains(-1) => isNonNegative(r, env)
     case Product(r, k) if sign(k, env).contains(-1) => isNonNegative(r, env)
