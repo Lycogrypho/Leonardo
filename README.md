@@ -1,4 +1,4 @@
-<div style="text-align: center"><img src="docs/src/Banner.svg" alt="Leonardo" width="80%"/></div>
+<div style="text-align: center"><img src="docs/src/Banner.svg" alt="Leonardo" width="100%"/></div>
 
 ## Introduction
 
