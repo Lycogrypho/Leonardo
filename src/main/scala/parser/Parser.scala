@@ -68,6 +68,8 @@ object Parser extends JavaTokenParsers:
    */
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
+    "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",   // hyperbolic (3.9)
+    "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic (3.9)
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "domain", "differentiable", "singularities",         // domain analysis (3.3)
@@ -378,6 +380,18 @@ object Parser extends JavaTokenParsers:
     "asin(" ~> guardedExpr <~ ")"                         ^^ Asin.apply                        |
     "acos(" ~> guardedExpr <~ ")"                         ^^ Acos.apply                        |
     "atan(" ~> guardedExpr <~ ")"                         ^^ Atan.apply                        |
+    "sinh("  ~> guardedExpr <~ ")"                        ^^ Sinh.apply                        |
+    "cosh("  ~> guardedExpr <~ ")"                        ^^ Cosh.apply                        |
+    "tanh("  ~> guardedExpr <~ ")"                        ^^ Tanh.apply                        |
+    "asinh(" ~> guardedExpr <~ ")"                        ^^ Asinh.apply                       |
+    "acosh(" ~> guardedExpr <~ ")"                        ^^ Acosh.apply                       |
+    "atanh(" ~> guardedExpr <~ ")"                        ^^ Atanh.apply                       |
+    "sech("  ~> guardedExpr <~ ")"                        ^^ Sech.apply                        |
+    "csch("  ~> guardedExpr <~ ")"                        ^^ Csch.apply                        |
+    "coth("  ~> guardedExpr <~ ")"                        ^^ Coth.apply                        |
+    "sec("   ~> guardedExpr <~ ")"                        ^^ Sec.apply                         |
+    "csc("   ~> guardedExpr <~ ")"                        ^^ Csc.apply                         |
+    "cot("   ~> guardedExpr <~ ")"                        ^^ Cot.apply                         |
     "transpose(" ~> guardedExpr <~ ")"                    ^^ Transpose.apply                   |
     "det(" ~> guardedExpr <~ ")"                          ^^ Determinant.apply                  |
     "inv(" ~> guardedExpr <~ ")"                          ^^ Inverse.apply                      |

@@ -52,10 +52,13 @@ object integralRules:
    *  @return the antiderivative, already simplified, or `None` when no rule applies
    */
   private[scalar] def applyTo(e: _Expression, v: _Variable): Option[_Expression] =
+    // Normalise into the canonical spelling first (issue 3.9): `1/cos → sec`, `cos/sin → cot`,
+    // so a rule written over the reciprocal-function nodes matches a ratio the user typed.
+    val ne = simplifyFully(e)
     rules.iterator
       .flatMap { r =>
         for
-          b     <- unify(r.lhs, e)
+          b     <- unify(r.lhs, ne)
           inner <- b.get("v")
           slope <- linearSlope(inner, v)   // ?v must be a linear a·v + b, with a ≠ 0
           if r.condition(b, v)
@@ -83,8 +86,8 @@ object integralRules:
   private[scalar] val rules: List[RewriteRule] = List(
 
     // ── trigonometric ────────────────────────────────────────────────────────
-    // The library has no sec/csc/cot functions, so these are written as ratios — which is
-    // also how a user types them.
+    // Written over the first-class sec/csc/cot nodes (issue 3.9); `applyTo` normalises a
+    // ratio the user typed (`1/cos`, `cos/sin`) into these before matching.
 
     // ∫ tan(v) dv = -ln(cos(v))
     RewriteRule(
@@ -99,40 +102,34 @@ object integralRules:
       name = "tan^2"),
 
     // ∫ cot(v) dv = ln(sin(v))
-    RewriteRule(
-      lhs  = Ratio(Cos(V), Sin(V)),
-      rhs  = Ln(Sin(V)),
-      name = "cot"),
+    RewriteRule(lhs = Cot(V), rhs = Ln(Sin(V)), name = "cot"),
 
-    // ∫ sec(v)^2 dv = tan(v)              [before the plain 1/cos(v) entry]
-    RewriteRule(
-      lhs  = Ratio(_Number(1), Power(Cos(V), _Number(2))),
-      rhs  = Tg(V),
-      name = "sec^2"),
+    // ∫ sec(v)^2 dv = tan(v)              [before the plain sec(v) entry]
+    RewriteRule(lhs = Power(Sec(V), _Number(2)), rhs = Tg(V), name = "sec^2"),
 
     // ∫ csc(v)^2 dv = -cot(v)
     RewriteRule(
-      lhs  = Ratio(_Number(1), Power(Sin(V), _Number(2))),
-      rhs  = Product(_Number(-1), Ratio(Cos(V), Sin(V))),
+      lhs  = Power(Csc(V), _Number(2)),
+      rhs  = Product(_Number(-1), Cot(V)),
       name = "csc^2"),
 
-    // ∫ sec(v)·tan(v) dv = sec(v)
-    RewriteRule(
-      lhs  = Ratio(Sin(V), Power(Cos(V), _Number(2))),
-      rhs  = Ratio(_Number(1), Cos(V)),
-      name = "sec*tan"),
+    // ∫ sec(v)·tan(v) dv = sec(v).  The `sin/cos²` spelling does not normalise to a node
+    // (its numerator is not 1), so it keeps its own ratio entry beside the product form.
+    RewriteRule(lhs = Ratio(Sin(V), Power(Cos(V), _Number(2))), rhs = Sec(V), name = "sec*tan(ratio)"),
+    RewriteRule(lhs = Product(Sec(V), Tg(V)), rhs = Sec(V), name = "sec*tan"),
+    RewriteRule(lhs = Product(Tg(V), Sec(V)), rhs = Sec(V), name = "tan*sec"),
 
     // ∫ sec(v) dv = ln((1 + sin(v)) / cos(v))
     // The (1+sin)/cos form is the familiar ln|sec v + tan v| written over a common
     // denominator, which is what this library can spell.
     RewriteRule(
-      lhs  = Ratio(_Number(1), Cos(V)),
+      lhs  = Sec(V),
       rhs  = Ln(Ratio(Sum(_Number(1), Sin(V)), Cos(V))),
       name = "sec"),
 
     // ∫ csc(v) dv = ln((1 - cos(v)) / sin(v))     [= ln|tan(v/2)|]
     RewriteRule(
-      lhs  = Ratio(_Number(1), Sin(V)),
+      lhs  = Csc(V),
       rhs  = Ln(Ratio(Sum(_Number(1), Product(_Number(-1), Cos(V))), Sin(V))),
       name = "csc"),
 
@@ -146,6 +143,22 @@ object integralRules:
       lhs  = Product(Cos(V), Sin(V)),
       rhs  = Ratio(Power(Sin(V), _Number(2)), _Number(2)),
       name = "cos*sin"),
+
+    // ── hyperbolic (issue 3.9) ────────────────────────────────────────────────
+
+    RewriteRule(lhs = Sinh(V), rhs = Cosh(V), name = "sinh"),
+    RewriteRule(lhs = Cosh(V), rhs = Sinh(V), name = "cosh"),
+    RewriteRule(lhs = Tanh(V), rhs = Ln(Cosh(V)), name = "tanh"),
+    RewriteRule(lhs = Coth(V), rhs = Ln(Sinh(V)), name = "coth"),
+    RewriteRule(lhs = Power(Sech(V), _Number(2)), rhs = Tanh(V), name = "sech^2"),
+    RewriteRule(
+      lhs  = Power(Csch(V), _Number(2)),
+      rhs  = Product(_Number(-1), Coth(V)),
+      name = "csch^2"),
+    RewriteRule(lhs = Product(Sech(V), Tanh(V)), rhs = Product(_Number(-1), Sech(V)), name = "sech*tanh"),
+    RewriteRule(lhs = Product(Tanh(V), Sech(V)), rhs = Product(_Number(-1), Sech(V)), name = "tanh*sech"),
+    RewriteRule(lhs = Product(Csch(V), Coth(V)), rhs = Product(_Number(-1), Csch(V)), name = "csch*coth"),
+    RewriteRule(lhs = Product(Coth(V), Csch(V)), rhs = Product(_Number(-1), Csch(V)), name = "coth*csch"),
 
     // ── exponential and logarithmic ──────────────────────────────────────────
 

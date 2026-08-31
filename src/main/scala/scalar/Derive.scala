@@ -118,6 +118,24 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case Acos(a)              => dmul(dmul(_Number(-1), Ratio(_Number(1), Power(Sum(_Number(1), dmul(_Number(-1), Power(a, _Number(2)))), _Number(0.5)))), derive(a, v))
   // atan'(u) =  u' / (1 + u²)
   case Atan(a)              => dmul(Ratio(_Number(1), Sum(_Number(1), Power(a, _Number(2)))), derive(a, v))
+  // hyperbolic and reciprocal-trigonometric derivatives (issue 3.9)
+  case Sinh(a)              => dmul(Cosh(a), derive(a, v))
+  case Cosh(a)              => dmul(Sinh(a), derive(a, v))
+  case Tanh(a)              => dmul(Power(Sech(a), _Number(2)), derive(a, v))
+  // asinh'(u) = u' / sqrt(u² + 1)
+  case Asinh(a)             => dmul(Ratio(_Number(1), Power(Sum(Power(a, _Number(2)), _Number(1)), _Number(0.5))), derive(a, v))
+  // acosh'(u) = u' / sqrt(u² − 1)
+  case Acosh(a)             => dmul(Ratio(_Number(1), Power(Sum(Power(a, _Number(2)), _Number(-1)), _Number(0.5))), derive(a, v))
+  // atanh'(u) = u' / (1 − u²)
+  case Atanh(a)             => dmul(Ratio(_Number(1), Sum(_Number(1), dmul(_Number(-1), Power(a, _Number(2))))), derive(a, v))
+  // sec'(u) = sec(u)·tan(u)·u' ;  csc'(u) = −csc(u)·cot(u)·u' ;  cot'(u) = −csc²(u)·u'
+  case Sec(a)               => dmul(Product(Sec(a), Tg(a)), derive(a, v))
+  case Csc(a)               => dmul(dmul(_Number(-1), Product(Csc(a), Cot(a))), derive(a, v))
+  case Cot(a)               => dmul(dmul(_Number(-1), Power(Csc(a), _Number(2))), derive(a, v))
+  // sech'(u) = −sech(u)·tanh(u)·u' ;  csch'(u) = −csch(u)·coth(u)·u' ;  coth'(u) = −csch²(u)·u'
+  case Sech(a)              => dmul(dmul(_Number(-1), Product(Sech(a), Tanh(a))), derive(a, v))
+  case Csch(a)              => dmul(dmul(_Number(-1), Product(Csch(a), Coth(a))), derive(a, v))
+  case Coth(a)              => dmul(dmul(_Number(-1), Power(Csch(a), _Number(2))), derive(a, v))
   // 4.O: with digamma available, the gamma family is finally differentiable.  Before it,
   // Gamma and fact had no rule at all and fell through to a bare _Derivative wrapper.
   //   d/dx Gamma(u) = Gamma(u)*psi(u)*u'   and   d/dx u! = Gamma(u+1)*psi(u+1)*u'

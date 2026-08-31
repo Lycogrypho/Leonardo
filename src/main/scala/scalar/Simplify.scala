@@ -109,6 +109,20 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (x, c @ _Number(d)) if d == -1.0 => simplify(Product(c, x))
       case (x @ _Number(_), y @ _Number(_)) => fold(Ratio(x, y))
       case (x, y) if x == y && x != _Number(0) => _Number(1)
+      // Reciprocal/quotient normalisation into the reciprocal functions (issue 3.9), so the
+      // library has exactly one spelling of each: 1/cos → sec, cos/sin → cot, and so on.
+      case (_Number(d), Cos(u))  if d == 1.0 => Sec(u)
+      case (_Number(d), Sin(u))  if d == 1.0 => Csc(u)
+      case (_Number(d), Tg(u))   if d == 1.0 => Cot(u)
+      case (_Number(d), Cosh(u)) if d == 1.0 => Sech(u)
+      case (_Number(d), Sinh(u)) if d == 1.0 => Csch(u)
+      case (_Number(d), Tanh(u)) if d == 1.0 => Coth(u)
+      case (_Number(d), Power(Cos(u), n))  if d == 1.0 => Power(Sec(u), n)
+      case (_Number(d), Power(Sin(u), n))  if d == 1.0 => Power(Csc(u), n)
+      case (_Number(d), Power(Cosh(u), n)) if d == 1.0 => Power(Sech(u), n)
+      case (_Number(d), Power(Sinh(u), n)) if d == 1.0 => Power(Csch(u), n)
+      case (Cos(u), Sin(w))   if u == w => Cot(u)
+      case (Cosh(u), Sinh(w)) if u == w => Coth(u)
       case (x, y)                      => Ratio(x, y)
 
   case Power(a, b) =>
@@ -174,6 +188,59 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case _Number(d) if d == 0.0 => _Number(0)
       case _Number(d) if d == 1.0 => _Number(math.Pi / 4)
       case x                      => Atan(x)
+
+  // hyperbolic and reciprocal-trigonometric functions (issue 3.9): inverse-function pairs
+  // (only the always-valid direction — acosh(cosh(x)) = |x|, so it is deliberately absent)
+  // and known values at zero.
+  case Sinh(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(0)
+      case Asinh(x)               => x
+      case x                      => Sinh(x)
+
+  case Cosh(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(1)
+      case Acosh(x)               => x             // cosh(acosh(x)) = x on acosh's domain x ≥ 1
+      case x                      => Cosh(x)
+
+  case Tanh(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(0)
+      case Atanh(x)               => x
+      case x                      => Tanh(x)
+
+  case Asinh(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(0)
+      case Sinh(x)                => x
+      case x                      => Asinh(x)
+
+  case Acosh(a) =>
+    simplify(a) match
+      case _Number(d) if d == 1.0 => _Number(0)
+      case x                      => Acosh(x)
+
+  case Atanh(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(0)
+      case Tanh(x)                => x
+      case x                      => Atanh(x)
+
+  // sec(0) = 1/cos(0) = 1 and sech(0) = 1/cosh(0) = 1; the remaining reciprocals
+  // (csc/cot/csch/coth) have a pole at 0, so they stay symbolic there.
+  case Sec(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(1)
+      case x                      => Sec(x)
+  case Csc(a)  => Csc(simplify(a))
+  case Cot(a)  => Cot(simplify(a))
+  case Sech(a) =>
+    simplify(a) match
+      case _Number(d) if d == 0.0 => _Number(1)
+      case x                      => Sech(x)
+  case Csch(a) => Csch(simplify(a))
+  case Coth(a) => Coth(simplify(a))
 
   case _Heaviside(a) =>
     simplify(a) match

@@ -371,6 +371,219 @@ case class Atan(e: _Expression) extends _Function:
       case other             => Left(Atan(other.toExpression))
 
 
+// ── hyperbolic and reciprocal-trigonometric functions (issue 3.9) ────────────
+// The `Double` inverse-hyperbolic kernels, which `scala.math` does not provide, written
+// through their logarithmic closed forms.  Each is real only on its own domain, so an
+// out-of-domain argument returns NaN and the node stays symbolic.
+
+/** `asinh(x) = ln(x + sqrt(x² + 1))`, defined on the whole real line. */
+private def asinhD(x: Double): Double = math.log(x + math.sqrt(x * x + 1.0))
+
+/** `acosh(x) = ln(x + sqrt(x² − 1))`, real only for `x ≥ 1` (NaN below). */
+private def acoshD(x: Double): Double = math.log(x + math.sqrt(x * x - 1.0))
+
+/** `atanh(x) = ½·ln((1 + x)/(1 − x))`, real only for `|x| < 1`. */
+private def atanhD(x: Double): Double = 0.5 * math.log((1.0 + x) / (1.0 - x))
+
+
+/** The hyperbolic sine `sinh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
+case class Sinh(e: _Expression) extends _Function:
+  override def toString: String = s"sinh($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Sinh(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => Right(_Number(math.sinh(x)))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, math.sinh)
+      case Right(c: _Complex)      => _Complex.sinhc(c).map(Right(_)).getOrElse(Left(Sinh(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Sinh(other.toExpression))
+
+
+/** The hyperbolic cosine `cosh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
+case class Cosh(e: _Expression) extends _Function:
+  override def toString: String = s"cosh($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Cosh(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => Right(_Number(math.cosh(x)))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, math.cosh)
+      case Right(c: _Complex)      => _Complex.coshc(c).map(Right(_)).getOrElse(Left(Cosh(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Cosh(other.toExpression))
+
+
+/** The hyperbolic tangent `tanh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
+case class Tanh(e: _Expression) extends _Function:
+  override def toString: String = s"tanh($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Tanh(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => Right(_Number(math.tanh(x)))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, math.tanh)
+      case Right(c: _Complex)      => _Complex.tanhc(c).map(Right(_)).getOrElse(Left(Tanh(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Tanh(other.toExpression))
+
+
+/** The inverse hyperbolic sine `asinh(e)`.  Defined on all reals; complex inputs stay symbolic
+ *  (the `Asin` convention).  Accepts `_MatrixValue` (element-wise). */
+case class Asinh(e: _Expression) extends _Function:
+  override def toString: String = s"asinh($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Asinh(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => Right(_Number(asinhD(x)))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, asinhD)
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Asinh(other.toExpression))
+
+
+/** The inverse hyperbolic cosine `acosh(e)`.  Real only for `e ≥ 1`; out-of-domain and complex
+ *  inputs stay symbolic.  Accepts `_MatrixValue` (element-wise). */
+case class Acosh(e: _Expression) extends _Function:
+  override def toString: String = s"acosh($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Acosh(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => val r = acoshD(x); if r.isNaN then Left(this) else Right(_Number(r))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, acoshD)
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Acosh(other.toExpression))
+
+
+/** The inverse hyperbolic tangent `atanh(e)`.  Real only for `|e| < 1`; out-of-domain and
+ *  complex inputs stay symbolic.  Accepts `_MatrixValue` (element-wise). */
+case class Atanh(e: _Expression) extends _Function:
+  override def toString: String = s"atanh($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Atanh(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => val r = atanhD(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, atanhD)
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Atanh(other.toExpression))
+
+
+/** The secant `sec(e) = 1/cos(e)`.  Symbolic at the poles (`cos = 0`); accepts `_MatrixValue`
+ *  and `_Complex` arguments. */
+case class Sec(e: _Expression) extends _Function:
+  override def toString: String = s"sec($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Sec(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => val r = 1.0 / cos(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / cos(x))
+      case Right(c: _Complex)      => _Complex.secc(c).map(Right(_)).getOrElse(Left(Sec(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Sec(other.toExpression))
+
+
+/** The cosecant `csc(e) = 1/sin(e)`.  Symbolic at the poles (`sin = 0`); accepts `_MatrixValue`
+ *  and `_Complex` arguments. */
+case class Csc(e: _Expression) extends _Function:
+  override def toString: String = s"csc($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Csc(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => val r = 1.0 / sin(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / sin(x))
+      case Right(c: _Complex)      => _Complex.cscc(c).map(Right(_)).getOrElse(Left(Csc(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Csc(other.toExpression))
+
+
+/** The cotangent `cot(e) = cos(e)/sin(e)`.  Symbolic at the poles (`sin = 0`); accepts
+ *  `_MatrixValue` and `_Complex` arguments. */
+case class Cot(e: _Expression) extends _Function:
+  override def toString: String = s"cot($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Cot(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => val r = cos(x) / sin(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, x => cos(x) / sin(x))
+      case Right(c: _Complex)      => _Complex.cotc(c).map(Right(_)).getOrElse(Left(Cot(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Cot(other.toExpression))
+
+
+/** The hyperbolic secant `sech(e) = 1/cosh(e)`.  Entire (`cosh ≥ 1`); accepts `_MatrixValue`
+ *  and `_Complex` arguments. */
+case class Sech(e: _Expression) extends _Function:
+  override def toString: String = s"sech($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Sech(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => Right(_Number(1.0 / math.cosh(x)))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / math.cosh(x))
+      case Right(c: _Complex)      => _Complex.sechc(c).map(Right(_)).getOrElse(Left(Sech(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Sech(other.toExpression))
+
+
+/** The hyperbolic cosecant `csch(e) = 1/sinh(e)`.  Symbolic at `e = 0`; accepts `_MatrixValue`
+ *  and `_Complex` arguments. */
+case class Csch(e: _Expression) extends _Function:
+  override def toString: String = s"csch($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Csch(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => val r = 1.0 / math.sinh(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / math.sinh(x))
+      case Right(c: _Complex)      => _Complex.cschc(c).map(Right(_)).getOrElse(Left(Csch(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Csch(other.toExpression))
+
+
+/** The hyperbolic cotangent `coth(e) = cosh(e)/sinh(e)`.  Symbolic at `e = 0`; accepts
+ *  `_MatrixValue` and `_Complex` arguments. */
+case class Coth(e: _Expression) extends _Function:
+  override def toString: String = s"coth($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Coth(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => val r = math.cosh(x) / math.sinh(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, x => math.cosh(x) / math.sinh(x))
+      case Right(c: _Complex)      => _Complex.cothc(c).map(Right(_)).getOrElse(Left(Coth(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Coth(other.toExpression))
+
+
 /** The factorial `fact(e)` = `e!`.
  *
  *  A non-negative integer argument uses the exact table; a non-integer argument is the

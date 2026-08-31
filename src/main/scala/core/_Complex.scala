@@ -126,6 +126,38 @@ object _Complex:
   def tanc(v: _Value): Option[_Value] =
     for s <- sinc(v); c <- cosc(v); r <- div(s, c) yield r
 
+  /** Complex hyperbolic sine `sinh(a + bi) = sinh(a)cos(b) + i·cosh(a)sin(b)`. */
+  def sinhc(v: _Value): Option[_Value] =
+    for (a, b) <- parts(v); r <- finiteVal(sinh(a) * cos(b), cosh(a) * sin(b)) yield r
+
+  /** Complex hyperbolic cosine `cosh(a + bi) = cosh(a)cos(b) + i·sinh(a)sin(b)`. */
+  def coshc(v: _Value): Option[_Value] =
+    for (a, b) <- parts(v); r <- finiteVal(cosh(a) * cos(b), sinh(a) * sin(b)) yield r
+
+  /** Complex hyperbolic tangent `tanh(v) = sinh(v) / cosh(v)`. */
+  def tanhc(v: _Value): Option[_Value] =
+    for s <- sinhc(v); c <- coshc(v); r <- div(s, c) yield r
+
+  /** Complex secant `sec(v) = 1 / cos(v)`; `None` when the cosine is zero. */
+  def secc(v: _Value): Option[_Value] = cosc(v).flatMap(c => div(_Number(1.0), c))
+
+  /** Complex cosecant `csc(v) = 1 / sin(v)`; `None` when the sine is zero. */
+  def cscc(v: _Value): Option[_Value] = sinc(v).flatMap(s => div(_Number(1.0), s))
+
+  /** Complex cotangent `cot(v) = cos(v) / sin(v)`; `None` when the sine is zero. */
+  def cotc(v: _Value): Option[_Value] =
+    for c <- cosc(v); s <- sinc(v); r <- div(c, s) yield r
+
+  /** Complex hyperbolic secant `sech(v) = 1 / cosh(v)`; `None` when the cosh is zero. */
+  def sechc(v: _Value): Option[_Value] = coshc(v).flatMap(c => div(_Number(1.0), c))
+
+  /** Complex hyperbolic cosecant `csch(v) = 1 / sinh(v)`; `None` when the sinh is zero. */
+  def cschc(v: _Value): Option[_Value] = sinhc(v).flatMap(s => div(_Number(1.0), s))
+
+  /** Complex hyperbolic cotangent `coth(v) = cosh(v) / sinh(v)`; `None` when the sinh is zero. */
+  def cothc(v: _Value): Option[_Value] =
+    for c <- coshc(v); s <- sinhc(v); r <- div(c, s) yield r
+
 
 /** Concrete complex value `re + im·i` where `im ≠ 0`.
  *
