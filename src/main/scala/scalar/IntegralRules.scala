@@ -58,28 +58,25 @@ object integralRules:
           b     <- unify(r.lhs, e)
           inner <- b.get("v")
           slope <- linearSlope(inner, v)   // ?v must be a linear a·v + b, with a ≠ 0
-          if r.condition(b)
+          if r.condition(b, v)
           out   <- instantiate(r.rhs, b)
         yield if slope == 1.0 then out else Ratio(out, _Number(slope))
       }
       .nextOption()
       .map(simplifyFully)
 
-  /** True when the named hole bound a closed, strictly positive constant other than one.
+  /** Admissible bases for `∫ aᵛ dv = aᵛ/ln(a)` (issue 3.8 retired the old refusal).
    *
-   *  The base of `∫ aᵛ dv = aᵛ/ln(a)` has to be positive (or `aᵛ` is not real-valued) and
-   *  not one (or the `ln(a)` denominator vanishes).  A *symbolic* base free of the
-   *  integration variable would also be admissible, but `?v` may have bound a linear function
-   *  rather than the bare variable, so "free of the integration variable" is not directly
-   *  readable from the bindings — and one entry does not justify carrying the variable
-   *  through the condition signature.  Refusing `kᵛ` is the conservative direction: it stays
-   *  symbolic instead of answering.
+   *  A **symbolic** base is accepted and answered formally — the variable is now threaded, so
+   *  `freeOf("a")` already established it is free of the integration variable.  A **numeric**
+   *  base must be `> 0` (or `aᵛ` is not real-valued) and `≠ 1` (or the `ln(a)` denominator
+   *  vanishes and the rule would emit a `1/0`-shaped result).  Pair this with `freeOf("a")`.
    */
-  private def isExponentialBase(b: Map[String, _Expression]): Boolean =
+  private def admissibleExpBase(b: Map[String, _Expression]): Boolean =
     b.get("a").exists { a =>
-      a.freeVars.isEmpty && (a.eval(EmptyEnv) match
-        case Right(_Number(d)) => d > 0.0 && d != 1.0
-        case _                 => false)
+      a.eval(EmptyEnv) match
+        case Right(_Number(d)) => d > 0.0 && d != 1.0   // numeric: real-valued, ln(a) ≠ 0
+        case _                 => a.freeVars.nonEmpty    // symbolic base free of v -> formal
     }
 
   /** The table.  Order is significant — more specific patterns first. */
@@ -210,11 +207,28 @@ object integralRules:
       rhs  = Ratio(Product(Exp(V), Sum(Sin(V), Cos(V))), _Number(2)),
       name = "cos*exp"),
 
-    // ∫ aᵛ dv = aᵛ / ln(a), for a constant base.  LAST: the pattern is the most general in
-    // the table, and only the condition keeps it from claiming every power.
+    // ── rational / parameterised (issue 3.8) ──────────────────────────────────
+    // ∫ dv/(a² + v²) = atan(v/a)/a, for `a` free of v and non-zero.  A numeric base closes
+    // earlier in the compiled rational tier, so this fires only for a SYMBOLIC `a` — exactly
+    // the parameterised capability 3.8 unlocks.  Both operand orders, since a sum commutes.
+    RewriteRule(
+      lhs       = Ratio(_Number(1), Sum(Power(A, _Number(2)), Power(V, _Number(2)))),
+      rhs       = Ratio(Atan(Ratio(V, A)), A),
+      condition = freeOf("a") && nonZero("a"),
+      name      = "1/(a^2+v^2)"),
+
+    RewriteRule(
+      lhs       = Ratio(_Number(1), Sum(Power(V, _Number(2)), Power(A, _Number(2)))),
+      rhs       = Ratio(Atan(Ratio(V, A)), A),
+      condition = freeOf("a") && nonZero("a"),
+      name      = "1/(v^2+a^2)"),
+
+    // ∫ aᵛ dv = aᵛ / ln(a).  LAST: the pattern is the most general in the table, and only the
+    // condition keeps it from claiming every power.  Symbolic bases are answered formally;
+    // numeric bases are guarded to `> 0` and `≠ 1` (issue 3.8).
     RewriteRule(
       lhs       = Power(A, V),
       rhs       = Ratio(Power(A, V), Ln(A)),
-      condition = isExponentialBase,
+      condition = freeOf("a") && ((b, _) => admissibleExpBase(b)),
       name      = "a^v")
   )

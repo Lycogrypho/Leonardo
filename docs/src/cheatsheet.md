@@ -153,6 +153,9 @@ integral(exp(x), x)             -> exp(x)
 integral(sin(x), x)             -> -cos(x)
 integral(1/x, x)                -> ln(x)
 integral(step(x), x)            -> x*step(x)
+integral(tan(x), x)             -> -ln(cos(x))            from the data-driven table
+integral(k^x, x)                -> k^x / ln(k)            symbolic base free of x
+integral(1/(a^2 + x^2), x)      -> atan(x/a) / a          symbolic parameter a
 ```
 
 ### Definite integration (Simpson's rule)

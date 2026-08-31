@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<module external.linked.project.id="root [file:///C:/_MiM/Documents/Mimmo/Workspace/IdeaProjects/Leonardo/]" external.linked.project.path="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo" external.root.project.path="$MODULE_DIR$/../.." external.system.id="SBT" type="JAVA_MODULE" version="4">
+<module external.linked.project.id="root [file:///C:/Users/Mimmo/IdeaProjects/Leonardo/]" external.linked.project.path="C:\Users\Mimmo\IdeaProjects\Leonardo" external.root.project.path="$MODULE_DIR$/../.." external.system.id="SBT" type="JAVA_MODULE" version="4">
   <component name="DisplayModuleName">
     <option name="name" value="Leonardo" />
   </component>
@@ -10,7 +10,7 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="Leonardo.main~1" />
-    <orderEntry type="module" module-name="Leonardo.test~1" production-on-test="" />
+    <orderEntry type="module" module-name="Leonardo.main" />
+    <orderEntry type="module" module-name="Leonardo.test" production-on-test="" />
   </component>
 </module>

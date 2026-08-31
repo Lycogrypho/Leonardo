@@ -469,10 +469,28 @@ Multi-tier rule table in `Integrate.scala`:
 | Integration by parts | `∫u dv = u·V − ∫V du`, LIATE heuristic | [Wikipedia — Integration by parts](https://en.wikipedia.org/wiki/Integration_by_parts) |
 | Trig-power reduction | `∫sinⁿ`, `∫cosⁿ` reduction formula | [Wikipedia — Reduction formula](https://en.wikipedia.org/wiki/Reduction_formula) |
 | Rational functions | Long division → partial fractions → completing the square / residues | [Wikipedia — Partial fractions in integration](https://en.wikipedia.org/wiki/Partial_fraction_decomposition#Application_to_symbolic_integration) |
+| Data-driven table | Pattern-matched `RewriteRule`s, consulted last | `IntegralRules.scala` |
 
 The rational-function tier uses `polyRoots` (companion-matrix eigendecomposition) to find
 the denominator roots for the residue method:
 [Wikipedia — Companion matrix](https://en.wikipedia.org/wiki/Companion_matrix)
+
+#### The data-driven table and parameterised rules
+
+After every compiled tier declines, `integrate` consults the table in `IntegralRules.scala`
+— a `List[RewriteRule]` run through the unifier in `Rewrite.scala` (issue 6.21).  It is
+tried *last*, so nothing that already integrates can change.  The integration variable is a
+pattern hole `?v` that may bind a linear `a·v + b`; the engine divides the result by the
+slope, so each rule gains its chain-rule case from one place.
+
+A rule's `condition` is `(Map[String, _Expression], _Variable) => Boolean` — the bindings
+**and the integration variable** (issue 3.8).  Threading the variable is what lets a rule
+speak about a *parameter*: `∫ dv/(a² + v²) = atan(v/a)/a` requires the hole `a` to be free of
+`v`, and `∫ aᵛ dv = aᵛ/ln(a)` requires the same plus an admissible base.  Build a guard from
+the combinators — `freeOf`, `isNumeric`, `isPositiveInteger`, `nonZero`, `distinct` —
+composed with `&&`.  `nonZero` reads as *not provably zero*, so a symbolic parameter passes
+while a literal `0` is refused; the `aᵛ` numeric guard additionally requires `> 0` and `≠ 1`
+so the rule never emits a `1/0`-shaped result.
 
 ### Definite integration (Simpson's rule)
 
