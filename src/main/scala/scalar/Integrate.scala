@@ -397,14 +397,133 @@ private def integrateRational(numE: _Expression, denE: _Expression, v: _Variable
  *          or `_Integral(e, v)` when no rule fires
  */
 def integrate(e: _Expression, v: _Variable): _Expression =
+  resolve(e, v, 0)
+
+/** Resolves `∫ e dv` through the full pipeline: the compiled tiers first, then — only when
+ *  they give up — the data-driven table (6.21) and the u-substitution driver (3.10).
+ *
+ *  Both last resorts are hooked HERE rather than at `integrateImpl`'s fallthrough, because
+ *  an arm that claims a shape and then gives up inside itself (the rational tier, or a
+ *  `Product` whose parts attempt fails) never reaches that fallthrough.  `containsIntegral`
+ *  is the give-up signal the compiled tiers already use, so consulting either extension on
+ *  it means neither can ever change an integral that already closes.  The table is tried
+ *  before substitution so its canonical closed forms are preferred where both would fire.
+ *
+ *  @param e        the integrand
+ *  @param v        the integration variable
+ *  @param subDepth current substitution-recursion depth (bounds nested u-substitution)
+ *  @return an antiderivative of `e`, or `_Integral(e, v)` when nothing closes it
+ */
+private def resolve(e: _Expression, v: _Variable, subDepth: Int): _Expression =
   val compiled = integrateImpl(e, v, 0)
-  // Last resort: the data-driven table (6.21).  Hooked HERE rather than at the match's
-  // fallthrough, because an arm that claims a shape and then gives up inside itself -- the
-  // rational tier does exactly that for a `Ratio` -- never reaches the fallthrough at all.
-  // `containsIntegral` is the give-up signal the compiled tiers already use, so consulting
-  // the table on it means a rule can never change an integral that already closes.
-  if containsIntegral(compiled) then integralRules.applyTo(e, v).getOrElse(compiled)
-  else compiled
+  if !containsIntegral(compiled) then compiled
+  else
+    integralRules.applyTo(e, v)
+      .orElse(integrateBySubstitution(e, v, subDepth))
+      .getOrElse(compiled)
+
+/** Maximum nesting of u-substitutions before giving up (a substituted integral may itself
+ *  need a further substitution; the bound stops the recursion from running away). */
+private val MaxSubstitutionDepth = 2
+
+/** Maximum number of candidate inner functions tried per substitution attempt. */
+private val MaxSubstitutionCandidates = 8
+
+/** Number of nodes in `e` — used to try the most specific (largest) candidate `g` first. */
+private def treeSize(e: _Expression): Int = 1 + e.children.map(treeSize).sum
+
+/** Flattens a product into its factor list (`a·b·c` → `[a, b, c]`); a non-product is a
+ *  single factor. */
+private def flattenFactors(e: _Expression): List[_Expression] = e match
+  case Product(a, b) => flattenFactors(a) ++ flattenFactors(b)
+  case _             => List(e)
+
+/** Rebuilds a product from a factor list; the empty list is the unit `1`. */
+private def productOf(fs: List[_Expression]): _Expression =
+  fs.foldLeft(_Number(1): _Expression)((acc, f) => Product(acc, f))
+
+/** Forms `num / den` and cancels structurally-equal factors between them, then simplifies.
+ *
+ *  `simplify` does no common-factor cancellation, so `∫ x·e^(x²) / 2x` would keep its `x`
+ *  and defeat the "free of v" test; cancelling the shared factors first is what lets the
+ *  quotient reduce to `e^(x²)/2`.  Cancellation is per-factor by structural equality (a
+ *  multiset intersection), so it clears exactly the factors the two share — enough for
+ *  u-substitution, without a full polynomial gcd.
+ *
+ *  @param num the numerator expression
+ *  @param den the denominator expression
+ *  @return the simplified, factor-cancelled quotient `num / den`
+ */
+private def cancelRatio(num: _Expression, den: _Expression): _Expression =
+  def isOne(f: _Expression): Boolean = f == _Number(1)
+  val numF = flattenFactors(num).map(simplifyFully).filterNot(isOne)
+  val denF = scala.collection.mutable.ListBuffer(flattenFactors(den).map(simplifyFully).filterNot(isOne)*)
+  val keptNum = numF.filter { f =>
+    val i = denF.indexOf(f)
+    if i >= 0 then { denF.remove(i); false } else true
+  }
+  simplifyFully(Ratio(productOf(keptNum), productOf(denF.toList)))
+
+/** Collects candidate inner functions `g` for u-substitution from the integrand.
+ *
+ *  The plausible inner functions are the arguments of function nodes, the bases (radicands)
+ *  of powers, and the denominators of ratios (see issue 3.10).  Each is simplified, the bare
+ *  variable and `v`-independent terms dropped, duplicates removed, and the list ordered most
+ *  specific (largest) first and capped.
+ *
+ *  @param e the integrand
+ *  @param v the integration variable
+ *  @return the candidate inner functions, most specific first
+ */
+private def substitutionCandidates(e: _Expression, v: _Variable): List[_Expression] =
+  val buf = scala.collection.mutable.ListBuffer[_Expression]()
+  def walk(x: _Expression): Unit =
+    x match
+      case f: _Function => f.children.foreach(buf += _)   // arguments of exp/sin/…
+      case Power(b, _)  => buf += b                        // base / radicand
+      case Ratio(_, d)  => buf += d                        // denominator
+      case _            =>
+    x.children.foreach(walk)
+  walk(e)
+  buf.toList
+    .map(simplifyFully)
+    .filter(g => dependsOn(g, v) && !g.isInstanceOf[_Variable])
+    .distinct
+    .sortBy(g => -treeSize(g))
+    .take(MaxSubstitutionCandidates)
+
+/** Attempts non-linear u-substitution `∫ f(g(v))·g'(v) dv = ∫ f(u) du` (issue 3.10).
+ *
+ *  For each candidate inner function `g` (see [[substitutionCandidates]]): form
+ *  `integrand / g'`, cancel the shared factors, and replace every `g` with a fresh `u`.
+ *  The **crux is the decidable "free of v" test** — if the result still depends on `v` the
+ *  substitution is not valid and the candidate is skipped; otherwise integrate in `u` (via
+ *  the full [[resolve]] pipeline, so nested substitution and the table are available) and
+ *  back-substitute `u → g`.  Gives up (`None`) when no candidate closes, keeping the
+ *  integrand symbolic — the give-up convention shared with the rest of the engine.
+ *
+ *  @param e        the integrand
+ *  @param v        the integration variable
+ *  @param subDepth current substitution depth (bounds nested substitution)
+ *  @return `Some(antiderivative)` on success, `None` to stay symbolic
+ */
+private def integrateBySubstitution(e: _Expression, v: _Variable, subDepth: Int): Option[_Expression] =
+  if subDepth >= MaxSubstitutionDepth then None
+  else
+    substitutionCandidates(e, v).iterator.flatMap { g =>
+      val gPrime = simplifyFully(derive(g, v))
+      gPrime match
+        case _Number(0.0) => None   // g locally constant — no substitution
+        case _ =>
+          val u        = freshVar(e.freeVars + v.variable)
+          val quotient = cancelRatio(e, gPrime)
+          val replaced = replaceSubexpr(quotient, g, u)
+          if dependsOn(replaced, v) then None   // the "free of v" test failed
+          else
+            val inner = resolve(replaced, u, subDepth + 1)
+            if containsIntegral(inner) then None
+            else Some(simplifyFully(substitute(inner, Map(u.variable -> g))))
+    }.nextOption()
 
 /** Rule-table implementation of [[integrate]], threading the parts-recursion `depth`.
  *

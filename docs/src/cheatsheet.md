@@ -108,7 +108,14 @@ L, U, P := lu(A)       tuple binding from a 1×n decomposition result
 | `asin(x)` | Arcsine |
 | `acos(x)` | Arccosine |
 | `atan(x)` | Arctangent |
+| `sinh(x)` / `cosh(x)` / `tanh(x)` | Hyperbolic sine / cosine / tangent |
+| `asinh(x)` / `acosh(x)` / `atanh(x)` | Inverse hyperbolic functions |
+| `sec(x)` / `csc(x)` / `cot(x)` | Secant / cosecant / cotangent (`1/cos`, `1/sin`, `cos/sin`) |
+| `sech(x)` / `csch(x)` / `coth(x)` | Hyperbolic secant / cosecant / cotangent |
 | `step(x)` | Heaviside unit step (1 if x ≥ 0, 0 otherwise) |
+
+`simplify` folds the ratio spelling into the reciprocal node, so there is one form of each:
+`1/cos(x)` → `sec(x)`, `cos(x)/sin(x)` → `cot(x)`, `1/cosh(x)` → `sech(x)`, `1/cos(x)^2` → `sec(x)^2`.
 
 ---
 
@@ -156,6 +163,8 @@ integral(step(x), x)            -> x*step(x)
 integral(tan(x), x)             -> -ln(cos(x))            from the data-driven table
 integral(k^x, x)                -> k^x / ln(k)            symbolic base free of x
 integral(1/(a^2 + x^2), x)      -> atan(x/a) / a          symbolic parameter a
+integral(x * exp(x^2), x)       -> exp(x^2)/2             non-linear u-substitution (u = x²)
+integral(sin(x)^3 * cos(x), x)  -> sin(x)^4/4             u = sin(x)
 ```
 
 ### Definite integration (Simpson's rule)

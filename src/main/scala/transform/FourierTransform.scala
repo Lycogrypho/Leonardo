@@ -29,14 +29,11 @@ import scalar.*
  */
 def fourierOf(e: _Expression, t: _Variable, w: _Variable): _Expression =
   // Pick an internal name for the Laplace frequency variable that cannot collide with
-  // any free variable already present in e (or with the user's t and w binders).
-  // Pigeonhole: among the |reserved|+1 candidates __lts0 ... __lts|reserved| at least
-  // one is free, so find always succeeds and the getOrElse default is unreachable.
+  // any free variable already present in e (or with the user's t and w binders); the
+  // shared capture-safe generator (scalar.freshVar) does the pigeonhole search.
   val reserved = e.freeVars + t.variable + w.variable
-  val sName    = (0 to reserved.size).iterator.map(i => s"__lts$i")
-    .find(!reserved.contains(_))
-    .getOrElse(s"__lts${reserved.size + 1}")
-  val s        = _Variable(sName)
+  val s        = freshVar(reserved, "__lts")
+  val sName    = s.variable
   val L        = laplaceOf(e, t, s)
   L match
     case _: _Laplace => _Fourier(e, t, w)   // Laplace unknown -> stay symbolic

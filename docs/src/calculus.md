@@ -38,6 +38,15 @@ Combine with `simplify` or `simplifyFully` to reduce the result:
 simplifyFully(derive(Product(x, Exp(x)), x)).toString
 ```
 
+The hyperbolic and reciprocal-trigonometric functions (`sinh`/`cosh`/`tanh`,
+`asinh`/`acosh`/`atanh`, `sec`/`csc`/`cot`, `sech`/`csch`/`coth`) are first-class
+nodes with the standard rules:
+
+```scala mdoc
+// d/dx tanh(x) = sech(x)^2
+derive(Tanh(x), x).toString
+```
+
 ### Higher-order derivatives
 
 Wrap the result in a second `derive` call (or use `_Derivative` nodes):
@@ -77,6 +86,15 @@ integrate(Ratio(_Number(1.0), x), x).toString
 ```scala mdoc
 // Chain rule: ∫ sin(3x) dx = -cos(3x)/3
 integrate(Sin(Product(_Number(3.0), x)), x).toString
+```
+
+Beyond the linear chain rule, non-linear **u-substitution** closes `∫ f(g(x))·g'(x) dx`:
+the engine tries candidate inner functions `g`, divides the integrand by `g'`, and
+integrates in `g` only when the quotient is free of `x`.
+
+```scala mdoc
+// ∫ x·e^(x²) dx = e^(x²)/2   (u = x²)
+integrate(Product(x, Exp(Power(x, _Number(2.0)))), x).toString
 ```
 
 Unsupported forms are left as `_Integral` nodes (symbolic, not an error):
