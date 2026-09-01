@@ -536,3 +536,249 @@ private def cPow(ar: Double, ai: Double, br: Double, bi: Double): (Double, Doubl
 
 private def cSin(r: Double, i: Double): (Double, Double) =
   (sin(r) * Math.cosh(i), Math.cos(r) * Math.sinh(i))
+
+
+// ── Special integral functions (issue 3.15) ─────────────────────────────────────
+//
+// The kernels behind Si / Ci / Ei / li and the Fresnel integrals: a power series near
+// zero (exact to Double precision on its range) and the standard asymptotic expansion or
+// continued fraction in the tail, truncated at its optimally small term.  Each returns
+// Option[Double] so an undefined point leaves the AST node symbolic — the 4.O convention.
+
+/** The Euler–Mascheroni constant γ. */
+private val EulerGamma = 0.5772156649015329
+
+/** Boundary between the power series and the asymptotic expansion for `Si`/`Ci`.  Below it
+ *  the alternating series loses at most ~e^x·eps ≈ 5e-9 absolute to cancellation; above it
+ *  the asymptotic tail's optimally-truncated error is ≈ 2e-8. */
+private val SiCiSeriesLimit = 20.0
+
+/** The auxiliary pair `(f, g)` of the Si/Ci asymptotics (A&S 5.2.34–35), truncated at the
+ *  optimally small term:  `Si = π/2 − f·cos − g·sin`,  `Ci = f·sin − g·cos`. */
+private def siCiAuxiliary(x: Double): (Double, Double) =
+  val x2   = x * x
+  var f    = 0.0
+  var g    = 0.0
+  var a    = 1.0    // (2m)!  / x^(2m)
+  var b    = 1.0    // (2m+1)!/ x^(2m)
+  var m    = 0
+  var go   = true
+  while go && m < 60 do
+    val sign = if m % 2 == 0 then 1.0 else -1.0
+    f += sign * a
+    g += sign * b
+    val na = a * (2 * m + 1) * (2 * m + 2) / x2
+    val nb = b * (2 * m + 2) * (2 * m + 3) / x2
+    if na >= a then go = false    // divergence has begun: stop at the optimal term
+    else
+      a = na; b = nb; m += 1
+  (f / x, g / x2)
+
+/** The sine integral `Si(x) = ∫₀ˣ sin(t)/t dt`.  Odd; defined on the whole real line.
+ *
+ *  @param x the argument
+ *  @return `Some(Si(x))`, or `None` for a non-finite argument
+ */
+def siOf(x: Double): Option[Double] =
+  if x.isNaN || x.isInfinite then None
+  else if x < 0 then siOf(-x).map(-_)
+  else if x == 0.0 then Some(0.0)
+  else if x <= SiCiSeriesLimit then
+    // Σ (−1)ⁿ x^(2n+1) / ((2n+1)·(2n+1)!)
+    var u   = x       // (−1)ⁿ x^(2n+1) / (2n+1)!
+    var sum = x
+    var n   = 1
+    while math.abs(u) > 1e-17 * math.abs(sum) && n < 200 do
+      u *= -x * x / ((2 * n) * (2 * n + 1))
+      sum += u / (2 * n + 1)
+      n += 1
+    finite(sum)
+  else
+    val (f, g) = siCiAuxiliary(x)
+    finite(math.Pi / 2 - f * math.cos(x) - g * math.sin(x))
+
+/** The cosine integral `Ci(x) = γ + ln x + ∫₀ˣ (cos t − 1)/t dt`.  Real only for `x > 0`.
+ *
+ *  @param x the argument
+ *  @return `Some(Ci(x))` for `x > 0`, `None` otherwise
+ */
+def ciOf(x: Double): Option[Double] =
+  if x.isNaN || x.isInfinite || x <= 0.0 then None
+  else if x <= SiCiSeriesLimit then
+    // γ + ln x + Σ_{n≥1} (−1)ⁿ x^(2n) / ((2n)·(2n)!)
+    var w   = 1.0     // (−1)ⁿ x^(2n) / (2n)!
+    var sum = EulerGamma + math.log(x)
+    var n   = 1
+    var go  = true
+    while go && n < 200 do
+      w *= -x * x / ((2 * n - 1) * (2 * n))
+      val t = w / (2 * n)
+      sum += t
+      go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
+      n += 1
+    finite(sum)
+  else
+    val (f, g) = siCiAuxiliary(x)
+    finite(f * math.sin(x) - g * math.cos(x))
+
+/** The exponential integral `E₁(y) = ∫_y^∞ e^(−t)/t dt` for `y > 0` — series below 1,
+ *  modified-Lentz continued fraction above. */
+private def e1Of(y: Double): Option[Double] =
+  if y <= 0.0 then None
+  else if y <= 1.0 then
+    // −γ − ln y + Σ_{k≥1} (−1)^(k+1) y^k / (k·k!)
+    var u   = 1.0     // y^k / k!
+    var sum = -EulerGamma - math.log(y)
+    var k   = 1
+    var go  = true
+    while go && k < 100 do
+      u *= y / k
+      val t = (if k % 2 == 1 then u else -u) / k
+      sum += t
+      go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
+      k += 1
+    finite(sum)
+  else
+    // E₁(y) = e^(−y) · 1/(y+1− 1²/(y+3− 2²/(y+5− …)))   (modified Lentz)
+    var b = y + 1.0
+    var c = 1.0 / 1e-300
+    var d = 1.0 / b
+    var h = d
+    var i = 1
+    var go = true
+    while go && i < 200 do
+      val a = -(i.toDouble * i)
+      b += 2.0
+      d = 1.0 / (a * d + b)
+      c = b + a / c
+      val del = c * d
+      h *= del
+      go = math.abs(del - 1.0) > 1e-15
+      i += 1
+    finite(h * math.exp(-y))
+
+/** The exponential integral `Ei(x)`, the principal value of `∫_{−∞}^x e^t/t dt`.
+ *
+ *  `x > 0`: series (all-positive terms, stable) up to 40, asymptotic `e^x/x·Σ k!/x^k`
+ *  beyond; `x < 0`: `−E₁(−x)`; `x = 0` is a pole.
+ *
+ *  @param x the argument
+ *  @return `Some(Ei(x))` for finite non-zero `x` (until `e^x` overflows), `None` otherwise
+ */
+def eiOf(x: Double): Option[Double] =
+  if x.isNaN || x.isInfinite || x == 0.0 then None
+  else if x < 0 then e1Of(-x).map(-_)
+  else if x <= 40.0 then
+    // γ + ln x + Σ_{k≥1} x^k / (k·k!)
+    var u   = 1.0
+    var sum = EulerGamma + math.log(x)
+    var k   = 1
+    var go  = true
+    while go && k < 300 do
+      u *= x / k
+      val t = u / k
+      sum += t
+      go = t > 1e-17 * sum
+      k += 1
+    finite(sum)
+  else
+    // e^x/x · Σ_{k≥0} k!/x^k, truncated at the optimally small term
+    var term = 1.0
+    var sum  = 1.0
+    var k    = 1
+    var go   = true
+    while go && k < x.toInt do
+      val nt = term * k / x
+      if nt >= term then go = false
+      else
+        term = nt; sum += nt; k += 1
+    finite(math.exp(x) / x * sum)
+
+/** The logarithmic integral `li(x) = Ei(ln x)` for `x > 0`, `x ≠ 1` (`x = 1` is the pole).
+ *
+ *  @param x the argument
+ *  @return `Some(li(x))`, or `None` outside the domain
+ */
+def liOf(x: Double): Option[Double] =
+  if x.isNaN || x.isInfinite || x <= 0.0 || x == 1.0 then None
+  else eiOf(math.log(x))
+
+/** Boundary between the power series and the asymptotic pair for the Fresnel integrals. */
+private val FresnelSeriesLimit = 3.0
+
+/** The auxiliary pair `(f, g)` of the Fresnel asymptotics (A&S 7.3.27–28) at `x > 0`:
+ *  `S = 1/2 − f·cos(πx²/2) − g·sin(πx²/2)`,  `C = 1/2 + f·sin(πx²/2) − g·cos(πx²/2)`. */
+private def fresnelAuxiliary(x: Double): (Double, Double) =
+  val u  = math.Pi * x * x
+  var f  = 0.0
+  var g  = 0.0
+  var a  = 1.0        // (4m−1)!! / u^(2m)
+  var b  = 1.0 / u    // (4m+1)!! / u^(2m+1)
+  var m  = 0
+  var go = true
+  while go && m < 40 do
+    val sign = if m % 2 == 0 then 1.0 else -1.0
+    f += sign * a
+    g += sign * b
+    val na = a * (4 * m + 1) * (4 * m + 3) / (u * u)
+    val nb = b * (4 * m + 3) * (4 * m + 5) / (u * u)
+    if na >= a then go = false
+    else
+      a = na; b = nb; m += 1
+  (f / (math.Pi * x), g / (math.Pi * x))
+
+/** The Fresnel sine integral `S(x) = ∫₀ˣ sin(π t²/2) dt`.  Odd; defined everywhere.
+ *
+ *  @param x the argument
+ *  @return `Some(S(x))`, or `None` for a non-finite argument
+ */
+def fresnelSOf(x: Double): Option[Double] =
+  if x.isNaN || x.isInfinite then None
+  else if x < 0 then fresnelSOf(-x).map(-_)
+  else if x == 0.0 then Some(0.0)
+  else if x <= FresnelSeriesLimit then
+    // Σ (−1)ⁿ (π/2)^(2n+1) x^(4n+3) / ((2n+1)!·(4n+3))
+    val h   = math.Pi / 2
+    var p   = h * x * x * x     // (−1)ⁿ (π/2)^(2n+1) x^(4n+3) / (2n+1)!
+    var sum = p / 3.0
+    var n   = 1
+    var go  = true
+    while go && n < 100 do
+      p *= -h * h * x * x * x * x / ((2 * n) * (2 * n + 1))
+      val t = p / (4 * n + 3)
+      sum += t
+      go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
+      n += 1
+    finite(sum)
+  else
+    val (f, g) = fresnelAuxiliary(x)
+    val z      = math.Pi * x * x / 2
+    finite(0.5 - f * math.cos(z) - g * math.sin(z))
+
+/** The Fresnel cosine integral `C(x) = ∫₀ˣ cos(π t²/2) dt`.  Odd; defined everywhere.
+ *
+ *  @param x the argument
+ *  @return `Some(C(x))`, or `None` for a non-finite argument
+ */
+def fresnelCOf(x: Double): Option[Double] =
+  if x.isNaN || x.isInfinite then None
+  else if x < 0 then fresnelCOf(-x).map(-_)
+  else if x == 0.0 then Some(0.0)
+  else if x <= FresnelSeriesLimit then
+    // Σ (−1)ⁿ (π/2)^(2n) x^(4n+1) / ((2n)!·(4n+1))
+    val h   = math.Pi / 2
+    var q   = x                 // (−1)ⁿ (π/2)^(2n) x^(4n+1) / (2n)!
+    var sum = x
+    var n   = 1
+    var go  = true
+    while go && n < 100 do
+      q *= -h * h * x * x * x * x / ((2 * n - 1) * (2 * n))
+      val t = q / (4 * n + 1)
+      sum += t
+      go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
+      n += 1
+    finite(sum)
+  else
+    val (f, g) = fresnelAuxiliary(x)
+    val z      = math.Pi * x * x / 2
+    finite(0.5 + f * math.sin(z) - g * math.cos(z))

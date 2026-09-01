@@ -102,6 +102,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
   private val Functions = Set("sin", "cos", "tan", "tg", "asin", "acos", "atan",
                                "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
                                "sec", "csc", "cot", "sech", "csch", "coth",
+                               "Si", "Ci", "Ei", "li", "fresnelS", "fresnelC",
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",
                                "limit", "laplace", "fourier", "invlaplace", "ode",

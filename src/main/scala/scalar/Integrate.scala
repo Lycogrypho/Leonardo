@@ -485,7 +485,9 @@ private def squareFreeFactors(d0: Vector[Double]): Vector[(Vector[Double], Int)]
     out.toVector
 
 /** Roots of a square-free polynomial as `(re, im)` pairs; degree 1 and 2 are solved
- *  analytically (robust), degree ≥ 3 via [[polyRoots]] (its simple roots converge). */
+ *  analytically (robust), an even polynomial by the `s = t²` reduction (the QR iteration
+ *  does not converge on purely imaginary conjugate pairs, and the Weierstrass denominators
+ *  are exactly that shape), degree ≥ 3 otherwise via [[polyRoots]]. */
 private def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Double, Double)]] =
   polyDegree(poly) match
     case 1 => Some(Vector((-poly(0) / poly(1), 0.0)))
@@ -498,6 +500,15 @@ private def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Double, Doub
       else
         val s = math.sqrt(-disc)
         Some(Vector((-b / (2 * a), s / (2 * a)), (-b / (2 * a), -s / (2 * a))))
+    case d if d >= 3 && poly.indices.forall(i => i % 2 == 0 || math.abs(poly(i)) <= RationalEps) =>
+      // even polynomial p(t) = q(t²): solve q, then each root s of q yields t = ±√s
+      // (the principal complex square root and its negation)
+      rootsOfSquareFree(Vector.tabulate(d / 2 + 1)(i => poly(2 * i))).map(_.flatMap { (a, b) =>
+        val r  = math.sqrt(math.hypot(a, b))
+        val th = math.atan2(b, a) / 2.0
+        val (re, im) = (r * math.cos(th), r * math.sin(th))
+        Vector((re, im), (-re, -im))
+      })
     case d if d >= 3 => polyRoots(poly).map(_.flatMap(_Complex.parts))
     case _           => None
 
@@ -695,6 +706,7 @@ private def resolve(e: _Expression, v: _Variable, subDepth: Int): _Expression =
       integralRules.applyTo(e, v)
         .orElse(integrateBySubstitution(e, v, subDepth))
         .orElse(integrateByTrigSub(e, v))
+        .orElse(integrateByWeierstrass(e, v))
         .getOrElse(compiled)
 
 /** Maximum nesting of u-substitutions before giving up (a substituted integral may itself
@@ -883,6 +895,114 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
     fW           = resolve(newIntegrand, w, 0)
     if !containsIntegral(fW)
   yield simplifyFully(substitute(fW, Map(w.variable -> inverse)))
+
+
+// ── Weierstrass (half-angle) substitution (issue 3.14) ──────────────────────────
+//
+// t = tan(v/2) turns ANY rational function of sin v / cos v into a rational function of t
+// (sin = 2t/(1+t²), cos = (1−t²)/(1+t²), dv = 2/(1+t²)dt), which the 3.12 rational tier
+// finishes. Dispatched last: it is the general fallback for trig rationals that none of the
+// specific trig rules closed. The rationality test is DECIDABLE: the substituted integrand is
+// normalised into one polynomial fraction over t (`ratNormalize`); any node that is not
+// +/·/÷/integer-power over t (an exp, a bare v, another variable) makes it fail, which is the
+// refusal — nothing is ever half-transformed.
+
+/** Degree cap for the normalised Weierstrass fraction, keeping the linear system solvable. */
+private val MaxWeierstrassDegree = 24
+
+/** Coefficient-wise polynomial sum. */
+private def polyAdd(a: Vector[Double], b: Vector[Double]): Vector[Double] =
+  val n = math.max(a.length, b.length)
+  Vector.tabulate(n)(i => a.lift(i).getOrElse(0.0) + b.lift(i).getOrElse(0.0))
+
+/** Normalises an arithmetic expression over `t` into one polynomial fraction `num/den`
+ *  (dense coefficient vectors).  `None` when the expression is not rational in `t` (another
+ *  variable, a function node, a non-integer power) or a degree exceeds the cap — the
+ *  decidable "is it rational" test the Weierstrass tier rests on. */
+private def ratNormalize(e: _Expression, t: _Variable): Option[(Vector[Double], Vector[Double])] =
+  def capped(n: Vector[Double], d: Vector[Double]): Option[(Vector[Double], Vector[Double])] =
+    if polyDegree(n) > MaxWeierstrassDegree || polyDegree(d) > MaxWeierstrassDegree then None
+    else if polyDegree(d) < 0 then None      // zero denominator
+    else Some((polyTrim(n), polyTrim(d)))
+  e match
+    case _Number(c)                               => Some((Vector(c), Vector(1.0)))
+    case x: _Variable if x.variable == t.variable => Some((Vector(0.0, 1.0), Vector(1.0)))
+    case Sum(a, b) =>
+      for (na, da) <- ratNormalize(a, t); (nb, db) <- ratNormalize(b, t)
+          r <- capped(polyAdd(polyMul(na, db), polyMul(nb, da)), polyMul(da, db)) yield r
+    case Product(a, b) =>
+      for (na, da) <- ratNormalize(a, t); (nb, db) <- ratNormalize(b, t)
+          r <- capped(polyMul(na, nb), polyMul(da, db)) yield r
+    case Ratio(a, b) =>
+      for (na, da) <- ratNormalize(a, t); (nb, db) <- ratNormalize(b, t)
+          if polyDegree(nb) >= 0
+          r <- capped(polyMul(na, db), polyMul(da, nb)) yield r
+    case Power(b, _Number(n)) if n.toInt.toDouble == n && math.abs(n) <= MaxWeierstrassDegree =>
+      ratNormalize(b, t).flatMap { (nb, db) =>
+        val k = math.abs(n.toInt)
+        val (pn, pd) = (0 until k).foldLeft((Vector(1.0), Vector(1.0))) {
+          case ((an, ad), _) => (polyMul(an, nb), polyMul(ad, db))
+        }
+        if n >= 0 then capped(pn, pd) else capped(pd, pn)
+      }
+    case _ => None
+
+/** Integrates a rational function given directly as coefficient vectors: long division for an
+ *  improper fraction, then [[integrateProperRational]] on the proper part. */
+private def integrateCoeffRational(num: Vector[Double], den: Vector[Double], t: _Variable): Option[_Expression] =
+  val dn = polyDegree(den)
+  if dn < 0 then None
+  else if dn == 0 then Some(integratePolyCoeffs(num.map(_ / den(0)), t))
+  else if polyDegree(num) >= dn then
+    val (q, r) = polyDivide(num, den)
+    val polyPart = integratePolyCoeffs(q, t)
+    if polyDegree(r) < 0 then Some(polyPart)
+    else integrateProperRational(r, den, t).map(pr => simplifyFully(Sum(polyPart, pr)))
+  else integrateProperRational(num, den, t)
+
+/** Attempts the Weierstrass substitution `t = tan(v/2)` on a rational-in-trig integrand.
+ *
+ *  Requires every circular-trig node in `e` (`sin`/`cos`/`tan`/`sec`/`csc`/`cot`) to have the
+ *  bare variable as its argument; each is replaced by its half-angle form, the `2/(1+t²)`
+ *  measure appended, and the result normalised by [[ratNormalize]] — the decidable check that
+ *  the integrand really is rational in `sin v`/`cos v`.  The rational-in-`t` fraction is
+ *  finished by the 3.12 tier and `t = tan(v/2)` substituted back.
+ *
+ *  @param e the integrand
+ *  @param v the integration variable
+ *  @return `Some(antiderivative)` on success, `None` to stay symbolic
+ */
+private def integrateByWeierstrass(e: _Expression, v: _Variable): Option[_Expression] =
+  def trigArg(x: _Expression): Option[_Expression] = x match
+    case Sin(a) => Some(a)
+    case Cos(a) => Some(a)
+    case Tg(a)  => Some(a)
+    case Sec(a) => Some(a)
+    case Csc(a) => Some(a)
+    case Cot(a) => Some(a)
+    case _      => None
+  val trigNodes = scala.collection.mutable.ListBuffer[_Expression]()
+  def walk(x: _Expression): Unit =
+    if trigArg(x).isDefined then trigNodes += x
+    x.children.foreach(walk)
+  walk(e)
+  if trigNodes.isEmpty || !trigNodes.forall(n => trigArg(n).contains(v)) then None
+  else
+    val t     = freshVar(e.freeVars + v.variable)
+    val t2    = Power(t, _Number(2))
+    val plus  = Sum(_Number(1), t2)                          // 1 + t²
+    val minus = Sum(_Number(1), Product(_Number(-1), t2))    // 1 − t²
+    val twoT  = Product(_Number(2), t)
+    val forms = List[(_Expression, _Expression)](
+      Sin(v) -> Ratio(twoT, plus),  Cos(v) -> Ratio(minus, plus), Tg(v)  -> Ratio(twoT, minus),
+      Sec(v) -> Ratio(plus, minus), Csc(v) -> Ratio(plus, twoT),  Cot(v) -> Ratio(minus, twoT))
+    val replaced = forms.foldLeft(e) { case (acc, (from, to)) => replaceSubexpr(acc, from, to) }
+    if dependsOn(replaced, v) then None   // a bare v outside the trig nodes — not rational in them
+    else
+      for
+        (num, den) <- ratNormalize(Product(replaced, Ratio(_Number(2), plus)), t)
+        anti       <- integrateCoeffRational(num, den, t)
+      yield simplifyFully(substitute(anti, Map(t.variable -> Tg(Ratio(v, _Number(2))))))
 
 /** Rule-table implementation of [[integrate]], threading the parts-recursion `depth`.
  *

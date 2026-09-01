@@ -106,6 +106,15 @@ functions:
 integrate(Ratio(_Number(1.0), Power(Sum(Power(x, _Number(2.0)), _Number(1.0)), _Number(0.5))), x).toString
 ```
 
+Classic non-elementary integrals are answered with their **named special functions**
+(`Si`, `Ci`, `Ei`, `li`, `fresnelS`, `fresnelC`, `erf`) — symbolic nodes with numeric
+kernels, so the antiderivative still evaluates:
+
+```scala mdoc
+// ∫ sin(x)/x dx = Si(x)
+integrate(Ratio(Sin(x), x), x).toString
+```
+
 Unsupported forms are left as `_Integral` nodes (symbolic, not an error):
 
 ```scala mdoc

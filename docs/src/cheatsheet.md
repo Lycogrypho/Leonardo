@@ -132,6 +132,8 @@ lgamma(1e5)                         ln|Gamma| -- finite where Gamma overflows
 Beta(1, 4)              -> 0.25     Gamma(a)Gamma(b)/Gamma(a+b)
 Γ(5)                -> 24.0     Greek alias; type it with ALT-\ g or ALT-G
 β(1, 4)                -> 0.25     Greek alias; type it with ALT-\ b
+Si(1)                   -> 0.94608  sine integral (also Ci, Ei, li)
+fresnelS(1)             -> 0.43826  Fresnel integrals (also fresnelC)
 ```
 
 `Gamma` and `Beta` are **capitalised** so that lowercase `gamma` and `beta` remain
@@ -170,6 +172,10 @@ integral(1/((x-1)^2*(x-2)), x)                            full partial fractions
 integral(1/((x^2+1)*(x-1)), x)                            partial fractions, complex pair (3.12)
 integral(1/(4 - x^2)^0.5, x)    -> asin(x/2)              trig substitution (3.13)
 integral(1/(x^2 + 1)^0.5, x)    -> asinh(x)               hyperbolic substitution (3.13)
+integral(1/(2 + cos(x)), x)                               Weierstrass t = tan(x/2) (3.14)
+integral(sin(x)/x, x)           -> Si(x)                  special integral functions (3.15)
+integral(exp(-x^2), x)          -> sqrt(pi)/2 * erf(x)
+integral(1/ln(x), x)            -> li(x)
 ```
 
 ### Definite integration (Simpson's rule)

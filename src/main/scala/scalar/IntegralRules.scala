@@ -211,6 +211,51 @@ object integralRules:
       rhs  = Ratio(Product(Exp(V), Sum(Sin(V), Cos(V))), _Number(2)),
       name = "cos*exp"),
 
+    // ── special integral functions (issue 3.15) ──────────────────────────────
+    // These antiderivatives are NOT elementary; the named nodes (Si/Ci/Ei/li, Fresnel S/C,
+    // erf) ARE the answers, the same convention that lets Gamma be a symbolic node with a
+    // numeric kernel. Every rule gains the linear-argument chain rule from applyTo, so
+    // ∫ sin(2v)/(2v) closes as Si(2v)/2.
+
+    // ∫ sin(v)/v dv = Si(v)
+    RewriteRule(lhs = Ratio(Sin(V), V), rhs = Si(V), name = "sin/v"),
+
+    // ∫ cos(v)/v dv = Ci(v)
+    RewriteRule(lhs = Ratio(Cos(V), V), rhs = Ci(V), name = "cos/v"),
+
+    // ∫ eᵛ/v dv = Ei(v)
+    RewriteRule(lhs = Ratio(Exp(V), V), rhs = Ei(V), name = "exp/v"),
+
+    // ∫ dv/ln(v) = li(v)
+    RewriteRule(lhs = Ratio(_Number(1), Ln(V)), rhs = Li(V), name = "1/ln"),
+
+    // ∫ e^(−v²) dv = (√π/2)·erf(v) — the near-free connection: Erf existed since 4.O,
+    // integrate simply never produced it.
+    RewriteRule(
+      lhs  = Exp(Product(_Number(-1), Power(V, _Number(2)))),
+      rhs  = Product(_Number(math.sqrt(math.Pi) / 2), Erf(V)),
+      name = "exp(-v^2)"),
+
+    // ∫ sin(πv²/2) dv = fresnelS(v) and ∫ cos(πv²/2) dv = fresnelC(v).  Both spellings of
+    // the constant are listed, because they parse differently and neither simplifies into
+    // the other: `pi*v^2/2` is Ratio(π·v², 2) while `pi/2*v^2` folds π/2 into one number.
+    RewriteRule(
+      lhs  = Sin(Ratio(Product(_Number(math.Pi), Power(V, _Number(2))), _Number(2))),
+      rhs  = FresnelS(V),
+      name = "sin(pi v^2/2)"),
+    RewriteRule(
+      lhs  = Sin(Product(_Number(math.Pi / 2), Power(V, _Number(2)))),
+      rhs  = FresnelS(V),
+      name = "sin(pi/2 v^2)"),
+    RewriteRule(
+      lhs  = Cos(Ratio(Product(_Number(math.Pi), Power(V, _Number(2))), _Number(2))),
+      rhs  = FresnelC(V),
+      name = "cos(pi v^2/2)"),
+    RewriteRule(
+      lhs  = Cos(Product(_Number(math.Pi / 2), Power(V, _Number(2)))),
+      rhs  = FresnelC(V),
+      name = "cos(pi/2 v^2)"),
+
     // ── rational / parameterised (issue 3.8) ──────────────────────────────────
     // ∫ dv/(a² + v²) = atan(v/a)/a, for `a` free of v and non-zero.  A numeric base closes
     // earlier in the compiled rational tier, so this fires only for a SYMBOLIC `a` — exactly

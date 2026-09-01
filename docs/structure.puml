@@ -308,6 +308,16 @@ package "scalar" {
         regularised incomplete gamma P / Q
     }
 
+    ' -- Special integral functions (issue 3.15) --
+    class "Si / Ci / Ei / Li" <<case>> [[calculus.html]] {
+        named antiderivatives of sin v/v,
+        cos v/v, e^v/v, 1/ln v
+        (Li prints "li"; Si/Ci/Ei reserved)
+    }
+    class "FresnelS / FresnelC" <<case>> [[calculus.html]] {
+        ∫ sin/cos(π t²/2) dt
+    }
+
     "_Function" --|> "_Expression"
     "Exp"    --|> "_Function"
     "Ln"     --|> "_Function"
@@ -327,6 +337,8 @@ package "scalar" {
     "Beta / BetaI"           --|> "_Function"
     "Erf / Erfc"             --|> "_Function"
     "GammaP / GammaQ"        --|> "_Function"
+    "Si / Ci / Ei / Li"      --|> "_Function"
+    "FresnelS / FresnelC"    --|> "_Function"
 
     ' -- Functionals (higher-order) -----------------
     abstract class "_Functional" [[calculus.html]]
@@ -1286,6 +1298,8 @@ package "parser" {
 "Parser" ..> "_Regress"        : regress(X, y)
 "Parser" ..> "_Test"           : ttest / confint / chisqtest
 "Parser" ..> "_Based"          : 0x.. / 0b.. / 0o.. / 0t.. literals
+"Parser" ..> "Si / Ci / Ei / Li"   : Si / Ci / Ei / li (3.15)
+"Parser" ..> "FresnelS / FresnelC" : fresnelS / fresnelC
 
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)

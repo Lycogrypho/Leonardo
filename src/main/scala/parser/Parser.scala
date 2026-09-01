@@ -88,6 +88,12 @@ object Parser extends JavaTokenParsers:
                                                          // name, unlike gamma/beta
                                                          // Gamma/Beta are capitalised so the
                                                          // lowercase names stay free as variables
+    "Si", "Ci", "Ei", "li", "fresnelS", "fresnelC",      // special integral functions (3.15);
+                                                         // Si/Ci/Ei capitalised and reserved
+                                                         // (plausible variable names, the
+                                                         // Gamma/Beta reasoning); li keeps the
+                                                         // C spelling; Fresnel spelled out --
+                                                         // bare S/C would be homoglyph traps
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
     "unset", "samples", "colors", "pretty", "exact", "truth3", "logic", "help", "quit", "exit" // REPL commands
@@ -460,6 +466,15 @@ object Parser extends JavaTokenParsers:
     "gammaQ("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ x => GammaQ(a, x) }            |
     "betaI("   ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case x ~ _ ~ a ~ _ ~ b => BetaI(x, a, b) }                                                          |
+    // Special integral functions (3.15). "Si("/"Ci("/"Ei(" are case-sensitive literals, so
+    // they cannot shadow "sin(" and friends; "fresnelS(" is listed before "fresnelC(" only
+    // for tidiness -- the two do not prefix each other.
+    "Si("       ~> guardedExpr <~ ")"                                    ^^ Si.apply                      |
+    "Ci("       ~> guardedExpr <~ ")"                                    ^^ Ci.apply                      |
+    "Ei("       ~> guardedExpr <~ ")"                                    ^^ Ei.apply                      |
+    "li("       ~> guardedExpr <~ ")"                                    ^^ Li.apply                      |
+    "fresnelS(" ~> guardedExpr <~ ")"                                    ^^ FresnelS.apply                |
+    "fresnelC(" ~> guardedExpr <~ ")"                                    ^^ FresnelC.apply                |
     "Gamma("  ~> guardedExpr <~ ")"                                       ^^ Gamma.apply                   |
     // Greek aliases (4.K). No ReservedWords entry is needed: the variable regex is
     // ASCII-only, so no Greek letter can ever be a variable name and there is nothing to

@@ -792,6 +792,123 @@ case class Digamma(e: _Expression) extends _Function:
       case other                   => Left(Digamma(other.toExpression))
 
 
+// ── Special integral functions (issue 3.15) ──────────────────────────────────
+// The named antiderivatives of the classic non-elementary integrals, on the Gamma/Erf
+// template: a symbolic node with a numeric kernel returning Option[Double], so an
+// undefined point stays symbolic. `Si`/`Ci`/`Ei` are capitalised and reserved (the
+// Gamma/Beta collision reasoning — they are plausible variable names); `li` keeps the
+// C spelling; Fresnel uses the spelled `fresnelS`/`fresnelC` (bare `S`/`C` would be
+// homoglyph-prone variable collisions).
+
+/** The sine integral `Si(e) = ∫₀ᵉ sin(t)/t dt` — the antiderivative of `sin(v)/v`.
+ *
+ *  @param e the argument expression
+ */
+case class Si(e: _Expression) extends _Function:
+  override def toString: String = s"Si($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Si(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => siOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => siOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Si(other.toExpression))
+
+
+/** The cosine integral `Ci(e)` — the antiderivative of `cos(v)/v`; real only for `e > 0`.
+ *
+ *  @param e the argument expression
+ */
+case class Ci(e: _Expression) extends _Function:
+  override def toString: String = s"Ci($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Ci(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => ciOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => ciOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Ci(other.toExpression))
+
+
+/** The exponential integral `Ei(e)` — the antiderivative of `e^v/v`; `e = 0` is the pole.
+ *
+ *  @param e the argument expression
+ */
+case class Ei(e: _Expression) extends _Function:
+  override def toString: String = s"Ei($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Ei(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => eiOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => eiOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Ei(other.toExpression))
+
+
+/** The logarithmic integral `li(e) = Ei(ln e)` — the antiderivative of `1/ln(v)`;
+ *  real for `e > 0`, `e ≠ 1`.
+ *
+ *  @param e the argument expression
+ */
+case class Li(e: _Expression) extends _Function:
+  override def toString: String = s"li($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Li(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => liOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => liOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Li(other.toExpression))
+
+
+/** The Fresnel sine integral `fresnelS(e) = ∫₀ᵉ sin(π t²/2) dt`.
+ *
+ *  @param e the argument expression
+ */
+case class FresnelS(e: _Expression) extends _Function:
+  override def toString: String = s"fresnelS($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = FresnelS(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => fresnelSOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => fresnelSOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(FresnelS(other.toExpression))
+
+
+/** The Fresnel cosine integral `fresnelC(e) = ∫₀ᵉ cos(π t²/2) dt`.
+ *
+ *  @param e the argument expression
+ */
+case class FresnelC(e: _Expression) extends _Function:
+  override def toString: String = s"fresnelC($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = FresnelC(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational)     => viaExact(r, env)
+      case Right(_Number(x))       => fresnelCOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => fresnelCOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(FresnelC(other.toExpression))
+
+
 /** The regularised lower incomplete gamma `gammaP(a, x) = P(a, x)`.
  *
  *  Exposed directly because it is the chi-squared and gamma cdf, not only an internal step

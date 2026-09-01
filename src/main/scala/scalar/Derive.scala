@@ -153,6 +153,17 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
     dmul(Product(_Number(2.0 / math.sqrt(math.Pi)),
                  Exp(dmul(_Number(-1), Power(a, _Number(2))))), derive(a, v))
   case Erfc(a)              => dmul(_Number(-1), derive(Erf(a), v))
+  // The special integral functions (3.15) ARE derivatives by definition:
+  //   Si'(u) = sin(u)/u·u',  Ci'(u) = cos(u)/u·u',  Ei'(u) = e^u/u·u',  li'(u) = u'/ln(u),
+  //   fresnelS'(u) = sin(π u²/2)·u',  fresnelC'(u) = cos(π u²/2)·u'
+  case Si(a)                => dmul(Ratio(Sin(a), a), derive(a, v))
+  case Ci(a)                => dmul(Ratio(Cos(a), a), derive(a, v))
+  case Ei(a)                => dmul(Ratio(Exp(a), a), derive(a, v))
+  case Li(a)                => dmul(Ratio(_Number(1), Ln(a)), derive(a, v))
+  case FresnelS(a)          =>
+    dmul(Sin(Ratio(Product(_Number(math.Pi), Power(a, _Number(2))), _Number(2))), derive(a, v))
+  case FresnelC(a)          =>
+    dmul(Cos(Ratio(Product(_Number(math.Pi), Power(a, _Number(2))), _Number(2))), derive(a, v))
   // Functional nodes must be reduced here, not left to fall through to a bare
   // _Derivative wrapper: that wrapper's eval calls derive again on the same node,
   // looping forever (StackOverflow).
