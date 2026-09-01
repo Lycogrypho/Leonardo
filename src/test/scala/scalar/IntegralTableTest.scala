@@ -60,6 +60,41 @@ class IntegralTableTest extends AnyFlatSpec:
         case (d, g) =>
           fail(s"could not evaluate at x=$p (derivative=$d, integrand=$g)\n  anti = $anti")
 
+  // ── the 3.16 bulk-transcription harness ────────────────────────────────────
+  //
+  // For EVERY RewriteRule in the table: instantiate the holes at concrete values, take
+  // d/dx of the rhs, and compare it against the lhs integrand numerically. This is what
+  // makes bulk transcription safe — a transcription slip and a correct rule look identical
+  // in the source, and only d/dx separates them. Everything stays an _Expression (display
+  // rounding through toString would quantise ln(2) into a ~4e-6 phantom error, which cost
+  // 3.7 a full debugging cycle).
+
+  "every rule in the table" should "differentiate back to its own integrand" in
+  {
+    // The standard instantiation: v is the variable, a/b generic constants chosen so every
+    // rule's condition accepts them (distinct, non-zero, |a| != |b|, a > 0 and != 1).
+    val bindings = Map[String, _Expression]("v" -> x, "a" -> _Number(1.3), "b" -> _Number(0.7))
+    // A spread of sample points: rules whose instantiated forms have a restricted domain
+    // (asin needs |x| < 1, acosh needs x > 1.3, ln(cos x) needs cos > 0) are checked at the
+    // points where both sides evaluate; at least two must.
+    val points = List(0.31, 0.77, 1.13, 1.87, 2.9)
+    for r <- integralRules.rules do
+      assert(r.condition(bindings, x), s"rule '${r.name}' rejects the harness binding a=1.3, b=0.7")
+      (instantiate(r.lhs, bindings), instantiate(r.rhs, bindings)) match
+        case (Some(lhs), Some(rhs)) =>
+          val back = derive(rhs, x)
+          val checked = points.flatMap { p =>
+            (valueAt(back, p), valueAt(lhs, p)) match
+              case (Some(got), Some(want)) => Some((p, got, want))
+              case _                       => None
+          }
+          assert(checked.sizeIs >= 2, s"rule '${r.name}': fewer than 2 evaluable check points")
+          for (p, got, want) <- checked do
+            assert(math.abs(got - want) < 1e-8 * math.max(1.0, math.abs(want)),
+                   s"rule '${r.name}' at x=$p: d/dx rhs = $got, lhs integrand = $want")
+        case other => fail(s"rule '${r.name}': could not instantiate ($other)")
+  }
+
   // ── trigonometric entries ──────────────────────────────────────────────────
 
   "the table" should "integrate tan(v)^2" in    { verify("tan(x)^2", 0.3, 0.7, 1.0) }

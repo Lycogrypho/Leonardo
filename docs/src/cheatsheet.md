@@ -176,6 +176,12 @@ integral(1/(2 + cos(x)), x)                               Weierstrass t = tan(x/
 integral(sin(x)/x, x)           -> Si(x)                  special integral functions (3.15)
 integral(exp(-x^2), x)          -> sqrt(pi)/2 * erf(x)
 integral(1/ln(x), x)            -> li(x)
+integral(asin(x), x)            -> x*asin(x) + (1-x^2)^0.5 from the transcribed table (3.16)
+integral(sin(2*x)*cos(5*x), x)                            product-to-sum
+integral(1/(a^2 - x^2), x)      -> atanh(x/a)/a           symbolic parameter a
+integral(1/(x^2 + a^2)^0.5, x)  -> asinh(x/a)
+integral(x^a, x)                -> x^(a+1)/(a+1)          symbolic exponent
+integral(exp(a*x)*sin(b*x), x)                            general cyclic pair
 ```
 
 ### Definite integration (Simpson's rule)
