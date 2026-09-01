@@ -161,86 +161,162 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
     val a2 = (n1 * r2 + n0) / (r2 - r1)
     Some(sum(scaleExp(a1, r1, t), scaleExp(a2, r2, t)))
 
-// ── High-degree rational inverse: companion-matrix root-finding + residue partial fractions ──
-
-/** Differentiates a polynomial coefficient vector: `[c0, c1, ..., cn]` -> `[c1, 2*c2, ..., n*cn]`. */
+// ── High-degree rational inverse: square-free factorisation + partial fractions ──
+//
 // `derivPoly` and `polyRoots` were local copies of `scalar.derivCoeffs` / `scalar.polyRoots`;
-// both now come from `scalar/Polynomial.scala` (issue 3.1).  The shared root finder reads a
-// coefficient vector at its *true* degree where this copy used `size - 1`, but `collect`
-// trims trailing zeros before returning, so no reachable input distinguishes the two.
+// both now come from `scalar/Polynomial.scala` (issue 3.1), which issue 2.5 extended with the
+// coefficient arithmetic and square-free factorisation this tier now shares with the
+// integrator's rational tier.
+//
+// Issue 3.17 replaced the residue formula `A_r = N(r)/D'(r)` used here: it is defined only
+// for a SIMPLE pole (it divides by `D'(r)`, which vanishes exactly when the pole repeats), so
+// `evalPolyAt` and `pairConjugates` — the complex-root residue machinery — went with it.
 
-/** Horner evaluation of a real-coefficient polynomial at a complex point `r = (re, im)`. */
-private def evalPolyAt(coeffs: Vector[Double], r: (Double, Double)): (Double, Double) =
-  val (rre, rim) = r
-  coeffs.foldRight((0.0, 0.0)) { (c, acc) =>
-    val (are, aim) = acc
-    (are * rre - aim * rim + c, are * rim + aim * rre)
-  }
-
-/** Pairs complex roots into conjugate pairs (positive-im, negative-im).
- *  Returns `None` when any root cannot be matched (implies repeated or defective).
- */
-private def pairConjugates(cs: Vector[_Complex]): Option[Vector[(_Complex, _Complex)]] =
-  val pos = cs.filter(_.im > 0)
-  val neg = cs.filter(_.im < 0)
-  if pos.size != neg.size then None
-  else
-    val pairs = pos.flatMap { p =>
-      neg.find(n => math.abs(n.re - p.re) < 1e-8 && math.abs(n.im + p.im) < 1e-8)
-         .map(n => (p, n))
-    }
-    if pairs.size == pos.size then Some(pairs) else None
-
-/** Inverts a strictly proper `N(s)/D(s)` with `deg D >= 3` and distinct roots only.
+/** Inverts a strictly proper `N(s)/D(s)` with `deg D >= 3`, repeated poles included.
  *
- *  Residue formula: `A_r = N(r) / D'(r)` for each root `r`.  For complex conjugate
- *  pairs `(alpha +/- beta*i)` the combined term is
- *  `2*Re(A)*exp(alpha*t)*cos(beta*t) - 2*Im(A)*exp(alpha*t)*sin(beta*t)`.
- *  Returns `None` when root-finding fails or any root is repeated (`|D'(root)| < 1e-12`).
+ *  **Multiplicities come from square-free factorisation, not from root-finding** (issue
+ *  3.17, reusing the `scalar` helpers issue 2.5 made shareable).  The former residue
+ *  formula `A_r = N(r)/D'(r)` is defined only for a *simple* pole — it divides by `D'(r)`,
+ *  which vanishes exactly when the pole repeats — so repeated poles had to be refused.
+ *  `squareFreeFactors` splits `D` by multiplicity arithmetically first, which also sidesteps
+ *  the QR iteration's failure to converge on a repeated root.
+ *
+ *  The partial-fraction numerators are then found by undetermined coefficients (a dense
+ *  system solved with `core._MatrixValue.inverse`, the cross-layer choice the integrator's
+ *  rational tier makes for the same reason), and each piece is inverted by its standard
+ *  transform pair:
+ *  {{{
+ *  A/(s-a)^k                -> A * t^(k-1) * exp(a*t) / (k-1)!
+ *  (B*s + C)/((s-a)^2+w^2)^k -> the k = 1 damped sine/cosine; k >= 2 via the same
+ *                               t^(j) * exp(a t) * {cos,sin}(w t) family
+ *  }}}
+ *
+ *  @return the inverse transform, or `None` when the factorisation or the system fails
  */
 private def invHigherDegree(
     ns: Vector[Double], ds: Vector[Double], s: _Variable, t: _Variable
 ): Option[_Expression] =
-  val dp = derivCoeffs(ds)
-  polyRoots(ds).flatMap { roots =>
-    val realRoots    = roots.collect { case _Number(re) => re }
-    val complexRoots = roots.collect { case c: _Complex => c }
-    if realRoots.size + complexRoots.size != roots.size then None
-    else
-      val realTermsOpt: Option[Vector[_Expression]] =
-        realRoots.foldLeft(Option(Vector.empty[_Expression])) { (accOpt, re) =>
-          accOpt.flatMap { acc =>
-            val (nv, _) = evalPolyAt(ns, (re, 0.0))
-            val (dv, _) = evalPolyAt(dp, (re, 0.0))
-            if math.abs(dv) < 1e-12 then None
-            else Some(acc :+ scaleExp(nv / dv, re, t))
-          }
-        }
-      pairConjugates(complexRoots).flatMap { pairs =>
-        val complexTermsOpt: Option[Vector[_Expression]] =
-          pairs.foldLeft(Option(Vector.empty[_Expression])) { (accOpt, pair) =>
-            val (c, _) = pair
-            accOpt.flatMap { acc =>
-              val (nnRe, nnIm) = evalPolyAt(ns, (c.re, c.im))
-              val (ddRe, ddIm) = evalPolyAt(dp, (c.re, c.im))
-              val denom = ddRe * ddRe + ddIm * ddIm
-              if denom < 1e-24 then None
-              else
-                val aRe   = (nnRe * ddRe + nnIm * ddIm) / denom
-                val aIm   = (nnIm * ddRe - nnRe * ddIm) / denom
-                val inner = sum(mul(2.0 * aRe, Cos(mulNum(c.im, t))),
-                                mul(-2.0 * aIm, Sin(mulNum(c.im, t))))
-                Some(acc :+ damped(c.re, t, inner))
-            }
-          }
-        for
-          rTerms <- realTermsOpt
-          cTerms <- complexTermsOpt
-          all     = rTerms ++ cTerms
-          if all.nonEmpty
-        yield all.reduce(sum)
+  partialFractionTerms(ns, ds, t).map { terms =>
+    if terms.isEmpty then _Number(0) else terms.reduce(sum)
+  }
+
+/** Decomposes `N(s)/D(s)` into partial fractions and inverts each piece (issue 3.17).
+ *
+ *  Mirrors `scalar.integratePartialFractions`: factor `D` into real linear factors and
+ *  irreducible quadratics with their multiplicities, build one unknown per basis element
+ *  (`1/(s-r)^j`, and `s`/`1` numerators over `(s^2+ps+q)^j`), solve the dense system, then
+ *  map each surviving coefficient to its inverse-transform pair.
+ */
+private def partialFractionTerms(ns: Vector[Double], ds: Vector[Double], t: _Variable): Option[Vector[_Expression]] =
+  val deg  = polyDegree(ds)
+  val lead = ds(deg)
+  // Square-free factorisation first: multiplicities arithmetically, roots only per part.
+  val factored = squareFreeFactors(ds).foldLeft(Option((Vector.empty[(Double, Int)], Vector.empty[(Double, Double, Int)]))) {
+    case (acc, (poly, k)) =>
+      acc.zip(rootsOfSquareFree(poly)).map { case ((reals, quads), parts) =>
+        val (rs, cs) = parts.partition((_, im) => math.abs(im) < 1e-6)
+        (reals ++ rs.map((re, _) => (re, k)),
+         quads ++ cs.filter(_._2 > 0.0).map((re, im) => (-2.0 * re, re * re + im * im, k)))
       }
   }
+  factored.flatMap { (realFactors, quadFactors) =>
+    if realFactors.map(_._2).sum + 2 * quadFactors.map(_._3).sum != deg then None
+    else
+      val factorPolys = realFactors.map((r, m) => (Vector(-r, 1.0), m)) ++
+                        quadFactors.map((p, q, m) => (Vector(q, p, 1.0), m))
+      // D with the `reduce`-th factor's exponent lowered by `by` — the column multiplier.
+      def cofactor(reduce: Int, by: Int): Vector[Double] =
+        factorPolys.zipWithIndex.foldLeft(Vector(lead)) { case (acc, ((poly, m), idx)) =>
+          val exp = if idx == reduce then m - by else m
+          (0 until exp).foldLeft(acc)((p, _) => polyMul(p, poly))
+        }
+      // One column per unknown, tagged with the term it stands for.
+      val columns = scala.collection.mutable.ListBuffer[(PfTerm, Vector[Double])]()
+      realFactors.zipWithIndex.foreach { case ((r, m), i) =>
+        for j <- 1 to m do columns += ((PfTerm.Real(r, j), cofactor(i, j)))
+      }
+      val quadBase = realFactors.length
+      quadFactors.zipWithIndex.foreach { case ((p, q, m), k) =>
+        for j <- 1 to m do
+          val cof = cofactor(quadBase + k, j)
+          columns += ((PfTerm.Quad(p, q, j, false), cof))
+          columns += ((PfTerm.Quad(p, q, j, true), polyMul(Vector(0.0, 1.0), cof)))
+      }
+      if columns.sizeIs != deg then None
+      else
+        val mat = Array.fill(deg * deg)(0.0)
+        columns.zipWithIndex.foreach { case ((_, col), c) =>
+          for r <- 0 until deg do mat(r * deg + c) = col.lift(r).getOrElse(0.0)
+        }
+        val rhs = Array.tabulate(deg)(i => ns.lift(i).getOrElse(0.0))
+        _MatrixValue(deg, deg, mat).inverse.flatMap { inv =>
+          val x = inv.multiply(_MatrixValue(deg, 1, rhs)).toVector
+          val realTerms = columns.zipWithIndex.collect {
+            case ((PfTerm.Real(r, j), _), i) if math.abs(x(i)) > 1e-12 => invRealPower(x(i), r, j, t)
+          }.toVector
+          // Each quadratic power pairs its constant-numerator unknown with its s-numerator one.
+          val quadTerms = columns.zipWithIndex.collect {
+            case ((PfTerm.Quad(p, q, j, false), _), i) => (p, q, j, x(i))
+          }.map { (p, q, j, cCoef) =>
+            val bCoef = columns.zipWithIndex.collectFirst {
+              case ((PfTerm.Quad(pp, qq, jj, true), _), bi) if pp == p && qq == q && jj == j => x(bi)
+            }.getOrElse(0.0)
+            invQuadPower(bCoef, cCoef, p, q, j, t)
+          }.toVector
+          if quadTerms.contains(None) then None
+          else Some(realTerms ++ quadTerms.flatten)
+        }
+  }
+
+/** One partial-fraction basis element: `A/(s-r)^j`, or a numerator over `(s^2+ps+q)^j`
+ *  (`ofS` distinguishes the `s` numerator from the constant one). */
+private enum PfTerm:
+  case Real(r: Double, j: Int)
+  case Quad(p: Double, q: Double, j: Int, ofS: Boolean)
+
+/** `L-1{A/(s-r)^k} = A · t^(k-1) · e^(r t) / (k-1)!`.
+ *
+ *  Both trivial factors collapse: `t^0` disappears for a simple pole and the exponential
+ *  for a pole at the origin, so `A/s` inverts to the bare constant `A` and `A/s^2` to `A·t`.
+ */
+private def invRealPower(coeffA: Double, root: Double, k: Int, t: _Variable): _Expression =
+  val c       = coeffA / (1 to (k - 1)).product      // (k-1)! — the empty product is 1
+  val tPow    = Option.when(k > 1)(if k == 2 then t else Power(t, _Number(k - 1)))
+  val expPart = Option.when(root != 0.0)(Exp(mulNum(root, t)))
+  (tPow, expPart) match
+    case (None, None)       => _Number(c)
+    case (Some(p), None)    => mul(c, p)
+    case (None, Some(e))    => mul(c, e)
+    case (Some(p), Some(e)) => mul(c, Product(p, e))
+
+/** `L-1{(B·s + C)/((s-a)^2 + w^2)^k}` for `k = 1` and `k = 2`.
+ *
+ *  Writing `s = (s-a) + a` splits the numerator into its `(s-a)` and constant parts, whose
+ *  transforms are the damped cosine/sine (`k = 1`) and the `t`-weighted pair (`k = 2`):
+ *  {{{
+ *  k=1: e^(at)·[A1·cos(wt) + (A0/w)·sin(wt)]
+ *  k=2: e^(at)·[A1·t·sin(wt)/(2w) + A0·(sin(wt) − w·t·cos(wt))/(2w³)]
+ *  }}}
+ *  `k >= 3` returns `None` — the family continues, but this tier does not build it, and
+ *  declining is the house rule (a wrong inverse is worse than a symbolic one).
+ */
+private def invQuadPower(bCoef: Double, cCoef: Double, p: Double, q: Double,
+                         k: Int, t: _Variable): Option[_Expression] =
+  val a  = -p / 2.0
+  val w2 = q - p * p / 4.0
+  if w2 <= 0.0 then None                              // not an irreducible quadratic
+  else
+    val w  = math.sqrt(w2)
+    val a1 = bCoef                                    // coefficient of (s - a)
+    val a0 = bCoef * a + cCoef                        // constant coefficient
+    val wt = mulNum(w, t)
+    val inner = k match
+      case 1 => Some(sum(mul(a1, Cos(wt)), mul(a0 / w, Sin(wt))))
+      case 2 => Some(sum(mul(a1 / (2 * w), Product(t, Sin(wt))),
+                         mul(a0 / (2 * w * w2),
+                             sum(Sin(wt), mul(-w, Product(t, Cos(wt)))))))
+      case _ => None
+    inner.map(i => damped(a, t, i))
 
 // ── Expression builders (fold trivial 0/1 coefficients so output stays readable) ──
 

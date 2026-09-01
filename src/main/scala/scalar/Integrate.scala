@@ -327,31 +327,6 @@ private def polyCoeffs(e: _Expression, v: _Variable): Option[Vector[Double]] =
     }
   }
 
-/** Horner evaluation of a real-coefficient polynomial at a real point. */
-private def evalCoeffsReal(cs: Vector[Double], x: Double): Double =
-  cs.foldRight(0.0)((c, acc) => acc * x + c)
-
-/** Polynomial long division `num / den` -> `(quotient, remainder)` coefficient vectors
- *  (`num = quotient * den + remainder`, `deg remainder < deg den`). */
-private def polyDivide(num: Vector[Double], den: Vector[Double]): (Vector[Double], Vector[Double]) =
-  val dd   = polyDegree(den)
-  val lc   = den(dd)
-  val dnum = polyDegree(num)
-  if dnum < dd then (Vector(0.0), num)
-  else
-    val rr = num.toArray.clone()
-    val q  = Array.fill(dnum - dd + 1)(0.0)
-    var k  = dnum - dd
-    while k >= 0 do
-      val coef = rr(dd + k) / lc
-      q(k) = coef
-      var i = 0
-      while i <= dd do
-        rr(k + i) -= coef * den(i)
-        i += 1
-      k -= 1
-    (q.toVector, rr.toVector)
-
 /** Builds `k * ln(arg)`, folding `k = 0` to `0` and `k = 1` to `ln(arg)`. */
 private def logTerm(k: Double, arg: _Expression): _Expression = scaleBy(k, Ln(arg))
 
@@ -433,84 +408,9 @@ private def integrateQuadraticDen(num: Vector[Double], den: Vector[Double], v: _
 // arithmetic step — and only the resulting square-free parts (simple roots, well-conditioned)
 // are handed to `polyRoots`.
 
-/** Real polynomial multiplication (convolution). */
-private def polyMul(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-  val out = Array.fill(a.length + b.length - 1)(0.0)
-  for i <- a.indices; j <- b.indices do out(i + j) += a(i) * b(j)
-  out.toVector
-
-/** Trims trailing (high-order) negligible coefficients to the true degree; `[0.0]` for zero. */
-private def polyTrim(a: Vector[Double]): Vector[Double] =
-  val d = polyDegree(a)
-  if d < 0 then Vector(0.0) else a.take(d + 1)
-
-/** Coefficient-wise difference `a - b`, trimmed. */
-private def polySub(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-  val n = math.max(a.length, b.length)
-  polyTrim(Vector.tabulate(n)(i => a.lift(i).getOrElse(0.0) - b.lift(i).getOrElse(0.0)))
-
-/** Normalises to a monic polynomial (leading coefficient 1); unchanged for the zero/constant. */
-private def polyMonic(a: Vector[Double]): Vector[Double] =
-  val d = polyDegree(a)
-  if d < 0 then a else a.take(d + 1).map(_ / a(d))
-
-/** Monic polynomial GCD by the Euclidean algorithm (tolerance via [[polyDegree]]). */
-private def polyGcd(a0: Vector[Double], b0: Vector[Double]): Vector[Double] =
-  var a = polyTrim(a0)
-  var b = polyTrim(b0)
-  while polyDegree(b) >= 0 do
-    val (_, r) = polyDivide(a, b)
-    a = b
-    b = polyTrim(r)
-  polyMonic(a)
-
-/** Square-free factorisation (Yun): each returned `(poly, k)` is the product of the distinct
- *  factors of `d0` that occur with multiplicity exactly `k`, so `poly` has only simple roots.
- *  This separates the multiplicities arithmetically, before any root-finding. */
-private def squareFreeFactors(d0: Vector[Double]): Vector[(Vector[Double], Int)] =
-  val dd = polyTrim(d0)
-  if polyDegree(dd) < 1 then Vector.empty
-  else
-    val g  = polyGcd(dd, polyTrim(derivCoeffs(dd)))
-    var c  = polyTrim(polyDivide(dd, g)._1)
-    var w  = polySub(polyTrim(polyDivide(polyTrim(derivCoeffs(dd)), g)._1), polyTrim(derivCoeffs(c)))
-    val out = scala.collection.mutable.ListBuffer[(Vector[Double], Int)]()
-    var k  = 1
-    while polyDegree(c) >= 1 do
-      val p = polyGcd(c, w)
-      if polyDegree(p) >= 1 then out += ((polyMonic(p), k))
-      c = polyTrim(polyDivide(c, p)._1)
-      w = polySub(polyTrim(polyDivide(w, p)._1), polyTrim(derivCoeffs(c)))
-      k += 1
-    out.toVector
-
-/** Roots of a square-free polynomial as `(re, im)` pairs; degree 1 and 2 are solved
- *  analytically (robust), an even polynomial by the `s = t²` reduction (the QR iteration
- *  does not converge on purely imaginary conjugate pairs, and the Weierstrass denominators
- *  are exactly that shape), degree ≥ 3 otherwise via [[polyRoots]]. */
-private def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Double, Double)]] =
-  polyDegree(poly) match
-    case 1 => Some(Vector((-poly(0) / poly(1), 0.0)))
-    case 2 =>
-      val a = poly(2); val b = poly(1); val c = poly(0)
-      val disc = b * b - 4 * a * c
-      if disc >= 0 then
-        val s = math.sqrt(disc)
-        Some(Vector(((-b + s) / (2 * a), 0.0), ((-b - s) / (2 * a), 0.0)))
-      else
-        val s = math.sqrt(-disc)
-        Some(Vector((-b / (2 * a), s / (2 * a)), (-b / (2 * a), -s / (2 * a))))
-    case d if d >= 3 && poly.indices.forall(i => i % 2 == 0 || math.abs(poly(i)) <= RationalEps) =>
-      // even polynomial p(t) = q(t²): solve q, then each root s of q yields t = ±√s
-      // (the principal complex square root and its negation)
-      rootsOfSquareFree(Vector.tabulate(d / 2 + 1)(i => poly(2 * i))).map(_.flatMap { (a, b) =>
-        val r  = math.sqrt(math.hypot(a, b))
-        val th = math.atan2(b, a) / 2.0
-        val (re, im) = (r * math.cos(th), r * math.sin(th))
-        Vector((re, im), (-re, -im))
-      })
-    case d if d >= 3 => polyRoots(poly).map(_.flatMap(_Complex.parts))
-    case _           => None
+// `polyMul`, `polyTrim`, `polySub`, `polyMonic`, `polyGcd`, `polyDivide`, `evalCoeffsReal`,
+// `squareFreeFactors` and `rootsOfSquareFree` live in `Polynomial.scala` (issue 2.5) — they
+// are shared with `Singularity` and the inverse Laplace transform.
 
 /** Factorises `den` into real linear factors `(v - r)^m` and irreducible quadratics
  *  `(v^2 + p v + q)^m` (from complex conjugate pairs), via square-free factorisation so
@@ -752,13 +652,44 @@ private def cancelRatio(num: _Expression, den: _Expression): _Expression =
     val i = denF.indexOf(f)
     if i >= 0 then { denF.remove(i); false } else true
   }
-  simplifyFully(Ratio(productOf(groupIdentical(keptNum)), productOf(groupIdentical(denF.toList))))
+  val numG = groupByBase(keptNum)
+  val denG = groupByBase(denF.toList)
+  // A negative exponent belongs on the other side of the fraction: `cos(w)^-2` in the
+  // numerator is `cos(w)^2` in the denominator, which is the spelling the reciprocal-node
+  // normalisation and the power-reduction tiers recognise (issue 3.18).
+  val (numPos, numNeg) = numG.partition(_._2 > 0.0)
+  val (denPos, denNeg) = denG.partition(_._2 > 0.0)
+  def flip(ps: List[(_Expression, Double)]): List[(_Expression, Double)] = ps.map((b, n) => (b, -n))
+  val denExpr = rebuildFactors(denPos ++ flip(numNeg))
+  // Numeric factors ride outside the fraction, so a bare `1` is left over the denominator:
+  // `simplify`'s `1/cos^2 -> sec^2` normalisation keys on a unit numerator, and without this
+  // `0.25/cos(w)^2` would never reach the `sec^n` reduction.
+  val (numConst, numRest) = (numPos ++ flip(denNeg)).partition((b, _) => b.isInstanceOf[_Number])
+  simplifyFully(Product(rebuildFactors(numConst), Ratio(rebuildFactors(numRest), denExpr)))
 
-/** Collapses repeated identical factors into a power (`[cos w, cos w] -> [cos(w)^2]`), so a
- *  product of equal factors folds — `simplify` does not combine equals nested in a product,
- *  which would leave e.g. `(4·cos w)·cos w` unrecognised by the `cos^n` reduction tier. */
-private def groupIdentical(fs: List[_Expression]): List[_Expression] =
-  fs.groupBy(identity).toList.map((f, occ) => if occ.sizeIs == 1 then f else Power(f, _Number(occ.size)))
+/** Groups factors by base, summing exponents (`[cos w, cos w] -> cos(w)^2`, `[x^3, x^-1] ->
+ *  x^2`), in order of first appearance.
+ *
+ *  `simplify` does not combine equal factors nested in a product, so `(4·cos w)·cos w` would
+ *  otherwise stay unrecognised by the `cos^n` reduction tier.  Summing *exponents* rather
+ *  than counting duplicates is what lets a half-integer radical power decompose: `(2·cos w)^3`
+ *  flattens to `cos(w)^3` beside the measure's `cos w`, and the two must fold to `cos(w)^4`.
+ *  The fold preserves first-seen order, so a rebuilt product is stable across runs.
+ */
+private def groupByBase(fs: List[_Expression]): List[(_Expression, Double)] =
+  def split(f: _Expression): (_Expression, Double) = f match
+    case Power(b, _Number(n)) => (b, n)
+    case _                    => (f, 1.0)
+  fs.foldLeft(Vector.empty[(_Expression, Double)]) { (acc, f) =>
+    val (base, n) = split(f)
+    acc.indexWhere(_._1 == base) match
+      case -1 => acc :+ (base, n)
+      case i  => acc.updated(i, (base, acc(i)._2 + n))
+  }.toList
+
+/** Rebuilds a product from `(base, exponent)` pairs, dropping unit exponents. */
+private def rebuildFactors(ps: List[(_Expression, Double)]): _Expression =
+  productOf(ps.map((b, n) => if n == 1.0 then b else Power(b, _Number(n))))
 
 /** Collects candidate inner functions `g` for u-substitution from the integrand.
  *
@@ -851,17 +782,24 @@ private def integrateByTrigSub(e: _Expression, v: _Variable): Option[_Expression
   val radicals = scala.collection.mutable.ListBuffer[_Expression]()
   def walk(x: _Expression): Unit =
     x match
-      case pw @ Power(base, _Number(ex)) if math.abs(ex - 0.5) < 1e-12 && dependsOn(base, v) => radicals += pw
-      case _                                                                                 =>
+      case pw @ Power(base, _Number(ex)) if isHalfInteger(ex) && dependsOn(base, v) => radicals += pw
+      case _                                                                        =>
     x.children.foreach(walk)
   walk(e)
   radicals.iterator.flatMap(r => trigSubWith(e, v, r)).nextOption()
 
+/** True when `ex` is a half-integer (`2·ex` an odd integer): `±0.5`, `±1.5`, `±2.5`, … —
+ *  every power whose reduced form still carries one square root (issue 3.18).  A whole
+ *  exponent is excluded: it needs no substitution and the power rule owns it. */
+private def isHalfInteger(ex: Double): Boolean =
+  val twice = ex * 2.0
+  twice == math.rint(twice) && math.abs(twice.toLong % 2) == 1 && math.abs(twice) <= MaxReductionPower
+
 /** Performs the trig/hyperbolic substitution for one radical node (see [[integrateByTrigSub]]). */
 private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Option[_Expression] =
-  val radicand = radical match
-    case Power(b, _) => b
-    case _           => radical
+  val (radicand, halves) = radical match
+    case Power(b, _Number(ex)) => (b, math.rint(ex * 2.0).toInt)   // odd: radicand^(halves/2)
+    case _                     => (radical, 1)
   for
     cs  <- collect(radicand, v)
     if cs.length == 3
@@ -885,7 +823,10 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
         Some((Product(_Number(a), Cosh(w)), Product(_Number(a), Sinh(w)),
               Product(_Number(scale * a), Sinh(w)), Acosh(Ratio(v, _Number(a)))))
       else None
-    (hw, hpw, gExpr, inverse) = setup
+    (hw, hpw, gExpr0, inverse) = setup
+    // `radicand^(halves/2) = (√radicand)^halves`, so the whole power is replaced by the
+    // θ-form raised to `halves` — `^0.5` is the `halves = 1` case (issue 3.18).
+    gExpr = if halves == 1 then gExpr0 else Power(gExpr0, _Number(halves))
     // Replace the radical FIRST (simplify cannot reduce √(a²−a²sin²w)), then substitute v.
     // Combine into one factor-cancelled fraction — `simplify` alone does not cancel the
     // common `cos w` in e.g. (1/(2cos w))·(2cos w), which would leave the θ-integral open.
@@ -909,11 +850,6 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
 
 /** Degree cap for the normalised Weierstrass fraction, keeping the linear system solvable. */
 private val MaxWeierstrassDegree = 24
-
-/** Coefficient-wise polynomial sum. */
-private def polyAdd(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-  val n = math.max(a.length, b.length)
-  Vector.tabulate(n)(i => a.lift(i).getOrElse(0.0) + b.lift(i).getOrElse(0.0))
 
 /** Normalises an arithmetic expression over `t` into one polynomial fraction `num/den`
  *  (dense coefficient vectors).  `None` when the expression is not rational in `t` (another

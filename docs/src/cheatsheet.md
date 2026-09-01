@@ -171,6 +171,7 @@ integral(tan(x)^3, x)           -> tan²/2 + ln(cos x)     tan/sec/csc/cot power
 integral(1/((x-1)^2*(x-2)), x)                            full partial fractions, repeated root (3.12)
 integral(1/((x^2+1)*(x-1)), x)                            partial fractions, complex pair (3.12)
 integral(1/(4 - x^2)^0.5, x)    -> asin(x/2)              trig substitution (3.13)
+integral((4 - x^2)^1.5, x)                                any half-integer power (3.18)
 integral(1/(x^2 + 1)^0.5, x)    -> asinh(x)               hyperbolic substitution (3.13)
 integral(1/(2 + cos(x)), x)                               Weierstrass t = tan(x/2) (3.14)
 integral(sin(x)/x, x)           -> Si(x)                  special integral functions (3.15)

@@ -78,3 +78,137 @@ private[leonardo] def polyRoots(cs: Vector[Double]): Option[Vector[_Value]] =
     for i <- 0 until n do mat(i * n + (n - 1)) = -cs(i) / cn  // last column
     for i <- 1 until n do mat(i * n + (i - 1)) = 1.0          // sub-diagonal
     _MatrixValue(n, n, mat).eigenDecompose
+
+
+// ── Arithmetic over coefficient vectors (issue 2.5) ─────────────────────────────
+//
+// These grew inside `Integrate.scala` while issues 3.12–3.16 were built, which recreated
+// exactly the divergence issue 3.1 merged away once before. They live here now, so the
+// three `polyRoots` consumers — the integrator, `Singularity` and the inverse Laplace
+// transform — share one implementation rather than one each.
+
+/** Trims trailing (high-order) negligible coefficients to the true degree; `[0.0]` for zero. */
+private[leonardo] def polyTrim(a: Vector[Double]): Vector[Double] =
+  val d = polyDegree(a)
+  if d < 0 then Vector(0.0) else a.take(d + 1)
+
+/** Coefficient-wise combination of two polynomials under `f`, trimmed — the shared body of
+ *  [[polyAdd]] and [[polySub]], which were near-duplicates before issue 2.5. */
+private def polyZipWith(a: Vector[Double], b: Vector[Double])(f: (Double, Double) => Double): Vector[Double] =
+  val n = math.max(a.length, b.length)
+  polyTrim(Vector.tabulate(n)(i => f(a.lift(i).getOrElse(0.0), b.lift(i).getOrElse(0.0))))
+
+/** Coefficient-wise sum `a + b`, trimmed. */
+private[leonardo] def polyAdd(a: Vector[Double], b: Vector[Double]): Vector[Double] =
+  polyZipWith(a, b)(_ + _)
+
+/** Coefficient-wise difference `a - b`, trimmed. */
+private[leonardo] def polySub(a: Vector[Double], b: Vector[Double]): Vector[Double] =
+  polyZipWith(a, b)(_ - _)
+
+/** Real polynomial multiplication (convolution). */
+private[leonardo] def polyMul(a: Vector[Double], b: Vector[Double]): Vector[Double] =
+  val out = Array.fill(a.length + b.length - 1)(0.0)
+  for i <- a.indices; j <- b.indices do out(i + j) += a(i) * b(j)
+  out.toVector
+
+/** Normalises to a monic polynomial (leading coefficient 1); unchanged for the zero/constant. */
+private[leonardo] def polyMonic(a: Vector[Double]): Vector[Double] =
+  val d = polyDegree(a)
+  if d < 0 then a else a.take(d + 1).map(_ / a(d))
+
+/** Polynomial long division `num / den` -> `(quotient, remainder)` coefficient vectors
+ *  (`num = quotient * den + remainder`, `deg remainder < deg den`). */
+private[leonardo] def polyDivide(num: Vector[Double], den: Vector[Double]): (Vector[Double], Vector[Double]) =
+  val dd   = polyDegree(den)
+  val lc   = den(dd)
+  val dnum = polyDegree(num)
+  if dnum < dd then (Vector(0.0), num)
+  else
+    val rr = num.toArray.clone()
+    val q  = Array.fill(dnum - dd + 1)(0.0)
+    var k  = dnum - dd
+    while k >= 0 do
+      val coef = rr(dd + k) / lc
+      q(k) = coef
+      var i = 0
+      while i <= dd do
+        rr(k + i) -= coef * den(i)
+        i += 1
+      k -= 1
+    (q.toVector, rr.toVector)
+
+/** Horner evaluation of a real-coefficient polynomial at a real point. */
+private[leonardo] def evalCoeffsReal(cs: Vector[Double], x: Double): Double =
+  cs.foldRight(0.0)((c, acc) => acc * x + c)
+
+/** Monic polynomial GCD by the Euclidean algorithm (tolerance via [[polyDegree]]). */
+private[leonardo] def polyGcd(a0: Vector[Double], b0: Vector[Double]): Vector[Double] =
+  var a = polyTrim(a0)
+  var b = polyTrim(b0)
+  while polyDegree(b) >= 0 do
+    val (_, r) = polyDivide(a, b)
+    a = b
+    b = polyTrim(r)
+  polyMonic(a)
+
+/** Square-free factorisation (Yun): each returned `(poly, k)` is the product of the distinct
+ *  factors of `d0` that occur with multiplicity exactly `k`, so `poly` has only simple roots.
+ *
+ *  **This is how multiplicity is read anywhere in the library**, and it exists because
+ *  [[polyRoots]] cannot do the job: the QR iteration does not merely *scatter* a repeated
+ *  root, it can fail to converge on one outright (a pure `(x−1)³` returns nothing).  Splitting
+ *  the polynomial by multiplicity is purely arithmetic — only the square-free parts, whose
+ *  roots are simple and well-conditioned, are ever handed to a root finder.
+ *
+ *  @param d0 dense coefficient vector
+ *  @return `(square-free factor, multiplicity)` pairs, ascending in multiplicity
+ */
+private[leonardo] def squareFreeFactors(d0: Vector[Double]): Vector[(Vector[Double], Int)] =
+  val dd = polyTrim(d0)
+  if polyDegree(dd) < 1 then Vector.empty
+  else
+    val g  = polyGcd(dd, polyTrim(derivCoeffs(dd)))
+    var c  = polyTrim(polyDivide(dd, g)._1)
+    var w  = polySub(polyTrim(polyDivide(polyTrim(derivCoeffs(dd)), g)._1), polyTrim(derivCoeffs(c)))
+    val out = scala.collection.mutable.ListBuffer[(Vector[Double], Int)]()
+    var k  = 1
+    while polyDegree(c) >= 1 do
+      val p = polyGcd(c, w)
+      if polyDegree(p) >= 1 then out += ((polyMonic(p), k))
+      c = polyTrim(polyDivide(c, p)._1)
+      w = polySub(polyTrim(polyDivide(w, p)._1), polyTrim(derivCoeffs(c)))
+      k += 1
+    out.toVector
+
+/** Roots of a square-free polynomial as `(re, im)` pairs; degree 1 and 2 are solved
+ *  analytically (robust), an even polynomial by the `s = t²` reduction (the QR iteration
+ *  does not converge on purely imaginary conjugate pairs, and the Weierstrass denominators
+ *  are exactly that shape), degree ≥ 3 otherwise via [[polyRoots]].
+ *
+ *  @param poly a square-free coefficient vector (simple roots)
+ *  @return the roots as `(real, imaginary)` pairs, or `None` when none can be found
+ */
+private[leonardo] def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Double, Double)]] =
+  polyDegree(poly) match
+    case 1 => Some(Vector((-poly(0) / poly(1), 0.0)))
+    case 2 =>
+      val a = poly(2); val b = poly(1); val c = poly(0)
+      val disc = b * b - 4 * a * c
+      if disc >= 0 then
+        val s = math.sqrt(disc)
+        Some(Vector(((-b + s) / (2 * a), 0.0), ((-b - s) / (2 * a), 0.0)))
+      else
+        val s = math.sqrt(-disc)
+        Some(Vector((-b / (2 * a), s / (2 * a)), (-b / (2 * a), -s / (2 * a))))
+    case d if d >= 3 && poly.indices.forall(i => i % 2 == 0 || math.abs(poly(i)) <= RationalEps) =>
+      // even polynomial p(t) = q(t²): solve q, then each root s of q yields t = ±√s
+      // (the principal complex square root and its negation)
+      rootsOfSquareFree(Vector.tabulate(d / 2 + 1)(i => poly(2 * i))).map(_.flatMap { (a, b) =>
+        val r  = math.sqrt(math.hypot(a, b))
+        val th = math.atan2(b, a) / 2.0
+        val (re, im) = (r * math.cos(th), r * math.sin(th))
+        Vector((re, im), (-re, -im))
+      })
+    case d if d >= 3 => polyRoots(poly).map(_.flatMap(_Complex.parts))
+    case _           => None

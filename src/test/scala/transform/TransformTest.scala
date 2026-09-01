@@ -264,6 +264,36 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
   it should "handle a repeated real pole Lâ»Â¹{1/(s-1)^2} = t*e^{t} (t=0.5)" in:
     approxAt("invlaplace(1/(s-1)^2, s, t)", 0.5 * math.exp(0.5), 1e-4, "t" -> 0.5)
 
+  // -- inverse Laplace: repeated poles at deg >= 3 (issue 3.17) --------------------------
+  // The residue path inverted only DISTINCT poles; square-free factorisation supplies the
+  // multiplicities, so L-1{1/(s-a)^k} = t^(k-1) e^(at)/(k-1)! and its mixed forms now close.
+
+  it should "invert a triple real pole L-1{1/(s-1)^3} = t^2 e^t/2 (t=0.7)" in:
+    approxAt("invlaplace(1/(s-1)^3, s, t)",
+             0.7 * 0.7 * math.exp(0.7) / 2.0, 1e-4, "t" -> 0.7)
+
+  it should "invert a repeated pole beside a distinct one L-1{1/((s-1)^2*(s-2))} (t=0.6)" in:
+    // 1/((s-1)^2 (s-2)) = 1/(s-2) - 1/(s-1) - 1/(s-1)^2
+    val tv = 0.6
+    approxAt("invlaplace(1/((s-1)^2*(s-2)), s, t)",
+             math.exp(2 * tv) - math.exp(tv) - tv * math.exp(tv), 1e-4, "t" -> tv)
+
+  it should "invert a repeated pole at the origin L-1{1/(s^2*(s-1))} (t=0.8)" in:
+    // 1/(s^2 (s-1)) = -1/s - 1/s^2 + 1/(s-1)  ->  -1 - t + e^t
+    val tv = 0.8
+    approxAt("invlaplace(1/(s^2*(s-1)), s, t)", -1.0 - tv + math.exp(tv), 1e-4, "t" -> tv)
+
+  it should "invert a repeated complex pair L-1{1/(s^2+1)^2} (t=1.3)" in:
+    // 1/(s^2+1)^2  ->  (sin t - t cos t)/2
+    val tv = 1.3
+    approxAt("invlaplace(1/(s^2+1)^2, s, t)",
+             (math.sin(tv) - tv * math.cos(tv)) / 2.0, 1e-4, "t" -> tv)
+
+  it should "still invert distinct poles at deg 3 (regression)" in:
+    val tv = 0.5
+    approxAt("invlaplace(1/((s-1)*(s-2)*(s-3)), s, t)",
+             math.exp(tv) / 2.0 - math.exp(2 * tv) + math.exp(3 * tv) / 2.0, 1e-4, "t" -> tv)
+
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ inverse Laplace: linearity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   it should "apply linearity Lâ»Â¹{2/s + 1/(s-1)} = 2 + e^{t} (t=1 â†’ 2+e)" in:
@@ -304,9 +334,11 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ inverse Laplace: symbolic fallback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it should "stay symbolic for deg D â‰¥ 3 (1/s^3)" in:
-    val r = parse("invlaplace(1/s^3, s, t)").eval(emptyEnv).toExpression
-    assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
+  it should "invert deg D >= 3 with a repeated pole: L-1{1/s^3} = t^2/2 (t=1.4)" in:
+    // Previously asserted "stays symbolic": the residue formula A = N(r)/D'(r) is defined
+    // only for a simple pole, so a triple root was refused. Issue 3.17 reads multiplicity
+    // by square-free factorisation instead, and the standard pair now applies.
+    approxAt("invlaplace(1/s^3, s, t)", 1.4 * 1.4 / 2.0, 1e-6, "t" -> 1.4)
 
   it should "stay symbolic for a non-rational input" in:
     val r = parse("invlaplace(sin(s), s, t)").eval(emptyEnv).toExpression
@@ -330,8 +362,10 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
     val expected = 0.2 * math.exp(-1.0) - 0.2 * math.cos(2.0) + 0.1 * math.sin(2.0)
     approxAt("invlaplace(1/((s+1)*(s^2+4)), s, t)", expected, 1e-4, "t" -> 1.0)
 
-  it should "stay symbolic for a repeated pole (1/s^3 -- triple root, D'(0)=0)" in:
-    val r = parse("invlaplace(1/s^3, s, t)").eval(emptyEnv).toExpression
+  it should "still decline a repeated IRREDUCIBLE QUADRATIC beyond the built family" in:
+    // (s^2+1)^3 is the boundary issue 3.17 draws: the t^j damped family continues past
+    // k = 2 but this tier does not build it, and declining beats a wrong inverse.
+    val r = parse("invlaplace(1/(s^2+1)^3, s, t)").eval(emptyEnv).toExpression
     assert(r.isInstanceOf[_InverseLaplace], s"expected symbolic _InverseLaplace, got $r")
 
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ reserved words â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
