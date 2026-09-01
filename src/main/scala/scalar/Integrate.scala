@@ -216,6 +216,86 @@ private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variab
     else Some(simplifyFully(Sum(boundary, Product(Ratio(_Number(n - 1), _Number(n)), lower))))
   }
 
+/** Reduction formula for a tangent or cotangent power (issue 3.11).
+ *
+ *  {{{
+ *  ∫ tan^n(u) dx =  tan^(n-1)(u)/((n-1)·a) − ∫ tan^(n-2)(u) dx
+ *  ∫ cot^n(u) dx = −cot^(n-1)(u)/((n-1)·a) − ∫ cot^(n-2)(u) dx
+ *  }}}
+ *  The boundary term differs only by sign; both recur with coefficient `−1`, dropping `n`
+ *  by two per step.  Unlike [[reduceSinCosPower]], the `n = 1` base case (`∫ tan`, `∫ cot`)
+ *  lives in the data-driven table, not in [[integrateImpl]], so the recursive step is taken
+ *  through [[resolve]] (which consults the table) rather than `integrateImpl` directly.
+ *
+ *  @param isTan `true` for a tangent power, `false` for a cotangent power
+ *  @param u     the (linear) inner argument
+ *  @param n     the integer exponent (guaranteed in `[2, MaxReductionPower]` by the caller)
+ *  @param v     the integration variable
+ *  @return the antiderivative, or `None` when `u` is not linear or the recursion fails to close
+ */
+private def reduceTanCotPower(isTan: Boolean, u: _Expression, n: Int, v: _Variable): Option[_Expression] =
+  linearSlope(u, v).flatMap { a =>
+    val base     = if isTan then Tg(u) else Cot(u)
+    val sign     = if isTan then _Number(1) else _Number(-1)
+    val boundary = Ratio(Product(sign, Power(base, _Number(n - 1))), _Number((n - 1) * a))
+    val lower    = resolve(simplifyFully(Power(base, _Number(n - 2))), v, 0)
+    if containsIntegral(lower) then None
+    else Some(simplifyFully(Sum(boundary, Product(_Number(-1), lower))))
+  }
+
+/** Reduction formula for a secant or cosecant power (issue 3.11).
+ *
+ *  {{{
+ *  ∫ sec^n(u) dx =  sec^(n-2)(u)·tan(u)/((n-1)·a) + (n-2)/(n-1)·∫ sec^(n-2)(u) dx
+ *  ∫ csc^n(u) dx = −csc^(n-2)(u)·cot(u)/((n-1)·a) + (n-2)/(n-1)·∫ csc^(n-2)(u) dx
+ *  }}}
+ *  The `n = 1` base case (`∫ sec`, `∫ csc`) lives in the table, so the recursive step goes
+ *  through [[resolve]] as in [[reduceTanCotPower]].
+ *
+ *  @param isSec `true` for a secant power, `false` for a cosecant power
+ *  @param u     the (linear) inner argument
+ *  @param n     the integer exponent (guaranteed in `[2, MaxReductionPower]` by the caller)
+ *  @param v     the integration variable
+ *  @return the antiderivative, or `None` when `u` is not linear or the recursion fails to close
+ */
+private def reduceSecCscPower(isSec: Boolean, u: _Expression, n: Int, v: _Variable): Option[_Expression] =
+  linearSlope(u, v).flatMap { a =>
+    val base     = if isSec then Sec(u) else Csc(u)
+    val other    = if isSec then Tg(u) else Cot(u)
+    val sign     = if isSec then _Number(1) else _Number(-1)
+    val boundary = Ratio(Product(sign, Product(Power(base, _Number(n - 2)), other)), _Number((n - 1) * a))
+    val lower    = resolve(simplifyFully(Power(base, _Number(n - 2))), v, 0)
+    if containsIntegral(lower) then None
+    else Some(simplifyFully(Sum(boundary, Product(Ratio(_Number(n - 2), _Number(n - 1)), lower))))
+  }
+
+/** Reduction formula for a hyperbolic sine or cosine power (the hyperbolic mirror of
+ *  [[reduceSinCosPower]], needed by the trig-substitution tier's `√(v²±a²)` results).
+ *
+ *  {{{
+ *  ∫ sinh^n(u) dx = sinh^(n-1)(u)·cosh(u)/(a·n) − (n-1)/n·∫ sinh^(n-2)(u) dx
+ *  ∫ cosh^n(u) dx = cosh^(n-1)(u)·sinh(u)/(a·n) + (n-1)/n·∫ cosh^(n-2)(u) dx
+ *  }}}
+ *  The `n = 1` base cases (`∫ sinh`, `∫ cosh`) live in the table, so the recursive step goes
+ *  through [[resolve]].
+ *
+ *  @param isSinh `true` for a `sinh` power, `false` for a `cosh` power
+ *  @param u      the (linear) inner argument
+ *  @param n      the integer exponent (guaranteed in `[2, MaxReductionPower]` by the caller)
+ *  @param v      the integration variable
+ *  @return the antiderivative, or `None` when `u` is not linear or the recursion fails to close
+ */
+private def reduceSinhCoshPower(isSinh: Boolean, u: _Expression, n: Int, v: _Variable): Option[_Expression] =
+  linearSlope(u, v).flatMap { a =>
+    val base     = if isSinh then Sinh(u) else Cosh(u)
+    val other    = if isSinh then Cosh(u) else Sinh(u)
+    val boundary = Ratio(Product(Power(base, _Number(n - 1)), other), _Number(a * n))
+    val coeff    = if isSinh then Ratio(_Number(-(n - 1)), _Number(n)) else Ratio(_Number(n - 1), _Number(n))
+    val lower    = resolve(simplifyFully(Power(base, _Number(n - 2))), v, 0)
+    if containsIntegral(lower) then None
+    else Some(simplifyFully(Sum(boundary, Product(coeff, lower))))
+  }
+
 
 // ── Rational-function integration by partial fractions (issue 4.C) ──────────────
 //
@@ -305,7 +385,7 @@ private def integrateProperRational(num: Vector[Double], den: Vector[Double], v:
       val n0 = num.headOption.getOrElse(0.0)
       Some(logTerm(n0 / d1, simplifyFully(Sum(Product(_Number(d1), v), _Number(d0)))))
     case 2           => integrateQuadraticDen(num, den, v)
-    case d if d >= 3 => integrateByResidues(num, den, v)
+    case d if d >= 3 => integratePartialFractions(num, den, v)
     case _           => None
 
 /** Integrates `(n1*v + n0)/(c2*v^2 + c1*v + c0)` by completing the square.
@@ -340,22 +420,208 @@ private def integrateQuadraticDen(num: Vector[Double], den: Vector[Double], v: _
     val a2 = (n1 * r2 + n0) / (r2 - r1)
     Some(simplifyFully(Sum(logTerm(a1, Sum(v, _Number(-r1))), logTerm(a2, Sum(v, _Number(-r2))))))
 
-/** Integrates a proper rational with `deg den >= 3` by residues, when all roots of `den`
- *  are real and distinct: `sum over roots r of  N(r)/D'(r) * ln(v - r)`.
+// ── Full partial-fraction decomposition (issue 3.12) ────────────────────────────
+//
+// Generalises the old residue-only path (distinct real roots) to the complete real
+// decomposition: repeated real roots (v - r)^m, and irreducible quadratics (v^2 + p v + q)
+// from complex conjugate pairs, repeated or not. The unknown numerators are found by
+// undetermined coefficients — a dense linear system solved with `core._MatrixValue.inverse`,
+// the same cross-layer choice `padeApproximant` makes (`equation.solveSystem` is unreachable
+// from `scalar`). Multiplicities come from SQUARE-FREE FACTORISATION (Yun's algorithm), not
+// from root-finding: `polyRoots` (QR iteration) does not converge on a repeated root, so the
+// denominator is first split by repeated-factor multiplicity via polynomial GCDs — a purely
+// arithmetic step — and only the resulting square-free parts (simple roots, well-conditioned)
+// are handed to `polyRoots`.
+
+/** Real polynomial multiplication (convolution). */
+private def polyMul(a: Vector[Double], b: Vector[Double]): Vector[Double] =
+  val out = Array.fill(a.length + b.length - 1)(0.0)
+  for i <- a.indices; j <- b.indices do out(i + j) += a(i) * b(j)
+  out.toVector
+
+/** Trims trailing (high-order) negligible coefficients to the true degree; `[0.0]` for zero. */
+private def polyTrim(a: Vector[Double]): Vector[Double] =
+  val d = polyDegree(a)
+  if d < 0 then Vector(0.0) else a.take(d + 1)
+
+/** Coefficient-wise difference `a - b`, trimmed. */
+private def polySub(a: Vector[Double], b: Vector[Double]): Vector[Double] =
+  val n = math.max(a.length, b.length)
+  polyTrim(Vector.tabulate(n)(i => a.lift(i).getOrElse(0.0) - b.lift(i).getOrElse(0.0)))
+
+/** Normalises to a monic polynomial (leading coefficient 1); unchanged for the zero/constant. */
+private def polyMonic(a: Vector[Double]): Vector[Double] =
+  val d = polyDegree(a)
+  if d < 0 then a else a.take(d + 1).map(_ / a(d))
+
+/** Monic polynomial GCD by the Euclidean algorithm (tolerance via [[polyDegree]]). */
+private def polyGcd(a0: Vector[Double], b0: Vector[Double]): Vector[Double] =
+  var a = polyTrim(a0)
+  var b = polyTrim(b0)
+  while polyDegree(b) >= 0 do
+    val (_, r) = polyDivide(a, b)
+    a = b
+    b = polyTrim(r)
+  polyMonic(a)
+
+/** Square-free factorisation (Yun): each returned `(poly, k)` is the product of the distinct
+ *  factors of `d0` that occur with multiplicity exactly `k`, so `poly` has only simple roots.
+ *  This separates the multiplicities arithmetically, before any root-finding. */
+private def squareFreeFactors(d0: Vector[Double]): Vector[(Vector[Double], Int)] =
+  val dd = polyTrim(d0)
+  if polyDegree(dd) < 1 then Vector.empty
+  else
+    val g  = polyGcd(dd, polyTrim(derivCoeffs(dd)))
+    var c  = polyTrim(polyDivide(dd, g)._1)
+    var w  = polySub(polyTrim(polyDivide(polyTrim(derivCoeffs(dd)), g)._1), polyTrim(derivCoeffs(c)))
+    val out = scala.collection.mutable.ListBuffer[(Vector[Double], Int)]()
+    var k  = 1
+    while polyDegree(c) >= 1 do
+      val p = polyGcd(c, w)
+      if polyDegree(p) >= 1 then out += ((polyMonic(p), k))
+      c = polyTrim(polyDivide(c, p)._1)
+      w = polySub(polyTrim(polyDivide(w, p)._1), polyTrim(derivCoeffs(c)))
+      k += 1
+    out.toVector
+
+/** Roots of a square-free polynomial as `(re, im)` pairs; degree 1 and 2 are solved
+ *  analytically (robust), degree ≥ 3 via [[polyRoots]] (its simple roots converge). */
+private def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Double, Double)]] =
+  polyDegree(poly) match
+    case 1 => Some(Vector((-poly(0) / poly(1), 0.0)))
+    case 2 =>
+      val a = poly(2); val b = poly(1); val c = poly(0)
+      val disc = b * b - 4 * a * c
+      if disc >= 0 then
+        val s = math.sqrt(disc)
+        Some(Vector(((-b + s) / (2 * a), 0.0), ((-b - s) / (2 * a), 0.0)))
+      else
+        val s = math.sqrt(-disc)
+        Some(Vector((-b / (2 * a), s / (2 * a)), (-b / (2 * a), -s / (2 * a))))
+    case d if d >= 3 => polyRoots(poly).map(_.flatMap(_Complex.parts))
+    case _           => None
+
+/** Factorises `den` into real linear factors `(v - r)^m` and irreducible quadratics
+ *  `(v^2 + p v + q)^m` (from complex conjugate pairs), via square-free factorisation so
+ *  repeated roots are handled without root-finding.  Accepted only when the reconstructed
+ *  product matches `den`, rejecting a mis-factorisation rather than integrating a wrong one.
  *
- *  Any complex root or repeated root leaves the integral symbolic (`None`).
+ *  @return `(realFactors, quadFactors)` as `((root, mult), (p, q, mult))`, or `None`
  */
-private def integrateByResidues(num: Vector[Double], den: Vector[Double], v: _Variable): Option[_Expression] =
-  polyRoots(den).flatMap { roots =>
-    val reals = roots.collect { case _Number(re) => re }
-    if reals.size != roots.size then None                     // a complex root -> out of scope
-    else if reals.combinations(2).exists((pair: Vector[Double]) => math.abs(pair(0) - pair(1)) < 1e-6) then None  // repeated
+private def factorDenominator(den: Vector[Double]): Option[(Vector[(Double, Int)], Vector[(Double, Double, Int)])] =
+  val sqf = squareFreeFactors(den)
+  if sqf.isEmpty then None
+  else
+    val realB = scala.collection.mutable.ListBuffer[(Double, Int)]()
+    val quadB = scala.collection.mutable.ListBuffer[(Double, Double, Int)]()
+    val ok = sqf.forall { (poly, k) =>
+      rootsOfSquareFree(poly) match
+        case None => false
+        case Some(parts) =>
+          val (reals, comps) = parts.partition((_, im) => math.abs(im) < 1e-6)
+          reals.foreach((re, _) => realB += ((re, k)))
+          comps.filter(_._2 > 0.0).foreach((re, im) => quadB += ((-2.0 * re, re * re + im * im, k)))
+          true
+    }
+    val deg      = polyDegree(den)
+    val totalMul = realB.map(_._2).sum + 2 * quadB.map(_._3).sum
+    if !ok || totalMul != deg then None
     else
-      val dden  = derivCoeffs(den)
-      val terms = reals.map { r =>
-        logTerm(evalCoeffsReal(num, r) / evalCoeffsReal(dden, r), Sum(v, _Number(-r)))
+      // reconstruction check: lead * Π factors must match den (guards a mis-factorisation)
+      val lead  = den(deg)
+      val recon = (realB.flatMap((r, m) => Vector.fill(m)(Vector(-r, 1.0))) ++
+                   quadB.flatMap((p, q, m) => Vector.fill(m)(Vector(q, p, 1.0))))
+        .foldLeft(Vector(lead))(polyMul)
+      val matches = recon.length == den.length &&
+                    recon.indices.forall(i => math.abs(recon(i) - den(i)) <= 1e-3 * (1.0 + math.abs(den(i))))
+      if matches then Some((realB.toVector, quadB.toVector)) else None
+
+/** `∫ dv/(v^2 + p v + q)^j` for an irreducible quadratic (`w2 = q - p^2/4 > 0`), by the
+ *  standard reduction on `j` down to `I_1 = atan((v + p/2)/w)/w`. */
+private def integralInvQuadPower(p: Double, q: Double, j: Int, quadExpr: _Expression, v: _Variable): _Expression =
+  val w2 = q - p * p / 4.0
+  val s  = simplifyFully(Sum(v, _Number(p / 2.0)))          // v + p/2
+  if j == 1 then
+    val w = math.sqrt(w2)
+    Ratio(Atan(Ratio(s, _Number(w))), _Number(w))
+  else
+    val term = scaleBy(1.0 / (2.0 * (j - 1) * w2), Ratio(s, Power(quadExpr, _Number(j - 1))))
+    val rec  = scaleBy((2.0 * j - 3.0) / (2.0 * (j - 1) * w2), integralInvQuadPower(p, q, j - 1, quadExpr, v))
+    Sum(term, rec)
+
+/** `∫ (B v + C)/(v^2 + p v + q)^j dv` for an irreducible quadratic — the `(2v+p)` part
+ *  (derivative of the quadratic) integrates directly, the constant remainder via
+ *  [[integralInvQuadPower]]. */
+private def integrateQuadPowerTerm(bCoef: Double, cCoef: Double, p: Double, q: Double, j: Int, v: _Variable): _Expression =
+  val quadExpr = simplifyFully(Sum(Sum(Power(v, _Number(2)), Product(_Number(p), v)), _Number(q)))
+  // B v + C = (B/2)(2v + p) + (C - B p/2)
+  val derivPart =
+    if j == 1 then logTerm(bCoef / 2.0, quadExpr)
+    else scaleBy(-(bCoef / 2.0) / (j - 1), Ratio(_Number(1), Power(quadExpr, _Number(j - 1))))
+  val constPart = scaleBy(cCoef - bCoef * p / 2.0, integralInvQuadPower(p, q, j, quadExpr, v))
+  Sum(derivPart, constPart)
+
+/** Integrates a proper rational `num/den` (`deg den >= 3`, numeric coefficients) by the full
+ *  real partial-fraction decomposition (issue 3.12).
+ *
+ *  @return the antiderivative, or `None` when the denominator cannot be factored/reconstructed
+ *          or the coefficient system is singular
+ */
+private def integratePartialFractions(num: Vector[Double], den: Vector[Double], v: _Variable): Option[_Expression] =
+  factorDenominator(den).flatMap { (realFactors, quadFactors) =>
+    val deg  = polyDegree(den)
+    val lead = den(deg)
+    // All factor polynomials, in a fixed order (reals first, then quadratics), with mult.
+    val factorPolys = realFactors.map((r, m) => (Vector(-r, 1.0), m)) ++
+                      quadFactors.map((p, q, m) => (Vector(q, p, 1.0), m))
+    // Product of every factor^mult, but with the `reduce`-th factor's exponent lowered by `by`.
+    def cofactor(reduce: Int, by: Int): Vector[Double] =
+      factorPolys.zipWithIndex.foldLeft(Vector(lead)) { case (acc, ((poly, m), idx)) =>
+        val exp = if idx == reduce then m - by else m
+        (0 until exp).foldLeft(acc)((p, _) => polyMul(p, poly))
       }
-      if terms.isEmpty then None else Some(simplifyFully(terms.reduce((a, b) => Sum(a, b))))
+    // Build one column per unknown; remember each column's term so the solution can be read.
+    enum Term:
+      case Real(r: Double, j: Int)
+      case Quad(p: Double, q: Double, j: Int, ofV: Boolean)   // ofV: numerator is v (else 1)
+    val columns = scala.collection.mutable.ListBuffer[(Term, Vector[Double])]()
+    realFactors.zipWithIndex.foreach { case ((r, m), i) =>
+      for j <- 1 to m do columns += ((Term.Real(r, j), cofactor(i, j)))
+    }
+    val quadBase = realFactors.length
+    quadFactors.zipWithIndex.foreach { case ((p, q, m), k) =>
+      for j <- 1 to m do
+        val cof = cofactor(quadBase + k, j)
+        columns += ((Term.Quad(p, q, j, false), cof))               // constant numerator
+        columns += ((Term.Quad(p, q, j, true), polyMul(Vector(0.0, 1.0), cof)))  // v * cofactor
+    }
+    if columns.sizeIs != deg then None
+    else
+      // Dense system M x = b: row = power of v (0..deg-1), column = unknown.
+      val mat = Array.fill(deg * deg)(0.0)
+      columns.zipWithIndex.foreach { case ((_, col), c) =>
+        for r <- 0 until deg do mat(r * deg + c) = col.lift(r).getOrElse(0.0)
+      }
+      val rhs = Array.tabulate(deg)(i => num.lift(i).getOrElse(0.0))
+      _MatrixValue(deg, deg, mat).inverse.map { inv =>
+        val x     = inv.multiply(_MatrixValue(deg, 1, rhs)).toVector
+        val terms = columns.zipWithIndex.collect {
+          case ((Term.Real(r, j), _), i) if math.abs(x(i)) > RationalEps =>
+            if j == 1 then logTerm(x(i), Sum(v, _Number(-r)))
+            else scaleBy(-x(i) / (j - 1), Ratio(_Number(1), Power(Sum(v, _Number(-r)), _Number(j - 1))))
+        }.toVector
+        // Quadratic terms pair a constant-numerator unknown with its v-numerator unknown.
+        val quadTerms = columns.zipWithIndex.collect {
+          case ((Term.Quad(p, q, j, false), _), i) => (p, q, j, x(i), i)
+        }.map { (p, q, j, cCoef, ci) =>
+          val bCoef = columns.zipWithIndex.collectFirst {
+            case ((Term.Quad(pp, qq, jj, true), _), bi) if pp == p && qq == q && jj == j => x(bi)
+          }.getOrElse(0.0)
+          integrateQuadPowerTerm(bCoef, cCoef, p, q, j, v)
+        }
+        val all = terms ++ quadTerms
+        if all.isEmpty then _Number(0) else simplifyFully(all.reduce((a, b) => Sum(a, b)))
+      }
   }
 
 /** Integrates a rational function `numE / denE` when both are polynomials in `v`.
@@ -418,9 +684,18 @@ private def resolve(e: _Expression, v: _Variable, subDepth: Int): _Expression =
   val compiled = integrateImpl(e, v, 0)
   if !containsIntegral(compiled) then compiled
   else
-    integralRules.applyTo(e, v)
-      .orElse(integrateBySubstitution(e, v, subDepth))
-      .getOrElse(compiled)
+    // Second compiled attempt on the node-normalised form: a user-typed ratio such as
+    // `1/cos(x)^2` reaches `integrateImpl` un-normalised and misses the reciprocal-node
+    // tiers (e.g. the `Power(Sec, n)` reduction, 3.11), which `simplify` would have exposed
+    // (`1/cos^2 -> sec^2`).  Run only on give-up, so nothing that already closed changes.
+    val es        = simplifyFully(e)
+    val compiled2 = if es != e then integrateImpl(es, v, 0) else compiled
+    if !containsIntegral(compiled2) then compiled2
+    else
+      integralRules.applyTo(e, v)
+        .orElse(integrateBySubstitution(e, v, subDepth))
+        .orElse(integrateByTrigSub(e, v))
+        .getOrElse(compiled)
 
 /** Maximum nesting of u-substitutions before giving up (a substituted integral may itself
  *  need a further substitution; the bound stops the recursion from running away). */
@@ -433,10 +708,13 @@ private val MaxSubstitutionCandidates = 8
 private def treeSize(e: _Expression): Int = 1 + e.children.map(treeSize).sum
 
 /** Flattens a product into its factor list (`a·b·c` → `[a, b, c]`); a non-product is a
- *  single factor. */
+ *  single factor.  A power of a product is split so its factors surface too
+ *  (`(2·sin w)^2` → `[2^2, sin(w)^2]`), which is what lets factor cancellation and the
+ *  `[cos w, cos w]`-style grouping reach a substituted power. */
 private def flattenFactors(e: _Expression): List[_Expression] = e match
-  case Product(a, b) => flattenFactors(a) ++ flattenFactors(b)
-  case _             => List(e)
+  case Product(a, b)          => flattenFactors(a) ++ flattenFactors(b)
+  case Power(Product(a, b), n) => flattenFactors(Power(a, n)) ++ flattenFactors(Power(b, n))
+  case _                       => List(e)
 
 /** Rebuilds a product from a factor list; the empty list is the unit `1`. */
 private def productOf(fs: List[_Expression]): _Expression =
@@ -462,7 +740,13 @@ private def cancelRatio(num: _Expression, den: _Expression): _Expression =
     val i = denF.indexOf(f)
     if i >= 0 then { denF.remove(i); false } else true
   }
-  simplifyFully(Ratio(productOf(keptNum), productOf(denF.toList)))
+  simplifyFully(Ratio(productOf(groupIdentical(keptNum)), productOf(groupIdentical(denF.toList))))
+
+/** Collapses repeated identical factors into a power (`[cos w, cos w] -> [cos(w)^2]`), so a
+ *  product of equal factors folds — `simplify` does not combine equals nested in a product,
+ *  which would leave e.g. `(4·cos w)·cos w` unrecognised by the `cos^n` reduction tier. */
+private def groupIdentical(fs: List[_Expression]): List[_Expression] =
+  fs.groupBy(identity).toList.map((f, occ) => if occ.sizeIs == 1 then f else Power(f, _Number(occ.size)))
 
 /** Collects candidate inner functions `g` for u-substitution from the integrand.
  *
@@ -525,6 +809,81 @@ private def integrateBySubstitution(e: _Expression, v: _Variable, subDepth: Int)
             else Some(simplifyFully(substitute(inner, Map(u.variable -> g))))
     }.nextOption()
 
+
+// ── Trigonometric / hyperbolic substitution (issue 3.13) ────────────────────────
+//
+// Radical integrands √(a²−v²), √(a²+v²), √(v²−a²) close by the substitution that turns the
+// radical into a single trig/hyperbolic factor. The ± cases use the HYPERBOLIC substitution
+// (v = a·sinh t / a·cosh t) rather than tan/sec, so the "angle" back-substitutes through the
+// 3.9 inverse-hyperbolic nodes (asinh / acosh) and the result is written in them directly:
+//   √(a²−v²): v = a·sinθ,  dv = a·cosθ dθ,  radical → a·cosθ,   θ = asin(v/a)
+//   √(a²+v²): v = a·sinh t, dv = a·cosh t dt, radical → a·cosh t, t = asinh(v/a)
+//   √(v²−a²): v = a·cosh t, dv = a·sinh t dt, radical → a·sinh t, t = acosh(v/a)
+// The radical node is replaced explicitly (`simplify` does not know the Pythagorean identity),
+// v is substituted in the rest, the θ-integral is taken through `resolve`, and the inverse map
+// is substituted back — leaving the result numerically exact even where `sin(asin(x))` and the
+// like do not algebraically collapse.
+
+/** Attempts a trig/hyperbolic substitution for an integrand containing `√(c2·v² + c0)`.
+ *
+ *  Scans for a square-root node whose radicand is quadratic in `v` (no linear term) with
+ *  numeric coefficients, classifies the three radical forms, and integrates in a fresh
+ *  variable via [[resolve]].  `None` when no radical matches or the transformed integral does
+ *  not close.
+ *
+ *  @param e the integrand
+ *  @param v the integration variable
+ *  @return `Some(antiderivative)` on success, `None` to stay symbolic
+ */
+private def integrateByTrigSub(e: _Expression, v: _Variable): Option[_Expression] =
+  val radicals = scala.collection.mutable.ListBuffer[_Expression]()
+  def walk(x: _Expression): Unit =
+    x match
+      case pw @ Power(base, _Number(ex)) if math.abs(ex - 0.5) < 1e-12 && dependsOn(base, v) => radicals += pw
+      case _                                                                                 =>
+    x.children.foreach(walk)
+  walk(e)
+  radicals.iterator.flatMap(r => trigSubWith(e, v, r)).nextOption()
+
+/** Performs the trig/hyperbolic substitution for one radical node (see [[integrateByTrigSub]]). */
+private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Option[_Expression] =
+  val radicand = radical match
+    case Power(b, _) => b
+    case _           => radical
+  for
+    cs  <- collect(radicand, v)
+    if cs.length == 3
+    c0  <- constValue(cs(0)); c1 <- constValue(cs(1)); c2 <- constValue(cs(2))
+    if math.abs(c1) < RationalEps && math.abs(c2) > RationalEps
+    w    = freshVar(e.freeVars + v.variable)
+    scale = math.sqrt(math.abs(c2))
+    ratio = c0 / c2
+    // (v = h(w), dv/dw = hp(w), radical → gExpr(w), w = inverseAngle(v))
+    setup <-
+      if c2 < 0.0 && c0 > 0.0 then
+        val a = math.sqrt(-ratio)                     // √(a² − v²), a² = c0/|c2|
+        Some((Product(_Number(a), Sin(w)), Product(_Number(a), Cos(w)),
+              Product(_Number(scale * a), Cos(w)), Asin(Ratio(v, _Number(a)))))
+      else if c2 > 0.0 && c0 > 0.0 then
+        val a = math.sqrt(ratio)                      // √(v² + a²)
+        Some((Product(_Number(a), Sinh(w)), Product(_Number(a), Cosh(w)),
+              Product(_Number(scale * a), Cosh(w)), Asinh(Ratio(v, _Number(a)))))
+      else if c2 > 0.0 && c0 < 0.0 then
+        val a = math.sqrt(-ratio)                     // √(v² − a²)
+        Some((Product(_Number(a), Cosh(w)), Product(_Number(a), Sinh(w)),
+              Product(_Number(scale * a), Sinh(w)), Acosh(Ratio(v, _Number(a)))))
+      else None
+    (hw, hpw, gExpr, inverse) = setup
+    // Replace the radical FIRST (simplify cannot reduce √(a²−a²sin²w)), then substitute v.
+    // Combine into one factor-cancelled fraction — `simplify` alone does not cancel the
+    // common `cos w` in e.g. (1/(2cos w))·(2cos w), which would leave the θ-integral open.
+    substituted  = substitute(replaceSubexpr(e, radical, gExpr), Map(v.variable -> hw))
+    (nn, dd)     = asFraction(Product(substituted, hpw))
+    newIntegrand = cancelRatio(nn, dd)
+    fW           = resolve(newIntegrand, w, 0)
+    if !containsIntegral(fW)
+  yield simplifyFully(substitute(fW, Map(w.variable -> inverse)))
+
 /** Rule-table implementation of [[integrate]], threading the parts-recursion `depth`.
  *
  *  @param e     the integrand
@@ -562,6 +921,24 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression
     reduceSinCosPower(isSin = true, u, n.toInt, v, depth).getOrElse(_Integral(e, v))
   case Power(Cos(u), _Number(n)) if isReduciblePower(n) =>
     reduceSinCosPower(isSin = false, u, n.toInt, v, depth).getOrElse(_Integral(e, v))
+
+  // tan/cot/sec/csc power reduction (issue 3.11), same placement rationale as sin/cos:
+  //   integer n in [2, MaxReductionPower], u linear in v. The n=1 base cases live in the
+  //   data-driven table, so the reducers recurse through `resolve` (which consults it).
+  case Power(Tg(u), _Number(n)) if isReduciblePower(n) =>
+    reduceTanCotPower(isTan = true, u, n.toInt, v).getOrElse(_Integral(e, v))
+  case Power(Cot(u), _Number(n)) if isReduciblePower(n) =>
+    reduceTanCotPower(isTan = false, u, n.toInt, v).getOrElse(_Integral(e, v))
+  case Power(Sec(u), _Number(n)) if isReduciblePower(n) =>
+    reduceSecCscPower(isSec = true, u, n.toInt, v).getOrElse(_Integral(e, v))
+  case Power(Csc(u), _Number(n)) if isReduciblePower(n) =>
+    reduceSecCscPower(isSec = false, u, n.toInt, v).getOrElse(_Integral(e, v))
+
+  // hyperbolic sinh/cosh power reduction (issue 3.13's helper) — same placement rationale.
+  case Power(Sinh(u), _Number(n)) if isReduciblePower(n) =>
+    reduceSinhCoshPower(isSinh = true, u, n.toInt, v).getOrElse(_Integral(e, v))
+  case Power(Cosh(u), _Number(n)) if isReduciblePower(n) =>
+    reduceSinhCoshPower(isSinh = false, u, n.toInt, v).getOrElse(_Integral(e, v))
 
   // power rule over a linear argument u (slope a):
   //   integral(u^n, v) = u^(n+1) / (a*(n+1))   for n != -1

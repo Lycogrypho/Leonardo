@@ -95,23 +95,14 @@ object integralRules:
       rhs  = Product(_Number(-1), Ln(Cos(V))),
       name = "tan"),
 
-    // ∫ tan(v)^2 dv = tan(v) - v          [listed before the generic aᵛ power rule]
-    RewriteRule(
-      lhs  = Power(Tg(V), _Number(2)),
-      rhs  = Sum(Tg(V), Product(_Number(-1), V)),
-      name = "tan^2"),
+    // NOTE: the integer POWERS tan^n / cot^n / sec^n / csc^n (n >= 2) are handled by the
+    // compiled reduction tier (issue 3.11, reduceTanCotPower / reduceSecCscPower in
+    // Integrate.scala), which recurses down to these n=1 base cases. No tan^2 / sec^2 / csc^2
+    // entries live here: a table rule that never fires (the compiled tier closes it first)
+    // would only be a second, silently-diverging definition of the same fact.
 
     // ∫ cot(v) dv = ln(sin(v))
     RewriteRule(lhs = Cot(V), rhs = Ln(Sin(V)), name = "cot"),
-
-    // ∫ sec(v)^2 dv = tan(v)              [before the plain sec(v) entry]
-    RewriteRule(lhs = Power(Sec(V), _Number(2)), rhs = Tg(V), name = "sec^2"),
-
-    // ∫ csc(v)^2 dv = -cot(v)
-    RewriteRule(
-      lhs  = Power(Csc(V), _Number(2)),
-      rhs  = Product(_Number(-1), Cot(V)),
-      name = "csc^2"),
 
     // ∫ sec(v)·tan(v) dv = sec(v).  The `sin/cos²` spelling does not normalise to a node
     // (its numerator is not 1), so it keeps its own ratio entry beside the product form.

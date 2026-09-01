@@ -97,6 +97,15 @@ integrates in `g` only when the quotient is free of `x`.
 integrate(Product(x, Exp(Power(x, _Number(2.0)))), x).toString
 ```
 
+Radical integrands close by **trigonometric / hyperbolic substitution**; `√(a²+x²)` and
+`√(x²−a²)` use the hyperbolic substitution, so the result is written with the `asinh`/`acosh`
+functions:
+
+```scala mdoc
+// ∫ dx/√(x²+1) = asinh(x)
+integrate(Ratio(_Number(1.0), Power(Sum(Power(x, _Number(2.0)), _Number(1.0)), _Number(0.5))), x).toString
+```
+
 Unsupported forms are left as `_Integral` nodes (symbolic, not an error):
 
 ```scala mdoc

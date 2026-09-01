@@ -165,6 +165,11 @@ integral(k^x, x)                -> k^x / ln(k)            symbolic base free of 
 integral(1/(a^2 + x^2), x)      -> atan(x/a) / a          symbolic parameter a
 integral(x * exp(x^2), x)       -> exp(x^2)/2             non-linear u-substitution (u = x²)
 integral(sin(x)^3 * cos(x), x)  -> sin(x)^4/4             u = sin(x)
+integral(tan(x)^3, x)           -> tan²/2 + ln(cos x)     tan/sec/csc/cot power reduction (3.11)
+integral(1/((x-1)^2*(x-2)), x)                            full partial fractions, repeated root (3.12)
+integral(1/((x^2+1)*(x-1)), x)                            partial fractions, complex pair (3.12)
+integral(1/(4 - x^2)^0.5, x)    -> asin(x/2)              trig substitution (3.13)
+integral(1/(x^2 + 1)^0.5, x)    -> asinh(x)               hyperbolic substitution (3.13)
 ```
 
 ### Definite integration (Simpson's rule)

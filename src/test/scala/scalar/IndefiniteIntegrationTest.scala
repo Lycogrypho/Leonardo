@@ -316,10 +316,14 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
     assertAntiderivative(Ratio(_Number(1), den), 3.5, 4.0, 5.0)
   }
 
-  "âˆ« 1/((xÂ²+1)(x-1)) dx (deg 3 with complex roots)" should "stay symbolic" in
+  "âˆ« 1/((xÂ²+1)(x-1)) dx (deg 3 with complex roots)" should "now close via full partial fractions" in
   {
+    // This test previously asserted "stays symbolic": the old residue path declined any
+    // complex root at deg >= 3.  Issue 3.12 lifts that to the full real decomposition
+    // (irreducible quadratics in log+arctan form), so the integral now closes.  Sample x > 1
+    // so ln(x-1) stays real.
     val den = Product(Sum(Power(x, _Number(2)), _Number(1)), Sum(x, _Number(-1)))
-    assert(integrate(Ratio(_Number(1), den), x) == _Integral(Ratio(_Number(1), den), x))
+    assertAntiderivative(Ratio(_Number(1), den), 1.5, 2.0, 3.0)
   }
 
   // --- formerly deferred parts cases, now unblocked by the rational tier (4.C) ---
