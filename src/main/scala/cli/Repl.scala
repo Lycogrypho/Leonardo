@@ -1137,13 +1137,21 @@ private[cli] def greekKeySequences: List[(String, String)] =
  *  cannot be exercised by the suite, so the decisions live in those two values where they
  *  can be, and this function only applies them.
  *
+ *  The key map is looked up through `Option`: `getKeyMaps` is a plain `java.util.Map`, so
+ *  its `get` yields `null` for a reader without a MAIN map, and binding through that
+ *  reference would fail REPL start-up with an NPE.  A session without the chords is
+ *  strictly better than one that will not start, so an absent map skips the binding step
+ *  and the widgets are registered regardless (issue 1.4).
+ *
  *  @param reader the line reader whose MAIN key map is extended
  */
 private[cli] def installGreekChords(reader: LineReader): Unit =
-  val keyMap = reader.getKeyMaps.get(LineReader.MAIN)
   for (letter, symbol) <- GreekChords do
     reader.getWidgets.put(s"insert-greek-$letter", () => { reader.getBuffer.write(symbol); true })
-  for (seq, widget) <- greekKeySequences do keyMap.bind(new Reference(widget), seq)
+  for
+    keyMap        <- Option(reader.getKeyMaps.get(LineReader.MAIN))
+    (seq, widget) <- greekKeySequences
+  do keyMap.bind(new Reference(widget), seq)
 
 
 /** Entry point for the interactive Leonardo REPL. */

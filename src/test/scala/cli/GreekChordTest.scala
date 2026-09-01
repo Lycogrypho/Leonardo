@@ -1,6 +1,8 @@
 package it.grypho.scala.leonardo
 package cli
 
+import org.jline.keymap.KeyMap
+import org.jline.reader.{Binding, LineReader, Reference, Widget}
 import org.scalatest.flatspec.AnyFlatSpec
 
 
@@ -62,6 +64,52 @@ class GreekChordTest extends AnyFlatSpec:
     // one insertion action is deliberately reachable two ways.
     assert(greekKeySequences.count(_._2 == "insert-greek-g") == 2,
       "gamma should be reachable both from the prefix and from ALT-G")
+  }
+
+  // ── installGreekChords against a stubbed reader (issue 1.4) ──────────────────
+  //
+  // Still no `Terminal`: `LineReader` is a Java interface, so a reflection proxy supplies
+  // exactly the two methods the function touches. That is what makes the null-key-map path
+  // testable at all — a real reader always has a MAIN map, which is precisely why the NPE
+  // this guards against could never be reached from a live terminal.
+
+  /** A `LineReader` stub whose `getKeyMaps` returns `keyMaps` and `getWidgets` a fresh map. */
+  private def stubReader(keyMaps: java.util.Map[String, KeyMap[Binding]]): LineReader =
+    val widgets = new java.util.HashMap[String, Widget]()
+    java.lang.reflect.Proxy.newProxyInstance(
+      classOf[LineReader].getClassLoader,
+      Array(classOf[LineReader]),
+      (_, method, _) =>
+        method.getName match
+          case "getKeyMaps" => keyMaps
+          case "getWidgets" => widgets
+          case _            => null
+    ).asInstanceOf[LineReader]
+
+  "installGreekChords" should "bind every sequence when the MAIN key map is present" in
+  {
+    val main = new KeyMap[Binding]()
+    val maps = new java.util.HashMap[String, KeyMap[Binding]]()
+    maps.put(LineReader.MAIN, main)
+    val reader = stubReader(maps)
+
+    installGreekChords(reader)
+
+    for (seq, widget) <- greekKeySequences do
+      assert(main.getBound(seq) == new Reference(widget), s"'$widget' should be bound to $seq")
+    for (letter, _) <- GreekChords do
+      assert(reader.getWidgets.containsKey(s"insert-greek-$letter"))
+  }
+
+  it should "not throw when the terminal has no MAIN key map" in
+  {
+    // JLine's getKeyMaps is a plain java.util.Map, so `get` returns null for a reader
+    // without a MAIN map. Starting the REPL without the Greek chords beats not starting.
+    val reader = stubReader(new java.util.HashMap[String, KeyMap[Binding]]())
+    installGreekChords(reader)   // must be a no-op, not an NPE
+    // the widgets are still registered: only the binding step needs the key map
+    for (letter, _) <- GreekChords do
+      assert(reader.getWidgets.containsKey(s"insert-greek-$letter"))
   }
 
   "GreekChords" should "only offer symbols the grammar can actually read" in
