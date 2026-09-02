@@ -96,7 +96,11 @@ object Parser extends JavaTokenParsers:
                                                          // C spelling; Fresnel spelled out --
                                                          // bare S/C would be homoglyph traps
     "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus (6.24)
-    "cartesian", "cylindrical", "spherical",             // coordinate systems (6.26).
+    "cartesian", "cylindrical", "spherical", "sphericalmaths",  // coordinate systems (6.26,
+                                                         // 6.27). Each needs its own entry:
+                                                         // the reserved check is exact, so
+                                                         // "sphericalmaths" would otherwise
+                                                         // still be a legal variable name.
                                                          // Reserved, unlike domain's
                                                          // "real"/"complex", because those
                                                          // sit in a slot after ONE variable
@@ -596,15 +600,21 @@ object Parser extends JavaTokenParsers:
     "jacobian("  ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Jacobian(f, vs.toVector, cSys(s))  } |
     "hessian("   ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Hessian(f, vs.toVector, cSys(s))   }
 
-  /** The coordinate-system keyword of a vector operator (issue 6.26). */
+  /** The coordinate-system keyword of a vector operator (issues 6.26 and 6.27).
+   *
+   *  `sphericalmaths` is listed BEFORE `spherical`, the longest-first rule the relational
+   *  operators already follow: the shorter alternative matches the prefix and would leave
+   *  `maths` dangling.
+   */
   private lazy val coordSystem: Parser[String] =
-    "cartesian" | "cylindrical" | "spherical"
+    "cartesian" | "cylindrical" | "sphericalmaths" | "spherical"
 
   /** The coordinate system a vector operator was written in, defaulting to Cartesian. */
   private def cSys(s: Option[String]): CoordinateSystem = s match
-    case Some("cylindrical") => CoordinateSystem.Cylindrical
-    case Some("spherical")   => CoordinateSystem.Spherical
-    case _                   => CoordinateSystem.Cartesian
+    case Some("cylindrical")    => CoordinateSystem.Cylindrical
+    case Some("spherical")      => CoordinateSystem.Spherical
+    case Some("sphericalmaths") => CoordinateSystem.SphericalMaths
+    case _                      => CoordinateSystem.Cartesian
 
   /** The domain-analysis number system, defaulting to the reals when unstated. */
   private def domainKind(k: Option[String]): DomainKind =

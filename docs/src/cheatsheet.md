@@ -209,9 +209,12 @@ div([[1/r], [0], [0]], r, t, z, cylindrical) -> 0     the 2-D point source is so
 grad(f, r, t, z, cylindrical)             -> [[df/dr], [(1/r)*df/dt], [df/dz]]
 ```
 
-`cylindrical` is `(r, θ, z)` and `spherical` is `(r, θ, φ)` with **θ the polar angle**
-(the physics convention).  Both are three-dimensional, and the coordinates are identified by
-**position, not by name** — call them whatever you like, but pass them in that order.
+`cylindrical` is `(r, θ, z)`; `spherical` is `(r, θ, φ)` with **θ the polar angle** (the
+physics convention) and `sphericalmaths` is `(r, θ, φ)` with **θ azimuthal and φ polar** (the
+mathematics one).  All are three-dimensional, and the coordinates are identified by
+**position, not by name** — call them whatever you like, but pass them in that order.  The two
+spherical keywords therefore differ in argument *order*, not in naming: pass the polar angle
+second for `spherical`, third for `sphericalmaths`.
 
 ### Definite integration (Simpson's rule)
 

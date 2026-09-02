@@ -18,13 +18,19 @@ import matrix._Matrix
  *
  *  - `Cylindrical` — `(r, θ, z)`: radial, azimuthal, axial.
  *  - `Spherical` — `(r, θ, φ)` with **`θ` the polar angle** (measured from the axis) and `φ`
- *    the azimuthal one.  This is the physics convention; the mathematics convention swaps the
- *    two names.  It cannot be inferred from the variable names, and choosing silently would
- *    make every spherical result wrong for half its readers, so it is stated here, in the
- *    cheat sheet and in the README.
+ *    the azimuthal one.  This is the physics convention; it cannot be inferred from the
+ *    variable names, and choosing silently would make every spherical result wrong for half
+ *    its readers, so it is stated here, in the cheat sheet and in the README.
+ *  - `SphericalMaths` — the mathematics convention `(r, θ, φ)` with `θ` **azimuthal** and `φ`
+ *    **polar**: the same geometry with the last two coordinates exchanged (issue 6.27).
+ *
+ *  **The difference between the two spherical cases is argument *order*, not naming.**  The
+ *  operators read `coords` by position and never look at the spellings, so a reader who calls
+ *  the polar angle `φ` but passes it second is already served by `Spherical`; `SphericalMaths`
+ *  exists for those who pass it *third*.
  */
 enum CoordinateSystem:
-  case Cartesian, Cylindrical, Spherical
+  case Cartesian, Cylindrical, Spherical, SphericalMaths
 
 
 /** Shared behaviour of the six vector-calculus operators.
@@ -67,6 +73,10 @@ sealed trait _VectorOperator extends _Expression:
     case CoordinateSystem.Spherical   =>
       Option.when(coords.sizeIs == 3)(
         Vector(_Number(1), coords(0), Product(coords(0), Sin(coords(1)))))
+    // (r, θ, φ), θ azimuthal and φ polar — the same geometry, last two exchanged (6.27)
+    case CoordinateSystem.SphericalMaths =>
+      Option.when(coords.sizeIs == 3)(
+        Vector(_Number(1), Product(coords(0), Sin(coords(2))), coords(0)))
 
   /** True when the request is one this tier can answer at all: a coordinate tuple with no
    *  repeats, in an arity the coordinate system supports.  `grad(f, x, x)` names no basis and
@@ -81,6 +91,18 @@ sealed trait _VectorOperator extends _Expression:
   /** The Jacobian factor `h₁·h₂·…`, the volume element's coefficient. */
   protected def jacobianFactor: _Expression =
     if h.isEmpty then _Number(1) else h.reduce(Product.apply)
+
+  /** Orientation of the ordered basis: `+1` right-handed, `-1` left-handed (issue 6.27).
+   *
+   *  **Only `curl` reads this, and it must.**  The curl formula below is derived for a
+   *  right-handed `(q₁, q₂, q₃)`; `SphericalMaths` exchanges the last two coordinates of
+   *  `Spherical`, and swapping two basis vectors flips the orientation, so the same formula
+   *  returns `−curl` there.  `grad`, `div` and `laplacian` involve no cross product and are
+   *  orientation-free, which is why the sign lives here rather than in each operator.
+   */
+  protected def handedness: Int = system match
+    case CoordinateSystem.SphericalMaths => -1
+    case _                               => 1
 
   /** Reads `e` as an n×1 vector field: its components, or `None` when it is not one.
    *
@@ -190,13 +212,16 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
         if comps.sizeIs == 3
       yield
         // component i is (1/hⱼhₖ)·[∂(hₖFₖ)/∂qⱼ − ∂(hⱼFⱼ)/∂qₖ] over the cyclic (i, j, k);
-        // the h = 1 case is (∂F₃/∂x₂ − ∂F₂/∂x₃, ∂F₁/∂x₃ − ∂F₃/∂x₁, ∂F₂/∂x₁ − ∂F₁/∂x₂)
-        column(Vector.tabulate(3) { i =>
+        // the h = 1 case is (∂F₃/∂x₂ − ∂F₂/∂x₃, ∂F₁/∂x₃ − ∂F₃/∂x₁, ∂F₂/∂x₁ − ∂F₁/∂x₂).
+        // The formula assumes a RIGHT-handed ordering, so a left-handed system negates it
+        // (see `handedness`) -- curl is a pseudo-vector, and this is the whole of 6.27's risk.
+        val raw = Vector.tabulate(3) { i =>
           val (j, k) = ((i + 1) % 3, (i + 2) % 3)
           Ratio(Sum(d(Product(h(k), comps(k)), j),
                     Product(_Number(-1), d(Product(h(j), comps(j)), k))),
                 Product(h(j), h(k)))
-        })
+        }
+        column(if handedness == 1 then raw else raw.map(Product(_Number(-1), _)))
     result.fold(Left(this))(Left(_))
 
 

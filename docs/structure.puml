@@ -1148,6 +1148,9 @@ package "vector" {
         grad_i = (1/h_i) df/dq_i
         div    = (1/J) sum d/dq_i (J/h_i * F_i)
         curl_i = (1/h_j h_k)[d(h_k F_k)/dq_j - d(h_j F_j)/dq_k]
+          times handedness (+1 / -1): the formula
+          assumes a RIGHT-handed ordering, and only
+          curl (a pseudo-vector) reads the sign
         Cartesian is the h = 1 case
     }
 
@@ -1176,12 +1179,15 @@ package "vector" {
     }
 
     enum "CoordinateSystem" <<data>> [[calculus.html]] {
-        Cartesian    (x, y, ..)  h = (1, 1, 1)
-        Cylindrical  (r, t, z)   h = (1, r, 1)
-        Spherical    (r, t, p)   h = (1, r, r sin t)
-        3-D only for the two curvilinear ones;
-        coordinates identified BY POSITION;
-        spherical uses t = POLAR angle (physics)
+        Cartesian      (x, y, ..) h = (1, 1, 1)
+        Cylindrical    (r, t, z)  h = (1, r, 1)
+        Spherical      (r, t, p)  h = (1, r, r sin t)
+        SphericalMaths (r, t, p)  h = (1, r sin p, r)
+        3-D only for the curvilinear ones;
+        coordinates identified BY POSITION, so the
+        two spherical cases differ in argument
+        ORDER (t polar vs p polar), not in naming.
+        The swap flips handedness -> curl negates
     }
 
     "_VectorOperator" --|> "_Expression"

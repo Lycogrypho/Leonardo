@@ -145,6 +145,63 @@ class CurvilinearTest extends AnyFlatSpec:
     near(direct, viaDiv)
   }
 
+  // ── the mathematics convention: (r, θ azimuthal, φ polar)  (issue 6.27) ─────
+  // Same geometry, the last two coordinates swapped. Scale factors become
+  // (1, r·sin φ, r), and because swapping two basis vectors flips the triad's handedness
+  // the curl formula — which assumes a right-handed ordering — must be negated.
+
+  /** A point for the maths order `(r, a = azimuth, b = polar)`. */
+  private val mathsPoint = Seq("r" -> 2.0, "a" -> 0.4, "b" -> 0.7)
+
+  "the maths-convention scale factors" should "scale the azimuthal arc by r·sin(polar)" in
+  {
+    val g = cellsAt("grad(r*a*b, r, a, b, sphericalmaths)", mathsPoint)
+    near(g(0), 0.4 * 0.7)                              // ∂f/∂r = a·b
+    near(g(1), (2.0 * 0.7) / (2.0 * math.sin(0.7)))    // (1/(r sin b))·r·b
+    near(g(2), (2.0 * 0.4) / 2.0)                      // (1/r)·r·a = a
+  }
+
+  "the maths-convention laplacian" should "still annihilate 1/r" in
+  {
+    near(scalarAt("laplacian(1/r, r, a, b, sphericalmaths)", mathsPoint), 0.0)
+    near(scalarAt("laplacian(r^2, r, a, b, sphericalmaths)", mathsPoint), 6.0)
+  }
+
+  "the maths-convention div" should "make the inverse-square field source-free" in
+  {
+    near(scalarAt("div([[1/r^2], [0], [0]], r, a, b, sphericalmaths)", mathsPoint), 0.0)
+    near(scalarAt("div([[r], [0], [0]], r, a, b, sphericalmaths)", mathsPoint), 3.0)
+  }
+
+  "the identities" should "hold in the maths convention too" in
+  {
+    val g = cellsAt("curl(grad(r^2*a*b, r, a, b, sphericalmaths), r, a, b, sphericalmaths)", mathsPoint)
+    assert(g.forall(v => math.abs(v) < 1e-8), s"curl(grad f): $g")
+    val d = scalarAt("div(curl([[r*b], [r^2], [a*r]], r, a, b, sphericalmaths), r, a, b, sphericalmaths)",
+                     mathsPoint)
+    assert(math.abs(d) < 1e-8, s"div(curl F): $d")
+  }
+
+  // THE test that pins the sign: the same physical field, written in each convention, must
+  // give the same curl. Neither closed form alone would catch a global orientation flip.
+  "the two spherical conventions" should "agree on curl for the same physical field" in
+  {
+    // rigid rotation about the axis, F = r·sin(polar) in the AZIMUTHAL direction, curl = 2*axis
+    val at = Seq("r" -> 2.0, "t" -> 0.7, "p" -> 0.4, "a" -> 0.4, "b" -> 0.7)
+    // physics order (r, θ polar, φ azimuthal): the azimuthal component is third
+    val phys  = cellsAt("curl([[0], [0], [r*sin(t)]], r, t, p, spherical)", at)
+    // maths order (r, θ azimuthal, φ polar): the azimuthal component is second
+    val maths = cellsAt("curl([[0], [r*sin(b)], [0]], r, a, b, sphericalmaths)", at)
+    // radial agrees; the polar and azimuthal components swap places with the coordinates
+    near(maths(0), phys(0))   // radial
+    near(maths(1), phys(2))   // azimuthal
+    near(maths(2), phys(1))   // polar
+    // and the value is the known 2*axis = 2(cos(polar) r̂ − sin(polar) polar̂)
+    near(phys(0), 2 * math.cos(0.7))
+    near(phys(1), -2 * math.sin(0.7))
+    near(maths(2), -2 * math.sin(0.7))
+  }
+
   // ── refusals ────────────────────────────────────────────────────────────────
 
   "a curvilinear system with the wrong arity" should "stay symbolic" in
@@ -153,6 +210,7 @@ class CurvilinearTest extends AnyFlatSpec:
     staysSymbolic("grad(r*t, r, t, cylindrical)")
     staysSymbolic("div([[r], [0]], r, t, spherical)")
     staysSymbolic("laplacian(r, r, t, z, w, cylindrical)")
+    staysSymbolic("grad(r*a, r, a, sphericalmaths)")
   }
 
   // ── Cartesian is the (1,1,1) special case, and is unchanged ─────────────────
@@ -172,7 +230,8 @@ class CurvilinearTest extends AnyFlatSpec:
   "the system suffix" should "round-trip through toString" in
   {
     for src <- List("grad(f, r, t, z, cylindrical)", "div(F, r, t, p, spherical)",
-                    "curl(F, r, t, z, cylindrical)", "laplacian(f, r, t, p, spherical)") do
+                    "curl(F, r, t, z, cylindrical)", "laplacian(f, r, t, p, spherical)",
+                    "curl(F, r, a, b, sphericalmaths)") do
       assert(parse(src).toString == src, s"round-trip failed for $src")
     // Cartesian stays implicit, so 6.24's round-trip form is unchanged
     assert(parse("grad(f, x, y)").toString == "grad(f, x, y)")
@@ -181,7 +240,7 @@ class CurvilinearTest extends AnyFlatSpec:
 
   "the coordinate-system names" should "be reserved words" in
   {
-    for name <- List("cartesian", "cylindrical", "spherical") do
+    for name <- List("cartesian", "cylindrical", "spherical", "sphericalmaths") do
       assert(Parser.parse(name).isInstanceOf[Parser.NoSuccess], s"$name should be reserved")
     assert(parse("sphericalHarmonic") == _Variable("sphericalHarmonic"))
   }

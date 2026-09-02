@@ -162,9 +162,12 @@ not visibly collapse (`simplify` does no common-factor cancellation), so evaluat
 _Laplacian(Ratio(_Number(1.0), r), Vector(r, th, ph), CoordinateSystem.Spherical).eval(atPoint)
 ```
 
-`cylindrical` is `(r, θ, z)` and `spherical` is `(r, θ, φ)` with **θ the polar angle** (the
-physics convention).  Both are three-dimensional, and the coordinates are identified by
-**position, not by name**.
+`cylindrical` is `(r, θ, z)`; `spherical` is `(r, θ, φ)` with **θ the polar angle** (physics)
+and `sphericalmaths` has **θ azimuthal and φ polar** (mathematics).  All are
+three-dimensional, and the coordinates are identified by **position, not by name** — so the
+two spherical keywords differ in argument *order*, not in naming.  Exchanging the last two
+coordinates flips the handedness of the basis, so `curl`, a pseudo-vector, carries the
+matching sign; the two conventions agree on the curl of the same physical field.
 
 ## Definite integration (Simpson's rule)
 
