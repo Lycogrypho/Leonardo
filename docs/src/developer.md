@@ -366,7 +366,7 @@ They do not form a class or object hierarchy — they are imported where needed:
 | File | Entry points |
 |---|---|
 | `Derive.scala` | `derive(e, v)`, `deriveN(e, v, n)`, `derive(e, v1, v2, ...)` |
-| `Integrate.scala` | `integrate(e, v)` |
+| `Integrate.scala` | `integrate(e, v)` (dispatcher; tiers in `IntegrateParts`/`IntegrateRational`/`IntegrateSubstitution`) |
 | `Simplify.scala` | `simplify(e)`, `simplifyFully(e)` |
 | `Expand.scala` | `expand(e)` |
 | `Normalize.scala` | `collect(e, v)`, `normalize(e, v)` |
@@ -461,19 +461,34 @@ in `Derive.scala`; memoised per `(expression, variable-name)` pair.
 
 ### Indefinite integration
 
-Multi-tier rule table in `Integrate.scala`:
+Multi-tier, split across four files.  `Integrate.scala` holds the entry point, the `resolve`
+dispatcher and the compiled `integrateImpl` table; the tiers themselves live beside it:
 
-| Tier | Technique | Reference |
+| Tier | Technique | Lives in |
 |---|---|---|
-| Linear chain rule | `∫f(a·v+b)dv = F(a·v+b)/a` | Standard substitution |
-| Integration by parts | `∫u dv = u·V − ∫V du`, LIATE heuristic | [Wikipedia — Integration by parts](https://en.wikipedia.org/wiki/Integration_by_parts) |
-| Trig-power reduction | `∫sinⁿ`, `∫cosⁿ` reduction formula | [Wikipedia — Reduction formula](https://en.wikipedia.org/wiki/Reduction_formula) |
-| Rational functions | Long division → partial fractions → completing the square / residues | [Wikipedia — Partial fractions in integration](https://en.wikipedia.org/wiki/Partial_fraction_decomposition#Application_to_symbolic_integration) |
-| Data-driven table | Pattern-matched `RewriteRule`s, consulted last | `IntegralRules.scala` |
+| Linear chain rule | `∫f(a·v+b)dv = F(a·v+b)/a` | `Integrate.scala` |
+| Integration by parts | `∫u dv = u·V − ∫V du`, LIATE heuristic | `IntegrateParts.scala` |
+| Power reduction | `∫sinⁿ`/`∫cosⁿ`, `∫tanⁿ`/`∫secⁿ`/`∫cscⁿ`/`∫cotⁿ`, `∫sinhⁿ`/`∫coshⁿ` | `IntegrateParts.scala` |
+| Rational functions | Long division → square-free factorisation → undetermined coefficients | `IntegrateRational.scala` |
+| u-substitution | `∫f(g(v))·g'(v)dv`, via the decidable "free of v" test | `IntegrateSubstitution.scala` |
+| Trig/hyperbolic substitution | `√(a²−v²)`, `√(a²+v²)`, `√(v²−a²)` at any half-integer power | `IntegrateSubstitution.scala` |
+| Weierstrass | `t = tan(v/2)` for a rational function of `sin`/`cos` | `IntegrateSubstitution.scala` |
+| Data-driven table | Pattern-matched `RewriteRule`s | `IntegralRules.scala` |
 
-The rational-function tier uses `polyRoots` (companion-matrix eigendecomposition) to find
-the denominator roots for the residue method:
-[Wikipedia — Companion matrix](https://en.wikipedia.org/wiki/Companion_matrix)
+References: [integration by parts](https://en.wikipedia.org/wiki/Integration_by_parts),
+[reduction formulas](https://en.wikipedia.org/wiki/Reduction_formula),
+[partial fractions](https://en.wikipedia.org/wiki/Partial_fraction_decomposition#Application_to_symbolic_integration),
+[Weierstrass substitution](https://en.wikipedia.org/wiki/Weierstrass_substitution).
+
+**Dispatch order matters and is all in `resolve`.**  The compiled table runs first; only when
+it gives up (`containsIntegral`) are the table and then the substitution tiers consulted, in
+increasing generality.  That ordering is what guarantees a new tier can never change an
+integral that already closes.
+
+The rational tier reads multiplicity from `squareFreeFactors` (`Polynomial.scala`) rather
+than from root-finding — the QR iteration behind `polyRoots` does not converge on a repeated
+root — and only the resulting square-free parts reach
+[the companion matrix](https://en.wikipedia.org/wiki/Companion_matrix).
 
 #### The data-driven table and parameterised rules
 
@@ -1018,7 +1033,8 @@ unchanged (fixpoint = stays symbolic).
 
 - `Simplify.scala` — add constant-folding / identity rules.
 - `Derive.scala` — add the derivative rule (e.g. `_Heaviside` → `_DiracDelta` if that exists).
-- `Integrate.scala` — add the antiderivative rule.
+- `IntegralRules.scala` — add the antiderivative as a table rule (preferred), or a compiled
+  arm in `Integrate.scala` when it needs a recursion or an algorithm.
 - `Compile.scala` — add a compilation rule if numeric sampling should work.
 
 ### Step 4 — Add tests
@@ -1034,8 +1050,19 @@ Add test cases to the most relevant test file.  For a new function the usual cov
 
 ## How to add a new integration rule
 
-`integrate(e, v)` in `Integrate.scala` is a large `match` over expression shapes.  To add
-a rule:
+There are two places a rule can go, and the choice matters.
+
+**Prefer the data-driven table** (`IntegralRules.scala`): a `RewriteRule` needs no change to
+any `match`, gains the linear-argument chain rule for free, and is verified automatically by
+the differentiate-back harness in `IntegralTableTest`.  Write a compiled arm only when the
+rule cannot be expressed as one shape — a *recursion* on an exponent (the power reductions)
+or an algorithm (the rational and substitution tiers).
+
+**Never write both.**  A table entry that restates a compiled fact can never fire — the
+compiled tier closes it first — so it is only a second definition free to drift out of step.
+
+To add a compiled arm, `integrateImpl` in `Integrate.scala` is the `match` over expression
+shapes:
 
 1. Identify where in the match block to insert it (rules are tried top-to-bottom; more
    specific patterns must come before general ones).
@@ -1054,9 +1081,10 @@ a rule:
    the expression in some way) to avoid infinite recursion.
 4. Add the rule to `IndefiniteIntegrationTest.scala`.
 
-For rational-function shapes, the existing `integrateRational` helper handles the
-polynomial long-division + partial-fractions pipeline; hook into it rather than duplicating
-the logic.
+For rational-function shapes, the existing `integrateRational` helper
+(`IntegrateRational.scala`) handles the long-division + partial-fractions pipeline; hook into
+it rather than duplicating the logic.  A new *tier* (as opposed to a rule) belongs in the
+`orElse` chain in `resolve`, after the tiers it should not pre-empt.
 
 ---
 

@@ -61,14 +61,18 @@ object integralRules:
 
   /** `Some(antiderivative)` when a rule matches `e` as an integrand in `v`.
    *
-   *  @param e the integrand
-   *  @param v the integration variable
+   *  @param e   the integrand
+   *  @param v   the integration variable
+   *  @param pre `e` already normalised by `simplifyFully`, when the caller has it — `resolve`
+   *             computes exactly this form for its second compiled attempt, so passing it in
+   *             spares a redundant pass (issue 2.7)
    *  @return the antiderivative, already simplified, or `None` when no rule applies
    */
-  private[scalar] def applyTo(e: _Expression, v: _Variable): Option[_Expression] =
+  private[scalar] def applyTo(e: _Expression, v: _Variable,
+                              pre: Option[_Expression] = None): Option[_Expression] =
     // Normalise into the canonical spelling first (issue 3.9): `1/cos → sec`, `cos/sin → cot`,
     // so a rule written over the reciprocal-function nodes matches a ratio the user typed.
-    val ne = simplifyFully(e)
+    val ne = pre.getOrElse(simplifyFully(e))
     rules.iterator
       .flatMap { r =>
         for

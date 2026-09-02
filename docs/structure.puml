@@ -412,6 +412,11 @@ package "scalar" {
     }
     class "Integrate" <<utility>> [[calculus.html]] {
         + integrate(e, v): _Expression
+        __ dispatcher; tiers split by 2.6 __
+        resolve(): compiled -> table -> substitution
+        IntegrateParts      : by parts + power reductions
+        IntegrateRational   : partial fractions
+        IntegrateSubstitution: u-sub / trig-sub / Weierstrass
     }
     class "Simplify" <<utility>> [[expressions.html]] {
         + simplify(e): _Expression

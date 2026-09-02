@@ -41,52 +41,50 @@ case class Singularity(at: Double, kind: SingularityKind)
 private[leonardo] def singularitiesOf(e: _Expression, v: _Variable,
                                       env: Environment): Option[Vector[Singularity]] =
   asRatio(e, v, env).map { (num, den) =>
-    val denClusters = clusterRoots(nearRealRoots(den))
-    val numRoots    = nearRealRoots(num)
-    denClusters.map { (centre, denMult) =>
-      val numMult = numRoots.count(r => sameRoot(r, centre))
+    val numRoots = realRootsWithMultiplicity(num)
+    realRootsWithMultiplicity(den).map { (centre, denMult) =>
+      val numMult = numRoots.collect { case (r, m) if sameRoot(r, centre) => m }.sum
       if numMult >= denMult then Singularity(centre, SingularityKind.Removable)
       else Singularity(centre, SingularityKind.Pole(denMult - numMult))
     }
   }
 
-/** How far apart two computed roots may be and still count as one repeated root.
+/** How far apart two computed roots may be and still count as the same point.
  *
- *  **This is loose on purpose.**  A root of multiplicity `m` is ill-conditioned: the
- *  companion-matrix eigenvalues scatter it by roughly `eps^(1/m)`, which is already ~6e-6
- *  for a triple root, and typically pushes all but one copy slightly off the real axis.  A
- *  tolerance tight enough to be "safe" would therefore report `(x-1)^3` as a *simple* pole,
- *  which is worse than merging two genuinely distinct roots that sit this close together.
+ *  Only ever compares a numerator root against a denominator one now — the *multiplicity*
+ *  of each no longer depends on a tolerance at all (see [[realRootsWithMultiplicity]]).
  */
-private val RootClusterTolerance = 1e-4
+private val RootClusterTolerance = 1e-6
 
 /** Whether two computed roots are the same point, relative to magnitude. */
 private def sameRoot(a: Double, b: Double): Boolean =
   math.abs(a - b) <= RootClusterTolerance * math.max(1.0, math.max(math.abs(a), math.abs(b)))
 
-/** Real roots of `cs`, **including complex ones whose imaginary part is negligible**.
+/** The distinct real roots of `cs` with their multiplicities, in ascending order.
  *
- *  Discarding those would undercount every repeated real root, since that is precisely the
- *  form the perturbation takes.
+ *  **Multiplicity comes from square-free factorisation, not from counting scattered roots**
+ *  (issue 2.5).  The original reading — that a repeated root merely *scatters* under
+ *  `polyRoots`, so nearby roots could be clustered and counted — understated the problem:
+ *  issue 3.12 found that the QR iteration can fail to converge on a repeated root
+ *  **entirely**, and `(x-2)^5` then produced no roots at all, silently losing the
+ *  singularity rather than misreporting its order.
+ *
+ *  `squareFreeFactors` splits the polynomial by multiplicity arithmetically, so each part
+ *  carries only *simple* roots — well conditioned, and located exactly.  The cluster
+ *  tolerance disappears from this computation, taking its failure mode with it.
+ *
+ *  A complex root whose imaginary part is negligible still counts as real: within a
+ *  square-free part that is ordinary rounding, not the old repeated-root perturbation.
  */
-private def nearRealRoots(cs: Vector[Double]): Vector[Double] =
+private def realRootsWithMultiplicity(cs: Vector[Double]): Vector[(Double, Int)] =
   if polyDegree(cs) < 1 then Vector.empty
-  else polyRoots(cs).fold(Vector.empty[Double]) { roots =>
-    roots.flatMap {
-      case _Number(d) if !d.isNaN => Some(d)
-      case c: _Complex if math.abs(c.im) <= RootClusterTolerance * math.max(1.0, math.abs(c.re)) =>
-        Some(c.re)
-      case _ => None
-    }.sorted
-  }
-
-/** Groups roots that are the same point, returning each centre with its multiplicity. */
-private def clusterRoots(roots: Vector[Double]): Vector[(Double, Int)] =
-  roots.foldLeft(Vector.empty[Vector[Double]]) { (acc, r) =>
-    acc.lastOption match
-      case Some(g) if sameRoot(g.head, r) => acc.init :+ (g :+ r)
-      case _                              => acc :+ Vector(r)
-  }.map(g => (g.sum / g.size, g.size))
+  else
+    squareFreeFactors(cs).flatMap { (part, mult) =>
+      rootsOfSquareFree(part).getOrElse(Vector.empty).collect {
+        case (re, im) if math.abs(im) <= RootClusterTolerance * math.max(1.0, math.abs(re)) =>
+          (re, mult)
+      }
+    }.sortBy(_._1)
 
 /** Reads `e` as a ratio of two numeric-coefficient polynomials in `v`. */
 private def asRatio(e: _Expression, v: _Variable,

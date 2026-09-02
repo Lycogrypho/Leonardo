@@ -53,6 +53,37 @@ class SingularityTest extends AnyFlatSpec:
       case other => fail(s"expected a pole of order 2, got $other")
   }
 
+  // ── multiplicity by square-free factorisation, not clustering (issue 2.5) ────
+  // The QR iteration does not merely SCATTER a repeated root — it can fail to converge on
+  // one outright, so a pure high-multiplicity denominator yielded no classification at all.
+  // squareFreeFactors reads the multiplicity arithmetically, before any root-finding.
+
+  "1/(x-1)^3" should "be a pole of order 3" in
+  {
+    sing(Ratio(_Number(1), Power(linear(1), _Number(3)))) match
+      case Some(Vector(Singularity(at, SingularityKind.Pole(3)))) =>
+        assert(math.abs(at - 1.0) < 1e-9, s"pole at $at")
+      case other => fail(s"expected a pole of order 3, got $other")
+  }
+
+  "1/(x-2)^5" should "be a pole of order 5, located exactly" in
+  {
+    sing(Ratio(_Number(1), Power(linear(2), _Number(5)))) match
+      case Some(Vector(Singularity(at, SingularityKind.Pole(5)))) =>
+        assert(math.abs(at - 2.0) < 1e-9, s"pole at $at")
+      case other => fail(s"expected a pole of order 5, got $other")
+  }
+
+  "1/((x-1)^3*(x+2))" should "give both poles with their own orders" in
+  {
+    sing(Ratio(_Number(1), Product(Power(linear(1), _Number(3)), linear(-2)))) match
+      case Some(Vector(Singularity(a1, SingularityKind.Pole(o1)),
+                       Singularity(a2, SingularityKind.Pole(o2)))) =>
+        assert(math.abs(a1 + 2.0) < 1e-6 && o1 == 1, s"first pole $a1 order $o1")
+        assert(math.abs(a2 - 1.0) < 1e-6 && o2 == 3, s"second pole $a2 order $o2")
+      case other => fail(s"expected poles at -2 (order 1) and 1 (order 3), got $other")
+  }
+
   "1/((x-1)(x+2))" should "find both poles in ascending order" in
   {
     val den = Product(linear(1), linear(-2))

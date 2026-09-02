@@ -84,6 +84,32 @@ class RationalTest extends AnyFlatSpec:
     assert(r(2, 3).pow(0).contains(_Rational.One))
   }
 
+  // ── the result-size cap (issue 2.4) ─────────────────────────────────────────
+  // `BigInt.pow` is happy to attempt a multi-gigabyte allocation; "computable in
+  // principle" is not "should be attempted", the same distinction MaxExactFactorial draws.
+
+  it should "refuse a power whose result would exceed the size cap" in
+  {
+    // (123/7)^2000000000 is ~1.4e10 bits per operand — must decline, not allocate.
+    assert(r(123, 7).pow(2000000000).isEmpty)
+    assert(r(2, 1).pow(Int.MaxValue).isEmpty)
+    // a negative exponent is the same size problem (it only swaps num and den)
+    assert(r(123, 7).pow(-2000000000).isEmpty)
+  }
+
+  it should "still allow a large but affordable power" in
+  {
+    // 2^100000 is a 100 000-bit integer: well inside the cap and computed instantly
+    assert(r(2, 1).pow(100000).isDefined)
+  }
+
+  it should "not let the cap change any ordinary exact result" in
+  {
+    // the cap is about size only: everything a user plausibly types is untouched
+    assert(r(3, 5).pow(40).isDefined)
+    assert(_Rational.One.pow(10000).contains(_Rational.One))
+  }
+
   it should "order by value regardless of representation" in
   {
     assert(r(1, 3) < r(1, 2))

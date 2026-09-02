@@ -189,6 +189,19 @@ object _Rational:
    */
   val DoubleReliableDigits: Int = 15
 
+  /** Size ceiling, in bits, for the result of an exact integer power (issue 2.4).
+   *
+   *  `2^20` bits is roughly a 315 000-digit number: far past anything a session needs, and
+   *  still computed in milliseconds.  The cap exists for the same reason
+   *  [[scalar.MaxExactFactorial]] does — **"computable in principle" is not "should be
+   *  attempted"**.  `BigInt.pow` has no bound of its own, so in exact mode a typo such as
+   *  `(123/7)^2000000000` asks for a ~1.4e10-bit operand and hangs or OOMs the session
+   *  rather than answering.  The estimate is `maxBitLength × |k|`, which needs no
+   *  allocation to compute; past it [[_Rational.pow]] returns `None` and the expression
+   *  stays symbolic, the give-up rule used throughout the library.
+   */
+  val MaxExactPowerBits: Long = 1L << 20
+
   /** Brings a `Double` result of a non-closed operation back into the exact tier.
    *
    *  Used wherever the rationals are left and re-entered — fractional powers and the
@@ -309,12 +322,18 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
     else Some(_Rational.make(num * that.den, den * that.num, policy))
 
   /** Integer power.
+   *
+   *  Declines when the result would exceed [[_Rational.MaxExactPowerBits]]: `BigInt.pow` is
+   *  willing to attempt a multi-gigabyte allocation, and the caller stays symbolic on `None`,
+   *  so refusing costs an answer nobody could have used anyway (see the cap's own note).
+   *
    *  @param k      the exponent; negative exponents invert
    *  @param policy reduction policy for the result
-   *  @return `this^k`, or `None` for a negative power of zero
+   *  @return `this^k`, `None` for a negative power of zero or a result above the size cap
    */
   def pow(k: Int, policy: GcdPolicy = _Rational.DefaultPolicy): Option[_Rational] =
-    if k >= 0 then Some(_Rational.make(num.pow(k), den.pow(k), policy))
+    if k != 0 && maxBitLength.toLong * math.abs(k.toLong) > _Rational.MaxExactPowerBits then None
+    else if k >= 0 then Some(_Rational.make(num.pow(k), den.pow(k), policy))
     else if isZero then None
     else Some(_Rational.make(den.pow(-k), num.pow(-k), policy))
 
