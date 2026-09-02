@@ -199,7 +199,19 @@ hessian(x^2*y^3, x, y)                                    n x n, symmetric
 ```
 
 `curl` outside three dimensions, a component/coordinate count mismatch, and a repeated
-coordinate all stay symbolic rather than being guessed.  Cartesian coordinates only for now.
+coordinate all stay symbolic rather than being guessed.
+
+An optional trailing keyword selects the coordinate system (default `cartesian`):
+
+```
+laplacian(1/r, r, t, p, spherical)        -> 0        the Newtonian potential is harmonic
+div([[1/r], [0], [0]], r, t, z, cylindrical) -> 0     the 2-D point source is source-free
+grad(f, r, t, z, cylindrical)             -> [[df/dr], [(1/r)*df/dt], [df/dz]]
+```
+
+`cylindrical` is `(r, θ, z)` and `spherical` is `(r, θ, φ)` with **θ the polar angle**
+(the physics convention).  Both are three-dimensional, and the coordinates are identified by
+**position, not by name** — call them whatever you like, but pass them in that order.
 
 ### Definite integration (Simpson's rule)
 

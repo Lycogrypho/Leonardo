@@ -96,6 +96,14 @@ object Parser extends JavaTokenParsers:
                                                          // C spelling; Fresnel spelled out --
                                                          // bare S/C would be homoglyph traps
     "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus (6.24)
+    "cartesian", "cylindrical", "spherical",             // coordinate systems (6.26).
+                                                         // Reserved, unlike domain's
+                                                         // "real"/"complex", because those
+                                                         // sit in a slot after ONE variable
+                                                         // while these follow a greedy
+                                                         // rep1sep coordinate list that
+                                                         // would otherwise swallow them as
+                                                         // a further coordinate
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
     "unset", "samples", "colors", "pretty", "exact", "truth3", "logic", "help", "quit", "exit" // REPL commands
@@ -579,12 +587,24 @@ object Parser extends JavaTokenParsers:
     // Vector calculus (6.24): field/scalar, then the ORDERED coordinate tuple -- the same
     // shape as solveSystem, because the coordinate list is exactly as position-significant
     // as a solve-variable list and must never be inferred from freeVars.
-    "grad("      ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Grad(f, vs.toVector)      } |
-    "div("       ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Div(f, vs.toVector)       } |
-    "curl("      ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Curl(f, vs.toVector)      } |
-    "laplacian(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Laplacian(f, vs.toVector) } |
-    "jacobian("  ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Jacobian(f, vs.toVector)  } |
-    "hessian("   ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Hessian(f, vs.toVector)   }
+    // The optional trailing coordinate system (6.26) follows the tuple; omitted means
+    // Cartesian, so every 6.24 spelling parses unchanged.
+    "grad("      ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Grad(f, vs.toVector, cSys(s))      } |
+    "div("       ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Div(f, vs.toVector, cSys(s))       } |
+    "curl("      ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Curl(f, vs.toVector, cSys(s))      } |
+    "laplacian(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Laplacian(f, vs.toVector, cSys(s)) } |
+    "jacobian("  ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Jacobian(f, vs.toVector, cSys(s))  } |
+    "hessian("   ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Hessian(f, vs.toVector, cSys(s))   }
+
+  /** The coordinate-system keyword of a vector operator (issue 6.26). */
+  private lazy val coordSystem: Parser[String] =
+    "cartesian" | "cylindrical" | "spherical"
+
+  /** The coordinate system a vector operator was written in, defaulting to Cartesian. */
+  private def cSys(s: Option[String]): CoordinateSystem = s match
+    case Some("cylindrical") => CoordinateSystem.Cylindrical
+    case Some("spherical")   => CoordinateSystem.Spherical
+    case _                   => CoordinateSystem.Cartesian
 
   /** The domain-analysis number system, defaulting to the reals when unstated. */
   private def domainKind(k: Option[String]): DomainKind =

@@ -6,14 +6,22 @@ import scalar.*
 import matrix._Matrix
 
 
-/** The coordinate system a vector operator is evaluated in (issue 6.24).
+/** The coordinate system a vector operator is evaluated in (issues 6.24 and 6.26).
  *
- *  Only [[Cartesian]] is implemented.  The other two ship as cases from the start so the
- *  node shape is final: issue 6.26 replaces the Cartesian formulas with the general
- *  orthogonal-curvilinear ones (parameterised by the scale factors `(1,1,1)`, `(1,r,1)` and
- *  `(1,r,r·sinθ)`), which is an `eval` change and touches nothing else.  Until then a
- *  non-Cartesian request **stays symbolic** — answering it with the Cartesian formula would
- *  be a confidently wrong result.
+ *  All three are **orthogonal curvilinear**, so a single set of formulas parameterised by the
+ *  scale factors (Lamé coefficients) covers them — see [[_VectorOperator.scaleFactors]].
+ *  Writing the cylindrical and spherical operators out by hand would have put three
+ *  definitions of each in the source, free to drift apart; there is one.
+ *
+ *  **`Cylindrical` and `Spherical` are inherently three-dimensional**, and the coordinates
+ *  are identified by *position*, not by name — the user may call them anything:
+ *
+ *  - `Cylindrical` — `(r, θ, z)`: radial, azimuthal, axial.
+ *  - `Spherical` — `(r, θ, φ)` with **`θ` the polar angle** (measured from the axis) and `φ`
+ *    the azimuthal one.  This is the physics convention; the mathematics convention swaps the
+ *    two names.  It cannot be inferred from the variable names, and choosing silently would
+ *    make every spherical result wrong for half its readers, so it is stated here, in the
+ *    cheat sheet and in the README.
  */
 enum CoordinateSystem:
   case Cartesian, Cylindrical, Spherical
@@ -39,13 +47,40 @@ sealed trait _VectorOperator extends _Expression:
   /** The operator's own name, for `toString`. */
   protected def opName: String
 
-  override def toString: String = s"$opName($e, ${coords.mkString(", ")})"
+  override def toString: String =
+    val tail = if system == CoordinateSystem.Cartesian then "" else s", ${system.toString.toLowerCase}"
+    s"$opName($e, ${coords.mkString(", ")}$tail)"
 
-  /** True when the request is one this tier can answer at all: a Cartesian system and a
-   *  coordinate tuple with no repeats.  `grad(f, x, x)` names no basis and is refused rather
-   *  than silently producing a duplicated component. */
+  /** The scale factors `(h₁, h₂, …)` for this coordinate system and tuple (issue 6.26).
+   *
+   *  Every operator below is written once, in terms of these; Cartesian is the `h = 1` case,
+   *  which is why generalising the formulas left its results untouched.  `None` when the
+   *  system cannot describe this tuple — cylindrical and spherical are three-dimensional, and
+   *  a request in any other arity is refused rather than answered in the wrong geometry.
+   */
+  protected def scaleFactors: Option[Vector[_Expression]] = system match
+    case CoordinateSystem.Cartesian   => Some(Vector.fill(coords.size)(_Number(1)))
+    // (r, θ, z): only the azimuthal arc scales, by r
+    case CoordinateSystem.Cylindrical =>
+      Option.when(coords.sizeIs == 3)(Vector(_Number(1), coords(0), _Number(1)))
+    // (r, θ, φ), θ polar: the azimuthal arc scales by r·sin θ
+    case CoordinateSystem.Spherical   =>
+      Option.when(coords.sizeIs == 3)(
+        Vector(_Number(1), coords(0), Product(coords(0), Sin(coords(1)))))
+
+  /** True when the request is one this tier can answer at all: a coordinate tuple with no
+   *  repeats, in an arity the coordinate system supports.  `grad(f, x, x)` names no basis and
+   *  is refused rather than silently producing a duplicated component. */
   protected def wellPosed: Boolean =
-    system == CoordinateSystem.Cartesian && coords.nonEmpty && coords.distinct.size == coords.size
+    coords.nonEmpty && coords.distinct.sizeIs == coords.size && scaleFactors.isDefined
+
+  /** The scale factors, or an empty vector when the request is ill-posed (guarded by
+   *  [[wellPosed]] at every use site). */
+  protected def h: Vector[_Expression] = scaleFactors.getOrElse(Vector.empty)
+
+  /** The Jacobian factor `h₁·h₂·…`, the volume element's coefficient. */
+  protected def jacobianFactor: _Expression =
+    if h.isEmpty then _Number(1) else h.reduce(Product.apply)
 
   /** Reads `e` as an n×1 vector field: its components, or `None` when it is not one.
    *
@@ -96,7 +131,8 @@ case class _Grad(e: _Expression, coords: Vector[_Variable],
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     if !wellPosed then Left(this)
-    else Left(column(coords.indices.toVector.map(i => d(e, i))))
+    // component i is (1/hᵢ)·∂f/∂qᵢ — the h = 1 case is the plain partial derivative
+    else Left(column(coords.indices.toVector.map(i => Ratio(d(e, i), h(i)))))
 
 
 /** `div(F, x, y, …)` — the divergence of a vector field, a **scalar**.
@@ -118,7 +154,12 @@ case class _Div(e: _Expression, coords: Vector[_Variable],
       for
         comps <- Option.when(wellPosed)(()).flatMap(_ => componentsOf(e, env))
         if comps.sizeIs == coords.size
-      yield total(comps.indices.toVector.map(i => d(comps(i), i)))
+        // (1/J)·Σᵢ ∂/∂qᵢ (J/hᵢ · Fᵢ) with J = h₁h₂…; the h = 1 case is Σᵢ ∂Fᵢ/∂qᵢ.
+        // The whole product is differentiated, so the scale factors' own variation counts —
+        // that is what makes 1/r divergence-free in cylindrical coordinates.
+        j = jacobianFactor
+      yield simplifyFully(
+        Ratio(total(comps.indices.toVector.map(i => d(Product(Ratio(j, h(i)), comps(i)), i))), j))
     result.fold(Left(this))(r => r.eval(env) match
       case Right(v) => Right(v)
       case Left(x)  => Left(x))
@@ -148,23 +189,30 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
         comps <- componentsOf(e, env)
         if comps.sizeIs == 3
       yield
-        // (∂F₃/∂x₂ − ∂F₂/∂x₃, ∂F₁/∂x₃ − ∂F₃/∂x₁, ∂F₂/∂x₁ − ∂F₁/∂x₂)
+        // component i is (1/hⱼhₖ)·[∂(hₖFₖ)/∂qⱼ − ∂(hⱼFⱼ)/∂qₖ] over the cyclic (i, j, k);
+        // the h = 1 case is (∂F₃/∂x₂ − ∂F₂/∂x₃, ∂F₁/∂x₃ − ∂F₃/∂x₁, ∂F₂/∂x₁ − ∂F₁/∂x₂)
         column(Vector.tabulate(3) { i =>
           val (j, k) = ((i + 1) % 3, (i + 2) % 3)
-          Sum(d(comps(k), j), Product(_Number(-1), d(comps(j), k)))
+          Ratio(Sum(d(Product(h(k), comps(k)), j),
+                    Product(_Number(-1), d(Product(h(j), comps(j)), k))),
+                Product(h(j), h(k)))
         })
     result.fold(Left(this))(Left(_))
 
 
 /** `laplacian(f, x, y, …)` — the Laplacian of a scalar field, a **scalar**.
  *
- *  Defined as `div(grad(f))` rather than as its own sum of second derivatives, so the two
- *  can never disagree — and so issue 6.26 gets the curvilinear Laplacian for free once
- *  `grad` and `div` carry the scale factors.
+ *  Defined as `div(grad(f))` rather than as its own sum of second derivatives, so the two can
+ *  never disagree.  **That definition is why issue 6.26 needed no change here**: composing
+ *  the curvilinear `grad` and `div` yields `(1/J)·Σᵢ ∂/∂qᵢ (J/hᵢ² · ∂f/∂qᵢ)`, which is exactly
+ *  the general orthogonal-curvilinear Laplacian — a formula written out separately would have
+ *  been a second definition to keep in step, and this one cannot drift.
  *
- *  A **vector** argument stays symbolic: the vector Laplacian is not the component-wise
- *  scalar one outside Cartesian coordinates, so answering it here would set a precedent that
- *  6.26 would have to break.
+ *  A **vector** argument stays symbolic, and now for a load-bearing reason rather than a
+ *  cautious one: outside Cartesian coordinates the vector Laplacian is *not* the
+ *  component-wise scalar Laplacian (it is `grad(div F) − curl(curl F)`), so answering it by
+ *  mapping this scalar formula over the components would be wrong in exactly the systems
+ *  6.26 adds.
  *
  *  @param e      the scalar field
  *  @param coords the ordered coordinate tuple

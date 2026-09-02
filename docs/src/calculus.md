@@ -140,7 +140,31 @@ The coordinate-free identities hold, which makes them the natural property tests
 `curl(grad f) = 0`, `div(curl F) = 0`, and `laplacian` is *defined* as `div ∘ grad` so the two
 cannot disagree.  Shapes that have no meaning — a `curl` outside three dimensions, a
 component/coordinate count mismatch, a repeated coordinate — stay symbolic rather than being
-guessed.  Cartesian coordinates only for now.
+guessed.
+
+**Cartesian, cylindrical and spherical** coordinates are all supported, through *one* set of
+orthogonal-curvilinear formulas parameterised by the system's scale factors — Cartesian is
+simply the case where they are all `1`:
+
+```scala mdoc:silent
+val r  = _Variable("r")
+val th = _Variable("t")
+val ph = _Variable("p")
+val atPoint = new Environment(variables =
+  Map("r" -> _Number(2.0), "t" -> _Number(0.7), "p" -> _Number(0.4)))
+```
+
+The Newtonian potential is harmonic away from the origin — `∇²(1/r) = 0` — and that is a
+sharp check on the scale factors, since a single wrong one breaks it.  The symbolic form does
+not visibly collapse (`simplify` does no common-factor cancellation), so evaluate it:
+
+```scala mdoc
+_Laplacian(Ratio(_Number(1.0), r), Vector(r, th, ph), CoordinateSystem.Spherical).eval(atPoint)
+```
+
+`cylindrical` is `(r, θ, z)` and `spherical` is `(r, θ, φ)` with **θ the polar angle** (the
+physics convention).  Both are three-dimensional, and the coordinates are identified by
+**position, not by name**.
 
 ## Definite integration (Simpson's rule)
 

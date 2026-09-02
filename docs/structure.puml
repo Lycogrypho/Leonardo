@@ -1143,6 +1143,12 @@ package "vector" {
           evaluating -- evaluating first would collapse
           symbolic cells to constants once the
           coordinates happen to be bound
+        __ one formula set, scale-factor driven (6.26) __
+        scaleFactors: (1,1,1) | (1,r,1) | (1,r,r sin t)
+        grad_i = (1/h_i) df/dq_i
+        div    = (1/J) sum d/dq_i (J/h_i * F_i)
+        curl_i = (1/h_j h_k)[d(h_k F_k)/dq_j - d(h_j F_j)/dq_k]
+        Cartesian is the h = 1 case
     }
 
     class "_Grad" <<case>> [[calculus.html]] {
@@ -1170,9 +1176,12 @@ package "vector" {
     }
 
     enum "CoordinateSystem" <<data>> [[calculus.html]] {
-        Cartesian    (only one implemented)
-        Cylindrical  }  6.26: general orthogonal
-        Spherical    }  curvilinear scale factors
+        Cartesian    (x, y, ..)  h = (1, 1, 1)
+        Cylindrical  (r, t, z)   h = (1, r, 1)
+        Spherical    (r, t, p)   h = (1, r, r sin t)
+        3-D only for the two curvilinear ones;
+        coordinates identified BY POSITION;
+        spherical uses t = POLAR angle (physics)
     }
 
     "_VectorOperator" --|> "_Expression"
