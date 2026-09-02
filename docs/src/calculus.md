@@ -121,6 +121,27 @@ Unsupported forms are left as `_Integral` nodes (symbolic, not an error):
 integrate(Sin(Product(x, x)), x).toString    // sin(x²) has no closed form
 ```
 
+## Vector calculus
+
+`grad`, `div`, `curl`, `laplacian`, `jacobian` and `hessian` take a scalar or vector field
+followed by the **ordered coordinate tuple** — the order is never inferred, because it fixes
+the order of the result's components.  A vector field is an n×1 matrix.
+
+```scala mdoc
+import it.grypho.scala.leonardo.vector.*
+import it.grypho.scala.leonardo.matrix._Matrix
+
+val y = _Variable("y")
+// grad(x^2 * y) = [2xy, x^2]^T
+_Grad(Product(Power(x, _Number(2.0)), y), Vector(x, y)).eval(env).toExpression.toString
+```
+
+The coordinate-free identities hold, which makes them the natural property tests:
+`curl(grad f) = 0`, `div(curl F) = 0`, and `laplacian` is *defined* as `div ∘ grad` so the two
+cannot disagree.  Shapes that have no meaning — a `curl` outside three dimensions, a
+component/coordinate count mismatch, a repeated coordinate — stay symbolic rather than being
+guessed.  Cartesian coordinates only for now.
+
 ## Definite integration (Simpson's rule)
 
 `_DefIntegral(e, v, lo, hi)` computes the definite integral numerically using

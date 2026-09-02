@@ -185,6 +185,22 @@ integral(x^a, x)                -> x^(a+1)/(a+1)          symbolic exponent
 integral(exp(a*x)*sin(b*x), x)                            general cyclic pair
 ```
 
+### Vector calculus
+
+A vector field is an n×1 matrix; the coordinate tuple is explicit and **ordered**.
+
+```
+grad(x^2*y, x, y)               -> [[2xy], [x^2]]         gradient (n x 1)
+div([[x^2], [y^3]], x, y)       -> 2x + 3y^2              divergence (scalar)
+curl([[-y], [x], [0]], x, y, z) -> [[0], [0], [2]]        curl (3-D only)
+laplacian(x^3*y, x, y)          -> 6xy                    = div(grad(f))
+jacobian([[x*y], [y^2]], x, y)  -> [[y, x], [0, 2y]]      m x n
+hessian(x^2*y^3, x, y)                                    n x n, symmetric
+```
+
+`curl` outside three dimensions, a component/coordinate count mismatch, and a repeated
+coordinate all stay symbolic rather than being guessed.  Cartesian coordinates only for now.
+
 ### Definite integration (Simpson's rule)
 
 ```

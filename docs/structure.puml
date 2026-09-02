@@ -1128,6 +1128,69 @@ package "domain" {
 }
 
 ' ===================================================
+' PACKAGE: vector - vector calculus (imports core + scalar + matrix)
+' a field is an n x 1 matrix._Matrix, NOT a new carrier
+' ===================================================
+package "vector" {
+
+    interface "_VectorOperator" <<trait>> [[calculus.html]] {
+        e      : _Expression
+        coords : Vector[_Variable]   (ORDERED; free in
+                 the result, never substituted --
+                 the _Taylor convention, not a binder)
+        system : CoordinateSystem
+        componentsOf(): reads a LITERAL matrix without
+          evaluating -- evaluating first would collapse
+          symbolic cells to constants once the
+          coordinates happen to be bound
+    }
+
+    class "_Grad" <<case>> [[calculus.html]] {
+        grad(f, x..) -> n x 1
+    }
+    class "_Div" <<case>> [[calculus.html]] {
+        div(F, x..) -> SCALAR
+        needs one component per coordinate
+    }
+    class "_Curl" <<case>> [[calculus.html]] {
+        curl(F, x, y, z) -> 3 x 1
+        3-D ONLY; 2-D curl is a scalar,
+        a different result type -> refused
+    }
+    class "_Laplacian" <<case>> [[calculus.html]] {
+        laplacian(f, x..) -> SCALAR
+        DEFINED as div(grad(f)), so the
+        two can never disagree
+    }
+    class "_Jacobian" <<case>> [[calculus.html]] {
+        jacobian(F, x..) -> m x n
+    }
+    class "_Hessian" <<case>> [[calculus.html]] {
+        hessian(f, x..) -> n x n (symmetric)
+    }
+
+    enum "CoordinateSystem" <<data>> [[calculus.html]] {
+        Cartesian    (only one implemented)
+        Cylindrical  }  6.26: general orthogonal
+        Spherical    }  curvilinear scale factors
+    }
+
+    "_VectorOperator" --|> "_Expression"
+    "_Grad"      --|> "_VectorOperator"
+    "_Div"       --|> "_VectorOperator"
+    "_Curl"      --|> "_VectorOperator"
+    "_Laplacian" --|> "_VectorOperator"
+    "_Jacobian"  --|> "_VectorOperator"
+    "_Hessian"   --|> "_VectorOperator"
+
+    "_VectorOperator" ..> "CoordinateSystem"
+    "_VectorOperator" ..> "Derive"    : every operator is a composition of derive()
+    "_VectorOperator" ..> "_Matrix"   : field carrier (n x 1) and matrix results
+    "_Laplacian"      ..> "_Div"      : div(grad(f))
+    "_Laplacian"      ..> "_Grad"
+}
+
+' ===================================================
 ' PACKAGE: statistics (imports core + scalar + matrix + probability)
 ' ===================================================
 package "statistics" <<Rectangle>> {
@@ -1303,6 +1366,7 @@ package "parser" {
 "Parser" ..> "_Regress"        : regress(X, y)
 "Parser" ..> "_Test"           : ttest / confint / chisqtest
 "Parser" ..> "_Based"          : 0x.. / 0b.. / 0o.. / 0t.. literals
+"Parser" ..> "_VectorOperator" : grad / div / curl / laplacian / jacobian / hessian (6.24)
 "Parser" ..> "Si / Ci / Ei / Li"   : Si / Ci / Ei / li (3.15)
 "Parser" ..> "FresnelS / FresnelC" : fresnelS / fresnelC
 
