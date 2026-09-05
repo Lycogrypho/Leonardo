@@ -104,6 +104,8 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
                                "sec", "csc", "cot", "sech", "csch", "coth",
                                "Si", "Ci", "Ei", "li", "fresnelS", "fresnelC",
                                "grad", "div", "curl", "laplacian", "jacobian", "hessian",
+                               "fib", "lucas", "pell", "jacobsthal",
+                               "binom", "catalan", "harmonic", "tabulate",
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",
                                "limit", "laplace", "fourier", "invlaplace", "ode",

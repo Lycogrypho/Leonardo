@@ -570,6 +570,42 @@ package "scalar" {
     "Gamma / LogGamma / Digamma" ..> "SpecialFunctions"
     "Erf / Erfc"                 ..> "SpecialFunctions"
 
+    ' -- Numeric sequences and the tabulator (issue 6.28) --
+    class "_Sequence" <<case>> [[sequences.html]] {
+        kind  : SeqKind
+        n     : _Expression
+        seeds : List (empty, or two overrides)
+        x(k) = p*x(k-1) + q*x(k-2); ONE recurrence,
+        the named variants are spellings of it
+        (enum-tagged node, NOT parse-time aliases:
+        sugar would lose the name on the way back)
+        exact path past F(78), where a Double stops
+        representing Fibonacci exactly
+    }
+    enum "SeqKind" <<data>> [[sequences.html]] {
+        Fibonacci  (0,1) (1,1)
+        Lucas      (2,1) (1,1)
+        Pell       (0,1) (2,1)
+        Jacobsthal (0,1) (1,2)
+    }
+    class "_Tabulate" <<case>> [[sequences.html]] {
+        e, v (BINDER), lo, hi
+        tabulate(e, k, lo, hi) -> 1 x n _Matrix
+        generic: works for ANY expression, so every
+        function gains a tabulated form from one node
+    }
+    class "Sequences" <<utility>> [[sequences.html]] {
+        + linRecOf / linRecExact
+        + binomOf / binomExact / catalan / harmonic
+        two caps, as in SpecialFunctions
+    }
+
+    "_Sequence" --|> "_Expression"
+    "_Tabulate" --|> "_Functional"
+    "_Sequence" ..> "SeqKind"
+    "_Sequence" ..> "Sequences" : linRec kernels at eval
+    "_Tabulate" ..> "_Matrix"   : the row of terms
+
     class "Syntax" <<object>> [[expressions.html]] {
         simplify() / simplifyFully()
         expand()
@@ -1382,6 +1418,8 @@ package "parser" {
 "Parser" ..> "_Test"           : ttest / confint / chisqtest
 "Parser" ..> "_Based"          : 0x.. / 0b.. / 0o.. / 0t.. literals
 "Parser" ..> "_VectorOperator" : grad / div / curl / laplacian / jacobian / hessian (6.24)
+"Parser" ..> "_Sequence"       : fib / lucas / pell / jacobsthal (6.28)
+"Parser" ..> "_Tabulate"       : tabulate(e, k, lo, hi)
 "Parser" ..> "Si / Ci / Ei / Li"   : Si / Ci / Ei / li (3.15)
 "Parser" ..> "FresnelS / FresnelC" : fresnelS / fresnelC
 

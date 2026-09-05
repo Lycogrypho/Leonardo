@@ -792,6 +792,84 @@ case class Digamma(e: _Expression) extends _Function:
       case other                   => Left(Digamma(other.toExpression))
 
 
+// ── Combinatorial functions (issue 6.28) ─────────────────────────────────────
+// On the Gamma/Factorial template: an exact BigInt path for integer arguments and a Double
+// kernel otherwise, with an undefined point leaving the node symbolic.
+
+/** The binomial coefficient `binom(n, k)`.
+ *
+ *  Generalised to a real upper index by the falling factorial `n(n-1)...(n-k+1)/k!`, so
+ *  `binom(-1, 3)` is `-1`; `k` must be a non-negative integer, and the value is `0` for a
+ *  negative `k` or for `k > n` at non-negative integer `n`.  Exact for integer arguments,
+ *  which is what keeps `binom(30, 15)` an integer rather than a rounded `Double`.
+ *
+ *  @param n the upper index
+ *  @param k the lower index
+ */
+case class Binom(n: _Expression, k: _Expression) extends _Function:
+  override def toString: String = s"binom($n, $k)"
+  override def children: List[_Expression] = List(n, k)
+  override def rebuild(c: List[_Expression]): _Expression = Binom(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (n.eval(env), k.eval(env)) match
+      case (Right(a: _Rational), Right(b: _Rational)) =>
+        val exact =
+          for
+            an <- a.toBigIntExact
+            bn <- b.toBigIntExact
+            v  <- binomExact(an, bn)
+          yield Right(_Rational(v))
+        exact.getOrElse(viaDouble(List(_Number(a.toDouble), _Number(b.toDouble)), env))
+      case (Right(_Number(a)), Right(_Number(b))) =>
+        binomOf(a, b).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case _ => Left(this)
+
+
+/** The `n`-th Catalan number `catalan(n) = binom(2n, n)/(n+1)`.
+ *
+ *  @param e the index
+ */
+case class Catalan(e: _Expression) extends _Function:
+  override def toString: String = s"catalan($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Catalan(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational) =>
+        exactIntArg(r).flatMap(catalanExact).map(v => Right(_Rational(v)))
+          .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
+      case Right(_Number(x))       => catalanOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => catalanOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Catalan(other.toExpression))
+
+
+/** The `n`-th harmonic number `harmonic(n) = 1 + 1/2 + ... + 1/n` (`harmonic(0) = 0`).
+ *
+ *  **Rational-valued, so the exact tier is the interesting one**: `harmonic(4)` is `25/12`
+ *  exactly, not `2.0833...`.  Related to the existing [[Digamma]] by `H(n) = psi(n+1) + gamma`,
+ *  which the test suite checks rather than assumes.
+ *
+ *  @param e the index
+ */
+case class Harmonic(e: _Expression) extends _Function:
+  override def toString: String = s"harmonic($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Harmonic(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(r: _Rational) =>
+        exactIntArg(r).flatMap(harmonicExact).map(Right(_))
+          .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
+      case Right(_Number(x))       => harmonicOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => harmonicOf(d).getOrElse(Double.NaN))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Harmonic(other.toExpression))
+
+
 // ── Special integral functions (issue 3.15) ──────────────────────────────────
 // The named antiderivatives of the classic non-elementary integrals, on the Gamma/Erf
 // template: a symbolic node with a numeric kernel returning Option[Double], so an

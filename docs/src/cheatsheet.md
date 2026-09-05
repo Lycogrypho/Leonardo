@@ -119,6 +119,37 @@ L, U, P := lu(A)       tuple binding from a 1×n decomposition result
 
 ---
 
+## Numeric sequences
+
+```
+fib(10)                 -> 55       standard indexing: fib(0)=0, fib(1)=1 (OEIS A000045)
+fib(n, 1, 1)                        the classic rabbit pair = fib(n+1)
+fib(5, 1.5, -pi)                    any numeric seeds -- not just integers
+lucas(6)                -> 18       = fib(n, 2, 1)
+pell(5)                 -> 29       x(n) = 2x(n-1) + x(n-2)
+jacobsthal(5)           -> 11       x(n) = x(n-1) + 2x(n-2)
+binom(10, 5)            -> 252      generalised: binom(-1, 3) = -1
+catalan(5)              -> 42
+harmonic(4)             -> 2.0833   exact mode gives 25/12
+```
+
+In exact mode Fibonacci is computed over arbitrary-precision integers: a `Double` stops being
+exact at `fib(78)`, so `fib(100)` is `354224848179261915075` rather than an approximation.
+
+### tabulate — a row of terms
+
+```
+tabulate(fib(k), k, 0, 8)      -> [[0, 1, 1, 2, 3, 5, 8, 13, 21]]
+tabulate(binom(4, k), k, 0, 4) -> [[1, 4, 6, 4, 1]]        a Pascal row
+tabulate(k^2, k, 1, 5)         -> [[1, 4, 9, 16, 25]]
+at(tabulate(fib(k), k, 0, 10), 1, 11) -> 55                rows are 1-based
+```
+
+`tabulate` works for *any* expression, not just the sequences; the result is an ordinary
+1×n matrix, so `at`, tuple assignment and `:save` all apply.  `k` is a binder.
+
+---
+
 ## Special functions
 
 ```

@@ -96,6 +96,8 @@ object Parser extends JavaTokenParsers:
                                                          // C spelling; Fresnel spelled out --
                                                          // bare S/C would be homoglyph traps
     "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus (6.24)
+    "fib", "lucas", "pell", "jacobsthal",                // numeric sequences (6.28)
+    "binom", "catalan", "harmonic", "tabulate",          // combinatorial + the tabulator
     "cartesian", "cylindrical", "spherical", "sphericalmaths",  // coordinate systems (6.26,
                                                          // 6.27). Each needs its own entry:
                                                          // the reserved check is exact, so
@@ -483,6 +485,20 @@ object Parser extends JavaTokenParsers:
     // Special integral functions (3.15). "Si("/"Ci("/"Ei(" are case-sensitive literals, so
     // they cannot shadow "sin(" and friends; "fresnelS(" is listed before "fresnelC(" only
     // for tidiness -- the two do not prefix each other.
+    // Numeric sequences (6.28). `fib` alone takes the 3-argument seeded form, listed first
+    // so the greedy 1-argument alternative cannot claim it and then choke on the comma.
+    "fib("      ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case n ~ _ ~ a ~ _ ~ b => _Sequence(SeqKind.Fibonacci, n, List(a, b)) }                            |
+    "fib("        ~> guardedExpr <~ ")" ^^ { n => _Sequence(SeqKind.Fibonacci, n)  }                      |
+    "lucas("      ~> guardedExpr <~ ")" ^^ { n => _Sequence(SeqKind.Lucas, n)      }                      |
+    "pell("       ~> guardedExpr <~ ")" ^^ { n => _Sequence(SeqKind.Pell, n)       }                      |
+    "jacobsthal(" ~> guardedExpr <~ ")" ^^ { n => _Sequence(SeqKind.Jacobsthal, n) }                      |
+    "catalan("    ~> guardedExpr <~ ")"                                  ^^ Catalan.apply                 |
+    "harmonic("   ~> guardedExpr <~ ")"                                  ^^ Harmonic.apply                |
+    "binom(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case n ~ _ ~ k => Binom(n, k) }              |
+    // tabulate(e, k, lo, hi): k is a BINDER, lo/hi ordinary children (the _DefIntegral shape)
+    "tabulate(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ lo ~ _ ~ hi => _Tabulate(e, v, lo, hi) }                                       |
     "Si("       ~> guardedExpr <~ ")"                                    ^^ Si.apply                      |
     "Ci("       ~> guardedExpr <~ ")"                                    ^^ Ci.apply                      |
     "Ei("       ~> guardedExpr <~ ")"                                    ^^ Ei.apply                      |
