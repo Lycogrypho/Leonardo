@@ -1,5 +1,21 @@
 ThisBuild / scalaVersion := "3.3.6"
 
+// The release tags in this repository are bare (`3.6.3`), not `v`-prefixed. sbt-dynver
+// defaults to matching only `v*`, so without this it silently ignored every bare tag and
+// derived the version from the abandoned `v2.0.0` instead -- reporting `2.0.0+158-<sha>`
+// on a commit whose own tag says `3.6.3`. Publishing that would have shipped a version
+// number both wrong and *lower* than the project's visible history.
+ThisBuild / dynverVTagPrefix := false
+
+// The project licence, declared here as well as in LICENSE/NOTICE because this is the copy
+// that reaches the published POM -- Maven Central rejects an artifact without it, and a
+// consumer's licence-audit tooling reads the POM, never the repository. The SPDX identifier
+// must match the LICENSE file exactly; changing one without the other is how a project ends
+// up claiming two different licences in two places.
+ThisBuild / licenses := Seq(
+  "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")
+)
+
 scalacOptions ++= Seq(
   "-explain", "-deprecation", "-feature",
   // package.scala files contain only a chained package clause + a /** */ doc comment;
@@ -159,12 +175,12 @@ libraryDependencies += "org.jline" % "jline" % "3.30.15"
 
 // Spire powers the exact-arithmetic tier's irrational engine (issue 4.N): `Real` computes a
 // transcendental to any requested precision, replacing the ~15-digit `Double` ceiling that
-// tier 1 had to live with. MIT licensed, so one-way compatible with Leonardo's GPL-3.
+// tier 1 had to live with. MIT licensed, so one-way compatible with Leonardo's Apache-2.0.
 //
 // PINNED DELIBERATELY. spire_3 has exactly one stable release, 0.18.0 of June 2022, and the
 // transitive `typelevel/algebra` is archived. The licence is what bounds that risk: if spire
-// is ever truly abandoned, the handful of `Real` sources can be vendored in under GPL-3 with
-// the MIT notice preserved. Do not plan on upgrades.
+// is ever truly abandoned, the handful of `Real` sources can be vendored in under Apache-2.0
+// with the MIT notice preserved and recorded in NOTICE. Do not plan on upgrades.
 libraryDependencies += "org.typelevel" %% "spire" % "0.18.0"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"

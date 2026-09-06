@@ -202,6 +202,29 @@ bindings, definitions) as a script that `:load` replays.
 
 - Additional mathematical functions and constants
 
+## Licence
+
+Leonardo is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+```
+Copyright 2023-2026 Cosimo Attanasi
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
+
+You may use, modify and redistribute Leonardo — including in closed-source and commercial
+work — provided you keep the licence and copyright notices and state what you changed. The
+licence also grants an express patent licence from every contributor. See [`NOTICE`](NOTICE)
+for the attribution notice you must carry when redistributing, and for the third-party
+dependency inventory (all permissive: Apache-2.0, BSD and MIT).
+
+Leonardo was released under GPL-3 until 2026-09-06; the relicence was made by the sole
+copyright holder to let the library be used from projects under any licence.
+
 ## Credits
 
 Design Credits: Leonardo's Logo and banner were created using Inkscape, elaborating the following elements:

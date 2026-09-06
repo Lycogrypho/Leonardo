@@ -1,0 +1,46 @@
+name: Scala Steward
+
+# Dependency hygiene for issue 5.2 phase 5: nothing watched the dependencies before this.
+# Steward opens a pull request per available update; CI runs the full suite against it, so
+# an update is accepted or rejected on evidence rather than on the version number.
+#
+# Policy (which dependencies are ignored, and why spire is pinned) lives in
+# `.scala-steward.conf` at the repository root.
+
+on:
+  schedule:
+    # Mondays at 04:00 UTC. Weekly is ample for a library whose one volatile dependency is
+    # deliberately pinned; a shorter interval would only produce noise to close.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  scala-steward:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Run Scala Steward
+        uses: scala-steward-org/scala-steward-action@v2
+        with:
+          # NOTE: with the default GITHUB_TOKEN, pull requests opened by this workflow do
+          # NOT trigger other workflows -- GitHub suppresses that to prevent recursion, so
+          # the test suite would not run on Steward's PRs and the whole point would be lost.
+          # Create a fine-grained PAT with contents+pull-requests write, store it as the
+          # repository secret STEWARD_TOKEN, and CI will run on each update.
+          github-token: ${{ secrets.STEWARD_TOKEN || secrets.GITHUB_TOKEN }}

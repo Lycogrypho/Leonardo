@@ -58,3 +58,11 @@ d.eval(env)
 - [Equations](equations.md) — relations, solver, complex numbers
 - [Interactive REPL](repl.md) — session commands and scripts
 - [Architecture](architecture.md) — package diagram and design decisions
+
+## Licence
+
+Leonardo is licensed under the
+[Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0) —
+Copyright 2023-2026 Cosimo Attanasi. Use, modification and redistribution are permitted,
+including in closed-source and commercial work, provided the licence and copyright notices
+are kept and changes are stated.
