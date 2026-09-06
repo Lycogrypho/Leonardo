@@ -3,7 +3,10 @@ title: Equations & Complex Numbers
 nav_order: 6
 ---
 
+<img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
+
 # Equations & Complex Numbers
+<div style="clear:both"></div>
 
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.core.*

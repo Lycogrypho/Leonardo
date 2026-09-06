@@ -2,7 +2,10 @@
 /project/
 /null/
 /.idea/
-/target/
+# UNANCHORED since the 5.2 phase 1.1 module split: the leading slash matched the root
+# target/ only, so core/target/ and repl/target/ -- and any future module's -- would have
+# been committed. Matches a directory named `target` at any depth, the sbt convention.
+target/
 
 # Jekyll documentation-site build artifacts (see .github/workflows/pages.yml)
 /_site/

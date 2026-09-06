@@ -142,15 +142,8 @@ class EigDecompositionTest extends AnyFlatSpec:
     assert(!parser.Parser.parse("eig").successful)
   }
 
-  "at(eig(A), 1, 1)" should "extract V and at(eig(A), 1, 2) should extract D" in
-  {
-    val s = cli.Session()
-    s.execute("A := [[4, 1], [1, 3]]")
-    val outV = s.execute("at(eig(A), 1, 1)")
-    val outD = s.execute("at(eig(A), 1, 2)")
-    assert(!outV.startsWith("parse error"), s"extracting V failed: $outV")
-    assert(!outD.startsWith("parse error"), s"extracting D failed: $outD")
-  }
+  // Indexing into eig's result from the REPL lives in matrix/EigDecompositionReplTest.scala
+  // (issue 5.2 phase 1.1).
 
   // ---- _JordanDecomposition AST node ----
 
@@ -226,18 +219,3 @@ class EigDecompositionTest extends AnyFlatSpec:
     assert(!parser.Parser.parse("jordan").successful)
   }
 
-  "the REPL" should "compute eig([[3,1],[1,3]]) without error" in
-  {
-    val s   = cli.Session()
-    val out = s.execute("eig([[3, 1], [1, 3]])")
-    assert(out.nonEmpty, "expected non-empty output")
-    assert(!out.startsWith("parse error"), s"parse error: $out")
-  }
-
-  "the REPL" should "compute jordan([[3,1],[1,3]]) without error" in
-  {
-    val s   = cli.Session()
-    val out = s.execute("jordan([[3, 1], [1, 3]])")
-    assert(out.nonEmpty, "expected non-empty output")
-    assert(!out.startsWith("parse error"), s"parse error: $out")
-  }

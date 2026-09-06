@@ -5,6 +5,14 @@ The public support site (prose + tutorials + API reference) is published to
 
 > https://lycogrypho.github.io/Leonardo/
 
+> **This file is for maintainers and is never published.**  The Jekyll source is
+> `target/mdoc`, and mdoc's input is `docs/src`, so nothing in `docs/` itself is copied into
+> the site — this README is visible only when browsing the repository.  Build and deployment
+> internals belong here rather than in `docs/src/developer.md`, which *is* published and is
+> written for someone using the library.  `CLAUDE.md` keeps only the rules that constrain
+> day-to-day edits and points here for the full story; **when the pipeline changes, change it
+> here first** — the duplication between the two has drifted before.
+
 ## Layout
 
 | Path | Role |
@@ -17,7 +25,7 @@ The public support site (prose + tutorials + API reference) is published to
 | `.github/workflows/pages.yml` | CI: builds the site and the Scaladoc API, then deploys to Pages. |
 
 The **Scaladoc API reference** is not built by Jekyll — the workflow runs
-`sbt "mdoc; doc; injectApiStyles"` and copies the generated API into the published
+`sbt "docs/mdoc; unidoc; injectApiStyles"` and copies the generated API into the published
 site under **`/api`** (with a `.nojekyll` marker so the `_`-prefixed class pages, e.g.
 `_Solve.html`, are served verbatim).
 
@@ -26,7 +34,7 @@ site under **`/api`** (with a `.nojekyll` marker so the `_`-prefixed class pages
 `.github/workflows/pages.yml` runs on every push to `main` that touches the docs,
 sources, or build:
 
-1. `sbt "mdoc; doc; injectApiStyles"` — verifies the `scala mdoc` code samples in the
+1. `sbt "docs/mdoc; unidoc; injectApiStyles"` — verifies the `scala mdoc` code samples in the
    prose, renders the Scaladoc API, and applies the logo/CSS.
 2. `bundle exec jekyll build --source ../target/mdoc --destination ../_site --config _config.yml`
    — renders the prose into `_site` with the Just the Docs theme.
@@ -118,5 +126,5 @@ bundle exec jekyll serve --source ../target/mdoc --config _config.yml
 # → http://127.0.0.1:4000/Leonardo/
 ```
 
-To preview the API alongside it, run `sbt "mdoc; doc; injectApiStyles"` and copy
+To preview the API alongside it, run `sbt "docs/mdoc; unidoc; injectApiStyles"` and copy
 `target/scala-3.3.6/api` into the served tree under `api/`.

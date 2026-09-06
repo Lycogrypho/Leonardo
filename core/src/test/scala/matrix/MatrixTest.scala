@@ -433,13 +433,7 @@ class MatrixTest extends AnyFlatSpec:
     assert(!parser.Parser.parse("at").successful)
   }
 
-  "at(A, i, j) in the REPL" should "extract elements from a bound matrix" in
-  {
-    val s = cli.Session()
-    s.execute("A := [[1, 2], [3, 4]]")
-    assert(s.execute("at(A, 2, 1)") == "3.0")
-    assert(s.execute("at(A, 1, 2)") == "2.0")
-  }
+  // `at(A, i, j)` in the REPL lives in matrix/MatrixReplTest.scala (issue 5.2 phase 1.1).
 
   // --- Kronecker / vec / unvec / identity kernels (issue 4.5 prerequisites) ---
 

@@ -3,7 +3,16 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/Leonardo.Leonardo.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/Leonardo.Leonardo.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.Leonardo-build.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.Leonardo-build.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/Leonardo.Leonardo.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/Leonardo.Leonardo.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/Leonardo.Leonardo.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/Leonardo.Leonardo.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/Leonardo.leonardo-repl.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/Leonardo.leonardo-repl.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/Leonardo.leonardo-repl.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/Leonardo.leonardo-repl.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/Leonardo.leonardo-repl.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/Leonardo.leonardo-repl.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test.iml" />
     </modules>

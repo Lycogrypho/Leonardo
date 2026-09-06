@@ -3,7 +3,10 @@ title: Interactive REPL
 nav_order: 8
 ---
 
+<img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
+
 # Interactive REPL
+<div style="clear:both"></div>
 
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.cli.Session

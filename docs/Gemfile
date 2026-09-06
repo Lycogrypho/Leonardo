@@ -3,9 +3,15 @@
 # Used by CI (ruby/setup-ruby with bundler-cache) and for local previews:
 #
 #   cd docs && bundle install
-#   bundle exec jekyll serve --source src --config _config.yml
+#   bundle exec jekyll serve --source ../target/mdoc --config _config.yml
 #
 # then browse http://127.0.0.1:4000/Leonardo/
+#
+# SOURCE IS ../target/mdoc -- mdoc's OUTPUT, not docs/src, its input.  Run `sbt docs/mdoc`
+# first.  Pointing this at `src` is the mistake that broke the published site until
+# 2026-08-23: kramdown rejects `scala mdoc:silent` as a language because of the colon, so
+# every sample renders as a paragraph with the fence markers showing, and no evaluated result
+# appears at all.  A preview built that way is misleading in exactly the places that matter.
 
 source "https://rubygems.org"
 

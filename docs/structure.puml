@@ -1426,7 +1426,11 @@ package "parser" {
 ' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)
 ' ===================================================
-package "cli" {
+' ── The `cli` package ships as the SEPARATE `it.grypho:leonardo-repl` artifact (5.2 phase
+' 1.1).  Every other package on this diagram is `it.grypho:leonardo`.  Nothing imports `cli`,
+' which is exactly what made it detachable -- and detaching it keeps JLine off a library
+' consumer's classpath.
+package "cli" <<Rectangle>> {
     class "Session" <<utility>> [[repl.html]] {
         - precision: Int
         - colorSchemeName: String

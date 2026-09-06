@@ -188,15 +188,4 @@ class DeterminantInverseTest extends AnyFlatSpec:
       assert(reparsed.get == e)
   }
 
-  // --- REPL end to end (the reported session) ---
-
-  "the REPL" should "compute det(A), inv(A) and 1/A on a bound matrix" in
-  {
-    val s = cli.Session()
-    s.execute("A := [[1, 2], [1, 3]]")
-    assert(s.execute("det(A)") == "1.0")
-    assert(s.execute("inv(A)") == "[[3.0, -2.0], [-1.0, 1.0]]")
-    assert(s.execute("1 / A") == "[[3.0, -2.0], [-1.0, 1.0]]")
-    assert(s.execute("eval inv(A)") == "[[3.0, -2.0], [-1.0, 1.0]]")
-    assert(s.execute("simplify det(A)") == "1.0")
-  }
+  // REPL end to end lives in matrix/DeterminantInverseReplTest.scala (issue 5.2 phase 1.1).

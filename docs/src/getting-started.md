@@ -3,7 +3,10 @@ title: Getting Started
 nav_order: 2
 ---
 
+<img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
+
 # Getting Started
+<div style="clear:both"></div>
 
 ## Prerequisites
 
@@ -16,9 +19,22 @@ nav_order: 2
 > To use it locally, clone the repository and run `sbt publishLocal`, then
 > add the following to your `build.sbt`:
 
+Leonardo ships as **two artifacts**. The library is what you almost always want:
+
 ```scala
-libraryDependencies += "it.grypho.scala" %% "leonardo" % "@VERSION@"
+libraryDependencies += "it.grypho" %% "leonardo" % "@VERSION@"
 ```
+
+The interactive REPL is a separate artifact, because it is the only part that needs
+[JLine](https://github.com/jline/jline3) — a terminal library a library consumer would never
+call. Add it only if you want to embed or extend the REPL:
+
+```scala
+libraryDependencies += "it.grypho" %% "leonardo-repl" % "@VERSION@"
+```
+
+`leonardo-repl` depends on `leonardo`, so the second line replaces the first rather than
+supplementing it.
 
 ## Import conventions
 
@@ -30,7 +46,7 @@ import it.grypho.scala.leonardo.scalar.*    // Sum, Product, Power, Sin, derive,
 import it.grypho.scala.leonardo.matrix.*    // _Matrix, MatSum, MatProduct, Transpose, Determinant, Inverse
 import it.grypho.scala.leonardo.equation.*  // _Equation, solve, solveSystem
 import it.grypho.scala.leonardo.parser.Parser
-import it.grypho.scala.leonardo.cli.Session
+import it.grypho.scala.leonardo.cli.Session   // leonardo-repl artifact, not leonardo
 ```
 
 ## Parsing

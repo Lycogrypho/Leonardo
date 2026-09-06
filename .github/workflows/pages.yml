@@ -45,8 +45,15 @@ jobs:
       - name: Set up sbt
         uses: sbt/setup-sbt@v1
 
-      - name: Build API docs (mdoc verifies samples, doc renders, injectApiStyles adds the logo/CSS)
-        run: sbt "mdoc; doc; injectApiStyles"
+      - name: Build API docs (mdoc verifies samples, unidoc renders, injectApiStyles adds the logo/CSS)
+        # Both task names are project-qualified or plugin-specific since the 5.2 phase 1.1
+        # module split, and the bare forms are WRONG rather than merely different:
+        #   `docs/mdoc` -- MdocPlugin is enabled on the `docs` project, not root, so that mdoc
+        #                  stays out of the published POM. Bare `mdoc` is not a valid task.
+        #   `unidoc`    -- plain `doc` now writes core/target and repl/target separately and
+        #                  produces NOTHING at target/scala-3.3.6/api, which is the path the
+        #                  assemble step below copies. It would also drop `cli` from the API.
+        run: sbt "docs/mdoc; unidoc; injectApiStyles"
 
       # ── Jekyll prose site (Just the Docs over docs/src) ──────────────────────
       - name: Set up Ruby

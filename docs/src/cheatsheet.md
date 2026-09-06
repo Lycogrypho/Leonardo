@@ -3,8 +3,10 @@ title: Cheatsheet
 nav_order: 10
 ---
 
+<img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
 
 # Leonardo Cheatsheet
+<div style="clear:both"></div>
 
 Quick reference for the interactive REPL and all mathematical expressions.
 For full detail on any command run `help <command>` at the REPL prompt.

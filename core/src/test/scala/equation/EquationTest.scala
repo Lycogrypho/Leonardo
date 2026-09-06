@@ -5,7 +5,6 @@ import core.*
 import scalar.*
 import equation.*
 import parser.Parser
-import cli.Session
 import org.scalatest.flatspec.AnyFlatSpec
 
 
@@ -164,15 +163,6 @@ class EquationTest extends AnyFlatSpec:
     assert(!dependsOn(_Equation(x, _Number(1)), y))
   }
 
-  // --- REPL flow ---
-
-  "an equation in the REPL" should "evaluate to true/false once variables are bound" in
-  {
-    val s = Session()
-    // unbound: echoes the symbolic equation with both sides reduced
-    assert(s.execute("10 * x = 2 * x + 1") == "(10.0 * x) = ((2.0 * x) + 1.0)")
-    s.execute("x := 0.125")
-    assert(s.execute("10 * x = 2 * x + 1") == "true")
-    s.execute("x := 1")
-    assert(s.execute("10 * x = 2 * x + 1") == "false")
-  }
+  // REPL flow lives in equation/EquationReplTest.scala, in the `leonardo-repl` module:
+  // a test that drives `cli.Session` exercises the REPL, and since issue 5.2 phase 1.1 the
+  // library module cannot see `cli`.

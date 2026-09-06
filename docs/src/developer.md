@@ -5,7 +5,10 @@ nav_order: 11
 
 ---
 
+<img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
+
 # Leonardo Developer Guide
+<div style="clear:both"></div>
 
 This guide is a complete onboarding reference for developers new to the Leonardo codebase.
 It covers architectural decisions, recurring programming patterns, algorithm references, code
@@ -1092,7 +1095,8 @@ it rather than duplicating the logic.  A new *tier* (as opposed to a rule) belon
 
 Follow the `matrix` or `transform` package as a template.
 
-1. Create `src/main/scala/<name>/` and `src/test/scala/<name>/`.
+1. Create `core/src/main/scala/<name>/` and `core/src/test/scala/<name>/`.  A new domain
+   belongs to the **library** module; only the `cli` package lives in `repl/`.
 2. Add a `package.scala` with the package-level ScalaDoc.
 3. Use the chained package declaration — shown here for a package named `mydomain`:
 
@@ -1114,7 +1118,9 @@ Follow the `matrix` or `transform` package as a template.
 ## Test conventions
 
 Tests use `AnyFlatSpec` + `BeforeAndAfter`.  Test files mirror the main source layout under
-`src/test/scala/`.
+`core/src/test/scala/` — or `repl/src/test/scala/` when the test drives `cli.Session`, since
+the library module cannot see the `cli` package.  A `testOnly` glob selects by *package* and
+runs across both modules, so a domain glob picks up both halves.
 
 ```scala
 package it.grypho.scala.leonardo
@@ -1192,10 +1198,14 @@ Key build file sections:
 
 | Section | Purpose |
 |---|---|
-| `scalacOptions` | `-explain`, `-deprecation`, `-feature`, `-Wconf:src=.*package\\.scala:silent` |
-| `libraryDependencies` | `scala-parser-combinators` 2.4.0, ScalaTest 3.2.19 |
-| `sbt site` | Runs `puml` + `mdoc` + `doc` + `injectApiStyles` for the full docs site |
-| `sbt doc` | Scaladoc API → `target/scala-3.3.6/api` |
+| `ThisBuild / scalacOptions` | `-explain`, `-deprecation`, `-feature`, `-Wconf:src=.*package\\.scala:silent`.  `ThisBuild`-scoped so both modules get them; a bare `scalacOptions ++=` would reach the root aggregate only |
+| `lazy val core` | The library — everything but `cli`.  Publishes as `it.grypho:leonardo`.  Depends on `scala-parser-combinators` 2.4.0 and `spire` 0.18.0 |
+| `lazy val replModule` | The REPL — the `cli` package and `Main.scala`.  Publishes as `it.grypho:leonardo-repl`.  The only module that depends on `jline` |
+| `lazy val docs` | Runs mdoc; `publish / skip := true`.  Separate because `MdocPlugin` adds `org.scalameta:mdoc` to the enabled project's `libraryDependencies`, from where it reaches the published POM |
+| `lazy val root` | Pure aggregate over the three; publishes nothing |
+| `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
+| `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
+| `sbt unidoc` | One combined API across both modules → `target/scala-3.3.6/api`; this is what the site publishes, and what keeps `cli` in the reference |
 
 The `-Wconf:src=.*package\\.scala:silent` option suppresses the "No class, trait or object
 defined" structural warning for pure package-doc stub files.

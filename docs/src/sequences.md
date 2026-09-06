@@ -3,7 +3,10 @@ title: Numeric sequences
 nav_order: 12
 ---
 
+<img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
+
 # Numeric sequences
+<div style="clear:both"></div>
 
 Leonardo is named after Leonardo Pisano, so the Fibonacci numbers had better work.
 

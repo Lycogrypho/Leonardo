@@ -106,8 +106,9 @@ Leonardo is a lightweight CAS designed to parse, represent, and evaluate mathema
 
 ## Interactive CLI
 
-A REPL ships alongside the library. Launch it with the `sbt repl` alias (or the full
-`sbt "runMain it.grypho.scala.leonardo.cli.repl"`):
+A REPL ships alongside the library, as a **separate artifact** (`it.grypho:leonardo-repl`) so
+that using Leonardo as a library never drags in JLine. Launch it with the `sbt repl` alias (or
+the full `sbt "replModule/runMain it.grypho.scala.leonardo.cli.repl"`):
 
 ```
 leonardo> x := 3.001           -- bind a value (constant right-hand side)

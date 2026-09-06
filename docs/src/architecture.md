@@ -3,7 +3,10 @@ title: Architecture
 nav_order: 9
 ---
 
+<img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
+
 # Architecture
+<div style="clear:both"></div>
 
 Leonardo is structured as a layered set of packages. Dependencies point inward:
 every domain package imports `core`; nothing imports `cli` or `parser`.
@@ -11,6 +14,21 @@ every domain package imports `core`; nothing imports `cli` or `parser`.
 ```
 core  ←  scalar  ←  matrix  ←  equation  ←  parser  ←  cli
 ```
+
+## Modules
+
+That layering is also the **artifact** boundary. Because nothing imports `cli`, it can be
+published separately — and it is, so that a library consumer never resolves JLine:
+
+| Artifact | Contains | Extra dependencies |
+|---|---|---|
+| `it.grypho:leonardo` | Every package except `cli` | `scala-parser-combinators`, `spire` |
+| `it.grypho:leonardo-repl` | `cli` only; depends on `leonardo` | `jline` |
+
+The split cost no code change, which is the practical dividend of the layering rule: `cli`
+being a leaf that nothing imports is exactly what made it detachable. It also leaves the
+library free of any terminal dependency, which is the one thing that would block a future
+Scala.js or Scala Native cross-build.
 
 The diagram below is generated automatically from `docs/structure.puml` by
 running `sbt puml` (or `sbt site` which runs the full pipeline).
@@ -34,7 +52,7 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 | **`matrix`** | `_Matrix` symbolic node + `_MatrixOperation` nodes (`MatSum`, `MatProduct`, `MatScale`, `Transpose`); dense `_MatrixValue` kernels live in `core` | [Matrices](matrix.md) |
 | **`equation`** | `_Equation` relation, `_EqualityCheck`, `_Solve`, `_SolveSystem` AST nodes; `solve` and `solveSystem` algorithms | [Equations & Complex Numbers](equations.md) |
 | **`parser`** | Recursive-descent `Parser` (extends `JavaTokenParsers`); produces all AST node types; `ReservedWords` guard | [Getting Started](getting-started.md) |
-| **`cli`** | Interactive `Session` (pure, IO-free core) + `repl` read loop; session scripts (`:save`/`:load`) | [Interactive REPL](repl.md) |
+| **`cli`** | Interactive `Session` (pure, IO-free core) + `repl` read loop; session scripts (`:save`/`:load`). **Ships as the separate `leonardo-repl` artifact** | [Interactive REPL](repl.md) |
 
 ## Key design decisions
 

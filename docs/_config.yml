@@ -64,9 +64,11 @@ aux_links:
 aux_links_new_tab: false
 
 # Large/duplicate source assets and non-site files that must not be published.
-# Kept: Banner.svg (the sidebar logo, and the index header), structure.svg (referenced by
-# architecture.md), and logo_bw.svg -- no page references it any more now that the inline
-# per-page logos are gone, but it is small and worth keeping addressable.
+# Kept, and every one of them is REFERENCED -- do not add these to the list:
+#   Banner.svg   the sidebar logo (`logo:` above), the index header, and the Scaladoc
+#                `-project-logo`, so both published views are branded identically
+#   logo_bw.svg  the per-page inline logo carried by each prose page
+#   structure.svg  referenced by architecture.md
 exclude:
   - logo.svg
   - logo2.svg

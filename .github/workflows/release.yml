@@ -1,0 +1,64 @@
+name: Release
+
+# Publishes to Maven Central (issue 5.2 phase 2).
+#
+# Releasing is `git tag 3.6.4 && git push origin 3.6.4` and nothing else: sbt-dynver derives
+# the version from the tag, so there is no version string to edit and no way for the tag and
+# the artifact to disagree. An untagged push publishes a -SNAPSHOT instead.
+#
+# The four secrets this needs are documented in the `env` block below. None of them lives in
+# the repository.
+
+on:
+  push:
+    tags:
+      # The release tags here are BARE (`3.6.3`), not `v`-prefixed -- see `dynverVTagPrefix`
+      # in build.sbt. The 16 abandoned `v*` tags must never match, or pushing one would
+      # publish from the wrong history.
+      - "[0-9]+.[0-9]+.[0-9]+"
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # BOTH of these are load-bearing. sbt-dynver derives the version from `git describe`,
+          # so a shallow clone without tags yields `0.0.0-<sha>` and silently publishes a
+          # version unrelated to the tag that triggered the run.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Test
+        # The suite runs before publishing, not after: a release to Central is IRREVOCABLE --
+        # a version number can never be reused or replaced, only superseded. This is the last
+        # point at which a bad build is still free to discard.
+        run: sbt test
+
+      - name: Publish
+        run: sbt ci-release
+        env:
+          # PGP_SECRET      base64 of the ARMORED private key:
+          #                   gpg --armor --export-secret-keys <KEYID>   then base64 it
+          # PGP_PASSPHRASE  that key's passphrase (must be non-empty)
+          # SONATYPE_*      the Central Portal *user token* pair, not the portal login
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}

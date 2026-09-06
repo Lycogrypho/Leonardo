@@ -112,8 +112,6 @@ class MatrixDecompositionTest extends AnyFlatSpec:
 
   "at(lu(A), 1, k)" should "extract L, U, P individually" in
   {
-    val s = cli.Session()
-    s.execute("A := [[1, 2], [3, 4]]")
     val res = _LUDecomposition(_Variable("A")).eval(
       new Environment().withBinding("A", dense(2, 2, 1, 2, 3, 4))
     )
@@ -212,23 +210,4 @@ class MatrixDecompositionTest extends AnyFlatSpec:
     assert(!parser.Parser.parse("qr").successful)
   }
 
-  // --- REPL integration ---
-
-  "the REPL" should "compute lu(A) and display [[L, U, P]]" in
-  {
-    val s = cli.Session()
-    s.execute("A := [[1, 2], [3, 4]]")
-    val out = s.execute("lu(A)")
-    // Result is a 1Ã—3 matrix: [[L, U, P]] displayed as a _Matrix of _MatrixValue strings
-    assert(out.nonEmpty, "expected non-empty output from lu(A)")
-    assert(!out.startsWith("parse error"))
-  }
-
-  "the REPL" should "compute qr(A) and display [[Q, R]]" in
-  {
-    val s = cli.Session()
-    s.execute("A := [[1, 2], [3, 4]]")
-    val out = s.execute("qr(A)")
-    assert(out.nonEmpty, "expected non-empty output from qr(A)")
-    assert(!out.startsWith("parse error"))
-  }
+  // REPL integration lives in matrix/MatrixDecompositionReplTest.scala (issue 5.2 phase 1.1).

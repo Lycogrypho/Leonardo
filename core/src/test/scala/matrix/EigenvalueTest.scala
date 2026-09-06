@@ -156,32 +156,4 @@ class EigenvalueTest extends AnyFlatSpec:
     assert(!parser.Parser.parse("eigen").successful)
   }
 
-  // --- REPL integration ---
-
-  "the REPL" should "compute eigen([[4, 1], [1, 3]]) without error" in
-  {
-    val s   = cli.Session()
-    val out = s.execute("eigen([[4, 1], [1, 3]])")
-    assert(out.nonEmpty,                     "expected non-empty output")
-    assert(!out.startsWith("parse error"),   s"unexpected parse error: $out")
-  }
-
-  "the REPL" should "compute eigen(A) for a bound matrix" in
-  {
-    val s = cli.Session()
-    s.execute("A := [[2, 0], [0, 3]]")
-    val out = s.execute("eigen(A)")
-    assert(out.nonEmpty,                   "expected non-empty output")
-    assert(!out.startsWith("parse error"), s"unexpected parse error: $out")
-  }
-
-  "at(eigen(A), 1, k)" should "extract individual eigenvalues" in
-  {
-    val s = cli.Session()
-    s.execute("A := [[0, -1], [1, 0]]")
-    // eigen returns [[i, -i]] or [[-i, i]]; at(â€¦, 1, 1) and at(â€¦, 1, 2) must be non-error
-    val e1 = s.execute("at(eigen(A), 1, 1)")
-    val e2 = s.execute("at(eigen(A), 1, 2)")
-    assert(!e1.startsWith("parse error"), s"at eigen 1 failed: $e1")
-    assert(!e2.startsWith("parse error"), s"at eigen 2 failed: $e2")
-  }
+  // REPL integration lives in matrix/EigenvalueReplTest.scala (issue 5.2 phase 1.1).

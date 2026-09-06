@@ -1,7 +1,6 @@
 package it.grypho.scala.leonardo
 package matrix
 
-import cli.Session
 import core.*
 import scalar.*
 import matrix.*
@@ -94,18 +93,8 @@ class MatrixFunctionTest extends AnyFlatSpec:
     assert(Asin(m).eval(env).isLeft)
   }
 
-  // --- through the parser / REPL, matching the issue report ---
-
-  "eval of a function defined over a matrix" should "reduce element-wise (issue 1.3)" in
-  {
-    val s = new Session()
-    s.execute("A := [[1, 2, 3], [3, 2, 1], [1, 1, 1]]")
-    s.execute("S_A := sin(A)")
-    val result = s.execute("eval S_A")
-    val expected = dense(3, 3, sin(1), sin(2), sin(3), sin(3), sin(2), sin(1), sin(1), sin(1), sin(1))
-    assert(result == expected.display(5),
-      s"expected element-wise sin, got: $result")
-  }
+  // The parser/REPL cases matching the issue report live in
+  // matrix/MatrixFunctionReplTest.scala (issue 5.2 phase 1.1).
 
   "sin applied to a matrix literal via the parser" should "evaluate element-wise" in
   {
@@ -162,14 +151,3 @@ class MatrixFunctionTest extends AnyFlatSpec:
       case other                   => fail(s"expected a dense matrix but got: $other")
   }
 
-  "exp of a symbolic matrix via the REPL (the reported bug)" should "propagate element-wise" in
-  {
-    val s = new Session()
-    s.execute("A := [[x, 2*x], [3*y, 1]]")
-    s.execute("B := exp(A)")
-    val out = s.execute("eval B")
-    assert(out.contains("exp(x)"),         s"expected exp(x) cell; got: $out")
-    assert(out.contains("exp((2.0 * x))"), s"expected exp(2x) cell; got: $out")
-    assert(out.contains("2.71828"),        s"expected exp(1) folded to a number; got: $out")
-    assert(!out.startsWith("exp("),        s"must not stay a single exp(matrix); got: $out")
-  }
