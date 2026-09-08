@@ -1,6 +1,6 @@
 ---
 title: Matrices
-nav_order: 5
+nav_order: 6
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>

@@ -52,12 +52,16 @@ d.eval(env)
 ## Pages
 
 - [Getting Started](getting-started.md) — add to your project, first expressions
+- [Features](features.md) — the complete feature reference
 - [Expressions & Evaluation](expressions.md) — the AST and dual eval model
 - [Calculus](calculus.md) — differentiation, integration, sampling
 - [Matrices](matrix.md) — the matrix domain
 - [Equations](equations.md) — relations, solver, complex numbers
+- [Sequences](sequences.md) — Fibonacci and friends, and the generic tabulator
 - [Interactive REPL](repl.md) — session commands and scripts
+- [Cheat sheet](cheatsheet.md) — every REPL command on one page
 - [Architecture](architecture.md) — package diagram and design decisions
+- [Developer Guide](developer.md) — onboarding reference for contributors
 
 ## Licence
 

@@ -1,6 +1,6 @@
 ---
 title: Numeric sequences
-nav_order: 12
+nav_order: 9
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>

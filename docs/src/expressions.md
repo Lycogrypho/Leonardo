@@ -1,6 +1,6 @@
 ---
 title: Expressions & Evaluation
-nav_order: 3
+nav_order: 4
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>

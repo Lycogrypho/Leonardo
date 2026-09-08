@@ -16,6 +16,13 @@ ThisBuild / licenses := Seq(
   "Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0")
 )
 
+// Declares how to read this project's version numbers, and it reaches the published POM.
+// Without it sbt warns on every publish, and downstream builds cannot tell a genuine binary
+// incompatibility from a benign eviction -- they see two versions and no rule relating them.
+// `early-semver` is the Scala-ecosystem reading of semver: within 1.x and above, the MINOR
+// component promises binary compatibility, so 3.7.1 -> 3.7.2 is safe and 3.7 -> 3.8 is not.
+ThisBuild / versionScheme := Some("early-semver")
+
 // ── Maven Central coordinates and POM metadata (issue 5.2 phase 2) ─────────────
 // Central REJECTS an artifact missing any of name, description, url, licences, scm or
 // developers -- these are not decoration, they are validation gates. All are ThisBuild-scoped

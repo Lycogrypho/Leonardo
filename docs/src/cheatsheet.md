@@ -1,6 +1,6 @@
 ---
 title: Cheatsheet
-nav_order: 10
+nav_order: 11
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>

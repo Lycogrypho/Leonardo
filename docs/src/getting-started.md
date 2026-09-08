@@ -15,11 +15,8 @@ nav_order: 2
 
 ## Adding Leonardo to your project
 
-> **Note**: Leonardo is not yet published to Maven Central (see roadmap).
-> To use it locally, clone the repository and run `sbt publishLocal`, then
-> add the following to your `build.sbt`:
-
-Leonardo ships as **two artifacts**. The library is what you almost always want:
+Leonardo is published to **Maven Central** for Scala 3.3 LTS, and ships as **two artifacts**.
+The library is what you almost always want:
 
 ```scala
 libraryDependencies += "it.grypho" %% "leonardo" % "@VERSION@"

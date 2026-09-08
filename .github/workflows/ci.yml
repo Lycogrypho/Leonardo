@@ -1,0 +1,52 @@
+name: CI
+
+# The continuous-integration build: compile and run the full suite on every push and pull
+# request. This is what the build badge in README.md reports, and it is what makes a Scala
+# Steward dependency-update PR meaningful -- an update is accepted or rejected on the evidence
+# of a green suite, which requires that the suite actually runs on the PR.
+#
+# Deliberately separate from release.yml, which runs only on a version tag: a release must not
+# be a side effect of an ordinary push, and CI must not need the signing secrets.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the in-flight run: the older result is about
+# to be superseded and would only burn a runner.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Test
+        # Aggregated across both modules from the root project: 1704 library + 284 REPL.
+        run: sbt test
+
+      - name: Scaladoc
+        # `doc`, not `unidoc`: this is the per-module API that `packageDoc` publishes as the
+        # -javadoc.jar, so a release cannot fail on a documentation error that CI never saw.
+        # The full site (unidoc + mdoc + PlantUML) is built by pages.yml instead.
+        run: sbt doc
