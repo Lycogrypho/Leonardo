@@ -38,9 +38,18 @@ jobs:
       - name: Run Scala Steward
         uses: scala-steward-org/scala-steward-action@v2
         with:
-          # NOTE: with the default GITHUB_TOKEN, pull requests opened by this workflow do
-          # NOT trigger other workflows -- GitHub suppresses that to prevent recursion, so
-          # the test suite would not run on Steward's PRs and the whole point would be lost.
-          # Create a fine-grained PAT with contents+pull-requests write, store it as the
-          # repository secret STEWARD_TOKEN, and CI will run on each update.
+          # THE DEFAULT GITHUB_TOKEN IS NOT ENOUGH HERE, in two separate ways.
+          #
+          # 1. It is blocked outright unless the repository allows it: Settings -> Actions ->
+          #    General -> Workflow permissions -> "Allow GitHub Actions to create and approve
+          #    pull requests". Without that, every run dies with
+          #    403 "GitHub Actions is not permitted to create or approve pull requests".
+          # 2. Even once allowed, pull requests it opens do NOT trigger other workflows --
+          #    GitHub suppresses that to prevent recursion -- so the suite would never run on
+          #    Steward's PRs and the evidence this automation exists to produce would be
+          #    missing.
+          #
+          # A fine-grained PAT avoids both: it is a user token, so neither restriction
+          # applies. Grant it contents:write + pull-requests:write on this repository and
+          # store it as the repository secret STEWARD_TOKEN.
           github-token: ${{ secrets.STEWARD_TOKEN || secrets.GITHUB_TOKEN }}

@@ -16,8 +16,11 @@ on:
       # in build.sbt. The 16 abandoned `v*` tags must never match, or pushing one would
       # publish from the wrong history.
       - "[0-9]+.[0-9]+.[0-9]+"
-    branches:
-      - main
+    # NO `branches:` filter here. Listing both makes the workflow fire on EITHER a matching
+    # tag OR a push to that branch -- it does not restrict tags to the branch, which is what
+    # it looks like it does. With `branches: [main]` present this ran `ci-release` on every
+    # push to main, publishing a -SNAPSHOT each time and failing red before the secrets exist.
+    # A tag is the only thing that should trigger a release.
 
 permissions:
   contents: read
