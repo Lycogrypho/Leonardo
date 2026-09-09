@@ -10,7 +10,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 /**
  * Back-and-forth (round-trip) tests:
  *
- *   string â”€â”€parseâ”€â”€â–¶ AST â”€â”€toStringâ”€â”€â–¶ string â”€â”€parseâ”€â”€â–¶ AST'
+ *   string ──parse──▶ AST ──toString──▶ string ──parse──▶ AST'
  *
  * The parser produces a canonical AST, so toString does not reproduce the exact
  * input ("-2" becomes "(-1.0 * 2.0)", "1" becomes "1.0", etc.). What MUST hold is
@@ -22,7 +22,7 @@ import org.scalatest.flatspec.AnyFlatSpec
  *      "or something equivalent" property.
  *
  *   2. String fixpoint: for expressions free of the unary-minus-on-literal quirk,
- *      toString is a fixpoint of (parse âˆ˜ toString) â€” printing the re-parsed AST
+ *      toString is a fixpoint of (parse ∘ toString) — printing the re-parsed AST
  *      yields the identical string. This is a stronger, purely syntactic check.
  */
 class RoundTripTest extends AnyFlatSpec:
@@ -133,7 +133,7 @@ class RoundTripTest extends AnyFlatSpec:
   )
 
   for input <- fixpointCases do
-    s"toString of parsed \"$input\"" should "be a fixpoint of (parse âˆ˜ toString)" in
+    s"toString of parsed \"$input\"" should "be a fixpoint of (parse ∘ toString)" in
     {
       val printed1 = parse(input).toString
       val printed2 = parse(printed1).toString

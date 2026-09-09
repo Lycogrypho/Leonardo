@@ -96,7 +96,7 @@ class MatrixTest extends AnyFlatSpec:
     assert(dense(2, 2, 1, 2, 3, 4).hashCode == dense(2, 2, 1, 2, 3, 4).hashCode)
   }
 
-  // issue 2.1: the factory takes a defensive copy â€” mutating the source array
+  // issue 2.1: the factory takes a defensive copy — mutating the source array
   // after construction must not change the value (equality, hashing, elements).
   "_MatrixValue" should "be immune to mutation of the array it was built from" in
   {
@@ -110,7 +110,7 @@ class MatrixTest extends AnyFlatSpec:
   }
 
   // issue 2.2: the symbolic path folds concrete element pairs directly, without a
-  // second evaluation pass â€” constant pairs are already _Numbers in the result.
+  // second evaluation pass — constant pairs are already _Numbers in the result.
   "MatSum's symbolic path" should "fold concrete element pairs eagerly" in
   {
     MatSum(literal(1, 2, x, _Number(1)), dense(1, 2, 10, 20)).eval(new Environment()) match
@@ -195,7 +195,7 @@ class MatrixTest extends AnyFlatSpec:
 
   "a large MatProduct" should "compute correctly through the parallel blocked kernel" in
   {
-    // 80Â³ exceeds the work-volume threshold (2^16) AND spans two 64-row blocks,
+    // 80³ exceeds the work-volume threshold (2^16) AND spans two 64-row blocks,
     // exercising the parallel multi-block path: identity * A == A.
     val n  = 80
     val id = _MatrixValue(n, n, Array.tabulate(n * n)(i => if i / n == i % n then 1.0 else 0.0))
@@ -265,14 +265,14 @@ class MatrixTest extends AnyFlatSpec:
   "derive of a matrix" should "differentiate element-wise" in
   {
     val m = literal(1, 2, Power(x, _Number(2)), Sin(x))
-    // d/dx [xÂ², sin(x)] = [2x, cos(x)] â†’ at x=2: [4, cos(2)]
+    // d/dx [x², sin(x)] = [2x, cos(x)] → at x=2: [4, cos(2)]
     assert(evalMatrix(_Derivative(m, x), envWith("x" -> 2.0)) == dense(1, 2, 4.0, math.cos(2.0)))
   }
 
   "integrate of a matrix" should "integrate element-wise, constants included" in
   {
     val m = literal(1, 2, x, _Number(1))
-    // âˆ« [x, 1] dx = [xÂ²/2, x] â†’ at x=2: [2, 2]
+    // ∫ [x, 1] dx = [x²/2, x] → at x=2: [2, 2]
     assert(evalMatrix(_Integral(m, x), envWith("x" -> 2.0)) == dense(1, 2, 2.0, 2.0))
   }
 
@@ -297,14 +297,14 @@ class MatrixTest extends AnyFlatSpec:
   "derive of a MatSum" should "distribute over both operands (linearity)" in
   {
     val d = _Derivative(MatSum(literal(1, 1, Power(x, _Number(2))), literal(1, 1, Product(_Number(3), x))), x)
-    // d/dx (xÂ² + 3x) = 2x + 3 â†’ at x=2: 7
+    // d/dx (x² + 3x) = 2x + 3 → at x=2: 7
     assert(evalMatrix(d, envWith("x" -> 2.0)) == dense(1, 1, 7.0))
   }
 
   "derive of a Transpose" should "commute with transposition" in
   {
     val d = _Derivative(Transpose(literal(1, 2, Power(x, _Number(2)), x)), x)
-    // (d/dx [xÂ², x])áµ€ = [2x, 1]áµ€ â†’ at x=3: column (6, 1)
+    // (d/dx [x², x])ᵀ = [2x, 1]ᵀ → at x=3: column (6, 1)
     assert(evalMatrix(d, envWith("x" -> 3.0)) == dense(2, 1, 6.0, 1.0))
   }
 
@@ -414,7 +414,7 @@ class MatrixTest extends AnyFlatSpec:
     assert(result.isLeft, s"expected symbolic result but got: $result")
   }
 
-  "at(A, 3, 1) on a 2Ã—2 matrix" should "stay symbolic (out of bounds)" in
+  "at(A, 3, 1) on a 2×2 matrix" should "stay symbolic (out of bounds)" in
   {
     val result = _MatrixIndex(dense(2, 2, 1, 2, 3, 4), _Number(3), _Number(1)).eval(new Environment())
     assert(result.isLeft, s"expected symbolic (out-of-bounds) but got: $result")

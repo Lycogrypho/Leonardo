@@ -90,7 +90,7 @@ class ExpandTest extends AnyFlatSpec:
   "expand((x+y)^0)" should "return (x+y)^0 without expanding" in
   {
     val result = Power(Sum(x, y), _Number(0)).expand()
-    // expand does not evaluate â€” simplify() would fold this to 1
+    // expand does not evaluate — simplify() would fold this to 1
     assert(result == Power(Sum(x, y), _Number(0)))
   }
 
@@ -111,7 +111,7 @@ class ExpandTest extends AnyFlatSpec:
   "constant terms in (x+2)^2 simplify correctly" should "fold 2*2 to 4" in
   {
     // (x+2)^2 expands to x*x + x*2 + 2*x + 2*2
-    // after simplify: x^2 + 2x + 2x + 4   (x*2 and 2*x not yet merged â€” single pass)
+    // after simplify: x^2 + 2x + 2x + 4   (x*2 and 2*x not yet merged — single pass)
     // but numeric eval should still match (x+2)^2
     val expanded = Power(Sum(x, _Number(2)), _Number(2)).expand().simplify()
     assert(math.abs(evalNum(expanded, "x" -> 5.0) - 49.0) < 1e-4)

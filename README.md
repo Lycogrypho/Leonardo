@@ -129,13 +129,14 @@ import conventions and a fuller tour.
 
 📖 **Individual pages** (published; the sources under `docs/src/` are mdoc *input* and show
 their examples unevaluated):
-[Getting Started](https://lycogrypho.github.io/Leonardo/getting-started.html) ·
-[Features](https://lycogrypho.github.io/Leonardo/features.html) ·
-[Cheat Sheet](https://lycogrypho.github.io/Leonardo/cheatsheet.html) ·
-[REPL Guide](https://lycogrypho.github.io/Leonardo/repl.html) ·
-[Architecture](https://lycogrypho.github.io/Leonardo/architecture.html) ·
-[Developer Guide](https://lycogrypho.github.io/Leonardo/developer.html) ·
-[Scaladoc API](https://lycogrypho.github.io/Leonardo/api/index.html)
+
+- [Getting Started](https://lycogrypho.github.io/Leonardo/getting-started.html)
+- [Features](https://lycogrypho.github.io/Leonardo/features.html)
+- [Cheat Sheet](https://lycogrypho.github.io/Leonardo/cheatsheet.html)
+- [REPL Guide](https://lycogrypho.github.io/Leonardo/repl.html)
+- [Architecture](https://lycogrypho.github.io/Leonardo/architecture.html)
+- [Developer Guide](https://lycogrypho.github.io/Leonardo/developer.html)
+- [Scaladoc API](https://lycogrypho.github.io/Leonardo/api/index.html)
 
 ## Interactive CLI
 

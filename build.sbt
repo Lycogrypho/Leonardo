@@ -1,3 +1,8 @@
+// MiMa's filter vocabulary (issue 2.9). `ProblemFilters` and the `Problem` hierarchy are not
+// among the keys sbt auto-imports into a .sbt file, so without this the filters below fail to
+// compile with a bare "not found: value ProblemFilters".
+import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
+
 ThisBuild / scalaVersion := "3.3.6"
 
 // The release tags in this repository are bare (`3.6.3`), not `v`-prefixed. sbt-dynver
@@ -64,6 +69,14 @@ ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
 // a ThisBuild value is shadowed rather than inherited, and the build reports it as unused.
 // The `_3` suffix is the Scala binary version, appended at publish time by `%%`.
 
+// ── Binary compatibility (issue 2.9) ──────────────────────────────────────────
+// The release each module is checked against by MiMa. `versionScheme := early-semver` above
+// PROMISES that a patch release stays binary-compatible; MiMa is what makes that promise
+// enforced rather than merely declared, and it only became checkable when 3.7.1 published the
+// first baseline. Bump this on every release, and prefer bumping it in the release commit so
+// the value and the tag cannot drift apart.
+lazy val mimaBaseline = "3.7.1"
+
 // ThisBuild, not bare: a bare `scalacOptions ++=` in build.sbt applies to the ROOT project
 // only, so after the module split the repl module would silently compile without -explain,
 // -deprecation or the package.scala warning suppression.
@@ -127,6 +140,12 @@ lazy val root = (project in file("."))
     // Nothing to publish from the aggregate: the artifacts are core's and replModule's. An
     // aggregate that publishes would ship an empty jar under a third coordinate.
     publish / skip := true,
+
+    // A project that publishes nothing has no previous artifact to compare against, and MiMa
+    // fails by default when it finds none — a guard that would otherwise be tripped by the
+    // aggregate rather than by a real incompatibility.
+    mimaPreviousArtifacts   := Set.empty,
+    mimaFailOnNoPrevious    := false,
 
     // ── PlantUML dependency (resolved, never on project classpath) ─────────────
     ivyConfigurations += PlantUML,
@@ -255,6 +274,23 @@ lazy val core = (project in file("core"))
     name             := "Leonardo",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
 
+    // Binary compatibility against the previous release (issue 2.9).
+    mimaPreviousArtifacts := Set("it.grypho" %% "leonardo" % mimaBaseline),
+    mimaBinaryIssueFilters ++= Seq(
+      // INTENTIONAL, and the reason the next release is 3.8.0 rather than a patch: the `expr`
+      // package held a single enum, `EvalResult`, that nothing in the library or outside it
+      // ever referenced (issue 2.7). It predated the dual-eval model, whose
+      // `Either[_Expression, _Value]` is what it would have been, and it reached 3.7.1's
+      // published Scaladoc only because nobody noticed it. Removing public API IS a binary
+      // break under early-semver, so it is declared here rather than quietly filtered away.
+      //
+      // A package wildcard rather than one filter per class: a Scala 3 `enum` compiles to a
+      // class plus synthetic companions and case children whose exact JVM names are an
+      // implementation detail of the compiler, and enumerating guesses at them would be both
+      // brittle and misleading about what was actually removed. The whole package is gone.
+      ProblemFilters.exclude[Problem]("it.grypho.scala.leonardo.expr.*")
+    ),
+
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
 
     // Spire powers the exact-arithmetic tier's irrational engine (issue 4.N): `Real` computes
@@ -296,6 +332,10 @@ lazy val docs = (project in file("docs"))
     name           := "leonardo-docs",
     publish / skip := true,
 
+    // Publishes nothing, so there is no baseline to compare against (see root).
+    mimaPreviousArtifacts := Set.empty,
+    mimaFailOnNoPrevious  := false,
+
     target := (ThisBuild / baseDirectory).value / "target" / "docs-project",
 
     // Source markdown lives in docs/src/; mdoc compiles every scala mdoc block and writes
@@ -324,7 +364,10 @@ lazy val replModule = (project in file("repl"))
   .settings(
     name             := "leonardo-repl",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
-    libraryDependencies += "org.jline" % "jline" % "3.30.15"
+    libraryDependencies += "org.jline" % "jline" % "3.30.15",
+
+    // Binary compatibility against the previous release (issue 2.9).
+    mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline)
   )
 
 // ThisBuild: both modules have test suites, and a bare `libraryDependencies +=` would give

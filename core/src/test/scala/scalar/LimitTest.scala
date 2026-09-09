@@ -12,7 +12,7 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
 
   private val env = new Environment()
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── helpers ────────────────────────────────────────
 
   private def parse(s: String): _Expression = Parser.parse(s).get
   private def eval(s: String): String =
@@ -24,10 +24,10 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
     val result = parse(s).eval(env).toExpression
     result match
       case _Number(d) => assert(math.abs(d - expected) <= tol,
-        s"$s: expected â‰ˆ $expected but got $d")
+        s"$s: expected ≈ $expected but got $d")
       case other => fail(s"$s: expected numeric result, got $other")
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ _Number infinity display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── _Number infinity display ────────────────────────
 
   "inf constant" should "parse to _Number(+Infinity)" in:
     assert(parse("inf") == _Number(Double.PositiveInfinity))
@@ -35,19 +35,19 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
   it should "parse -inf to _Number(-Infinity) via unary minus" in:
     assert(parse("-inf") == _Number(Double.NegativeInfinity))
 
-  it should "display +âˆž as inf" in:
+  it should "display +∞ as inf" in:
     assert(_Number(Double.PositiveInfinity).toString == "inf")
 
-  it should "display -âˆž as -inf" in:
+  it should "display -∞ as -inf" in:
     assert(_Number(Double.NegativeInfinity).toString == "-inf")
 
-  it should "display +âˆž via display(p) as inf" in:
+  it should "display +∞ via display(p) as inf" in:
     assert(_Number(Double.PositiveInfinity).display(5) == "inf")
 
-  it should "display -âˆž via display(p) as -inf" in:
+  it should "display -∞ via display(p) as -inf" in:
     assert(_Number(Double.NegativeInfinity).display(5) == "-inf")
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ parser round-trips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── parser round-trips ──────────────────────────────
 
   "limit parser" should "parse two-sided limit into _Limit(Both)" in:
     val e = parse("limit(x^2, x, 3)")
@@ -76,25 +76,25 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
     val l = e.asInstanceOf[_Limit]
     assert(l.point == _Number(Double.NegativeInfinity))
 
-  it should "round-trip through toString â€” two-sided" in:
+  it should "round-trip through toString — two-sided" in:
     val e   = parse("limit(x^2, x, 3.0)")
     val str = e.toString
     val e2  = parse(str)
     assert(e == e2)
 
-  it should "round-trip through toString â€” from right" in:
+  it should "round-trip through toString — from right" in:
     val e   = parse("limit(1/x, x, 0.0, +)")
     val str = e.toString
     val e2  = parse(str)
     assert(e == e2)
 
-  it should "round-trip through toString â€” from left" in:
+  it should "round-trip through toString — from left" in:
     val e   = parse("limit(1/x, x, 0.0, -)")
     val str = e.toString
     val e2  = parse(str)
     assert(e == e2)
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tier 1: direct substitution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── Tier 1: direct substitution ────────────────────
 
   "limit eval" should "evaluate x^2 at x=3 by direct substitution" in:
     approx("limit(x^2, x, 3)", 9.0)
@@ -111,18 +111,18 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
   it should "evaluate a constant" in:
     approx("limit(7, x, 0)", 7.0)
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tier 2: L'HÃ´pital 0/0 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── Tier 2: L'Hôpital 0/0 ──────────────────────────
 
-  it should "apply L'HÃ´pital for sin(x)/x at 0 (â†’ 1)" in:
+  it should "apply L'Hôpital for sin(x)/x at 0 (→ 1)" in:
     approx("limit(sin(x)/x, x, 0)", 1.0)
 
-  it should "apply L'HÃ´pital for (x^2 - 1)/(x - 1) at 1 (â†’ 2)" in:
+  it should "apply L'Hôpital for (x^2 - 1)/(x - 1) at 1 (→ 2)" in:
     approx("limit((x^2 - 1)/(x - 1), x, 1)", 2.0)
 
-  it should "apply L'HÃ´pital for (x^3 - x)/(x - 1) at 1 (â†’ 2)" in:
+  it should "apply L'Hôpital for (x^3 - x)/(x - 1) at 1 (→ 2)" in:
     approx("limit((x^3 - x)/(x - 1), x, 1)", 2.0)
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tier 2: c/0 form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── Tier 2: c/0 form ───────────────────────────────
 
   it should "return +inf for 1/x at 0 from the right" in:
     assert(eval("limit(1/x, x, 0, +)") == "inf")
@@ -137,30 +137,30 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
     val r = parse("limit(1/x, x, 0)").eval(env).toExpression
     assert(r.isInstanceOf[_Limit], s"expected symbolic _Limit, got $r")
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tier 3: limits at Â±âˆž â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── Tier 3: limits at ±∞ ───────────────────────────
 
-  it should "evaluate 1/x as xâ†’inf to 0" in:
+  it should "evaluate 1/x as x→inf to 0" in:
     approx("limit(1/x, x, inf)", 0.0)
 
-  it should "evaluate x as xâ†’inf to +inf" in:
+  it should "evaluate x as x→inf to +inf" in:
     assert(eval("limit(x, x, inf)") == "inf")
 
-  it should "evaluate x^2 as xâ†’inf to +inf" in:
+  it should "evaluate x^2 as x→inf to +inf" in:
     assert(eval("limit(x^2, x, inf)") == "inf")
 
-  it should "evaluate x^2 as xâ†’-inf to +inf (even power)" in:
+  it should "evaluate x^2 as x→-inf to +inf (even power)" in:
     assert(eval("limit(x^2, x, -inf)") == "inf")
 
-  it should "evaluate exp(x) as xâ†’inf to +inf" in:
+  it should "evaluate exp(x) as x→inf to +inf" in:
     assert(eval("limit(exp(x), x, inf)") == "inf")
 
-  it should "evaluate exp(x) as xâ†’-inf to 0" in:
+  it should "evaluate exp(x) as x→-inf to 0" in:
     approx("limit(exp(x), x, -inf)", 0.0)
 
-  it should "evaluate atan(x) as xâ†’+inf to Ï€/2" in:
+  it should "evaluate atan(x) as x→+inf to π/2" in:
     approx("limit(atan(x), x, inf)", math.Pi / 2, 1e-10)
 
-  it should "evaluate atan(x) as xâ†’-inf to -Ï€/2" in:
+  it should "evaluate atan(x) as x→-inf to -π/2" in:
     approx("limit(atan(x), x, -inf)", -math.Pi / 2, 1e-10)
 
   it should "evaluate rational same-degree (2x^2+x)/(x^2+1) at +inf to 2" in:
@@ -172,7 +172,7 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
   it should "evaluate rational (3x + 1)/(x + 2) at +inf to 3" in:
     approx("limit((3*x + 1)/(x + 2), x, inf)", 3.0)
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ symbolic cases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── symbolic cases ──────────────────────────────────
 
   it should "stay symbolic when the limit point is an unbound variable" in:
     val r = parse("limit(sin(x)/x, x, a)").eval(env).toExpression
@@ -214,7 +214,7 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
   it should "evaluate 10^(1/x) as x→+inf to 1 (exponent→0)" in:
     approx("limit(10^(1/x), x, inf)", 1.0)
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ simplify / expand pass-through â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────── simplify / expand pass-through ─────────────────
 
   it should "simplify body and point of a _Limit" in:
     val e = _Limit(Sum(_Number(1), _Number(0)), _Variable("x"), Sum(_Number(3), _Number(0)))

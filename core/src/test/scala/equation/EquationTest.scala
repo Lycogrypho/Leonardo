@@ -131,7 +131,7 @@ class EquationTest extends AnyFlatSpec:
   {
     assert(evalBool(parse("[[1, 2]] = [[1, 2]]")))
     assert(!evalBool(parse("[[1, 2]] = [[1, 3]]")))
-    assert(!evalBool(parse("[[1, 2]] = [[1], [2]]")))   // dimension mismatch â†’ false
+    assert(!evalBool(parse("[[1, 2]] = [[1], [2]]")))   // dimension mismatch → false
   }
 
   // --- algorithms distribute over both sides (_ElementWise) ---

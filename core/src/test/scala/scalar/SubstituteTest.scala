@@ -55,7 +55,7 @@ class SubstituteTest extends AnyFlatSpec:
   it should "terminate on mutually recursive definitions" in
   {
     val defs = Map("f" -> Sum(g, _Number(1)), "g" -> Sum(f, _Number(2)))
-    // f â†’ g + 1 â†’ (f + 2) + 1, then f is blocked by the seen set
+    // f → g + 1 → (f + 2) + 1, then f is blocked by the seen set
     assert(substitute(f, defs) == Sum(Sum(f, _Number(2)), _Number(1)))
   }
 

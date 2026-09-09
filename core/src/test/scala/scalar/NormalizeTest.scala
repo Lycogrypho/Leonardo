@@ -28,7 +28,7 @@ class NormalizeTest extends AnyFlatSpec:
 
   "collect of a quadratic" should "produce the dense coefficient list" in
   {
-    // xÂ² + 3x + 2 - x  â†’  2 + 2x + xÂ²
+    // x² + 3x + 2 - x  →  2 + 2x + x²
     assert(collect(parse("x^2 + 3 * x + 2 - x"), x)
      .contains(Vector(_Number(2), _Number(2), _Number(1))))
   }
@@ -91,7 +91,7 @@ class NormalizeTest extends AnyFlatSpec:
 
   "normalize" should "elide unit coefficients and zero terms" in
   {
-    // xÂ² + x, no constant term, both coefficients 1
+    // x² + x, no constant term, both coefficients 1
     assert(normalize(parse("x * x + x"), x) == Sum(x, Power(x, _Number(2))))
   }
 

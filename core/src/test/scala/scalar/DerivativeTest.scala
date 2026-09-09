@@ -45,15 +45,15 @@ class DerivativeTest extends AnyFlatSpec:
     assert(evalNum(_Derivative(Product(_Number(3), x), x)) == 3.0)
   }
 
-  // d/dx(xÂ² + 2x) at x=1 â†’ 2 + 2 = 4
-  "derivative of xÂ² + 2x at x=1" should "be 4.0" in
+  // d/dx(x² + 2x) at x=1 → 2 + 2 = 4
+  "derivative of x² + 2x at x=1" should "be 4.0" in
   {
     val expr = _Derivative(Sum(Power(x, _Number(2)), Product(_Number(2), x)), x)
     assert(math.abs(evalNum(expr, "x" -> 1.0) - 4.0) < 1e-4)
   }
 
-  // d/dx(xÂ³) at x=2 â†’ 3*4 = 12
-  "derivative of xÂ³ at x=2" should "be 12.0" in
+  // d/dx(x³) at x=2 → 3*4 = 12
+  "derivative of x³ at x=2" should "be 12.0" in
   {
     val expr = _Derivative(Power(x, _Number(3)), x)
     assert(math.abs(evalNum(expr, "x" -> 2.0) - 12.0) < 1e-4)
@@ -61,14 +61,14 @@ class DerivativeTest extends AnyFlatSpec:
 
   // --- product and quotient rules ---
 
-  // d/dx(x * sin(x)) = sin(x) + x*cos(x), at x=0 â†’ 0
-  "derivative of xÂ·sin(x) at x=0" should "be 0.0" in
+  // d/dx(x * sin(x)) = sin(x) + x*cos(x), at x=0 → 0
+  "derivative of x·sin(x) at x=0" should "be 0.0" in
   {
     val expr = _Derivative(Product(x, Sin(x)), x)
     assert(math.abs(evalNum(expr, "x" -> 0.0) - 0.0) < 1e-5)
   }
 
-  // d/dx(1/x) = -1/xÂ², at x=2 â†’ -0.25
+  // d/dx(1/x) = -1/x², at x=2 → -0.25
   "derivative of 1/x at x=2" should "be -0.25" in
   {
     val expr = _Derivative(Ratio(_Number(1), x), x)
@@ -77,35 +77,35 @@ class DerivativeTest extends AnyFlatSpec:
 
   // --- transcendental functions ---
 
-  // d/dx(sin(x)) = cos(x), at x=0 â†’ 1
+  // d/dx(sin(x)) = cos(x), at x=0 → 1
   "derivative of sin(x) at x=0" should "be 1.0" in
   {
     val expr = _Derivative(Sin(x), x)
     assert(math.abs(evalNum(expr, "x" -> 0.0) - 1.0) < 1e-5)
   }
 
-  // d/dx(cos(x)) = -sin(x), at x=Ï€/2 â†’ -1
-  "derivative of cos(x) at x=Ï€/2" should "be -1.0" in
+  // d/dx(cos(x)) = -sin(x), at x=π/2 → -1
+  "derivative of cos(x) at x=π/2" should "be -1.0" in
   {
     val expr = _Derivative(Cos(x), x)
     assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) + 1.0) < 1e-4)
   }
 
-  // d/dx(exp(x)) = exp(x), at x=0 â†’ 1
+  // d/dx(exp(x)) = exp(x), at x=0 → 1
   "derivative of exp(x) at x=0" should "be 1.0" in
   {
     val expr = _Derivative(Exp(x), x)
     assert(math.abs(evalNum(expr, "x" -> 0.0) - 1.0) < 1e-5)
   }
 
-  // d/dx(ln(x)) = 1/x, at x=1 â†’ 1
+  // d/dx(ln(x)) = 1/x, at x=1 → 1
   "derivative of ln(x) at x=1" should "be 1.0" in
   {
     val expr = _Derivative(Ln(x), x)
     assert(math.abs(evalNum(expr, "x" -> 1.0) - 1.0) < 1e-4)
   }
 
-  // d/dx(logâ‚â‚€(x)) = 1/(xÂ·ln(10)), at x=1 â†’ 1/ln(10) â‰ˆ 0.4343
+  // d/dx(log₁₀(x)) = 1/(x·ln(10)), at x=1 → 1/ln(10) ≈ 0.4343
   "derivative of log(x, 10) at x=1" should "be 1/ln(10)" in
   {
     val expr = _Derivative(LogBase(x, _Number(10)), x)
@@ -114,14 +114,14 @@ class DerivativeTest extends AnyFlatSpec:
 
   // --- chain rule ---
 
-  // d/dx(sin(xÂ²)) = 2xÂ·cos(xÂ²), at x=0 â†’ 0
-  "derivative of sin(xÂ²) at x=0" should "be 0.0" in
+  // d/dx(sin(x²)) = 2x·cos(x²), at x=0 → 0
+  "derivative of sin(x²) at x=0" should "be 0.0" in
   {
     val expr = _Derivative(Sin(Power(x, _Number(2))), x)
     assert(math.abs(evalNum(expr, "x" -> 0.0) - 0.0) < 1e-5)
   }
 
-  // d/dx(exp(2x)) = 2Â·exp(2x), at x=0 â†’ 2
+  // d/dx(exp(2x)) = 2·exp(2x), at x=0 → 2
   "derivative of exp(2x) at x=0" should "be 2.0" in
   {
     val expr = _Derivative(Exp(Product(_Number(2), x)), x)
@@ -130,15 +130,15 @@ class DerivativeTest extends AnyFlatSpec:
 
   // --- higher-order and functional nodes (no infinite recursion) ---
 
-  // d/dx(d/dx(xÂ³)) = 6x, at x=2 â†’ 12
-  "second derivative of xÂ³ at x=2" should "be 12.0" in
+  // d/dx(d/dx(x³)) = 6x, at x=2 → 12
+  "second derivative of x³ at x=2" should "be 12.0" in
   {
     val expr = _Derivative(_Derivative(Power(x, _Number(3)), x), x)
     assert(math.abs(evalNum(expr, "x" -> 2.0) - 12.0) < 1e-4)
   }
 
-  // d/dx(d/dx(sin(x))) = -sin(x), at x=Ï€/2 â†’ -1
-  "second derivative of sin(x) at x=Ï€/2" should "be -1.0" in
+  // d/dx(d/dx(sin(x))) = -sin(x), at x=π/2 → -1
+  "second derivative of sin(x) at x=π/2" should "be -1.0" in
   {
     val expr = _Derivative(_Derivative(Sin(x), x), x)
     assert(math.abs(evalNum(expr, "x" -> math.Pi / 2) + 1.0) < 1e-4)
@@ -153,7 +153,7 @@ class DerivativeTest extends AnyFlatSpec:
       case Right(v) => fail(s"expected symbolic but got $v")
   }
 
-  // d/dx âˆ«x dx = x (fundamental theorem of calculus), at x=4 â†’ 4
+  // d/dx ∫x dx = x (fundamental theorem of calculus), at x=4 → 4
   "derivative of the integral of x w.r.t. x" should "recover the integrand" in
   {
     val expr = _Derivative(_Integral(x, x), x)
@@ -162,7 +162,7 @@ class DerivativeTest extends AnyFlatSpec:
 
   // --- base-0 power rule guard (issue #25) ---
 
-  // d/dx(0^y) where y is independent of x: 0^y is a constant â†’ 0
+  // d/dx(0^y) where y is independent of x: 0^y is a constant → 0
   "derivative of 0^y w.r.t. x (y independent of x)" should "be 0" in
   {
     assert(evalNum(_Derivative(Power(_Number(0), y), x)) == 0.0)
@@ -180,7 +180,7 @@ class DerivativeTest extends AnyFlatSpec:
   // --- memoization (issue 4.1, split from legacy 19) ---
 
   // The result tree is freshly built on a cache miss, so reference identity (eq)
-  // across two calls â€” even from structurally equal but distinct input trees â€”
+  // across two calls — even from structurally equal but distinct input trees —
   // proves the memo hit.
   "repeated derive calls on equal trees" should "return the cached instance" in
   {

@@ -6,8 +6,8 @@ import matrix.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-// Feature 4.2/4.3 â€” spectral decomposition eig(A) â†’ [[V, D]] and
-// Jordan decomposition jordan(A) â†’ [[P, J]].
+// Feature 4.2/4.3 — spectral decomposition eig(A) → [[V, D]] and
+// Jordan decomposition jordan(A) → [[P, J]].
 class EigDecompositionTest extends AnyFlatSpec:
 
   val env: Environment = new Environment()
@@ -20,14 +20,14 @@ class EigDecompositionTest extends AnyFlatSpec:
     a.rows == b.rows && a.cols == b.cols &&
       (0 until a.rows).forall(i => (0 until a.cols).forall(j => math.abs(a(i,j) - b(i,j)) <= t))
 
-  // Extract a dense _MatrixValue from the k-th column (1-based) of a 1Ã—n result.
+  // Extract a dense _MatrixValue from the k-th column (1-based) of a 1×n result.
   def denseAt(result: Either[_Expression, _Value], k: Int): _MatrixValue =
     result match
       case Left(m: _Matrix) if k >= 1 && k <= m.cols =>
         m(0, k-1) match
           case mv: _MatrixValue => mv
           case sym: _Matrix =>
-            // All-real symbolic matrix â†’ materialise
+            // All-real symbolic matrix → materialise
             val nums = sym.elems.collect { case _Number(d) => d }
             if nums.size == sym.elems.size then _MatrixValue(sym.rows, sym.cols, nums.toArray)
             else fail(s"element $k has non-numeric entries: $sym")
@@ -36,7 +36,7 @@ class EigDecompositionTest extends AnyFlatSpec:
 
   // ---- _MatrixValue.spectralDecompose ----
 
-  "spectralDecompose of a 2Ã—2 symmetric" should "satisfy AÂ·V = VÂ·D" in
+  "spectralDecompose of a 2×2 symmetric" should "satisfy A·V = V·D" in
   {
     val a = dense(2, 2, 4, 1, 1, 3)
     a.spectralDecompose match
@@ -51,10 +51,10 @@ class EigDecompositionTest extends AnyFlatSpec:
           yield if i == j then eigs(i).asInstanceOf[_Number].d else 0.0).toArray)
         val av  = a.multiply(v)
         val vd  = v.multiply(d)
-        assert(approxEq(av, vd), s"AÂ·V â‰  VÂ·D\nAÂ·V=$av\nVÂ·D=$vd")
+        assert(approxEq(av, vd), s"A·V ≠ V·D\nA·V=$av\nV·D=$vd")
   }
 
-  "spectralDecompose of a 3Ã—3 diagonal" should "return identity-like V and D = A" in
+  "spectralDecompose of a 3×3 diagonal" should "return identity-like V and D = A" in
   {
     val a = dense(3, 3, 2, 0, 0, 0, 3, 0, 0, 0, 5)
     a.spectralDecompose match
@@ -65,18 +65,18 @@ class EigDecompositionTest extends AnyFlatSpec:
         assert(eigVals == Vector(2.0, 3.0, 5.0), s"unexpected eigenvalues $eigVals")
   }
 
-  "spectralDecompose of a 3Ã—3 symmetric" should "satisfy AÂ·V = VÂ·D" in
+  "spectralDecompose of a 3×3 symmetric" should "satisfy A·V = V·D" in
   {
     val a = dense(3, 3, 2, 1, 0, 1, 2, 1, 0, 1, 2)
     a.spectralDecompose match
-      case None => fail("spectralDecompose returned None for 3Ã—3 symmetric")
+      case None => fail("spectralDecompose returned None for 3×3 symmetric")
       case Some((cols, evs)) =>
         val n = 3
         val v = _MatrixValue(n, n, (for i <- 0 until n; j <- 0 until n
           yield cols(j)(i).asInstanceOf[_Number].d).toArray)
         val d = _MatrixValue(n, n, (for i <- 0 until n; j <- 0 until n
           yield if i == j then evs(i).asInstanceOf[_Number].d else 0.0).toArray)
-        assert(approxEq(a.multiply(v), v.multiply(d), 1e-5), "AÂ·V â‰  VÂ·D")
+        assert(approxEq(a.multiply(v), v.multiply(d), 1e-5), "A·V ≠ V·D")
   }
 
   "spectralDecompose of a non-square matrix" should "return None" in
@@ -84,9 +84,9 @@ class EigDecompositionTest extends AnyFlatSpec:
     assert(dense(2, 3, 1, 2, 3, 4, 5, 6).spectralDecompose.isEmpty)
   }
 
-  "spectralDecompose of a 2Ã—2 rotation" should "return complex eigenvectors" in
+  "spectralDecompose of a 2×2 rotation" should "return complex eigenvectors" in
   {
-    // [[0,-1],[1,0]]: eigenvalues Â±i, complex eigenvectors
+    // [[0,-1],[1,0]]: eigenvalues ±i, complex eigenvectors
     val a = dense(2, 2, 0, -1, 1, 0)
     a.spectralDecompose match
       case None => fail("spectralDecompose returned None for rotation matrix")
@@ -97,7 +97,7 @@ class EigDecompositionTest extends AnyFlatSpec:
 
   // ---- _EigDecomposition AST node ----
 
-  "_EigDecomposition on a 2Ã—2 symmetric" should "return Left(_Matrix(1,2,[V,D])) with AÂ·V = VÂ·D" in
+  "_EigDecomposition on a 2×2 symmetric" should "return Left(_Matrix(1,2,[V,D])) with A·V = V·D" in
   {
     val a   = dense(2, 2, 3, 1, 1, 3)
     val res = _EigDecomposition(a).eval(env)
@@ -105,10 +105,10 @@ class EigDecompositionTest extends AnyFlatSpec:
     val d   = denseAt(res, 2)
     val av  = a.multiply(v)
     val vd  = v.multiply(d)
-    assert(approxEq(av, vd), s"AÂ·V â‰  VÂ·D\n  AÂ·V = $av\n  VÂ·D = $vd")
+    assert(approxEq(av, vd), s"A·V ≠ V·D\n  A·V = $av\n  V·D = $vd")
   }
 
-  "_EigDecomposition on a 3Ã—3 symmetric" should "satisfy AÂ·V = VÂ·D" in
+  "_EigDecomposition on a 3×3 symmetric" should "satisfy A·V = V·D" in
   {
     val a   = dense(3, 3, 2, 1, 0, 1, 2, 1, 0, 1, 2)
     val res = _EigDecomposition(a).eval(env)
@@ -147,20 +147,20 @@ class EigDecompositionTest extends AnyFlatSpec:
 
   // ---- _JordanDecomposition AST node ----
 
-  "_JordanDecomposition on a 2Ã—2 symmetric" should "return Left(_Matrix(1,2,[P,J])) with A = PÂ·JÂ·Pâ»Â¹" in
+  "_JordanDecomposition on a 2×2 symmetric" should "return Left(_Matrix(1,2,[P,J])) with A = P·J·P⁻¹" in
   {
     val a   = dense(2, 2, 3, 1, 1, 3)
     val res = _JordanDecomposition(a).eval(env)
     val p   = denseAt(res, 1)
     val j   = denseAt(res, 2)
-    // Verify AÂ·P = PÂ·J  (equivalent to A = PÂ·JÂ·Pâ»Â¹ when P is invertible)
-    assert(approxEq(a.multiply(p), p.multiply(j), 1e-5), s"AÂ·P â‰  PÂ·J")
+    // Verify A·P = P·J  (equivalent to A = P·J·P⁻¹ when P is invertible)
+    assert(approxEq(a.multiply(p), p.multiply(j), 1e-5), s"A·P ≠ P·J")
     // J must be diagonal
     for i <- 0 until 2; k <- 0 until 2 do
       if i != k then assert(math.abs(j(i,k)) < tol, s"J[$i,$k] should be 0")
   }
 
-  "_JordanDecomposition on a 3Ã—3 diagonal" should "return PÂ·JÂ·Pâ»Â¹ = A" in
+  "_JordanDecomposition on a 3×3 diagonal" should "return P·J·P⁻¹ = A" in
   {
     val a   = dense(3, 3, 1, 0, 0, 0, 4, 0, 0, 0, 9)
     val res = _JordanDecomposition(a).eval(env)

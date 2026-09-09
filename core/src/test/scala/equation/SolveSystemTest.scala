@@ -26,7 +26,7 @@ class SolveSystemTest extends AnyFlatSpec:
       case other      => fail(s"expected numeric RHS but got: $other")
     ).getOrElse(fail(s"no solution found for $v"))
 
-  // --- dense 2Ã—2 system ---
+  // --- dense 2×2 system ---
 
   "2x + 3y = 7 / x - y = 1" should "give x=2, y=1" in
   {
@@ -50,9 +50,9 @@ class SolveSystemTest extends AnyFlatSpec:
         assert(math.abs(solEq(s, y) - 3.0) < 1e-9)
   }
 
-  // --- dense 3Ã—3 system: x+y+z=6, x-y-z=-2, 2x+y-z=2 â†’ x=2,y=1,z=3 ---
+  // --- dense 3×3 system: x+y+z=6, x-y-z=-2, 2x+y-z=2 → x=2,y=1,z=3 ---
 
-  "3Ã—3 integer system" should "give x=2, y=1, z=3" in
+  "3×3 integer system" should "give x=2, y=1, z=3" in
   {
     def eq(l: _Expression, r: Double) = _Equation(l, _Number(r))
     val e1 = eq(Sum(Sum(x, y), z), 6)
@@ -124,7 +124,7 @@ class SolveSystemTest extends AnyFlatSpec:
     val env = new Environment().withBinding("a", _Number(2))
     val eq1 = _Equation(Sum(Product(a, x), y), _Number(5))
     val eq2 = _Equation(Sum(x, Product(_Number(-1), y)), _Number(1))
-    // With a=2: 2x + y = 5, x - y = 1 â†’ x=2, y=1
+    // With a=2: 2x + y = 5, x - y = 1 → x=2, y=1
     solveSystem(List(eq1, eq2), List(x, y), env) match
       case None    => fail("expected a solution")
       case Some(s) =>
@@ -148,7 +148,7 @@ class SolveSystemTest extends AnyFlatSpec:
 
   // --- _SolveSystem.eval ---
 
-  "_SolveSystem.eval with a 2Ã—2 system" should "return a row-vector of solutions" in
+  "_SolveSystem.eval with a 2×2 system" should "return a row-vector of solutions" in
   {
     val node = parse("solveSystem([[2*x + y = 5, x + 3*y = 10]], x, y)")
     node.eval(new Environment()) match

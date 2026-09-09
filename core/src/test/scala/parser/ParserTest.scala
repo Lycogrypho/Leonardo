@@ -92,7 +92,7 @@ class ParserTest extends AnyFlatSpec:
       assert(!Parser.parse(w).successful, s"'$w' must not parse as a variable")
   }
 
-  "\"sin x\" (function without parentheses)" should "be a parse error, not sinÃ‚Â·x" in
+  "\"sin x\" (function without parentheses)" should "be a parse error, not sin·x" in
   {
     assert(!Parser.parse("sin x").successful)
   }
@@ -234,7 +234,7 @@ class ParserTest extends AnyFlatSpec:
 
   "a short ^ chain" should "still parse correctly" in
   {
-    // right-associative: 2^3^2 = 2^(3^2) Ã¢â‚¬â€ uses the standard positive-exponent path
+    // right-associative: 2^3^2 = 2^(3^2) — uses the standard positive-exponent path
     assert(parse("2^3^2") == Power(_Number(2), Power(_Number(3), _Number(2))))
   }
 
@@ -367,12 +367,12 @@ class ParserTest extends AnyFlatSpec:
     assert(parse(parsed.toString) == parsed)
   }
 
-  "log(x)" should "parse as LogBase(x, 10.0) Ã¢â‚¬â€ base-10 shorthand" in
+  "log(x)" should "parse as LogBase(x, 10.0) — base-10 shorthand" in
   {
     assert(parse("log(x)") == LogBase(_Variable("x"), _Number(10.0)))
   }
 
-  "log(x, 2)" should "parse as LogBase(x, 2.0) Ã¢â‚¬â€ binary logarithm" in
+  "log(x, 2)" should "parse as LogBase(x, 2.0) — binary logarithm" in
   {
     assert(parse("log(x, 2)") == LogBase(_Variable("x"), _Number(2.0)))
   }

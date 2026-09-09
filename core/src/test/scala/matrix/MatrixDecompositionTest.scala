@@ -6,7 +6,7 @@ import matrix.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-// Feature 4.2 â€” matrix decompositions: lu(A) and qr(A).
+// Feature 4.2 — matrix decompositions: lu(A) and qr(A).
 class MatrixDecompositionTest extends AnyFlatSpec:
 
   val env: Environment = new Environment()
@@ -23,7 +23,7 @@ class MatrixDecompositionTest extends AnyFlatSpec:
     a.rows == b.rows && a.cols == b.cols &&
       (0 until a.rows).forall(i => (0 until a.cols).forall(j => math.abs(a(i, j) - b(i, j)) <= tol))
 
-  // Extract the k-th element (1-based) from a 1Ã—n result matrix.
+  // Extract the k-th element (1-based) from a 1×n result matrix.
   def extractMatrix(result: Either[_Expression, _Value], k: Int): _MatrixValue =
     result match
       case Left(m: _Matrix) if k >= 1 && k <= m.cols =>
@@ -34,7 +34,7 @@ class MatrixDecompositionTest extends AnyFlatSpec:
 
   // --- _MatrixValue.luDecompose ---
 
-  "luDecompose of a 2Ã—2" should "satisfy PÂ·A = LÂ·U" in
+  "luDecompose of a 2×2" should "satisfy P·A = L·U" in
   {
     val a = dense(2, 2, 1, 2, 3, 4)
     a.luDecompose match
@@ -43,7 +43,7 @@ class MatrixDecompositionTest extends AnyFlatSpec:
         assert(approxEq(p.multiply(a), l.multiply(u)))
   }
 
-  "luDecompose of a 3Ã—3" should "satisfy PÂ·A = LÂ·U" in
+  "luDecompose of a 3×3" should "satisfy P·A = L·U" in
   {
     val a = dense(3, 3, 2, 1, 1, 4, 3, 3, 8, 7, 9)
     a.luDecompose match
@@ -77,12 +77,12 @@ class MatrixDecompositionTest extends AnyFlatSpec:
     val res = _LUDecomposition(a).eval(env)
     res match
       case Left(m: _Matrix) =>
-        assert(m.rows == 1 && m.cols == 3, s"expected 1Ã—3 result, got ${m.rows}Ã—${m.cols}")
+        assert(m.rows == 1 && m.cols == 3, s"expected 1×3 result, got ${m.rows}×${m.cols}")
         val l = extractMatrix(res, 1)
         val u = extractMatrix(res, 2)
         val p = extractMatrix(res, 3)
         assert(approxEq(p.multiply(a), l.multiply(u)))
-      case other => fail(s"expected Left(_Matrix(1,3,â€¦)) but got: $other")
+      case other => fail(s"expected Left(_Matrix(1,3,…)) but got: $other")
   }
 
   "lu(A) on a singular matrix" should "stay symbolic" in
@@ -118,30 +118,30 @@ class MatrixDecompositionTest extends AnyFlatSpec:
     val l = extractMatrix(res, 1)
     val u = extractMatrix(res, 2)
     val p = extractMatrix(res, 3)
-    // PÂ·A = LÂ·U
+    // P·A = L·U
     val a = dense(2, 2, 1, 2, 3, 4)
     assert(approxEq(p.multiply(a), l.multiply(u)))
   }
 
   // --- _MatrixValue.qrDecompose ---
 
-  "qrDecompose of a 2Ã—2" should "satisfy A = QÂ·R with orthogonal Q" in
+  "qrDecompose of a 2×2" should "satisfy A = Q·R with orthogonal Q" in
   {
     val a = dense(2, 2, 1, 2, 3, 4)
     a.qrDecompose match
       case None         => fail("expected a decomposition")
       case Some((q, r)) =>
-        // A = QÂ·R
+        // A = Q·R
         assert(approxEq(a, q.multiply(r)))
-        // Q is orthogonal: Q^T Â· Q = I
+        // Q is orthogonal: Q^T · Q = I
         val qtq = q.transpose.multiply(q)
         for i <- 0 until 2; j <- 0 until 2 do
-          assert(math.abs(qtq(i, j) - (if i == j then 1.0 else 0.0)) < 1e-9, s"Q^TÂ·Q[$i,$j]")
+          assert(math.abs(qtq(i, j) - (if i == j then 1.0 else 0.0)) < 1e-9, s"Q^T·Q[$i,$j]")
         // R is upper triangular
         assert(math.abs(r(1, 0)) < 1e-12, "R[1,0] should be 0")
   }
 
-  "qrDecompose of a 3Ã—3" should "satisfy A = QÂ·R with orthogonal Q and upper-triangular R" in
+  "qrDecompose of a 3×3" should "satisfy A = Q·R with orthogonal Q and upper-triangular R" in
   {
     val a = dense(3, 3, 12, -51, 4, 6, 167, -68, -4, 24, -41)
     a.qrDecompose match
@@ -150,12 +150,12 @@ class MatrixDecompositionTest extends AnyFlatSpec:
         assert(approxEq(a, q.multiply(r), tol = 1e-8))
         val qtq = q.transpose.multiply(q)
         for i <- 0 until 3; j <- 0 until 3 do
-          assert(math.abs(qtq(i, j) - (if i == j then 1.0 else 0.0)) < 1e-8, s"Q^TÂ·Q[$i,$j]")
+          assert(math.abs(qtq(i, j) - (if i == j then 1.0 else 0.0)) < 1e-8, s"Q^T·Q[$i,$j]")
         for i <- 0 until 3; j <- 0 until 3 do
           if j < i then assert(math.abs(r(i, j)) < 1e-8, s"R[$i,$j] should be 0")
   }
 
-  "qrDecompose of a non-square matrix (m > n)" should "satisfy A = QÂ·R" in
+  "qrDecompose of a non-square matrix (m > n)" should "satisfy A = Q·R" in
   {
     val a = dense(3, 2, 1, 2, 3, 4, 5, 6)
     a.qrDecompose match
@@ -184,11 +184,11 @@ class MatrixDecompositionTest extends AnyFlatSpec:
     val res = _QRDecomposition(a).eval(env)
     res match
       case Left(m: _Matrix) =>
-        assert(m.rows == 1 && m.cols == 2, s"expected 1Ã—2 result, got ${m.rows}Ã—${m.cols}")
+        assert(m.rows == 1 && m.cols == 2, s"expected 1×2 result, got ${m.rows}×${m.cols}")
         val q = extractMatrix(res, 1)
         val r = extractMatrix(res, 2)
         assert(approxEq(a, q.multiply(r)))
-      case other => fail(s"expected Left(_Matrix(1,2,â€¦)) but got: $other")
+      case other => fail(s"expected Left(_Matrix(1,2,…)) but got: $other")
   }
 
   "qr(A) on a rank-deficient matrix" should "stay symbolic" in

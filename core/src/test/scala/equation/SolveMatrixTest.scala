@@ -9,7 +9,7 @@ import parser.Parser
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-// Issue 4.3a â€” solving a matrix equation for a SCALAR unknown by element-wise
+// Issue 4.3a — solving a matrix equation for a SCALAR unknown by element-wise
 // decomposition and intersection of the per-cell solution sets.
 class SolveMatrixTest extends AnyFlatSpec:
 
@@ -51,7 +51,7 @@ class SolveMatrixTest extends AnyFlatSpec:
 
   "a quadratic cell intersected with a linear cell" should "keep only the common root" in
   {
-    // [[x^2, x]] = [[4, 2]] : cell 1 gives Â±2, cell 2 gives 2 â†’ intersection {2}
+    // [[x^2, x]] = [[4, 2]] : cell 1 gives ±2, cell 2 gives 2 → intersection {2}
     assert(roots(solve(parseEq("[[x^2, x]] = [[4, 2]]"), x)) == List(2.0))
   }
 
@@ -60,20 +60,20 @@ class SolveMatrixTest extends AnyFlatSpec:
   "the reported inconsistent equation" should "have no solution" in
   {
     // [[1,2],[1,3]] + [[x, x],[2x, 3x]] = [[1,3],[3,6]] forces x = 0 in cell (1,1)
-    // but x = 1 in the other three cells â†’ no value satisfies every cell.
+    // but x = 1 in the other three cells → no value satisfies every cell.
     val eq = parseEq("[[1, 2], [1, 3]] + [[x, x], [2*x, 3*x]] = [[1, 3], [3, 6]]")
     assert(solve(eq, x).isEmpty)
   }
 
   "cells forcing different roots" should "intersect to nothing" in
   {
-    // cell 1 â†’ x = 1, cell 2 â†’ x = 2
+    // cell 1 → x = 1, cell 2 → x = 2
     assert(solve(parseEq("[[x, x]] = [[1, 2]]"), x).isEmpty)
   }
 
   "an inconsistent constant cell" should "make the whole system unsolvable" in
   {
-    // cell 1 â†’ x = 2, cell 2 is 5 = 6 (never true)
+    // cell 1 → x = 2, cell 2 is 5 = 6 (never true)
     assert(solve(parseEq("[[x, 5]] = [[2, 6]]"), x).isEmpty)
   }
 
@@ -108,16 +108,16 @@ class SolveMatrixTest extends AnyFlatSpec:
   // Every REPL session in this area lives in equation/SolveMatrixReplTest.scala
   // (issue 5.2 phase 1.1).
 
-  // --- 4.3b: unknown MATRIX x (AÂ·x = B) ---
+  // --- 4.3b: unknown MATRIX x (A·x = B) ---
 
-  "solve(A*x = B, x)" should "give x = Aâ»Â¹Â·B" in
+  "solve(A*x = B, x)" should "give x = A⁻¹·B" in
   {
-    val a = dense(2, 2, 2, 0, 0, 2)          // 2Â·I  â†’ Aâ»Â¹ = 0.5Â·I
+    val a = dense(2, 2, 2, 0, 0, 2)          // 2·I  → A⁻¹ = 0.5·I
     val b = dense(2, 2, 4, 6, 8, 10)
     assert(solve(_Equation(Product(a, x), b), x) == List(_Equation(x, dense(2, 2, 2, 3, 4, 5))))
   }
 
-  "solve(x*A = B, x)" should "give x = BÂ·Aâ»Â¹" in
+  "solve(x*A = B, x)" should "give x = B·A⁻¹" in
   {
     val a = dense(2, 2, 2, 0, 0, 2)
     val b = dense(2, 2, 2, 3, 4, 5)
@@ -151,7 +151,7 @@ class SolveMatrixTest extends AnyFlatSpec:
   "solve(A*x = B, x) with nonconforming shapes" should "have no solution" in
   {
     val a = dense(2, 2, 2, 0, 0, 2)
-    val b = dense(3, 2, 1, 2, 3, 4, 5, 6)    // Aâ»Â¹ is 2Ã—2, cannot left-multiply a 3Ã—2
+    val b = dense(3, 2, 1, 2, 3, 4, 5, 6)    // A⁻¹ is 2×2, cannot left-multiply a 3×2
     assert(solve(_Equation(Product(a, x), b), x).isEmpty)
   }
 

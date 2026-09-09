@@ -177,10 +177,10 @@ class ReplSessionTest extends AnyFlatSpec:
   "simplify of a symbolic matrix product" should "multiply and simplify each element" in
   {
     val s = session
-    s.execute("A := [[x + 0]]")         // free x â†’ definition
-    s.execute("B := [[3]]")             // constant â†’ dense binding
+    s.execute("A := [[x + 0]]")         // free x → definition
+    s.execute("B := [[3]]")             // constant → dense binding
     s.execute("C := A * B")
-    // element before simplification: (x + 0) * 3 â†’ simplified: x * 3
+    // element before simplification: (x + 0) * 3 → simplified: x * 3
     assert(s.execute("simplify C") == "[[(x * 3.0)]]")
   }
 
@@ -226,7 +226,7 @@ class ReplSessionTest extends AnyFlatSpec:
     s.execute("f := sin(x)")
     s.execute("g := f^2")
     s.execute("x := 0.5")
-    // dg/df = 2f = 2*sin(0.5) â‰ˆ 0.95885 â€" before the fix this was 0.0
+    // dg/df = 2f = 2*sin(0.5) ≈ 0.95885 — before the fix this was 0.0
     assert(s.execute("derive(g, f)") == "0.95885")
   }
 
@@ -507,7 +507,7 @@ class ReplSessionTest extends AnyFlatSpec:
     s.execute("f := sin(x)")
     s.execute("g := f^2")
     val out = s.execute("integral(g, f)")
-    // The bug produced ((sin(x) ^ 2.0) * f) â€" the definition name 'f' in the result.
+    // The bug produced ((sin(x) ^ 2.0) * f) — the definition name 'f' in the result.
     // After fix: change-of-var gives integral(sin(x)^2 * cos(x), x) which stays symbolic
     // but no longer references the definition name.
     assert(!out.matches(".*\\bf\\b.*"), s"result must not reference definition name 'f' but got: $out")
@@ -537,7 +537,7 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("integral(x^2, x)") == "((x ^ 3.0) / 3.0)")
   }
 
-  // --- issue 2.3: Parser lazy val (regression â€" all existing parse paths must still work) ---
+  // --- issue 2.3: Parser lazy val (regression — all existing parse paths must still work) ---
 
   "Parser" should "produce consistent results across multiple parses of the same input" in
   {
@@ -616,7 +616,7 @@ class ReplSessionTest extends AnyFlatSpec:
     val s1 = session
     s1.execute("precision 8")
     s1.execute("x := 3.00000001")
-    s1.execute("g := sin(y) + y")   // y is unbound â†’ stays a definition after reload
+    s1.execute("g := sin(y) + y")   // y is unbound → stays a definition after reload
     val tmp = java.io.File.createTempFile("leonardo_test", ".leo")
     try
       val saveMsg = Session.saveFile(s1, tmp.getPath)
@@ -1265,13 +1265,13 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("x") == "x", "x must remain unbound when there are two solutions")
     val x1 = s.execute("x_1")
     val x2 = s.execute("x_2")
-    assert(Set(x1, x2) == Set("-3.0", "3.0"), s"expected roots Â±3 but got $x1, $x2")
+    assert(Set(x1, x2) == Set("-3.0", "3.0"), s"expected roots ±3 but got $x1, $x2")
   }
 
 
 
 
-  // â"€â"€â"€ Issue 1.2: direct product of matrix-bound variables â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ─── Issue 1.2: direct product of matrix-bound variables ──────────────────
 
   "a product of two matrix-bound variables" should "evaluate to a numeric matrix" in
   {
@@ -1309,7 +1309,7 @@ class ReplSessionTest extends AnyFlatSpec:
   "a matrix operation times a matrix-bound variable" should "multiply in the written order" in
   {
     val s = session
-    // AÂ·B â‰  BÂ·A for these two, so a swapped dispatch would produce the wrong result.
+    // A·B ≠ B·A for these two, so a swapped dispatch would produce the wrong result.
     s.execute("M1 := [[1.0, 2.0], [3.0, 4.0]]")
     val result = s.execute("transpose(M1) * M1") // matrix-shaped left, variable right
     assert(
@@ -1344,7 +1344,7 @@ class ReplSessionTest extends AnyFlatSpec:
       )
   }
 
-  // â"€â"€â"€ Issue 1.1: precision in decomposition display â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ─── Issue 1.1: precision in decomposition display ─────────────────────────
 
   "jordan(A) display" should "respect the session precision" in
   {

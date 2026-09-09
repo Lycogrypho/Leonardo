@@ -11,7 +11,7 @@ import scala.math.{exp, log, sin, cos, tan, atan}
 
 
 /** Issue 1.3: a scalar function applied to a matrix distributes element-wise, so
- *  sin(A), exp(A), â€¦ reduce to a dense _MatrixValue of the per-element results.
+ *  sin(A), exp(A), … reduce to a dense _MatrixValue of the per-element results.
  */
 class MatrixFunctionTest extends AnyFlatSpec:
 
@@ -70,7 +70,7 @@ class MatrixFunctionTest extends AnyFlatSpec:
 
   "log base 10 of a dense matrix" should "apply element-wise" in
   {
-    // LogBase(m, 10) â€” log(x)/log(10) per element.
+    // LogBase(m, 10) — log(x)/log(10) per element.
     val m = dense(1, 2, 10, 100)
     val result = evalMatrix(LogBase(m, _Number(10)))
     assert(math.abs(result(0, 0) - 1.0) < 1e-9)

@@ -63,7 +63,7 @@ class SolveTest extends AnyFlatSpec:
     assert(solve(parseEq("x^2 + 1 = 0"), x).isEmpty)
   }
 
-  "solve of a symbolic quadratic" should "give the two Â±âˆšÎ” closed forms" in
+  "solve of a symbolic quadratic" should "give the two ±√Δ closed forms" in
   {
     val solutions = solve(parseEq("x^2 + b * x + c = 0"), x)
     assert(solutions.size == 2)
@@ -153,7 +153,7 @@ class SolveTest extends AnyFlatSpec:
   "solve(sin(x) = sin(x))" should "return no solutions (identity, not 8 grid points)" in
   {
     // Before the fix, the numeric fallback's fa == 0.0 branch collected every grid
-    // point where f â‰¡ 0, filling found up to MaxNumericRoots = 8 arbitrary results.
+    // point where f ≡ 0, filling found up to MaxNumericRoots = 8 arbitrary results.
     assert(solve(parseEq("sin(x) = sin(x)"), x).isEmpty)
   }
 
@@ -161,7 +161,7 @@ class SolveTest extends AnyFlatSpec:
   {
     // Regression: the neighbourhood guard only affects the fa == 0.0 branch. Roots
     // found via sign-change bisection (the vast majority) are unaffected. All
-    // returned values must actually satisfy sin(r) â‰ˆ 0.
+    // returned values must actually satisfy sin(r) ≈ 0.
     val roots = num(solve(parseEq("sin(x) = 0"), x))
     assert(roots.nonEmpty, "sin(x) = 0 must have at least one root in [-100, 100]")
     assert(roots.forall(r => math.abs(math.sin(r)) < 1e-5),
