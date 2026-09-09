@@ -6,7 +6,7 @@ import matrix.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-// Feature 4.1 â€” matrix constructors: eye(n) and zeros(r, c) / zeros(n).
+// Feature 4.1 — matrix constructors: eye(n) and zeros(r, c) / zeros(n).
 class MatrixConstructorsTest extends AnyFlatSpec:
 
   val env: Environment = new Environment()
@@ -21,7 +21,7 @@ class MatrixConstructorsTest extends AnyFlatSpec:
 
   // --- eye(n) ---
 
-  "eye(1)" should "be the 1Ã—1 identity" in
+  "eye(1)" should "be the 1×1 identity" in
   {
     assert(evalMatrix(IdentityMatrix(_Number(1))) == dense(1, 1, 1.0))
   }
@@ -103,7 +103,7 @@ class MatrixConstructorsTest extends AnyFlatSpec:
     assert(!parser.Parser.parse("eye").successful)
   }
 
-  "eye(3) parsed" should "evaluate to the 3Ã—3 identity" in
+  "eye(3) parsed" should "evaluate to the 3×3 identity" in
   {
     val result = parser.Parser.parse("eye(3)").get.eval(env)
     assert(result == Right(dense(3, 3, 1,0,0, 0,1,0, 0,0,1)))
@@ -118,14 +118,14 @@ class MatrixConstructorsTest extends AnyFlatSpec:
 
   // --- zeros(r, c) and zeros(n) ---
 
-  "zeros(2, 3)" should "be a 2Ã—3 zero matrix" in
+  "zeros(2, 3)" should "be a 2×3 zero matrix" in
   {
     val m = evalMatrix(ZeroMatrix(_Number(2), _Number(3)))
     assert(m.rows == 2 && m.cols == 3)
     for i <- 0 until 2; j <- 0 until 3 do assert(m(i, j) == 0.0)
   }
 
-  "zeros(n) â€” square form" should "be nÃ—n zeros" in
+  "zeros(n) — square form" should "be n×n zeros" in
   {
     val parsed = parser.Parser.parse("zeros(3)").get
     val m = evalMatrix(parsed)

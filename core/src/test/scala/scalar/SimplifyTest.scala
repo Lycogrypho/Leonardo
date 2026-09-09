@@ -137,13 +137,13 @@ class SimplifyTest extends AnyFlatSpec:
     assert(Sum(x, x).simplify() == Product(_Number(2), x))
   }
 
-  // x + (-1 * x) â†’ 0
+  // x + (-1 * x) → 0
   "simplify(x + (-1)*x)" should "equal 0" in
   {
     assert(Sum(x, Product(_Number(-1), x)).simplify() == _Number(0))
   }
 
-  // (-1 * x) + x â†’ 0  (mirror)
+  // (-1 * x) + x → 0  (mirror)
   "simplify((-1)*x + x)" should "equal 0" in
   {
     assert(Sum(Product(_Number(-1), x), x).simplify() == _Number(0))
@@ -276,7 +276,7 @@ class SimplifyTest extends AnyFlatSpec:
 
   "simplify applied to nested expression ((x*0)+1)*x" should "equal x" in
   {
-    // ((x*0) + 1) * x  â†’  (0 + 1) * x  â†’  1 * x  â†’  x
+    // ((x*0) + 1) * x  →  (0 + 1) * x  →  1 * x  →  x
     val expr = Product(Sum(Product(x, _Number(0)), _Number(1)), x)
     assert(expr.simplify() == x)
   }

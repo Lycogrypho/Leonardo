@@ -1,0 +1,34 @@
+version: 2
+
+# Keeps the SHA-pinned GitHub Actions moving (issue 2.10).
+#
+# Every `uses:` in .github/workflows is pinned to a commit SHA rather than a tag, because a
+# tag is mutable -- and `ruby/setup-ruby@v1` was not even a tag but a *branch*, whose head
+# moves on every push to it. Whoever controls an action repository can therefore change the
+# code that runs in `release.yml`, which holds the GPG signing key, and `scala-steward.yml`,
+# which holds a repository-writing PAT.
+#
+# Pinning alone would only trade one risk for another: a frozen SHA never receives the
+# action's own security fixes, and nothing would tell us. Dependabot bumps the SHA and
+# rewrites the trailing `# vX.Y.Z` comment, so the pins stay current *deliberately* -- each
+# update arriving as a reviewable pull request rather than silently at the next run.
+#
+# DELIBERATELY LIMITED TO github-actions. Scala/sbt dependencies are Scala Steward's job
+# (.scala-steward.conf); enabling Dependabot's `sbt` ecosystem as well would open two pull
+# requests for every library update and lose spire's deliberate pin (issue 4.N).
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    # Grouped so a quiet week is one review rather than seven.
+    groups:
+      actions:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "Minor Enhancement - 2.10"

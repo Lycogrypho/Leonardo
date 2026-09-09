@@ -1,7 +1,22 @@
 /.bsp/
-/project/
 /null/
 /.idea/
+
+# `project/` is BUILD SOURCE and must be committed: `project/plugins.sbt` supplies every
+# symbol build.sbt uses from a plugin (dynverVTagPrefix, idePackagePrefix, MdocPlugin,
+# ScalaUnidocPlugin, mimaPreviousArtifacts, ProblemFilters, sonatypeCredentialHost, mdocIn)
+# and `project/build.properties` pins sbt itself to 1.10.11.  Without them a fresh clone
+# cannot even load the build.
+#
+# This file used to ignore `/project/` wholesale.  That was harmless only by accident: the two
+# source files were tracked *before* the rule was added, and a gitignore entry does not affect
+# an already-tracked file.  Any NEW file there -- the `project/Dependencies.scala` that a
+# growing build eventually wants -- would have been silently untracked, and the breakage would
+# have surfaced as a failing CI run on someone else's clone rather than here.
+#
+# Only the build OUTPUT under project/ is ignored, and the unanchored `target/` below already
+# covers `project/target/` and `project/project/target/`.
+project/project/
 # UNANCHORED since the 5.2 phase 1.1 module split: the leading slash matched the root
 # target/ only, so core/target/ and repl/target/ -- and any future module's -- would have
 # been committed. Matches a directory named `target` at any depth, the sbt convention.

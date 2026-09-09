@@ -7,7 +7,7 @@ import matrix.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-// Feature 4.1 (determinant, det) + 4.2 (inverse, inv / 1Ã·A) from ToDo.md.
+// Feature 4.1 (determinant, det) + 4.2 (inverse, inv / 1÷A) from ToDo.md.
 class DeterminantInverseTest extends AnyFlatSpec:
 
   val a = _Variable("a")
@@ -31,13 +31,13 @@ class DeterminantInverseTest extends AnyFlatSpec:
 
   // --- 4.1: dense determinant kernel ---
 
-  "determinant of a 2Ã—2" should "be ad âˆ’ bc" in
+  "determinant of a 2×2" should "be ad − bc" in
   {
-    // det([[1, 2], [1, 3]]) = 1*3 âˆ’ 2*1 = 1  (the reported example)
+    // det([[1, 2], [1, 3]]) = 1*3 − 2*1 = 1  (the reported example)
     assert(dense(2, 2, 1, 2, 1, 3).determinant.contains(1.0))
   }
 
-  "determinant of a 3Ã—3" should "match cofactor expansion" in
+  "determinant of a 3×3" should "match cofactor expansion" in
   {
     // det([[6,1,1],[4,-2,5],[2,8,7]]) = -306
     dense(3, 3, 6, 1, 1, 4, -2, 5, 2, 8, 7).determinant match
@@ -71,10 +71,10 @@ class DeterminantInverseTest extends AnyFlatSpec:
     assert(e.eval(new Environment()) == Left(e))
   }
 
-  "Determinant of a symbolic 2Ã—2" should "expand by cofactors and fold when bound" in
+  "Determinant of a symbolic 2×2" should "expand by cofactors and fold when bound" in
   {
     val m = literal(2, 2, a, b, c, d)
-    // det([[a,b],[c,d]]) stays symbolic, then folds to 1*3 âˆ’ 2*1 = 1 when bound
+    // det([[a,b],[c,d]]) stays symbolic, then folds to 1*3 − 2*1 = 1 when bound
     assert(Determinant(m).eval(new Environment()).isLeft)
     assert(Determinant(m).eval(envWith("a" -> 1, "b" -> 2, "c" -> 1, "d" -> 3)) == Right(_Number(1.0)))
   }
@@ -89,7 +89,7 @@ class DeterminantInverseTest extends AnyFlatSpec:
 
   // --- 4.2: dense inverse kernel ---
 
-  "inverse of a 2Ã—2" should "give the adjugate over the determinant" in
+  "inverse of a 2×2" should "give the adjugate over the determinant" in
   {
     // inv([[1,2],[1,3]]) = [[3,-2],[-1,1]] since det = 1
     assert(dense(2, 2, 1, 2, 1, 3).inverse.contains(dense(2, 2, 3, -2, -1, 1)))
@@ -128,14 +128,14 @@ class DeterminantInverseTest extends AnyFlatSpec:
     assert(e.eval(new Environment()) == Left(e))
   }
 
-  "Inverse of a symbolic 2Ã—2" should "build adjugate/det and fold when bound" in
+  "Inverse of a symbolic 2×2" should "build adjugate/det and fold when bound" in
   {
     val m = literal(2, 2, a, b, c, d)
     assert(Inverse(m).eval(new Environment()).isLeft)
     assert(evalMatrix(Inverse(m), envWith("a" -> 1, "b" -> 2, "c" -> 1, "d" -> 3)) == dense(2, 2, 3, -2, -1, 1))
   }
 
-  "Inverse of a symbolic 1Ã—1" should "be the reciprocal" in
+  "Inverse of a symbolic 1×1" should "be the reciprocal" in
   {
     assert(evalMatrix(Inverse(literal(1, 1, a)), envWith("a" -> 4.0)) == dense(1, 1, 0.25))
   }

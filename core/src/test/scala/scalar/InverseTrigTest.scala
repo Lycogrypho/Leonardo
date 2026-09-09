@@ -167,7 +167,7 @@ class InverseTrigTest extends AnyFlatSpec:
       case other => fail(s"expected numeric but got $other")
   }
 
-  // --- round-trip: parse â†’ toString â†’ parse gives same AST ---
+  // --- round-trip: parse → toString → parse gives same AST ---
 
   "asin(x)" should "round-trip through toString" in
   {

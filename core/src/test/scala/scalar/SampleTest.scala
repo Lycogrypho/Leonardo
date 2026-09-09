@@ -25,7 +25,7 @@ class SampleTest extends AnyFlatSpec:
 
   "sample" should "skip non-finite results (e.g., 1/x at x=0)" in
   {
-    // x values: -1.0, 0.0, 1.0 â€” the middle point is 1/0 = Infinity, so dropped
+    // x values: -1.0, 0.0, 1.0 — the middle point is 1/0 = Infinity, so dropped
     val pts = sample(Ratio(_Number(1), x), x, -1.0, 1.0, 3, env)
     assert(pts.length == 2)
     assert(pts.forall { case (_, y) => !y.isNaN && !y.isInfinite })
@@ -33,7 +33,7 @@ class SampleTest extends AnyFlatSpec:
 
   "sample of a complex-only result" should "return empty (complex not _Number)" in
   {
-    // log(-|x|) for x in [1, 2] gives complex results â†’ not _Number â†’ all dropped
+    // log(-|x|) for x in [1, 2] gives complex results → not _Number → all dropped
     val pts = sample(Ln(Product(_Number(-1), x)), x, 1.0, 2.0, 5, env)
     assert(pts.isEmpty)
   }

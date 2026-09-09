@@ -6,7 +6,7 @@ import matrix.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-// Feature 4.2 â€” matrix eigenvalue decomposition: eigen(A) â†’ [[Î»â‚, Î»â‚‚, â€¦, Î»â‚™]].
+// Feature 4.2 — matrix eigenvalue decomposition: eigen(A) → [[λ₁, λ₂, …, λₙ]].
 class EigenvalueTest extends AnyFlatSpec:
 
   val env: Environment = new Environment()
@@ -29,15 +29,15 @@ class EigenvalueTest extends AnyFlatSpec:
 
   // --- _MatrixValue.eigenDecompose ---
 
-  "eigenDecompose of a 1Ã—1" should "return the single element" in
+  "eigenDecompose of a 1×1" should "return the single element" in
   {
     val a = dense(1, 1, 7.0)
     assert(eigenvalues(a) == Vector(_Number(7.0)))
   }
 
-  "eigenDecompose of a 2Ã—2 symmetric" should "return the two real eigenvalues" in
+  "eigenDecompose of a 2×2 symmetric" should "return the two real eigenvalues" in
   {
-    // [[4, 1], [1, 3]]: tr=7, det=11, disc=5 â†’ eigenvalues (7 Â± âˆš5)/2
+    // [[4, 1], [1, 3]]: tr=7, det=11, disc=5 → eigenvalues (7 ± √5)/2
     val a    = dense(2, 2, 4, 1, 1, 3)
     val eigs = eigenvalues(a)
     assert(eigs.size == 2)
@@ -47,9 +47,9 @@ class EigenvalueTest extends AnyFlatSpec:
     assert(math.abs(sorted.last - (7 + math.sqrt(5)) / 2) < tol)
   }
 
-  "eigenDecompose of a 2Ã—2 rotation" should "return Â±i" in
+  "eigenDecompose of a 2×2 rotation" should "return ±i" in
   {
-    // [[0, -1], [1, 0]]: tr=0, det=1, disc=-4 â†’ eigenvalues Â±i
+    // [[0, -1], [1, 0]]: tr=0, det=1, disc=-4 → eigenvalues ±i
     val a    = dense(2, 2, 0, -1, 1, 0)
     val eigs = eigenvalues(a)
     assert(eigs.size == 2)
@@ -57,7 +57,7 @@ class EigenvalueTest extends AnyFlatSpec:
     assert(eigs.exists(approxComplex(_, 0, -1)), s"expected -i in $eigs")
   }
 
-  "eigenDecompose of a 3Ã—3 diagonal" should "return the three diagonal elements" in
+  "eigenDecompose of a 3×3 diagonal" should "return the three diagonal elements" in
   {
     val a    = dense(3, 3, 2, 0, 0, 0, 3, 0, 0, 0, 5)
     val eigs = eigenvalues(a)
@@ -65,7 +65,7 @@ class EigenvalueTest extends AnyFlatSpec:
     assert(sorted == Vector(2.0, 3.0, 5.0))
   }
 
-  "eigenDecompose of a 3Ã—3 identity" should "return three 1s" in
+  "eigenDecompose of a 3×3 identity" should "return three 1s" in
   {
     val a    = dense(3, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1)
     val eigs = eigenvalues(a)
@@ -73,9 +73,9 @@ class EigenvalueTest extends AnyFlatSpec:
     assert(eigs.forall(approxReal(_, 1.0)), s"expected all 1s, got $eigs")
   }
 
-  "eigenDecompose of a 3Ã—3 symmetric" should "return 2, 2+âˆš2, 2âˆ’âˆš2" in
+  "eigenDecompose of a 3×3 symmetric" should "return 2, 2+√2, 2−√2" in
   {
-    // [[2, 1, 0], [1, 2, 1], [0, 1, 2]]: char poly = (2âˆ’Î»)[(2âˆ’Î»)Â²âˆ’2]=0 â†’ Î»âˆˆ{2, 2Â±âˆš2}
+    // [[2, 1, 0], [1, 2, 1], [0, 1, 2]]: char poly = (2−λ)[(2−λ)²−2]=0 → λ∈{2, 2±√2}
     val a      = dense(3, 3, 2, 1, 0, 1, 2, 1, 0, 1, 2)
     val eigs   = eigenvalues(a)
     assert(eigs.size == 3)
@@ -91,10 +91,10 @@ class EigenvalueTest extends AnyFlatSpec:
     assert(dense(2, 3, 1, 2, 3, 4, 5, 6).eigenDecompose.isEmpty)
   }
 
-  "eigenDecompose of a 3Ã—3 with a complex pair" should "have one real and two complex eigenvalues" in
+  "eigenDecompose of a 3×3 with a complex pair" should "have one real and two complex eigenvalues" in
   {
-    // [[1, -1, 0], [1, 1, 0], [0, 0, 3]]: sub-diagonal (2,1)=0 â†’ deflate 3,
-    // then 2Ã—2 [[1,-1],[1,1]]: tr=2, det=2, disc=-4 â†’ 1Â±i
+    // [[1, -1, 0], [1, 1, 0], [0, 0, 3]]: sub-diagonal (2,1)=0 → deflate 3,
+    // then 2×2 [[1,-1],[1,1]]: tr=2, det=2, disc=-4 → 1±i
     val a    = dense(3, 3, 1, -1, 0, 1, 1, 0, 0, 0, 3)
     val eigs = eigenvalues(a)
     assert(eigs.size == 3)
@@ -103,7 +103,7 @@ class EigenvalueTest extends AnyFlatSpec:
     assert(eigs.exists(approxComplex(_, 1.0, -1.0)), s"expected 1-i in $eigs")
   }
 
-  "eigenDecompose of a general 4Ã—4" should "converge and return 4 eigenvalues" in
+  "eigenDecompose of a general 4×4" should "converge and return 4 eigenvalues" in
   {
     // Companion matrix of x^4 - 10x^3 + 35x^2 - 50x + 24 = (x-1)(x-2)(x-3)(x-4)
     val a    = dense(4, 4,
@@ -121,13 +121,13 @@ class EigenvalueTest extends AnyFlatSpec:
 
   // --- _EigenDecomposition AST node ---
 
-  "_EigenDecomposition" should "evaluate to Left(_Matrix(1,2,...)) for a 2Ã—2 matrix" in
+  "_EigenDecomposition" should "evaluate to Left(_Matrix(1,2,...)) for a 2×2 matrix" in
   {
     val a   = dense(2, 2, 4, 1, 1, 3)
     val res = _EigenDecomposition(a).eval(env)
     res match
       case Left(m: _Matrix) =>
-        assert(m.rows == 1 && m.cols == 2, s"expected 1Ã—2 result, got ${m.rows}Ã—${m.cols}")
+        assert(m.rows == 1 && m.cols == 2, s"expected 1×2 result, got ${m.rows}×${m.cols}")
       case other => fail(s"expected Left(_Matrix(1,2,...)) but got: $other")
   }
 

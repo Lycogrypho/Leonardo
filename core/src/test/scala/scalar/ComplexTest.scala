@@ -97,39 +97,39 @@ class ComplexTest extends AnyFlatSpec:
     assertComplex(evalValue("(0 - 1)^0.5"), 0.0, 1.0)
   }
 
-  "(-8)^(1/3)" should "be the principal complex cube root 1 + iâˆš3" in
+  "(-8)^(1/3)" should "be the principal complex cube root 1 + i√3" in
   {
     assertComplex(evalValue("pow(0 - 8, 1/3)"), 1.0, math.sqrt(3))
   }
 
-  "ln(-1)" should "be iÏ€" in
+  "ln(-1)" should "be iπ" in
   {
     assertComplex(evalValue("ln(0 - 1)"), 0.0, math.Pi)
   }
 
-  "ln(i)" should "be iÏ€/2" in
+  "ln(i)" should "be iπ/2" in
   {
     assertComplex(evalValue("ln(i)"), 0.0, math.Pi / 2)
   }
 
-  "log(-1, 10)" should "be iÏ€/ln(10)" in
+  "log(-1, 10)" should "be iπ/ln(10)" in
   {
     assertComplex(evalValue("log(0 - 1, 10)"), 0.0, math.Pi / math.log(10))
   }
 
   // --- elementary functions on complex arguments ---
 
-  "exp(iÂ·Ï€)" should "be -1 (Euler's identity)" in
+  "exp(i·π)" should "be -1 (Euler's identity)" in
   {
     assertComplex(evalValue("exp(i*pi)"), -1.0, 0.0)
   }
 
-  "exp(iÂ·Ï€/2)" should "be i" in
+  "exp(i·π/2)" should "be i" in
   {
     assertComplex(evalValue("exp(i*pi/2)"), 0.0, 1.0)
   }
 
-  "sin(i)" should "be iÂ·sinh(1)" in
+  "sin(i)" should "be i·sinh(1)" in
   {
     assertComplex(evalValue("sin(i)"), 0.0, math.sinh(1))
   }
@@ -178,7 +178,7 @@ class ComplexTest extends AnyFlatSpec:
 
   "a complex with a rounded-away imaginary part" should "display as a real" in
   {
-    // exp(iÂ·Ï€) has a floating-point residual imaginary part that rounds to 0
+    // exp(i·π) has a floating-point residual imaginary part that rounds to 0
     assert(evalValue("exp(i*pi)").toString == "-1.0")
   }
 

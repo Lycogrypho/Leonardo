@@ -68,7 +68,7 @@ class EvaluationTest extends AnyFlatSpec:
 
   // Complex closure: ln/sqrt of a negative real now yield the principal complex
   // value rather than staying symbolic (see ComplexTest for the full behaviour).
-  "ln of a negative number" should "yield the principal complex value ln|x| + iÏ€" in
+  "ln of a negative number" should "yield the principal complex value ln|x| + iπ" in
   {
     Ln(_Number(-1)).eval(env) match
       case Right(c: _Complex) =>
@@ -90,7 +90,7 @@ class EvaluationTest extends AnyFlatSpec:
 
   "negative base with fractional exponent" should "yield the principal complex root" in
   {
-    // (-2)^0.5 = iÂ·âˆš2
+    // (-2)^0.5 = i·√2
     Power(_Number(-2), _Number(0.5)).eval(env) match
       case Right(c: _Complex) =>
         assert(math.abs(c.re) < 1e-9 && math.abs(c.im - math.sqrt(2)) < 1e-9)
