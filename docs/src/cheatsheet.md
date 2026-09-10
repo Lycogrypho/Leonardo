@@ -532,6 +532,27 @@ invlaplace(2/(s^2+4), s, t)     -> sin(2*t)
 invlaplace(3/((s-2)^2+9), s, t) -> exp(2*t)*sin(3*t)
 ```
 
+### z-transform  `X(z) = Σ(n≥0) x[n]·z⁻ⁿ`
+
+**One-sided**, like `laplace`. Argument order is `(sequence, index, z)`.
+
+```
+ztrans(1, n, z)                 -> z/(z-1)      constant SEQUENCE, not 1/z
+ztrans(2^n, n, z)               -> z/(z-2)
+ztrans(n, n, z)                 -> z/(z-1)^2
+ztrans(n^2, n, z)               -> z*(z+1)/(z-1)^3
+ztrans(n*2^n, n, z)             -> 2*z/(z-2)^2
+ztrans(sin(0.5*n), n, z)        -> z*sin(0.5)/(z^2-2*z*cos(0.5)+1)
+
+invztrans(z/(z-2), z, n)        -> 2^n
+invztrans(z/((z-1)*(z-2)), z, n) -> 2^n - 1
+invztrans(z/(z-2)^2, z, n)      -> n*2^(n-1)
+```
+
+`Z{c} = c·z/(z−1)`, **not** `c/z` — the Laplace `L{c} = c/s` does not carry over, because a
+constant *sequence* is `c` at every index. Complex poles, the Kronecker delta and the bilateral
+transform are not supported and stay symbolic.
+
 ---
 
 ## Ordinary differential equations

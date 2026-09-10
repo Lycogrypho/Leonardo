@@ -32,3 +32,6 @@ target/
 /.sbtopts
 /ToDo.md
 /DesignNotes.md
+
+# Python bytecode from the .github/scripts guards (issue 2.8); regenerated on every run.
+__pycache__/

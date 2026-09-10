@@ -73,6 +73,7 @@ object Parser extends JavaTokenParsers:
     "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic (3.9)
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
+    "ztrans", "invztrans",                                                                  // 6.33 z-transform
     "domain", "differentiable", "singularities",         // domain analysis (3.3)
     "taylor", "maclaurin", "fourierSeries", "pade", "laurent",
     "tobase", "balanced",                                // base conversion (3.5)      // series expansions (4.J)
@@ -558,6 +559,15 @@ object Parser extends JavaTokenParsers:
     }                                                                                             |
     "invlaplace(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
       case f ~ _ ~ s ~ _ ~ t              => _InverseLaplace(f, s, t)
+    }                                                                                             |
+    // invztrans(...) is listed BEFORE ztrans(...) although neither is a prefix of the other,
+    // so the order is not load-bearing here -- it simply keeps each transform beside its
+    // inverse, as laplace/invlaplace are.  Issue 6.33; one-sided by Decision A.
+    "invztrans(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case f ~ _ ~ zv ~ _ ~ nv            => _InverseZTransform(f, zv, nv)
+    }                                                                                             |
+    "ztrans(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case x ~ _ ~ nv ~ _ ~ zv            => _ZTransform(x, nv, zv)
     }                                                                                             |
     // ode(rhs, depVar, indepVar, t0, y0, target): first-order IVP y' = rhs, y(t0) = y0,
     // evaluated at target.  depVar/indepVar are variables; rhs/t0/y0/target are expressions.
