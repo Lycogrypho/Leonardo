@@ -69,62 +69,20 @@ private def invZImpl(f: _Expression, z: _Variable, n: _Variable): _Expression =
  *  `(-1*z) * ((…)/(z-1)^2)` from the multiply-by-`n` rule, a `Product` whose left factor
  *  depends on `z`.  Matching on `Ratio` inverted the table's own output for some entries and
  *  not others, which is exactly the kind of gap a round-trip test exists to catch.
+ *
+ *  The normalisation itself is `scalar.rationalCoeffs`; it began here and moved when 6.29
+ *  became its third caller, the point at which issues 3.1 and 2.5 each promoted a helper
+ *  rather than let a copy diverge.
  */
 private def invRationalZ(f: _Expression, z: _Variable, n: _Variable): Option[_Expression] =
   for
-    (ns, ds) <- asRational(f, z)
+    (ns, ds) <- rationalCoeffs(f, z)
     // Decompose X(z)/z: the denominator gains a factor of z, i.e. a root at the origin.
     shifted = Vector(0.0) ++ polyTrim(ds)
     if polyTrim(ns).size <= shifted.size - 1     // strictly proper after the division by z
     terms <- decomposeReal(polyTrim(ns), shifted)
     result <- combineTerms(terms, z, n)
   yield simplifyFully(result)
-
-/** Largest polynomial degree accepted while normalising, guarding against blow-up. */
-private val MaxZRationalDegree = 24
-
-/** Folds an expression into `(numerator, denominator)` coefficient vectors in `z`.
- *
- *  Decidable and total: `+`, `*`, `/` and integer powers combine, and **anything else fails**
- *  — an `exp(z)` or a free variable makes the whole normalisation return `None`, so nothing is
- *  ever half-converted.  Same principle as the Weierstrass rationality test in
- *  `IntegrateSubstitution`, which this cannot reuse because that helper is private to `scalar`.
- */
-private def asRational(e: _Expression, z: _Variable): Option[(Vector[Double], Vector[Double])] =
-  def capped(p: (Vector[Double], Vector[Double])): Option[(Vector[Double], Vector[Double])] =
-    Option.when(p._1.size <= MaxZRationalDegree + 1 && p._2.size <= MaxZRationalDegree + 1)(p)
-
-  e match
-    case _ if !dependsOn(e, z) => asNumber(e).map(d => (Vector(d), Vector(1.0)))
-
-    case v: _Variable if v.variable == z.variable => Some((Vector(0.0, 1.0), Vector(1.0)))
-
-    case Sum(a, b) =>
-      for (an, ad) <- asRational(a, z); (bn, bd) <- asRational(b, z)
-          r <- capped((polyAdd(polyMul(an, bd), polyMul(bn, ad)), polyMul(ad, bd)))
-      yield r
-
-    case Product(a, b) =>
-      for (an, ad) <- asRational(a, z); (bn, bd) <- asRational(b, z)
-          r <- capped((polyMul(an, bn), polyMul(ad, bd)))
-      yield r
-
-    case Ratio(a, b) =>
-      for (an, ad) <- asRational(a, z); (bn, bd) <- asRational(b, z)
-          if polyTrim(bn).nonEmpty
-          r <- capped((polyMul(an, bd), polyMul(ad, bn)))
-      yield r
-
-    case Power(b, _Number(k)) if k.toInt.toDouble == k && math.abs(k) <= MaxZRationalDegree =>
-      asRational(b, z).flatMap { (bn, bd) =>
-        val times = math.abs(k.toInt)
-        val (num, den) = (1 to times).foldLeft((Vector(1.0), Vector(1.0))) {
-          case ((accN, accD), _) => (polyMul(accN, bn), polyMul(accD, bd))
-        }
-        capped(if k >= 0 then (num, den) else (den, num))
-      }
-
-    case _ => None
 
 /** A partial-fraction term `coeff / (v - root)^power`. */
 private case class ZTerm(coeff: Double, root: Double, power: Int)

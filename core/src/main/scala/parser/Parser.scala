@@ -13,6 +13,7 @@ import statistics.*
 import logic.*
 import domain.*
 import vector.*
+import control.*
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -73,6 +74,7 @@ object Parser extends JavaTokenParsers:
     "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic (3.9)
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "expm",                                                                                 // 6.39 matrix exponential
+    "series", "parallel", "feedback", "impulse", "routh",                                   // 6.29 control theory
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "ztrans", "invztrans",                                                                  // 6.33 z-transform
     "domain", "differentiable", "singularities",         // domain analysis (3.3)
@@ -434,7 +436,25 @@ object Parser extends JavaTokenParsers:
     "eigen("  ~> guardedExpr <~ ")"                                       ^^ _EigenDecomposition.apply     |
     "eig("    ~> guardedExpr <~ ")"                                       ^^ _EigDecomposition.apply       |
     "jordan(" ~> guardedExpr <~ ")"                                       ^^ _JordanDecomposition.apply    |
+    // step(G, s, t) is the 6.29 step RESPONSE; step(e) is the Heaviside unit step. The
+    // 3-argument form is listed FIRST, or the 1-arg alternative matches and then chokes on
+    // the comma -- the arity-overloading precedent of log(x) / log(x, b) and expect(...).
+    "step("   ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case g ~ _ ~ sv ~ _ ~ tv           => _StepResponse(g, sv, tv)
+    }                                                                                             |
     "step("   ~> guardedExpr <~ ")"                                       ^^ _Heaviside.apply           |
+    "impulse(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case g ~ _ ~ sv ~ _ ~ tv           => _ImpulseResponse(g, sv, tv)
+    }                                                                                             |
+    "series("   ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ variable <~ ")" ^^ {
+      case g ~ _ ~ h ~ _ ~ vv            => _Series(g, h, vv)
+    }                                                                                             |
+    "parallel(" ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ variable <~ ")" ^^ {
+      case g ~ _ ~ h ~ _ ~ vv            => _Parallel(g, h, vv)
+    }                                                                                             |
+    "feedback(" ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ variable <~ ")" ^^ {
+      case g ~ _ ~ h ~ _ ~ vv            => _Feedback(g, h, vv)
+    }                                                                                             |
     // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
     // log(x) has with LogBase(x, 10).
     "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |

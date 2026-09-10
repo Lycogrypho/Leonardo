@@ -65,7 +65,8 @@ Full detail for every entry below is in the [feature reference](https://lycogryp
   - **Logic** — boolean, three-valued Kleene, symmetric ternary and fuzzy, all sharing one rule table: the classical truth tables fall out as the crisp special case rather than a separate code path.
   - **Probability and statistics** — distributions as first-class values with closed-form CDFs, a linearity rule table for `expect`/`variance`, descriptive statistics that stay exact, and regression by QR.
   - **Vector calculus** — `grad`, `div`, `curl`, `laplacian`, `jacobian`, `hessian` over an explicit ordered coordinate tuple, in Cartesian, cylindrical and both spherical conventions.
-  - **Transforms and differential equations** — Laplace, Fourier and inverse Laplace over a symbolic rule table; first-order initial-value problems solved in closed form where possible and by Runge–Kutta otherwise.
+  - **Transforms and differential equations** — Laplace, Fourier, inverse Laplace and the one-sided z-transform over a symbolic rule table; first-order initial-value problems solved in closed form where possible and by Runge–Kutta otherwise.
+  - **Control systems** — transfer functions as ordinary expressions rather than a carrier type: interconnection, poles and zeros, stability, step and impulse response, Bode and Nyquist, state space, and discretisation by zero-order hold or Tustin.
   - **Series** — Taylor and Maclaurin, numeric Fourier series, Padé approximants, and Laurent series about a pole.
   - **Special functions and sequences** — the factorial and gamma family with `erf`, `digamma` and the incomplete gamma and beta; Fibonacci and its relatives over one shared recurrence, plus a generic `tabulate`.
   - **Domain analysis** — `domain`, `differentiable` and `singularities` report where an expression is defined, describing what the library computes rather than what is mathematically true.
@@ -236,10 +237,6 @@ rather than commitments, listed roughly by effort-to-value:
 
 - **Number theory** — primes, `primepi`, continued fractions, modular arithmetic and the
   classical integer functions; the cheapest of the open domains and already half-specified.
-- **z-transform and discrete-time signals** — the discrete counterpart to the existing
-  transform package, over the same rule-table machinery.
-- **Control theory** — transfer functions, poles and zeros, stability and step response,
-  assembled largely from the Laplace, matrix and root-finding tiers that already exist.
 - **Optimization** — the symbolic half only: stationary points from `grad`, their
   classification from `hessian`, and Lagrange multipliers.
 - **Operational research** — adopted in part rather than whole, taking the pieces that belong

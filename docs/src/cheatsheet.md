@@ -1,6 +1,6 @@
 ---
 title: Cheatsheet
-nav_order: 11
+nav_order: 12
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
@@ -565,6 +565,52 @@ invztrans(z/(z-2)^2, z, n)      -> n*2^(n-1)
 `Z{c} = c·z/(z−1)`, **not** `c/z` — the Laplace `L{c} = c/s` does not carry over, because a
 constant *sequence* is `c` at every index. Complex poles, the Kronecker delta and the bilateral
 transform are not supported and stay symbolic.
+
+---
+
+## Control systems
+
+A transfer function is **an ordinary expression** — no carrier type — so the frequency
+variable is always an explicit argument. Grammar forms first, then the library API.
+
+```
+series(g, h, s)                 G·H, normalised to one rational in lowest terms
+parallel(g, h, s)               G + H
+feedback(g, h, s)               G/(1 + G·H)   NEGATIVE feedback; negate h for positive
+step(g, s, t)                   step response  = invlaplace(G/s, s, t)
+impulse(g, s, t)                impulse response = invlaplace(G, s, t)
+```
+
+`step` is arity-overloaded: `step(x)` is the Heaviside unit step, `step(G, s, t)` the response.
+
+```
+feedback(1/(s*(s+2)), 1, s)     -> 1/(s^2 + 2*s + 1)     common factor cancelled
+step(1/(s+1), s, t)             -> 1 - exp(-t)
+impulse(2/(s+3), s, t)          -> 2*exp(-3*t)
+```
+
+Library API (`import it.grypho.scala.leonardo.control.*`):
+
+```
+poles(g, s)      Option[Vector[_Value]]   denominator roots, in lowest terms
+zeros(g, s)      Option[Vector[_Value]]   numerator roots      (_Complex when oscillatory)
+dcgain(g, s)     Option[Double]           G(0)
+isStable(g, s)   Option[Boolean]          every pole strictly in the LEFT HALF-PLANE
+isStableDiscrete(g, z)                    every pole strictly INSIDE THE UNIT CIRCLE
+routhTable(g, s) Option[Vector[Vector[Double]]]
+bode(g, s, w)    Option[(magnitude, phase-radians)]
+nyquist(g, s, w) Option[(real, imaginary)]
+
+stateSpace(a, b, c, d)          1x4 _Matrix of matrices, the lu/qr/eig shape
+controllable(a, b) / observable(a, c)     Option[Boolean]
+c2dExact(a, b, ts)              (A_d, B_d) via expm of the block matrix; singular A is fine
+c2d(g, s, z, ts, Zoh | Tustin)  Option[_Expression]   method is never a hidden default
+d2c(g, z, s, ts, Tustin)        Option[_Expression]   Zoh is not invertible in closed form
+```
+
+Marginal stability is **not** stability: poles on the imaginary axis give `false`. A
+non-rational `G` (a dead-time `exp(-2*s)`), an improper `G` in a time response, and an
+undeterminable coefficient sign are all **declined**, never approximated.
 
 ---
 

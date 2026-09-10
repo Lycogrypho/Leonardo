@@ -36,6 +36,73 @@ import core.*
 /** Numeric tolerance for treating a polynomial coefficient or discriminant as zero. */
 private[leonardo] val RationalEps = 1e-9
 
+/** Largest polynomial degree [[rationalCoeffs]] will build, guarding against blow-up. */
+private[leonardo] val MaxRationalDegree = 24
+
+/** Folds an expression into `(numerator, denominator)` coefficient vectors in `v`.
+ *
+ *  **Decidable and total**: `+`, `*`, `/` and integer powers combine, and *anything else
+ *  fails* — an `exp(v)` or an unbound parameter makes the whole normalisation return `None`,
+ *  so nothing is ever half-converted.  Same principle as the Weierstrass rationality test in
+ *  `IntegrateSubstitution`, which folds a substituted tree into one fraction over `t`.
+ *
+ *  **Why this is not [[collect]].**  `collect` answers "what are the coefficients of this
+ *  *polynomial*", and returns `None` for a `Ratio`.  Callers here hold a rational *function* —
+ *  a transfer function, a z-domain expression — and need it split, which no amount of
+ *  `collect` will do.
+ *
+ *  **Why it is here rather than in its first caller.**  It began as a private helper inside
+ *  `transform.InverseZTransform` (6.33), where matching `Ratio(num, den)` at the top turned
+ *  out to be wrong: the z-transform's own output for `Z{n}` is `(-1*z)*(.../(z-1)^2)`, a
+ *  `Product` whose left factor depends on `z`, so the inverse handled some of its own results
+ *  and not others.  6.29 then needed the same split for `poles`/`zeros`, making it the third
+ *  place wanting one fraction out of an arbitrary tree — the point at which issues 3.1 and 2.5
+ *  each promoted a helper into this file rather than let a third copy diverge.
+ *
+ *  @param e the expression to normalise
+ *  @param v the variable the rational function is over
+ *  @return `Some((numerator, denominator))` as dense coefficient vectors, or `None`
+ */
+private[leonardo] def rationalCoeffs(e: _Expression,
+                                     v: _Variable): Option[(Vector[Double], Vector[Double])] =
+  def capped(p: (Vector[Double], Vector[Double])): Option[(Vector[Double], Vector[Double])] =
+    Option.when(p._1.size <= MaxRationalDegree + 1 && p._2.size <= MaxRationalDegree + 1)(p)
+
+  def numeric(x: _Expression): Option[Double] = x.eval(new Environment()) match
+    case Right(_Number(d)) => Some(d)
+    case _                 => None
+
+  e match
+    case _ if !dependsOn(e, v) => numeric(e).map(d => (Vector(d), Vector(1.0)))
+
+    case x: _Variable if x.variable == v.variable => Some((Vector(0.0, 1.0), Vector(1.0)))
+
+    case Sum(a, b) =>
+      for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
+          r <- capped((polyAdd(polyMul(an, bd), polyMul(bn, ad)), polyMul(ad, bd)))
+      yield r
+
+    case Product(a, b) =>
+      for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
+          r <- capped((polyMul(an, bn), polyMul(ad, bd)))
+      yield r
+
+    case Ratio(a, b) =>
+      for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
+          if polyTrim(bn).nonEmpty
+          r <- capped((polyMul(an, bd), polyMul(ad, bn)))
+      yield r
+
+    case Power(b, _Number(k)) if k.toInt.toDouble == k && math.abs(k) <= MaxRationalDegree =>
+      rationalCoeffs(b, v).flatMap { (bn, bd) =>
+        val (num, den) = (1 to math.abs(k.toInt)).foldLeft((Vector(1.0), Vector(1.0))) {
+          case ((accN, accD), _) => (polyMul(accN, bn), polyMul(accD, bd))
+        }
+        capped(if k >= 0 then (num, den) else (den, num))
+      }
+
+    case _ => None
+
 /** Degree of a coefficient vector: the highest index carrying a non-negligible
  *  coefficient, or `-1` for the zero polynomial.
  *

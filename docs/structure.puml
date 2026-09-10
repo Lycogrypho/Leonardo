@@ -1242,6 +1242,87 @@ package "vector" {
 }
 
 ' ===================================================
+' PACKAGE: control - control theory (6.29)
+' imports core + scalar + matrix + transform; a LEAF, nothing imports it
+' A transfer function is an ordinary Ratio -- NO carrier type (Decision A),
+' so every entry point takes the frequency variable EXPLICITLY
+' ===================================================
+package "control" {
+
+    class "TransferFunction" <<object>> [[control.html]] {
+        series / parallel / feedback (v explicit)
+        feedback is NEGATIVE: G/(1 + G*H)
+        __ coeffsOf: the single coefficient view __
+        rationalCoeffs + polyGcd cancellation, so
+          feedback(1/(s(s+2)), 1) has poles {-1,-1}
+          and NOT the uncancelled {0,-2,-1,-1}
+        gcd quotients are VERIFIED (float gcd);
+          an ill-conditioned one leaves it unreduced
+        poles / zeros -> Option[Vector[_Value]]
+          _Value, not Double: a complex pole is the
+          INTERESTING case, not an error
+        isStable: from the POLES, not Routh -- Routh's
+          degenerate cases give a wrong verdict
+          rather than a refusal.  STRICT, so
+          marginal stability is not stability
+        isStableDiscrete: UNIT CIRCLE, not LHP
+        routhTable / dcgain
+        bode / nyquist: one substitution s -> i*w
+          on the existing _Complex closure
+    }
+
+    class "_Series"          <<case>> [[control.html]]
+    class "_Parallel"        <<case>> [[control.html]]
+    class "_Feedback"        <<case>> [[control.html]]
+    class "_StepResponse"    <<case>> [[control.html]] {
+        step(G, s, t) = invlaplace(G/s)
+        arity overload: step(x) is Heaviside
+        DECLINES an improper G (impulse at t=0)
+    }
+    class "_ImpulseResponse" <<case>> [[control.html]]
+
+    class "StateSpace" <<object>> [[control.html]] {
+        stateSpace(A,B,C,D) -> 1 x 4 _Matrix
+          the lu/qr/eig shape: at(m,1,k) and :save
+          come free, no new carrier
+        controllable(A, B) via ctrb + full row rank
+        observable(A, C) = controllable(A', C')
+          DEFINED by duality, never restated
+        c2dExact(A, B, Ts): expm([[A,B],[0,0]]*Ts)
+          NOT A^-1 (A_d - I) B -- the block form is
+          defined for a SINGULAR A, and any system
+          with an integrator has one
+    }
+
+    enum "DiscretisationMethod" <<data>> [[control.html]] {
+        Zoh    -- what sampled-data hardware does
+        Tustin -- bilinear, exactly invertible
+        ALWAYS an explicit argument: the two give
+        DIFFERENT discrete poles
+    }
+
+    class "Discretisation" <<object>> [[control.html]] {
+        c2d: Tustin = substitution;
+             Zoh = step response -> sample -> ztrans
+             -> (1 - z^-1) factor   [needs 6.33]
+        d2c: Tustin only; a Zoh inverse needs a
+             matrix logarithm -> declined
+    }
+
+    "_Series"          --|> "_Expression"
+    "_Parallel"        --|> "_Expression"
+    "_Feedback"        --|> "_Expression"
+    "_StepResponse"    --|> "_Expression"
+    "_ImpulseResponse" --|> "_Expression"
+
+    "TransferFunction" ..> "rationalCoeffs" : one fraction, then cancel
+    "_StepResponse"    ..> "InverseLaplaceTransform" : 3.17, re-spelled
+    "Discretisation"   ..> "ZTransform"     : 6.33 is the ZOH prerequisite
+    "Discretisation"   ..> "TransferFunction" : normaliseTf (single definition)
+    "StateSpace"       ..> "_MatrixValue"   : expm (6.39)
+}
+
+' ===================================================
 ' PACKAGE: statistics (imports core + scalar + matrix + probability)
 ' ===================================================
 package "statistics" <<Rectangle>> {

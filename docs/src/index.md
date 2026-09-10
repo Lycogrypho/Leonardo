@@ -58,6 +58,7 @@ d.eval(env)
 - [Matrices](matrix.md) — the matrix domain
 - [Equations](equations.md) — relations, solver, complex numbers
 - [Sequences](sequences.md) — Fibonacci and friends, and the generic tabulator
+- [Control Systems](control.md) — transfer functions, stability, response, discretisation
 - [Interactive REPL](repl.md) — session commands and scripts
 - [Cheat sheet](cheatsheet.md) — every REPL command on one page
 - [Architecture](architecture.md) — package diagram and design decisions

@@ -1,6 +1,6 @@
 ---
 title: Architecture
-nav_order: 12
+nav_order: 13
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
@@ -74,3 +74,13 @@ which re-derives the same subexpressions hundreds of times per evaluation.
 translates an expression into a JVM closure when all nodes are compilable.
 Used by `_DefIntegral` (Simpson's rule) and `sample`; eliminates per-step
 AST allocation and environment lookup.
+
+**A new carrier type must earn its place** — a domain gets a `_Value` or a wrapper of its own
+only when something must *read* a value as one. A vector field is an n×1 `_Matrix`; a
+transfer function is an ordinary `Ratio`; a state-space model is the same 1×4 row of matrices
+`lu` and `qr` already return; an inequality's solution set is a `_Comparison`. The reason is
+that a carrier is a **wall**: `simplify`, `derive`, `substitute`, the exact tier and the
+parser all operate on expressions, so a type outside that set would have to be taught to each
+of them or be cut off from all of them. The price is paid in ergonomics — with no type to
+dispatch on, `control` must take its frequency variable as an explicit argument everywhere —
+and in documentation, which is why [Control Systems](control.md) opens by saying so.
