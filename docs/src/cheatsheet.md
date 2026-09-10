@@ -486,6 +486,19 @@ eig(A)                          -> [[V, D]]     A·V = V·D  (eigenvectors + dia
 jordan(A)                       -> [[P, J]]     A = P·J·P⁻¹
 ```
 
+### Matrix exponential — a single matrix, not a row
+
+```
+expm(A)                         -> e^A          scaling + squaring, degree-13 Padé
+expm(zeros(3, 3))               -> eye(3)
+expm([[0, 1], [0, 0]])          -> [[1, 1], [0, 1]]   nilpotent: series terminates
+expm([[0, -t], [t, 0]])         -> rotation by t
+```
+
+`expm(A)` is **not** `A^n`: that is repeated multiplication, this is the exponential series.
+Works for **defective** matrices (a repeated eigenvalue with too few eigenvectors), where the
+eigen-decomposition route has no basis to use.
+
 ### Indexing decomposition results
 
 ```

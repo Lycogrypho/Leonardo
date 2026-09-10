@@ -72,6 +72,7 @@ object Parser extends JavaTokenParsers:
     "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",   // hyperbolic (3.9)
     "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic (3.9)
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
+    "expm",                                                                                 // 6.39 matrix exponential
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "ztrans", "invztrans",                                                                  // 6.33 z-transform
     "domain", "differentiable", "singularities",         // domain analysis (3.3)
@@ -425,6 +426,9 @@ object Parser extends JavaTokenParsers:
       case n ~ None    => ZeroMatrix(n, n)
       case r ~ Some(c) => ZeroMatrix(r, c)
     }                                                                                                       |
+    // expm(...) before eigen/eig: no prefix relation between them, but it keeps the matrix
+    // functions that return a single matrix together, above those returning a row of them.
+    "expm("   ~> guardedExpr <~ ")"                                       ^^ _MatrixExponential.apply      |
     "lu("     ~> guardedExpr <~ ")"                                       ^^ _LUDecomposition.apply        |
     "qr("     ~> guardedExpr <~ ")"                                       ^^ _QRDecomposition.apply        |
     "eigen("  ~> guardedExpr <~ ")"                                       ^^ _EigenDecomposition.apply     |

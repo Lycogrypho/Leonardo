@@ -19,6 +19,24 @@ object _MatrixValue:
   def apply(rows: Int, cols: Int, data: Array[Double]): _MatrixValue =
     new _MatrixValue(rows, cols, data.clone)
 
+  /** Radius within which the degree-13 Padé approximant to `e^A` is accurate to `Double`
+   *  precision (Higham 2005).  Beyond it [[_MatrixValue.expm]] scales by a power of two and
+   *  squares the result back.
+   */
+  private[core] val PadeTheta13: Double = 5.371920351148152
+
+  /** Coefficients of the degree-13 Padé approximant to `e^x`, indexed `b(0) … b(13)`.
+   *
+   *  Tabulated rather than derived: they are the numerators of a fixed rational approximant,
+   *  the same constants every implementation of this algorithm carries.  Held as `Double`
+   *  although every value is an integer, because they are only ever multiplied into `Double`
+   *  matrices — `b(0)` exceeds `Int` and would silently truncate.
+   */
+  private[core] val PadeB13: Array[Double] = Array(
+    64764752532480000.0, 32382376266240000.0, 7771770303897600.0, 1187353796428800.0,
+    129060195264000.0, 10559470521600.0, 670442572800.0, 33522128640.0,
+    1323241920.0, 40840800.0, 960960.0, 16380.0, 182.0, 1.0)
+
   /** n×n identity matrix — dense counterpart of the `matrix.IdentityMatrix` node.
    *  Used by the vectorized (Sylvester) solver tier for absent left/right coefficients.
    *  @param n side length; must be positive
@@ -223,6 +241,60 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           rr += 1
         col += 1
       Some(det)
+
+  /** Matrix exponential `e^A = sum(k >= 0) A^k / k!`, by scaling and squaring with a
+   *  degree-13 Padé approximant (issue 6.39).
+   *
+   *  **Not the eigen route.**  `V·diag(e^λ)·V⁻¹` is tempting because [[spectralDecompose]]
+   *  already exists, but it needs an eigenbasis and a **defective** matrix has none — and a
+   *  defective matrix is ordinary in the problems that want this, since a repeated pole
+   *  produces one.  A Jordan block `[[λ,1],[0,λ]]` would come back wrong rather than refused.
+   *  Scaling and squaring is uniform over both cases, which is why it is the standard method.
+   *
+   *  The identity `e^A = (e^(A/2^s))^(2^s)` is what makes it work: `A` is scaled until its
+   *  norm is inside the Padé approximant's accurate radius, the approximant is evaluated
+   *  there, and the result is squared back `s` times.
+   *
+   *  Note this is *matrix* Padé — a fixed rational approximant with tabulated coefficients —
+   *  and is unrelated to the scalar `scalar.padeApproximant`, which fits a series.
+   *
+   *  Exactness follows the decomposition precedent rather than `matrix/Exact.scala`: the
+   *  exponential is transcendental, so an exact operand demotes to `Double` exactly as
+   *  `lu`/`qr`/`eigen` do — "demote an exact operand rather than lose the operation".
+   *
+   *  @return `Some(e^A)` for a square matrix, `None` when non-square or non-finite
+   */
+  def expm: Option[_MatrixValue] =
+    if rows != cols || !isFinite then None
+    else
+      val n  = rows
+      val id = _MatrixValue.identity(n)
+
+      // Padé 13 is accurate for ||A||_1 <= theta; beyond it, scale by a power of two and
+      // square back afterwards. The 1-norm (max absolute column sum) is the standard choice.
+      val norm = (0 until n).map(j => (0 until n).map(i => math.abs(this(i, j))).sum).maxOption.getOrElse(0.0)
+      val squarings = if norm > _MatrixValue.PadeTheta13 then
+        math.max(0, math.ceil(math.log(norm / _MatrixValue.PadeTheta13) / math.log(2)).toInt)
+      else 0
+      val a = scale(1.0 / math.pow(2, squarings))
+
+      // Higham's evaluation scheme: even powers only, so the degree-13 approximant costs six
+      // multiplications rather than thirteen.
+      val b  = _MatrixValue.PadeB13
+      val a2 = a.multiply(a)
+      val a4 = a2.multiply(a2)
+      val a6 = a4.multiply(a2)
+
+      val uInner = a6.scale(b(13)).add(a4.scale(b(11))).add(a2.scale(b(9)))
+      val u = a.multiply(
+        a6.multiply(uInner).add(a6.scale(b(7))).add(a4.scale(b(5))).add(a2.scale(b(3))).add(id.scale(b(1))))
+      val vInner = a6.scale(b(12)).add(a4.scale(b(10))).add(a2.scale(b(8)))
+      val v = a6.multiply(vInner).add(a6.scale(b(6))).add(a4.scale(b(4))).add(a2.scale(b(2))).add(id.scale(b(0)))
+
+      // r = (V - U)^-1 (V + U); a singular (V - U) means the approximant is unusable here.
+      v.add(u.scale(-1)).inverse
+        .map(inv => (1 to squarings).foldLeft(inv.multiply(v.add(u)))((acc, _) => acc.multiply(acc)))
+        .filter(_.isFinite)
 
   /** Inverse via Gauss–Jordan elimination with partial pivoting, O(n³).
    *  `None` when the matrix is non-square or singular — the caller stays symbolic, the

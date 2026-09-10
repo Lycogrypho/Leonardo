@@ -461,6 +461,36 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
  *
  *  @param m the matrix expression to decompose
  */
+/** Matrix exponential: `expm(A)` -- issue 6.39.
+ *
+ *  Evaluates when `A` reduces to a square dense `_MatrixValue`, via the
+ *  [[core._MatrixValue.expm]] kernel (scaling and squaring with a degree-13 Padé
+ *  approximant); stays symbolic for a non-square or symbolic operand.
+ *
+ *  **Extends `_MatrixOperation`, unlike the decompositions beside it**, because its result is
+ *  a single matrix rather than a row of them -- so `isMatrixShaped` picks it up and
+ *  `expm(A) * B` dispatches as a matrix product rather than a scalar one.
+ *
+ *  Distinct from `A^n` (issue 4.8): that is repeated multiplication by binary exponentiation,
+ *  this is the exponential series, and the two share no machinery.
+ *
+ *  @param m the matrix expression to exponentiate
+ */
+case class _MatrixExponential(m: _Expression) extends _MatrixOperation:
+  override def toString: String = s"expm($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _MatrixExponential(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    m.eval(env) match
+      case r0 if denseOperand(r0).isDefined =>
+        denseOperand(r0).flatMap(_.expm) match
+          case Some(result) => Right(result)
+          case None         => Left(this)
+      case Left(expr) => Left(_MatrixExponential(expr))
+      case _          => Left(this)
+
+
 case class _QRDecomposition(m: _Expression) extends _Expression:
   override def toString: String = s"qr($m)"
   override def children: List[_Expression] = List(m)
