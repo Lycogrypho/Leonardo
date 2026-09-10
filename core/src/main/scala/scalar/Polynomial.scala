@@ -88,17 +88,25 @@ private[leonardo] def rationalCoeffs(e: _Expression,
       yield r
 
     case Ratio(a, b) =>
+      // The zero test must go through polyDegree: polyTrim never returns an EMPTY vector
+      // (it yields [0.0] for the zero polynomial), so a `.nonEmpty` guard here was dead
+      // code and X / 0-in-v was silently accepted (issue 1.5).
       for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
-          if polyTrim(bn).nonEmpty
+          if polyDegree(bn) >= 0
           r <- capped((polyMul(an, bd), polyMul(ad, bn)))
       yield r
 
     case Power(b, _Number(k)) if k.toInt.toDouble == k && math.abs(k) <= MaxRationalDegree =>
       rationalCoeffs(b, v).flatMap { (bn, bd) =>
-        val (num, den) = (1 to math.abs(k.toInt)).foldLeft((Vector(1.0), Vector(1.0))) {
-          case ((accN, accD), _) => (polyMul(accN, bn), polyMul(accD, bd))
-        }
-        capped(if k >= 0 then (num, den) else (den, num))
+        // A negative power swaps numerator and denominator, so the zero polynomial must be
+        // refused BEFORE the swap puts it underneath (issue 1.5, the Ratio reasoning).
+        // A non-negative power of zero stays legitimate: it is the zero numerator.
+        if k < 0 && polyDegree(bn) < 0 then None
+        else
+          val (num, den) = (1 to math.abs(k.toInt)).foldLeft((Vector(1.0), Vector(1.0))) {
+            case ((accN, accD), _) => (polyMul(accN, bn), polyMul(accD, bd))
+          }
+          capped(if k >= 0 then (num, den) else (den, num))
       }
 
     case _ => None

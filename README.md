@@ -245,6 +245,8 @@ rather than commitments, listed roughly by effort-to-value:
   non-commutative multiplication as the design risk to be handled deliberately.
 - **Interval arithmetic** — `_Interval(lo, hi)` as a value, answering the question the exact
   tier cannot: how far a floating-point result can be trusted.
+- **Linear ODE systems** — `y' = A·y` solved in closed form as `e^(A·t)·y₀` through the
+  matrix exponential that now exists.
 - **Tensor algebra** — generalising the matrix domain to N dimensions, with contraction and
   Einstein summation.
 - **Graph plotting and visualization** — a user-facing interface for graphing functions and

@@ -121,6 +121,43 @@ class PolynomialTest extends AnyFlatSpec:
     assert(derivCoeffs(Vector(1.0, 0.0, 1.0, 0.0)) == Vector(0.0, 2.0, 0.0))
   }
 
+  // --- rationalCoeffs: the zero-polynomial denominator is refused (issue 1.5) ---
+  //
+  // polyTrim never returns an EMPTY vector -- it yields [0.0] for the zero polynomial --
+  // so the original `polyTrim(bn).nonEmpty` guard was dead code and X/0-in-v was accepted.
+  // The refusal must go through polyDegree, and the negative-power swap needs it too.
+
+  /** `s - s` — the zero polynomial written as an expression that depends on `s`. */
+  private def zeroInS: _Expression = Sum(s, Product(_Number(-1), s))
+
+  "rationalCoeffs" should "refuse a denominator that is identically zero in v" in
+  {
+    assert(rationalCoeffs(Ratio(_Number(1), zeroInS), s).isEmpty)
+  }
+
+  it should "refuse a negative power of the zero polynomial" in
+  {
+    assert(rationalCoeffs(Power(zeroInS, _Number(-1)), s).isEmpty)
+    assert(rationalCoeffs(Power(zeroInS, _Number(-2)), s).isEmpty)
+  }
+
+  it should "still split an ordinary rational function" in
+  {
+    rationalCoeffs(Ratio(_Number(1), Sum(s, _Number(1))), s) match
+      case None             => fail("1/(s+1) is rational in s")
+      case Some((num, den)) =>
+        assert(polyTrim(num) == Vector(1.0) && polyTrim(den) == Vector(1.0, 1.0))
+  }
+
+  it should "still accept a NON-negative power of the zero polynomial" in
+  {
+    // (s - s)^2 is a zero NUMERATOR, which is a legitimate rational function (zero).
+    rationalCoeffs(Power(zeroInS, _Number(2)), s) match
+      case None             => fail("(s-s)^2 is the zero polynomial, not an error")
+      case Some((num, den)) =>
+        assert(polyDegree(num) == -1 && polyDegree(den) == 0)
+  }
+
   // --- the inverse transform is unchanged by the consolidation ---
   //
   // These are regression checks, not evidence of a behaviour change: because `collect`
