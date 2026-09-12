@@ -96,20 +96,24 @@ Transpose(A).eval(env)
 ```
 
 ```scala mdoc
-// det(A) — a scalar result (LU with partial pivoting on dense values)
+// det(A) — a scalar result (LU decomposition with partial pivoting on dense values)
 Determinant(A).eval(env)
 ```
 
 ```scala mdoc
-// inv(A) — the inverse matrix (Gauss–Jordan); 1/A and M/N parse to this too
+// inv(A) — the inverse matrix (Gauss–Jordan elimination); 1/A and M/N parse to this too
 Inverse(A).eval(env)
 ```
 
 `det(A)` reduces to a scalar `_Number`; a non-square or (for the inverse) singular
 matrix has no result and stays symbolic, the same `x/0` contract used elsewhere.
 The reciprocal spellings `1 / A` and `M / N` (= `M · N⁻¹`) route through the same
-`Inverse` node. Small symbolic matrices expand by cofactors (determinant) and
-adjugate/det (inverse).
+`Inverse` node. Small symbolic matrices expand by
+[cofactors](https://en.wikipedia.org/wiki/Laplace_expansion) (determinant) and
+[adjugate](https://en.wikipedia.org/wiki/Adjugate_matrix)/det (inverse). Algorithm
+references:
+[LU decomposition](https://en.wikipedia.org/wiki/LU_decomposition),
+[Gauss–Jordan elimination](https://en.wikipedia.org/wiki/Gaussian_elimination#Gauss%E2%80%93Jordan_elimination).
 
 ## Dense evaluation
 
@@ -164,4 +168,44 @@ Exp(_Matrix.ofRows(Vector(x, _Number(0.0)))).eval(envX) match {
   case Right(v) => v.toString
   case Left(m)  => m.toString
 }
+```
+
+## Decompositions
+
+Each decomposition returns its factors bundled as a 1×n row of matrices, so one indexing
+mechanism (`at(result, 1, k)`, or tuple assignment in the REPL) serves them all:
+
+| Call | Result | Algorithm |
+|---|---|---|
+| `lu(A)` | `[[L, U, P]]`, `P·A = L·U` | [LU decomposition](https://en.wikipedia.org/wiki/LU_decomposition) with partial pivoting |
+| `qr(A)` | `[[Q, R]]`, `A = Q·R` | [QR decomposition](https://en.wikipedia.org/wiki/QR_decomposition) by modified [Gram–Schmidt](https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process) |
+| `eigen(A)` | `[[λ₁, …, λₙ]]` | [QR algorithm](https://en.wikipedia.org/wiki/QR_algorithm) with Wilkinson shifts; complex pairs come back as `_Complex` |
+| `eig(A)` | `[[V, D]]`, `A·V = V·D` | [Eigendecomposition](https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix): eigenvector columns and the diagonal eigenvalue matrix |
+| `jordan(A)` | `[[P, J]]`, `A = P·J·P⁻¹` | [Jordan normal form](https://en.wikipedia.org/wiki/Jordan_normal_form) for diagonalizable input; a defective matrix stays symbolic |
+
+```scala mdoc
+Parser.parse("eigen([[2, 1], [1, 2]])").get.eval(env).toExpression.toString
+```
+
+```scala mdoc
+Parser.parse("lu([[4, 3], [6, 3]])").get.eval(env).toExpression.toString
+```
+
+## Matrix exponential
+
+`expm(A)` computes `e^A` — the
+[matrix exponential](https://en.wikipedia.org/wiki/Matrix_exponential), a different
+operation from the integer power `A^n`. It uses
+[scaling and squaring](https://en.wikipedia.org/wiki/Matrix_exponential#Computing_the_matrix_exponential)
+with a degree-13 Padé approximant, which is why it also works for **defective** matrices —
+input the eigendecomposition route has no basis for:
+
+```scala mdoc
+// nilpotent: the series terminates, so the result is exact
+Parser.parse("expm([[0, 1], [0, 0]])").get.eval(env).toExpression.toString
+```
+
+```scala mdoc
+// a rotation generator exponentiates to the rotation matrix
+Parser.parse("expm([[0, -1], [1, 0]])").get.eval(env).toExpression.toString
 ```

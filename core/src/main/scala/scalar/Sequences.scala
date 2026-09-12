@@ -4,7 +4,7 @@ package scalar
 import core.*
 
 
-/** Kernels for the numeric sequences and the combinatorial functions — issue 6.28.
+/** Kernels for the numeric sequences and the combinatorial functions.
  *
  *  **"Numeric", not "integer" sequences.**  A linear recurrence needs only addition and
  *  multiplication, so it is closed over whatever its seeds are: `fib(5, 1.5, -pi)` is as
@@ -14,9 +14,9 @@ import core.*
  *  the analytic expansions in `Series.scala` — Taylor, Fourier, Laurent.)
  *
  *  **Indexing is the standard one**: `x(0) = 0`, `x(1) = 1`, so `fib(10) = 55`, agreeing with
- *  OEIS A000045 and every published table.  The "classic rabbit" pair is available as
+ *  [[https://oeis.org/A000045 OEIS A000045]] and every published table.  The "classic rabbit" pair is available as
  *  `fib(n, 1, 1)` and is the same sequence shifted by one.  The convention cannot be inferred
- *  and an off-by-one here is silent, so it is stated wherever these appear — the rule 6.26
+ *  and an off-by-one here is silent, so it is stated wherever these appear — the rule also
  *  follows for the spherical polar angle.
  *
  *  **Two caps, as in `SpecialFunctions.scala`.**  The exact path is bounded by compute cost

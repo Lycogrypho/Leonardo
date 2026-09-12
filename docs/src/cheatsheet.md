@@ -24,26 +24,6 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `colors dark\|light\|none` | Syntax-highlight scheme (default `dark`) |
 | `pretty on\|off` | Multi-line matrix display (default `off`) |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
-| `erf(x)` `erfc(x)` | Error function and its complement |
-| `digamma(z)` | Logarithmic derivative of Gamma; makes `Gamma`/`fact` differentiable |
-| `gammaP(a,x)` `gammaQ(a,x)` | Regularised incomplete gamma (lower / upper) |
-| `betaI(x,a,b)` | Regularised incomplete beta |
-| `normal(m,s)` `uniform(a,b)` `exponential(l)` | Continuous distributions |
-| `binomial(n,p)` `poisson(l)` | Discrete distributions |
-| `pdf(d,x)` `cdf(d,x)` | Density/mass and cumulative distribution |
-| `prob(d,lo,hi)` `quantile(d,p)` | Interval probability and inverse cdf |
-| `prob(X < 2)` | Probability of a predicate; `and` intersects, `or` is not supported |
-| `<` `>` `<=` `>=` `!=` | Comparisons; reduce to `true`/`false` and compose with `and`/`or`/`not` |
-| `studentt(nu)` `chisq(k)` | Student-t and chi-squared distributions |
-| `mean(x)` `variance(x)` `stddev(x)` | Sample or distribution; `variance` of a sample is the unbiased n-1 form |
-| `pvariance(x)` `pstddev(x)` | Population forms, dividing by n |
-| `covariance(x,y)` `correlation(x,y)` | Two-sample statistics |
-| `regress(X, y)` | Least squares by QR; no intercept added, supply a ones column |
-| `ttest(sample, mu)` | Two-sided one-sample t-test p-value |
-| `confint(sample, level)` | Confidence interval for the mean, as `[[lo, hi]]` |
-| `chisqtest(obs, exp)` | Pearson goodness-of-fit p-value |
-| `expect(d)` `variance(d)` | A distribution's own moments |
-| `expect(e,X)` `variance(e,X)` | Moments of an expression, by linearity |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30) |
 | `simplify <expr>` | Structural simplification |
 | `expand <expr>` | Distribute products over sums |
@@ -175,6 +155,47 @@ nodes; `toString` always emits the ASCII spelling, so `:save` scripts stay porta
 Capital Greek Beta is not accepted: it is a homoglyph of Latin `B`.  Poles (0, -1, -2, ...), overflow and complex
 arguments all stay symbolic rather than returning infinities.
 
+### Analytic tier
+
+```
+erf(x)   erfc(x)                error function and its complement
+digamma(z)                      logarithmic derivative of Gamma; makes Gamma/fact differentiable
+gammaP(a, x)   gammaQ(a, x)     regularised incomplete gamma (lower / upper)
+betaI(x, a, b)                  regularised incomplete beta
+```
+
+---
+
+## Probability & statistics
+
+### Distributions — first-class values
+
+```
+normal(m, s)   uniform(a, b)   exponential(l)     continuous families
+binomial(n, p) poisson(l)                         discrete families
+studentt(nu)   chisq(k)                           Student-t and chi-squared
+pdf(d, x)      cdf(d, x)                          density / mass and cumulative distribution
+prob(d, lo, hi)   quantile(d, p)                  interval probability and inverse cdf
+prob(X < 2)                                       predicate form; `and` intersects,
+                                                  `or` is not supported
+expect(d)      variance(d)                        a distribution's own moments
+expect(e, X)   variance(e, X)                     moments of an expression, by linearity:
+                                                  expect(2*X + 3, X) -> 2*E[X] + 3
+```
+
+### Descriptive statistics and inference
+
+```
+mean(x)  variance(x)  stddev(x)      sample or distribution; sample variance is
+                                     the unbiased n-1 form
+pvariance(x)  pstddev(x)             population forms, dividing by n
+covariance(x, y)  correlation(x, y)  two-sample statistics
+regress(X, y)                        least squares by QR; no intercept column added
+ttest(sample, mu)                    two-sided one-sample t-test p-value
+confint(sample, level)               confidence interval for the mean, as [[lo, hi]]
+chisqtest(obs, exp)                  Pearson goodness-of-fit p-value
+```
+
 ---
 ## Calculus
 
@@ -200,17 +221,17 @@ integral(k^x, x)                -> k^x / ln(k)            symbolic base free of 
 integral(1/(a^2 + x^2), x)      -> atan(x/a) / a          symbolic parameter a
 integral(x * exp(x^2), x)       -> exp(x^2)/2             non-linear u-substitution (u = x²)
 integral(sin(x)^3 * cos(x), x)  -> sin(x)^4/4             u = sin(x)
-integral(tan(x)^3, x)           -> tan²/2 + ln(cos x)     tan/sec/csc/cot power reduction (3.11)
-integral(1/((x-1)^2*(x-2)), x)                            full partial fractions, repeated root (3.12)
-integral(1/((x^2+1)*(x-1)), x)                            partial fractions, complex pair (3.12)
-integral(1/(4 - x^2)^0.5, x)    -> asin(x/2)              trig substitution (3.13)
-integral((4 - x^2)^1.5, x)                                any half-integer power (3.18)
-integral(1/(x^2 + 1)^0.5, x)    -> asinh(x)               hyperbolic substitution (3.13)
-integral(1/(2 + cos(x)), x)                               Weierstrass t = tan(x/2) (3.14)
-integral(sin(x)/x, x)           -> Si(x)                  special integral functions (3.15)
+integral(tan(x)^3, x)           -> tan²/2 + ln(cos x)     tan/sec/csc/cot power reduction
+integral(1/((x-1)^2*(x-2)), x)                            full partial fractions, repeated root
+integral(1/((x^2+1)*(x-1)), x)                            partial fractions, complex pair
+integral(1/(4 - x^2)^0.5, x)    -> asin(x/2)              trigonometric substitution
+integral((4 - x^2)^1.5, x)                                any half-integer power of the radicand
+integral(1/(x^2 + 1)^0.5, x)    -> asinh(x)               hyperbolic substitution
+integral(1/(2 + cos(x)), x)                               Weierstrass t = tan(x/2)
+integral(sin(x)/x, x)           -> Si(x)                  special integral functions
 integral(exp(-x^2), x)          -> sqrt(pi)/2 * erf(x)
 integral(1/ln(x), x)            -> li(x)
-integral(asin(x), x)            -> x*asin(x) + (1-x^2)^0.5 from the transcribed table (3.16)
+integral(asin(x), x)            -> x*asin(x) + (1-x^2)^0.5 from the data-driven table
 integral(sin(2*x)*cos(5*x), x)                            product-to-sum
 integral(1/(a^2 - x^2), x)      -> atanh(x/a)/a           symbolic parameter a
 integral(1/(x^2 + a^2)^0.5, x)  -> asinh(x/a)
@@ -289,6 +310,8 @@ fourierSeries(sin(pi*x), x, 2, 3) period 2, so omega = pi
 pade(exp(x), x, 1, 1)             -> (2 + x)/(2 - x)   rational [m/n] approximant
 pade(exp(x), x, 2, 2)             beats maclaurin(exp(x), x, 4) away from 0
 pade(1/(1+x), x, 0, 1)            a rational function reproduces itself exactly
+laurent(1/(x*(x-1)), x, 0, 3)     Laurent series about a pole; the principal-part
+laurent(sin(x)/x^2, x, 0, 1, 3)   length is optional (detected via singularities)
 ```
 
 `fourierSeries` expands over one period centred on 0, with coefficients computed
@@ -319,6 +342,26 @@ solve(x^2 = 4, x)               -> [[x = -2.0, x = 2.0]]  (quadratic)
 solve(sin(x) = 0, x)            numeric bisection fallback
 ```
 
+### solve — inequalities
+
+The answer is written in the language itself — a comparison, or a union/intersection of
+comparisons via `or`/`and`:
+
+```
+solve(x^2 - 4 > 0, x)           -> ((x < -2.0) or (x > 2.0))
+solve(2*x + 1 <= 5, x)          -> (x <= 2.0)
+solve(2*x > 2 and x < 5, x)     -> ((x > 1.0) and (x < 5.0))
+solve(a*x > b, x)               stays symbolic: the sign of `a` is unknown, and dividing
+                                by a negative coefficient would flip the relation
+```
+
+### Comparisons
+
+```
+x < 2                           (also > <= >= !=) reduce to true/false when bound,
+x > 0 and x < 10                and compose with and/or/not/implies
+```
+
 ### solve — matrix equation
 
 ```
@@ -333,6 +376,41 @@ solve(A * X + X * B = C, X)     Sylvester equation (Kronecker vectorization)
 
 ```
 solveSystem([[2*x + y = 3, x - y = 0]], x, y)   -> [[x = 1.0, y = 1.0]]
+```
+
+---
+
+## Domain analysis
+
+Where an expression is defined, differentiable, or singular — answered in the language, as
+comparisons and connectives.  The analysis describes what the *library* computes, not the
+full analytic extension.
+
+```
+domain(ln(x - 2), x)            -> (x > 2.0)
+domain(asin(x), x)              -> ((x >= -1.0) and (x <= 1.0))
+domain(1/x, x)                  -> (x != 0.0)
+differentiable(ln(x), x)        -> (x > 0.0)        where the derivative exists
+singularities(1/(x-1)^2, x)     -> [[1.0], [2.0]]   location over pole order
+singularities(x^2, x)           -> false            provably none
+domain(tan(x), x)               stays symbolic: the exclusion set is infinite
+```
+
+---
+
+## Base conversion
+
+The base lives **on the value**: `A := 0xFF` still prints `FF` after a `:save`/`:load`
+round-trip, while remaining usable as `255` everywhere.
+
+```
+0b1011                          -> 1011   binary literal (= 11)
+0o17                            -> 17     octal (= 15)
+0xff                            -> FF     hexadecimal (= 255)
+0t1TT                           -> 1TT    balanced ternary, digits {1, 0, T = -1} (= 5)
+tobase(255, 16)                 -> FF     any radix 2..36
+balanced(5)                     -> 1TT    balanced ternary conversion
+0xFF + 1                        -> 256    arithmetic is decimal: the tag is display-only
 ```
 
 ---

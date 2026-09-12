@@ -6,15 +6,15 @@ import scalar.*
 import logic.{And, Or}
 
 
-/** Inequality solving — issue 3.2.
+/** Inequality solving.
  *
  *  `solve(x^2 - 4 > 0, x)` answers `x < -2 or x > 2`.  The counterpart of [[solve]], which
  *  handles `=`; this handles `<`, `>`, `<=`, `>=` and `!=`.
  *
  *  **No new carrier was needed.**  A solution set is a *set*, and the obvious worry is that
- *  it wants an interval-valued `_Value`.  Since 4.R it does not: the answer is expressible in
+ *  it wants an interval-valued `_Value`.  With the comparison operators it does not: the answer is expressible in
  *  the language itself — a [[_Comparison]], an `or` of two, `and` for a bounded range, and
- *  `_Bool(true)` / `_Bool(false)` for the universal and empty sets.  This is the 4.P lesson
+ *  `_Bool(true)` / `_Bool(false)` for the universal and empty sets.  This is the lesson
  *  applied again ("adding a `_Value` is cheap only when nothing has to read it as an existing
  *  one"), with the happier outcome that here one is avoided altogether.
  *
@@ -24,7 +24,7 @@ import logic.{And, Or}
  *
  *  **The direction flip is the whole problem.**  Dividing by a negative coefficient reverses
  *  the relation, so every tier asks [[scalar.sign]] first and refuses when the answer is
- *  `None`.  Refusing rather than assuming positivity is the same call 4.R slice B made when
+ *  `None`.  Refusing rather than assuming positivity is the same call the probability-predicate reader makes when
  *  it declined `prob(2*X < 6)`: the bad outcome is not an error, it is a confident answer to
  *  a different question.
  */
@@ -39,7 +39,7 @@ import logic.{And, Or}
 private[equation] def solveInequality(c: _Comparison, v: _Variable,
                                       env: Environment): Option[_Expression] =
   // The -1 must join the comparison's own tier, or an exactly-stated inequality is demoted
-  // through float contagion before the solver runs (the numeric-tier rule, issue 4.N).
+  // through float contagion before the solver runs (the numeric-tier rule).
   val minusOne   = _Rational.literalLike(-1, c)
   val difference = Sum(c.lhs, Product(minusOne, c.rhs))
 
@@ -99,8 +99,8 @@ private def quadraticShape(b0: Double, b1: Double, b2: Double, op: CompareOp,
   if disc < -eps then Some(noRealRoots(op))
   else if disc <= eps then Some(doubleRoot(-b1 / (2 * b2), op, v))
   else
-    // Stable roots: the textbook form cancels catastrophically once b1^2 dominates 4*b2*b0
-    // (issue 1.1).  Same reasoning as the equality solver's quadratic branch.
+    // Stable roots: the textbook form cancels catastrophically once b1^2 dominates
+    // 4*b2*b0.  Same reasoning as the equality solver's quadratic branch.
     val q  = -(b1 + math.signum(b1) * math.sqrt(disc)) / 2
     val r1 = if b1 == 0.0 then -math.sqrt(disc) / (2 * b2) else q / b2
     val r2 = if b1 == 0.0 then math.sqrt(disc) / (2 * b2) else b0 / q
@@ -149,9 +149,9 @@ private def foldReal(e: _Expression, env: Environment): Option[Double] = e.eval(
 // The sign of `N(v)/D(v)` changes at the roots of `N` *and* at the roots of `D` -- the
 // second being poles, where the function is not merely zero but undefined. A root-based
 // analysis that ignored them would be wrong rather than incomplete, which is why the old
-// 6.23 entry deferred this tier. It does not have to be deferred: `polyRoots` locates both
+// note deferred this tier. It does not have to be deferred: `polyRoots` locates both
 // sets, so the critical points can be enumerated exactly for a rational function. Only the
-// *transcendental* case genuinely needs the domain analysis of issue 6.13.
+// *transcendental* case genuinely needs the domain analysis in `scalar.Domain`.
 
 /** Solves `N(v)/D(v) <op> 0` by sign chart over the critical points. */
 private def rationalTier(diff: _Expression, op: CompareOp,
@@ -253,7 +253,7 @@ private def numericCoeffsOf(e: _Expression, v: _Variable,
   }
 
 // Dense-coefficient arithmetic, kept local to the rational tier: these have exactly one
-// caller, and `Polynomial.scala` earns a helper when there is a second one (the 3.1 lesson).
+// caller, and `Polynomial.scala` earns a helper when there is a second one.
 private def addLocal(a: Vector[Double], b: Vector[Double]): Vector[Double] =
   if a.isEmpty then b else if b.isEmpty then a
   else Vector.tabulate(math.max(a.size, b.size)) { i =>

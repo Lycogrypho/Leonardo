@@ -26,7 +26,7 @@ private def hasDerivative(e: _Expression): Boolean = e match
   case other          => other.children.exists(hasDerivative)
 
 
-/** Expands `e` as a Taylor polynomial in `v` about `point`, to and including order `order`.
+/** Expands `e` as a [[https://en.wikipedia.org/wiki/Taylor_series Taylor polynomial]] in `v` about `point`, to and including order `order`.
  *
  *  `Σ(k = 0 to order) f⁽ᵏ⁾(point) / k! · (v − point)ᵏ`, built by folding
  *  [[deriveN]] (which is memoised, so the k-th derivative reuses the work of the
@@ -82,7 +82,7 @@ def maclaurinSeries(e: _Expression, v: _Variable, order: Int): Option[_Expressio
   taylorSeries(e, v, _Number(0), order)
 
 
-/** Expands `e` as a Laurent series about an isolated singularity at `point` — issue 3.4.
+/** Expands `e` as a [[https://en.wikipedia.org/wiki/Laurent_series Laurent series]] about an isolated singularity at `point`.
  *
  *  `Σ(k = −m to n) c_k · (v − point)ᵏ` — a Taylor series extended with a **principal part**
  *  of `m` negative powers, which is what makes it work where Taylor cannot.
@@ -97,7 +97,7 @@ def maclaurinSeries(e: _Expression, v: _Variable, order: Int): Option[_Expressio
  *  evaluates `0/0` and comes back `NaN` — the series would be silently wrong rather than
  *  absent.  So the product is simplified first and then **verified**: any coefficient that
  *  does not fold to a finite number aborts the whole expansion.  This is the
- *  [[hasDerivative]] give-up rule of 4.J applied to a different failure mode.
+ *  [[hasDerivative]] give-up rule applied to a different failure mode.
  *
  *  @param e     the expression to expand
  *  @param v     the expansion variable; it appears **free** in the result, like [[taylorSeries]]

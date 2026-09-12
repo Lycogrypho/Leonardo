@@ -5,7 +5,7 @@ import core.*
 import scalar.*
 
 
-/** One-sided (unilateral) z-transform rule table — issue 6.33.
+/** One-sided (unilateral) [[https://en.wikipedia.org/wiki/Z-transform z-transform]] rule table.
  *
  *  [[zTransformOf]] computes `X(z) = sum(k >= 0) x[k]*z^-k`, treating `n` as the discrete
  *  index and `z` as the complex frequency variable.  Returns [[_ZTransform]]`(x, n, z)`
@@ -34,8 +34,8 @@ import scalar.*
  *
  *  **The Kronecker delta is absent because the library has no node for it.**  `Z{delta[n]} = 1`
  *  is the most basic entry in any table, and it is missing rather than approximated: there is
- *  no discrete impulse in `core`, and inventing one is a wider decision than this issue.
- *  `_Heaviside` covers the step, which is what the control tier (6.29) actually needs.
+ *  no discrete impulse in `core`, and inventing one is a wider decision than this tier's.
+ *  `_Heaviside` covers the step, which is what the control tier actually needs.
  */
 
 /** Maximum recursion depth for the multiply-by-`n` rule, mirroring `MaxLaplacePowerN`. */

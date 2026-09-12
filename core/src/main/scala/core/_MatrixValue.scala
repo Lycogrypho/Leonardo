@@ -163,7 +163,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       i += 1
     new _MatrixValue(cols, rows, out)
 
-  /** Kronecker product `this ⊗ that`: the `(rows·that.rows) × (cols·that.cols)` block
+  /** [[https://en.wikipedia.org/wiki/Kronecker_product Kronecker product]] `this ⊗ that`: the `(rows·that.rows) × (cols·that.cols)` block
    *  matrix whose `(i, j)` block is `this(i, j) · that`.  The kernel behind the vectorized
    *  matrix-equation tier: `vec(A·X·B) = (Bᵀ ⊗ A) · vec(X)`.
    *  @param that the right factor
@@ -202,7 +202,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       j += 1
     new _MatrixValue(rows * cols, 1, out)
 
-  /** Determinant via LU decomposition with partial pivoting, O(n³).
+  /** Determinant via [[https://en.wikipedia.org/wiki/LU_decomposition LU decomposition]] with [[https://en.wikipedia.org/wiki/Pivot_element partial pivoting]], O(n³).
    *  `None` when the matrix is non-square; `Some(0.0)` when singular (zero pivot).
    *  Operates on a defensive clone — the value's storage is untouched.
    *  @return `Some(det)` for square matrices, `None` for non-square
@@ -242,8 +242,8 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         col += 1
       Some(det)
 
-  /** Matrix exponential `e^A = sum(k >= 0) A^k / k!`, by scaling and squaring with a
-   *  degree-13 Padé approximant (issue 6.39).
+  /** [[https://en.wikipedia.org/wiki/Matrix_exponential Matrix exponential]] `e^A = sum(k >= 0) A^k / k!`, by [[https://en.wikipedia.org/wiki/Matrix_exponential#Computing_the_matrix_exponential scaling and squaring]] with a
+   *  degree-13 Padé approximant.
    *
    *  **Not the eigen route.**  `V·diag(e^λ)·V⁻¹` is tempting because [[spectralDecompose]]
    *  already exists, but it needs an eigenbasis and a **defective** matrix has none — and a
@@ -296,7 +296,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         .map(inv => (1 to squarings).foldLeft(inv.multiply(v.add(u)))((acc, _) => acc.multiply(acc)))
         .filter(_.isFinite)
 
-  /** Inverse via Gauss–Jordan elimination with partial pivoting, O(n³).
+  /** Inverse via [[https://en.wikipedia.org/wiki/Gaussian_elimination#Gauss%E2%80%93Jordan_elimination Gauss–Jordan elimination]] with partial pivoting, O(n³).
    *  `None` when the matrix is non-square or singular — the caller stays symbolic, the
    *  same "domain error stays symbolic" contract as `x / 0` in `scalar.Ratio`.
    *  @return `Some(A⁻¹)` for invertible square matrices, `None` otherwise
@@ -344,7 +344,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         col += 1
       Some(new _MatrixValue(n, n, inv))
 
-  /** LU decomposition with partial pivoting: `P·A = L·U`, where `L` is unit lower
+  /** [[https://en.wikipedia.org/wiki/LU_decomposition LU decomposition]] with partial pivoting: `P·A = L·U`, where `L` is unit lower
    *  triangular, `U` is upper triangular, and `P` is the permutation matrix.
    *  `None` when the matrix is non-square or singular (zero pivot encountered).
    *  @return `Some((L, U, P))` for square non-singular matrices, `None` otherwise
@@ -393,7 +393,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           else uData(i * n + j) = a(i * n + j)
       Some((_MatrixValue(n, n, lData), _MatrixValue(n, n, uData), _MatrixValue(n, n, pData)))
 
-  /** Eigenvalue decomposition via QR iteration with Wilkinson shifts.
+  /** Eigenvalue decomposition via [[https://en.wikipedia.org/wiki/QR_algorithm QR iteration]] with Wilkinson shifts.
    *  Returns the `n` eigenvalues as [[_Number]] (real) or [[_Complex]] (conjugate pairs
    *  from 2×2 blocks).  `None` for non-square matrices or non-convergence within 300·n steps.
    *
@@ -656,7 +656,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       if cols.size == opts.size then Some((cols, eigs)) else None
     }
 
-  /** QR decomposition via modified Gram-Schmidt: `A = Q·R` (`m ≥ n`).
+  /** [[https://en.wikipedia.org/wiki/QR_decomposition QR decomposition]] via modified [[https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process Gram-Schmidt]]: `A = Q·R` (`m ≥ n`).
    *  `Q` is `m × n` with orthonormal columns; `R` is `n × n` upper triangular.
    *  `None` when `rows < cols` or the matrix is rank-deficient (a column reduces to zero norm).
    *  @return `Some((Q, R))` or `None`

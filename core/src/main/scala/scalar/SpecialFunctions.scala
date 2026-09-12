@@ -73,7 +73,7 @@ private val factorialTable: Array[Double] =
   t
 
 
-/** Lanczos coefficients for `g = 7`, `n = 9` — the standard parameter set, good to
+/** [[https://en.wikipedia.org/wiki/Lanczos_approximation Lanczos]] coefficients for `g = 7`, `n = 9` — the standard parameter set, good to
  *  roughly 15 significant digits over the half-plane where it is applied.
  */
 private val LanczosG: Double = 7.0
@@ -216,9 +216,9 @@ def betaOf(x: Double, y: Double): Option[Double] =
 
 
 // ---------------------------------------------------------------------------------------
-// Issue 4.O: the incomplete gamma / beta family and the functions built on it.
+// The incomplete gamma / beta family and the functions built on it.
 //
-// SPIRE SUPPLIES NONE OF THESE.  The 4.N dependency gives arbitrary-precision *elementary*
+// SPIRE SUPPLIES NONE OF THESE.  The spire dependency gives arbitrary-precision *elementary*
 // functions and nothing else, so these kernels are in-house and Double-based like the
 // Lanczos gamma above.  The consequence for the exact tier: they get no
 // `_Function.exactKernel`, so in exact mode they fall through to `viaDouble` and are capped
@@ -298,7 +298,7 @@ private def gammaSeries(a: Double, x: Double): Option[Double] =
     if !done then None else finite(sum * exp(-x + a * log(x) - lg))
   }
 
-/** `Q(a, x)` by its continued fraction, evaluated with the modified Lentz algorithm. */
+/** `Q(a, x)` by its continued fraction, evaluated with the modified [[https://en.wikipedia.org/wiki/Lentz%27s_algorithm Lentz algorithm]]. */
 private def gammaContinuedFraction(a: Double, x: Double): Option[Double] =
   lgammaOf(a).flatMap { lg =>
     var b    = x + 1.0 - a
@@ -395,7 +395,7 @@ private val DigammaAsymptoticFloor: Double = 10.0
  *
  *  The Student-t and F cdfs, and the binomial's exact tail.  Continued fraction with the
  *  symmetry `I_x(a,b) = 1 − I_{1−x}(b,a)` used to keep the argument in the half where it
- *  converges fastest; the normalising constant goes through [[lgammaOf]], which 4.I
+ *  converges fastest; the normalising constant goes through [[lgammaOf]], which was
  *  computes in log space precisely so it survives large parameters.
  *
  *  @param x the argument, which must lie in `[0, 1]`
@@ -538,12 +538,12 @@ private def cSin(r: Double, i: Double): (Double, Double) =
   (sin(r) * Math.cosh(i), Math.cos(r) * Math.sinh(i))
 
 
-// ── Special integral functions (issue 3.15) ─────────────────────────────────────
+// ── Special integral functions ─────────────────────────────────────
 //
 // The kernels behind Si / Ci / Ei / li and the Fresnel integrals: a power series near
 // zero (exact to Double precision on its range) and the standard asymptotic expansion or
 // continued fraction in the tail, truncated at its optimally small term.  Each returns
-// Option[Double] so an undefined point leaves the AST node symbolic — the 4.O convention.
+// Option[Double] so an undefined point leaves the AST node symbolic — the house convention.
 
 /** The Euler–Mascheroni constant γ. */
 private val EulerGamma = 0.5772156649015329

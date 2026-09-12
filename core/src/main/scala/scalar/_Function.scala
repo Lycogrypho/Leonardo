@@ -39,7 +39,7 @@ abstract class _Function extends _Expression:
   protected def exactIntArg(r: _Rational): Option[BigInt] =
     r.toBigIntExact.filter(_.signum >= 0)
 
-  /** This function as an arbitrary-precision kernel, when it has one (issue 4.N).
+  /** This function as an arbitrary-precision kernel, when it has one.
    *
    *  Returning `None` means "not defined here", and covers both cases: a function with no
    *  `Real` counterpart at all, and an argument outside the real domain — `ln` of a negative,
@@ -87,7 +87,7 @@ abstract class _Function extends _Expression:
    *  A complex or symbolic result passes through untouched — a complex value is inexact, so
    *  float contagion is already the right answer for it.
    *
-   *  Since issue 4.N this is the *fallback*: [[viaExact]] is what the transcendentals reach
+   *  This is now the *fallback*: [[viaExact]] is what the transcendentals reach
    *  first, and it comes back here for an out-of-domain argument or a low working precision.
    *
    *  @param args the same children, with every exact argument replaced by its `Double`
@@ -192,7 +192,7 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (e.eval(env), base.eval(env)) match
-      // Matrix argument with a real base: distribute log_b element-wise (issue 1.3).
+      // Matrix argument with a real base: distribute log_b element-wise.
       case (Right(mv: _MatrixValue), Right(_Number(b))) =>
         val lb = log(b)
         if lb.isNaN || lb.isInfinite then Left(this) else mapMatrix(mv, x => log(x) / lb)
@@ -371,7 +371,7 @@ case class Atan(e: _Expression) extends _Function:
       case other             => Left(Atan(other.toExpression))
 
 
-// ── hyperbolic and reciprocal-trigonometric functions (issue 3.9) ────────────
+// ── hyperbolic and reciprocal-trigonometric functions ────────────
 // The `Double` inverse-hyperbolic kernels, which `scala.math` does not provide, written
 // through their logarithmic closed forms.  Each is real only on its own domain, so an
 // out-of-domain argument returns NaN and the node stays symbolic.
@@ -605,7 +605,7 @@ case class Factorial(e: _Expression) extends _Function:
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
       // An exact non-negative integer argument is computed exactly and without the 170!
-      // ceiling, which exists only because a Double overflows there (issue 4.L slice B).
+      // ceiling, which exists only because a Double overflows there.
       case Right(r: _Rational) if exactIntArg(r).isDefined =>
         exactIntArg(r).flatMap(factorialExact).map(n => Right(_Rational(n))).getOrElse(Left(this))
       case Right(r: _Rational)     => viaExact(r, env)
@@ -675,7 +675,7 @@ case class Gamma(e: _Expression) extends _Function:
       case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))
-      // 4.O slice 4: Lanczos generalises to the complex plane, so Gamma no longer has to
+      // Lanczos generalises to the complex plane, so Gamma no longer has to
       // give up on a complex argument the way Asin and friends still do.
       case Right(c: _Complex)      =>
         gammaComplex(c.re, c.im).map((r, i) => Right(_Complex.of(r, i))).getOrElse(Left(this))
@@ -730,7 +730,7 @@ case class Beta(a: _Expression, b: _Expression) extends _Function:
 
 /** The error function `erf(e)`.
  *
- *  Like the rest of the 4.O family this has no [[_Function.exactKernel]] — spire supplies no
+ *  Like the rest of the analytic family this has no [[_Function.exactKernel]] — spire supplies no
  *  special functions, so the kernel is `Double`-based and an exact argument falls back to
  *  `viaDouble`, capped at `_Rational.DoubleReliableDigits`.
  *
@@ -792,7 +792,7 @@ case class Digamma(e: _Expression) extends _Function:
       case other                   => Left(Digamma(other.toExpression))
 
 
-// ── Combinatorial functions (issue 6.28) ─────────────────────────────────────
+// ── Combinatorial functions ─────────────────────────────────────
 // On the Gamma/Factorial template: an exact BigInt path for integer arguments and a Double
 // kernel otherwise, with an undefined point leaving the node symbolic.
 
@@ -870,7 +870,7 @@ case class Harmonic(e: _Expression) extends _Function:
       case other                   => Left(Harmonic(other.toExpression))
 
 
-// ── Special integral functions (issue 3.15) ──────────────────────────────────
+// ── Special integral functions ──────────────────────────────────
 // The named antiderivatives of the classic non-elementary integrals, on the Gamma/Erf
 // template: a symbolic node with a numeric kernel returning Option[Double], so an
 // undefined point stays symbolic. `Si`/`Ci`/`Ei` are capitalised and reserved (the

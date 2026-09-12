@@ -71,7 +71,10 @@ Parser.parse("solve(3*x - 6 = 0, x)").get.eval(env)
 
 ### Quadratic equations
 
-The discriminant is computed; 0, 1, or 2 real roots are returned:
+The [discriminant](https://en.wikipedia.org/wiki/Discriminant) decides the case; 0, 1, or 2
+real roots are returned, computed by the
+[numerically stable form](https://en.wikipedia.org/wiki/Quadratic_equation#Avoiding_loss_of_significance)
+of the quadratic formula rather than the textbook `(-b ± √Δ)/2a`:
 
 ```scala mdoc
 // x² - 5x + 6 = 0  →  x = 2, x = 3
@@ -85,8 +88,9 @@ Parser.parse("solve(x^2 + 1 = 0, x)").get.eval(env)
 
 ### Numeric fallback
 
-Transcendental and higher-degree equations fall back to a sign-change scan
-over `[-100, 100]` followed by bisection (up to 8 roots):
+Transcendental and higher-degree equations fall back to a sign-change scan over
+`[-100, 100]` followed by the
+[bisection method](https://en.wikipedia.org/wiki/Bisection_method) (up to 8 roots):
 
 ```scala mdoc
 // sin(x) = 0.5  — first root in [-100, 100]
@@ -147,9 +151,12 @@ case the solution is a symbolic matrix expression (via cofactor expansion, cappe
 6×6).
 
 **General linear matrix equations** — the unknown appearing in several terms with
-coefficients on different sides — are solved by Kronecker vectorization: each term
+coefficients on different sides — are solved by
+[Kronecker](https://en.wikipedia.org/wiki/Kronecker_product)
+[vectorization](https://en.wikipedia.org/wiki/Vectorization_(mathematics)): each term
 `s·L·X·R` contributes `s·(Rᵀ ⊗ L)` to a dense system over `vec(X)`. This covers the
-Sylvester equation `A·X + X·B = C`, the Lyapunov equation `A·X + X·Aᵀ = C`, and
+[Sylvester equation](https://en.wikipedia.org/wiki/Sylvester_equation) `A·X + X·B = C`, the
+[Lyapunov equation](https://en.wikipedia.org/wiki/Lyapunov_equation) `A·X + X·Aᵀ = C`, and
 scalar coefficients like `2·X = B`:
 
 ```scala mdoc
@@ -168,8 +175,9 @@ solve node stays symbolic. Coefficients must reduce to dense matrices for this t
 ### Linear systems
 
 `solveSystem([[eq₁, eq₂, …]], v₁, v₂, …)` solves a square system via
-Gaussian elimination (partial pivoting for concrete coefficients, symbolic
-row reduction otherwise):
+[Gaussian elimination](https://en.wikipedia.org/wiki/Gaussian_elimination)
+([partial pivoting](https://en.wikipedia.org/wiki/Pivot_element#Partial,_rook,_and_complete_pivoting)
+for concrete coefficients, symbolic row reduction otherwise):
 
 ```scala mdoc
 // x + y = 3, x - y = 1  →  x = 2, y = 1
@@ -195,7 +203,7 @@ Product(i, i).eval(env)
 Product(_Complex.of(2, 3), _Complex.of(1, -1)).eval(env)
 ```
 
-### Euler's identity
+### [Euler's identity](https://en.wikipedia.org/wiki/Euler%27s_identity)
 
 ```scala mdoc
 // e^(iπ) = -1
@@ -204,8 +212,9 @@ Exp(Product(i, _Number(math.Pi))).eval(env)
 
 ### Principal complex roots and logarithms
 
-Negative bases with fractional exponents and logarithms of negative reals
-return their principal complex values rather than staying symbolic:
+Negative bases with fractional exponents and logarithms of negative reals return their
+[principal values](https://en.wikipedia.org/wiki/Principal_value) rather than staying
+symbolic:
 
 ```scala mdoc
 // √(-2) = i√2

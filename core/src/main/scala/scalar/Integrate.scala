@@ -16,16 +16,16 @@ import scala.annotation.tailrec
  *  built to preserve is that Leonardo declines rather than answering wrongly.
  *
  *  This file holds only the dispatch order (see [[resolve]]) and the compiled rule table
- *  [[integrateImpl]].  Issue 2.6 moved the algorithms themselves into three siblings, all
+ *  [[integrateImpl]].  The algorithms themselves live in three sibling files, all
  *  top-level definitions in the same package, so the split changed no visibility and no call
  *  site:
  *
- *  - `IntegrateParts.scala` — integration by parts (LIATE) and the `sin`/`cos`,
+ *  - `IntegrateParts.scala` — [[https://en.wikipedia.org/wiki/Integration_by_parts integration by parts]] ([[https://en.wikipedia.org/wiki/Integration_by_parts#LIATE_rule LIATE]]) and the `sin`/`cos`,
  *    `tan`/`cot`/`sec`/`csc` and `sinh`/`cosh` power reductions;
  *  - `IntegrateRational.scala` — long division, completing the square, and the full
- *    partial-fraction decomposition;
+ *    [[https://en.wikipedia.org/wiki/Partial_fraction_decomposition partial-fraction decomposition]];
  *  - `IntegrateSubstitution.scala` — non-linear u-substitution, trigonometric/hyperbolic
- *    substitution, and the Weierstrass half-angle substitution.
+ *    substitution, and the [[https://en.wikipedia.org/wiki/Weierstrass_substitution Weierstrass half-angle substitution]].
  *
  *  Chain-rule coverage in the compiled arms is limited to a linear inner argument
  *  `u = a*v + b`: there `t = u` has constant `dt/dv = a`, so `∫ f(u) dv = F(u)/a`, and
@@ -66,7 +66,7 @@ def integrate(e: _Expression, v: _Variable): _Expression =
   resolve(e, v, 0)
 
 /** Resolves `∫ e dv` through the full pipeline: the compiled tiers first, then — only when
- *  they give up — the data-driven table (6.21) and the u-substitution driver (3.10).
+ *  they give up — the data-driven table and the u-substitution driver.
  *
  *  Both last resorts are hooked HERE rather than at `integrateImpl`'s fallthrough, because
  *  an arm that claims a shape and then gives up inside itself (the rational tier, or a
@@ -86,7 +86,7 @@ private def resolve(e: _Expression, v: _Variable, subDepth: Int): _Expression =
   else
     // Second compiled attempt on the node-normalised form: a user-typed ratio such as
     // `1/cos(x)^2` reaches `integrateImpl` un-normalised and misses the reciprocal-node
-    // tiers (e.g. the `Power(Sec, n)` reduction, 3.11), which `simplify` would have exposed
+    // tiers (e.g. the `Power(Sec, n)` reduction), which `simplify` would have exposed
     // (`1/cos^2 -> sec^2`).  Run only on give-up, so nothing that already closed changes.
     val es        = simplifyFully(e)
     val compiled2 = if es != e then integrateImpl(es, v, 0) else compiled
@@ -137,7 +137,7 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression
   case Power(Cos(u), _Number(n)) if isReduciblePower(n) =>
     reduceSinCosPower(isSin = false, u, n.toInt, v, depth).getOrElse(_Integral(e, v))
 
-  // tan/cot/sec/csc power reduction (issue 3.11), same placement rationale as sin/cos:
+  // tan/cot/sec/csc power reduction, same placement rationale as sin/cos:
   //   integer n in [2, MaxReductionPower], u linear in v. The n=1 base cases live in the
   //   data-driven table, so the reducers recurse through `resolve` (which consults it).
   case Power(Tg(u), _Number(n)) if isReduciblePower(n) =>
@@ -149,7 +149,7 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int): _Expression
   case Power(Csc(u), _Number(n)) if isReduciblePower(n) =>
     reduceSecCscPower(isSec = false, u, n.toInt, v).getOrElse(_Integral(e, v))
 
-  // hyperbolic sinh/cosh power reduction (issue 3.13's helper) — same placement rationale.
+  // hyperbolic sinh/cosh power reduction — same placement rationale.
   case Power(Sinh(u), _Number(n)) if isReduciblePower(n) =>
     reduceSinhCoshPower(isSinh = true, u, n.toInt, v).getOrElse(_Integral(e, v))
   case Power(Cosh(u), _Number(n)) if isReduciblePower(n) =>

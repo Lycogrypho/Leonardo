@@ -6,7 +6,7 @@ import scalar.*
 import transform.*
 
 
-/** AST nodes for the control operators (issue 6.29).
+/** AST nodes for the control operators.
  *
  *  Each holds its **frequency variable explicitly**, since a transfer function is a plain
  *  `Ratio` with no type to dispatch on.  The variables are excluded from `children` and
@@ -56,7 +56,8 @@ case class _ImpulseResponse(g: _Expression, s: _Variable, t: _Variable) extends 
     val result = impulseResponse(g, s, t)
     if result == this then Left(this) else result.eval(env)
 
-/** Unit-step response `L^-1{G(s)/s}` — almost entirely a re-spelling of issue 3.17.
+/** Unit-step response `L^-1{G(s)/s}` — almost entirely a re-spelling of the inverse
+ *  Laplace transform's repeated-pole machinery.
  *
  *  **Declines for an improper `G`** (numerator degree above denominator degree).  Such a
  *  response contains an impulsive term at `t = 0` that the inverse-transform tier does not

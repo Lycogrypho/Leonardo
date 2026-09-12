@@ -32,7 +32,7 @@ object _Complex:
   def parts(v: _Value): Option[(Double, Double)] = v match
     case _Number(x)   => Some((x, 0.0))
     case c: _Complex  => Some((c.re, c.im))
-    // A rational read as a Double IS the promotion lattice's float contagion (issue 4.L).
+    // A rational read as a Double IS the promotion lattice's float contagion.
     // Putting it here rather than in each operation means every complex kernel already
     // handles a mixed rational/inexact pair, and handles it the one documented way: the
     // exact operand degrades, never the reverse.  The exact rational-with-rational cases

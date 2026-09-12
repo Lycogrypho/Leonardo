@@ -8,10 +8,10 @@ import core.*
  *  [[collect]]'s output.
  *
  *  `collect(e, v)` yields a **dense** vector in which `cs(i)` multiplies `v^i`.  Several
- *  tiers then need the same handful of operations on it, and until issue 3.1 each carried
- *  its own copy: [[integrate]]'s partial-fraction tier (4.C) and the inverse Laplace
+ *  tiers then need the same handful of operations on it, and originally each carried
+ *  its own copy: [[integrate]]'s partial-fraction tier and the inverse Laplace
  *  transform's residue rule had independently written both a root finder and a derivative
- *  helper, and 6.13's pole classification was about to add a third.
+ *  helper, and the pole classification was about to add a third.
  *
  *  **The copies were not equivalent, but the difference was unreachable — and knowing why
  *  is what makes merging them safe.**  They disagreed about a coefficient vector carrying a
@@ -52,12 +52,12 @@ private[leonardo] val MaxRationalDegree = 24
  *  `collect` will do.
  *
  *  **Why it is here rather than in its first caller.**  It began as a private helper inside
- *  `transform.InverseZTransform` (6.33), where matching `Ratio(num, den)` at the top turned
+ *  `transform.InverseZTransform`, where matching `Ratio(num, den)` at the top turned
  *  out to be wrong: the z-transform's own output for `Z{n}` is `(-1*z)*(.../(z-1)^2)`, a
  *  `Product` whose left factor depends on `z`, so the inverse handled some of its own results
- *  and not others.  6.29 then needed the same split for `poles`/`zeros`, making it the third
- *  place wanting one fraction out of an arbitrary tree — the point at which issues 3.1 and 2.5
- *  each promoted a helper into this file rather than let a third copy diverge.
+ *  and not others.  The control domain then needed the same split for `poles`/`zeros`, making it the third
+ *  place wanting one fraction out of an arbitrary tree — the point at which this file's
+ *  convention promotes a helper rather than let a third copy diverge.
  *
  *  @param e the expression to normalise
  *  @param v the variable the rational function is over
@@ -90,7 +90,7 @@ private[leonardo] def rationalCoeffs(e: _Expression,
     case Ratio(a, b) =>
       // The zero test must go through polyDegree: polyTrim never returns an EMPTY vector
       // (it yields [0.0] for the zero polynomial), so a `.nonEmpty` guard here was dead
-      // code and X / 0-in-v was silently accepted (issue 1.5).
+      // code and X / 0-in-v was silently accepted.
       for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
           if polyDegree(bn) >= 0
           r <- capped((polyMul(an, bd), polyMul(ad, bn)))
@@ -99,7 +99,7 @@ private[leonardo] def rationalCoeffs(e: _Expression,
     case Power(b, _Number(k)) if k.toInt.toDouble == k && math.abs(k) <= MaxRationalDegree =>
       rationalCoeffs(b, v).flatMap { (bn, bd) =>
         // A negative power swaps numerator and denominator, so the zero polynomial must be
-        // refused BEFORE the swap puts it underneath (issue 1.5, the Ratio reasoning).
+        // refused BEFORE the swap puts it underneath (the Ratio reasoning).
         // A non-negative power of zero stays legitimate: it is the zero numerator.
         if k < 0 && polyDegree(bn) < 0 then None
         else
@@ -135,7 +135,7 @@ private[leonardo] def polyDegree(cs: Vector[Double]): Int =
 private[leonardo] def derivCoeffs(cs: Vector[Double]): Vector[Double] =
   if cs.sizeIs <= 1 then Vector(0.0) else cs.zipWithIndex.tail.map((c, i) => i.toDouble * c)
 
-/** Roots of a polynomial, as the eigenvalues of its Frobenius companion matrix.
+/** Roots of a polynomial, as the eigenvalues of its [[https://en.wikipedia.org/wiki/Companion_matrix Frobenius companion matrix]].
  *
  *  Each root is a real [[core._Number]] or a non-real [[core._Complex]].  The companion
  *  matrix is built at the *true* degree reported by [[polyDegree]], so a vector with
@@ -155,10 +155,10 @@ private[leonardo] def polyRoots(cs: Vector[Double]): Option[Vector[_Value]] =
     _MatrixValue(n, n, mat).eigenDecompose
 
 
-// ── Arithmetic over coefficient vectors (issue 2.5) ─────────────────────────────
+// ── Arithmetic over coefficient vectors ─────────────────────────────
 //
-// These grew inside `Integrate.scala` while issues 3.12–3.16 were built, which recreated
-// exactly the divergence issue 3.1 merged away once before. They live here now, so the
+// These grew inside `Integrate.scala` as the integration tiers were built, which recreated
+// exactly the divergence this file exists to merge away. They live here now, so the
 // three `polyRoots` consumers — the integrator, `Singularity` and the inverse Laplace
 // transform — share one implementation rather than one each.
 
@@ -168,7 +168,7 @@ private[leonardo] def polyTrim(a: Vector[Double]): Vector[Double] =
   if d < 0 then Vector(0.0) else a.take(d + 1)
 
 /** Coefficient-wise combination of two polynomials under `f`, trimmed — the shared body of
- *  [[polyAdd]] and [[polySub]], which were near-duplicates before issue 2.5. */
+ *  [[polyAdd]] and [[polySub]], which were near-duplicates before being merged. */
 private def polyZipWith(a: Vector[Double], b: Vector[Double])(f: (Double, Double) => Double): Vector[Double] =
   val n = math.max(a.length, b.length)
   polyTrim(Vector.tabulate(n)(i => f(a.lift(i).getOrElse(0.0), b.lift(i).getOrElse(0.0))))
@@ -227,7 +227,7 @@ private[leonardo] def polyGcd(a0: Vector[Double], b0: Vector[Double]): Vector[Do
     b = polyTrim(r)
   polyMonic(a)
 
-/** Square-free factorisation (Yun): each returned `(poly, k)` is the product of the distinct
+/** [[https://en.wikipedia.org/wiki/Square-free_polynomial Square-free factorisation]] ([[https://en.wikipedia.org/wiki/Square-free_polynomial#Yun's_algorithm Yun]]): each returned `(poly, k)` is the product of the distinct
  *  factors of `d0` that occur with multiplicity exactly `k`, so `poly` has only simple roots.
  *
  *  **This is how multiplicity is read anywhere in the library**, and it exists because

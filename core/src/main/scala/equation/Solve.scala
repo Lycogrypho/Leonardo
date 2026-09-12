@@ -28,7 +28,7 @@ import scala.annotation.tailrec
  *  4. **Scalar quadratic** -- degree-2 polynomial: discriminant; 0/1/2 real roots for
  *     numeric coefficients, the two +/-sqrt(delta) closed forms for symbolic ones.
  *  5. **Numeric bisection** -- compiles `lhs - rhs` to a `Double => Double` closure,
- *     scans for sign changes over `[-100, 100]`, and refines by bisection (up to
+ *     scans for sign changes over `[-100, 100]`, and refines by [[https://en.wikipedia.org/wiki/Bisection_method bisection]] (up to
  *     `MaxNumericRoots` roots).  Returns `Nil` when the expression is not compilable.
  *
  *  Each solution's right-hand side is folded through `env`, so bound coefficients
@@ -71,7 +71,7 @@ def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): Li
 private def solveScalar(eq: _Equation, v: _Variable, env: Environment): List[_Equation] =
   // The -1 must join the equation's own tier.  A hard-coded `_Number(-1)` here would demote
   // an exactly-stated equation through float contagion before the solver ever ran, and the
-  // exact quadratic branch below would then never see an exact coefficient (issue 4.N).
+  // exact quadratic branch below would then never see an exact coefficient.
   val minusOne   = _Rational.literalLike(-1, eq)
   val difference = Sum(eq.lhs, Product(minusOne, eq.rhs))
 
@@ -375,7 +375,7 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression,
   (c0, c1, c2) match
     // Exact coefficients first -- `_Number` is a widening extractor, so without this the
     // exact tier's coefficients would be read as Doubles and the roots would be no better
-    // than they ever were, however high the working precision (issue 4.N).
+    // than they ever were, however high the working precision.
     case (a0: _Rational, a1: _Rational, a2: _Rational)
       if env.workingPrecision > _Rational.DoubleReliableDigits =>
       exactQuadraticRoots(a0, a1, a2, env.workingPrecision)

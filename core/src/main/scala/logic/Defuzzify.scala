@@ -59,7 +59,7 @@ private def isDegree(d: Double): Boolean =
   !d.isNaN && !d.isInfinite && d >= 0.0 && d <= 1.0
 
 
-/** Defuzzifies by the centre of gravity: `Σ x·μ(x) / Σ μ(x)` over the sampled curve.
+/** [[https://en.wikipedia.org/wiki/Defuzzification Defuzzifies]] by the centre of gravity: `Σ x·μ(x) / Σ μ(x)` over the sampled curve.
  *
  *  The most common defuzzifier, and the one `defuzz(...)` uses in the grammar.
  *

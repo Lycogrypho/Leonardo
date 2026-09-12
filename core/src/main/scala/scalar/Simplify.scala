@@ -41,7 +41,7 @@ private val foldEnv = new Environment()
  *
  *  Delegating to `eval` rather than re-implementing `+`/`*`/`/`/`^` here is what keeps
  *  `simplify` and `eval` from disagreeing — which stopped being cosmetic once "concrete"
- *  covered both `_Number` and the exact `_Rational` (issue 4.L).  Re-implemented folding
+ *  covered both `_Number` and the exact `_Rational`.  Re-implemented folding
  *  produced `0.66667` for `simplify 1/3 + 1/3` while `eval` gave `1/2` on the same input.
  *
  *  A node that does not reduce (division by zero, a non-finite power) comes back unchanged,
@@ -109,7 +109,7 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (x, c @ _Number(d)) if d == -1.0 => simplify(Product(c, x))
       case (x @ _Number(_), y @ _Number(_)) => fold(Ratio(x, y))
       case (x, y) if x == y && x != _Number(0) => _Number(1)
-      // Reciprocal/quotient normalisation into the reciprocal functions (issue 3.9), so the
+      // Reciprocal/quotient normalisation into the reciprocal functions, so the
       // library has exactly one spelling of each: 1/cos → sec, cos/sin → cot, and so on.
       case (_Number(d), Cos(u))  if d == 1.0 => Sec(u)
       case (_Number(d), Sin(u))  if d == 1.0 => Csc(u)
@@ -189,7 +189,7 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case _Number(d) if d == 1.0 => _Number(math.Pi / 4)
       case x                      => Atan(x)
 
-  // hyperbolic and reciprocal-trigonometric functions (issue 3.9): inverse-function pairs
+  // hyperbolic and reciprocal-trigonometric functions: inverse-function pairs
   // (only the always-valid direction — acosh(cosh(x)) = |x|, so it is deliberately absent)
   // and known values at zero.
   case Sinh(a) =>

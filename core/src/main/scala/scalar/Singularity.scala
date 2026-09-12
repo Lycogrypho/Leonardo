@@ -4,9 +4,9 @@ package scalar
 import core.*
 
 
-/** Locating and classifying singularities — issue 3.3 slice D.
+/** Locating and classifying singularities.
  *
- *  This is the half of the domain analysis that **6.14 (Laurent series)** is blocked on: a
+ *  This is the half of the domain analysis that the **Laurent series** is built on: a
  *  Laurent expansion is taken *about* a singularity, so the point must first be found and
  *  its order known before the principal part has a length.
  *
@@ -18,7 +18,7 @@ import core.*
  *
  *  The order is the multiplicity of the root in `D`, reduced by its multiplicity in `N`:
  *  `(x-1)/(x-1)` has a *removable* singularity at 1, not a pole, and saying "pole of order
- *  1" there would send 6.14 looking for a principal part that does not exist.
+ *  1" there would send the Laurent expansion looking for a principal part that does not exist.
  */
 
 /** How an isolated singularity behaves. */
@@ -62,10 +62,10 @@ private def sameRoot(a: Double, b: Double): Boolean =
 
 /** The distinct real roots of `cs` with their multiplicities, in ascending order.
  *
- *  **Multiplicity comes from square-free factorisation, not from counting scattered roots**
- *  (issue 2.5).  The original reading — that a repeated root merely *scatters* under
+ *  **Multiplicity comes from square-free factorisation, not from counting scattered
+ *  roots.**  The original reading — that a repeated root merely *scatters* under
  *  `polyRoots`, so nearby roots could be clustered and counted — understated the problem:
- *  issue 3.12 found that the QR iteration can fail to converge on a repeated root
+ *  it turned out that the QR iteration can fail to converge on a repeated root
  *  **entirely**, and `(x-2)^5` then produced no roots at all, silently losing the
  *  singularity rather than misreporting its order.
  *

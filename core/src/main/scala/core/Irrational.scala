@@ -5,7 +5,7 @@ import spire.math.Real
 import spire.math.Rational as SpireRational
 
 
-/** The exact tier's irrational engine (issue 4.N) — the bridge between [[_Rational]] and
+/** The exact tier's irrational engine — the bridge between [[_Rational]] and
  *  spire's arbitrary-precision `Real`.
  *
  *  **What this closes.**  Tier 1 made the *arithmetic* exact, but everything that leaves the
@@ -72,7 +72,7 @@ def fromReal(x: Real, digits: Int): Option[_Rational] =
 
 /** The square root of a non-negative rational, at `digits` decimal places.
  *
- *  Uses `Real` rather than spire's `Algebraic`, although the 4.N plan suggested the latter
+ *  Uses `Real` rather than spire's `Algebraic`, although an earlier plan suggested the latter
  *  for polynomial roots.  `Algebraic`'s advantage is a *decidable* sign and comparison — and
  *  the only place this is used, the quadratic solver, has already established the sign by
  *  comparing the discriminant against zero in exact rational arithmetic, so there is nothing

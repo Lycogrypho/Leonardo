@@ -6,10 +6,10 @@ import equation.{_Comparison, CompareOp, _EqualityCheck, _Equation}
 import logic.And
 
 
-/** Turns a predicate over a random variable into a probability — issue 4.R slice B.
+/** Turns a predicate over a random variable into a probability.
  *
  *  `prob(X < 2)` is how the notation is actually written, and until comparison operators
- *  existed the language could not say it; 4.P had to offer `prob(d, lo, hi)` instead.  Both
+ *  existed the language could not say it; the interval form `prob(d, lo, hi)` predates it.  Both
  *  forms are kept: an interval is still the clearer way to write a two-sided bound, and
  *  removing it would break saved sessions.
  *

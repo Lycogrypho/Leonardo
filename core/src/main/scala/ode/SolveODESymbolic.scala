@@ -19,7 +19,7 @@ import scalar.*
  *     - `y' = b`        (a = 0): `y = y0 + b*tau`
  *     - `y' = a*y + b`  (general): `y = (y0 + b/a) * exp(a*tau) - b/a`
  *
- *  2. **Variable coefficients** (`a` or `b` depends on `t`) — the integrating-factor
+ *  2. **Variable coefficients** (`a` or `b` depends on `t`) — the [[https://en.wikipedia.org/wiki/Integrating_factor integrating-factor]]
  *     method.  With `A = integral(a dt)` and `mu = exp(-A)` the equation `(mu*y)' = mu*b`
  *     integrates to `mu*y = Q + C`, `Q = integral(mu*b dt)`; the initial condition fixes
  *     `C = mu(t0)*y0 - Q(t0)`, giving
@@ -57,11 +57,11 @@ def solveODESymbolic(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
       else
         // Constant coefficients: the exact tau-form closed solutions.
         constantCoefficientSolution(a, b, t0, y0, target)
-    // Not linear in y: try separation of variables (issue 3.6).
+    // Not linear in y: try separation of variables.
     case _ => separableSolution(rhs, depVar, indepVar, t0, y0, target, env)
 
 
-/** Closed form for a separable equation `y' = f(t)·g(y)` — issue 3.6.
+/** Closed form for a separable equation `y' = f(t)·g(y)`, by [[https://en.wikipedia.org/wiki/Separation_of_variables separation of variables]].
  *
  *  Separate, integrate both sides, fix the constant from the initial condition, then solve
  *  for `y`:
@@ -132,7 +132,7 @@ private def separateAndSolve(f: _Expression, g: _Expression, depVar: _Variable,
  *
  *  A root-find rather than a symbolic inversion: it needs only `scalar.compile`, so the
  *  separable tier stays inside `ode` + `scalar`.  Symbolic inversion of `G` is the deferred
- *  half of 3.6 and would be what requires reaching into `equation`.
+ *  half of the separable tier and would be what requires reaching into `equation`.
  */
 private def solveForY(bigG: _Expression, depVar: _Variable, rhs: _Expression,
                       y0: _Expression, env: Environment): Option[_Expression] =

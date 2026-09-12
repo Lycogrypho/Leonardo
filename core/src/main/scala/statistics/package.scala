@@ -1,7 +1,6 @@
 package it.grypho.scala.leonardo
 
-/** Descriptive statistics, linear regression and elementary inference over samples
- *  (issue 4.Q).
+/** Descriptive statistics, linear regression and elementary inference over samples.
  *
  *  Imports `core` + `scalar` + `matrix`, and — for the inference tier — `probability`.  The
  *  arrow runs that way and only that way: **`probability` must never import `statistics`**.

@@ -5,7 +5,7 @@ import core.*
 import scala.annotation.tailrec
 
 
-/** Exact linear algebra over rational matrix entries (issue 4.L slice B).
+/** Exact linear algebra over rational matrix entries.
  *
  *  **Why the carrier is the symbolic [[_Matrix]] and not a second dense type.**
  *  `core._MatrixValue` holds a private `Array[Double]` and has to keep it: the block-tiled

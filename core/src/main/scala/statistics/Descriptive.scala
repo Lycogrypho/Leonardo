@@ -5,7 +5,7 @@ import core.*
 import matrix._Matrix
 
 
-/** The descriptive kernels — issue 4.Q slice A.
+/** The descriptive kernels.
  *
  *  Each takes the sample as already-extracted values and returns a `_Value`, so the exact
  *  and inexact paths share one signature: an all-rational sample comes back exact, anything
@@ -17,7 +17,7 @@ import matrix._Matrix
 
 /** Reads an evaluated expression as a sample: every entry of a matrix, row-major.
  *
- *  Accepts both carriers, which matters since 4.L slice B: an exactly-written matrix stays a
+ *  Accepts both carriers, which matters for exact input: an exactly-written matrix stays a
  *  symbolic `_Matrix` rather than collapsing to the dense one, and that is precisely the case
  *  where an exact statistic is worth having.
  *
@@ -64,7 +64,7 @@ def sampleMean(xs: Vector[_Value], env: Environment): Option[_Value] =
  *  **Two-pass, deliberately.**  The textbook one-pass form `E[X²] − E[X]²` subtracts two
  *  nearly equal quantities whenever the sample has a large mean relative to its spread, and
  *  loses most of its significant digits doing so — the same catastrophic cancellation that
- *  issue 1.1 already cost this project once, in the quadratic formula.  Computing the mean
+ *  already cost this project the quadratic formula's small root.  Computing the mean
  *  first and then summing squared deviations has no such subtraction in it.
  *
  *  @param xs   the sample

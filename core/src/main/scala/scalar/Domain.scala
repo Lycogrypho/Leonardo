@@ -4,7 +4,7 @@ package scalar
 import core.*
 
 
-/** Where an expression is *defined* and where it is *differentiable* — issue 3.3.
+/** Where an expression is *defined* and where it is *differentiable*.
  *
  *  A **correctness** feature rather than a capability one: `solve`, `integrate` and `limit`
  *  all fall back to staying symbolic without saying why, and the answer is usually that some
@@ -21,7 +21,7 @@ import core.*
  *  `Asin`/`Acos`/`Atan` stay symbolic on complex input (the documented "Asin convention"),
  *  so over [[DomainKind.Complex]] their domain here is reported **empty** even though the
  *  functions extend analytically.  Reporting the mathematical truth would make this promise
- *  results `eval` refuses to produce — the same failure mode 4.R slice B avoids when it
+ *  results `eval` refuses to produce — the same failure mode the probability-predicate reader avoids when it
  *  declines `prob(2*X < 6)` rather than guessing.
  *
  *  This lives in `scalar` on purpose: `_Comparison` is an `equation` type and `equation`
@@ -111,7 +111,7 @@ private[leonardo] def domainOf(e: _Expression, v: _Variable, kind: DomainKind,
  *  `_Heaviside` is defined everywhere and differentiable nowhere at its step, so it
  *  contributes a `Never`.
  *
- *  Note 4.O added `digamma`, so `Gamma` / `fact` / `lgamma` *are* differentiable now; they
+ *  Note `digamma` exists, so `Gamma` / `fact` / `lgamma` *are* differentiable; they
  *  contribute only their own pole constraints.
  */
 private[leonardo] def differentiableDomainOf(e: _Expression, v: _Variable, kind: DomainKind,
@@ -121,10 +121,9 @@ private[leonardo] def differentiableDomainOf(e: _Expression, v: _Variable, kind:
                     collectConstraints(derive(e, v), kind) ++ stepPoints).distinct
   DomainSet(cs, resolveIntervals(cs, v, env))
 
-/** The first requirement `e` violates when `v` takes the value `x`, if any — issue 3.3
- *  slice F.
+/** The first requirement `e` violates when `v` takes the value `x`, if any.
  *
- *  This is the *diagnostic* half of the issue: `limit(ln(x), x, -1)` stays symbolic today
+ *  This is the *diagnostic* half of the analysis: `limit(ln(x), x, -1)` stays symbolic today
  *  and says nothing about why, when the reason is simply that `-1` is outside `ln`'s domain.
  *
  *  Deliberately a **query, not a guard**.  Wiring the domain analysis into `eval` as a

@@ -4,7 +4,7 @@ package scalar
 import core.*
 
 
-/** The data-driven table of integrals — issue 6.21's engine, issue 3.7's content.
+/** The data-driven table of integrals: rewrite rules run through the `Rewrite` engine.
  *
  *  Every rule here is a `RewriteRule`, not a compiled `case` arm.  That is the whole point
  *  of the hybrid: this table is *expected to keep growing*, one entry at a time, and a rule
@@ -15,7 +15,7 @@ import core.*
  *  `Tg(?v)`.
  *
  *  **`?v` may bind a linear function of the integration variable, not only the variable
- *  itself** (issue 3.7).  A pattern matches a *shape*, so `Tg(?v)` alone would cover
+ *  itself**.  A pattern matches a *shape*, so `Tg(?v)` alone would cover
  *  `∫ tan(x) dx` and not `∫ tan(2x) dx` — yet the compiled tiers have handled a linear inner
  *  argument since the beginning by dividing through by the slope, and there is no reason for
  *  the table to be weaker.  [[applyTo]] therefore requires `?v` to bind some `a·x + b` with
@@ -37,10 +37,10 @@ import core.*
  *  `Product(Exp(?v), Sin(?v))` does not match `sin(x)·exp(x)`; the commuted spelling of a
  *  commutative operand pair is a separate entry, because a user types either one.
  *
- *  **Inventory** (by section): the 3.7/3.9 base entries (`tan`, `cot`, `sec`, `csc`,
+ *  **Inventory** (by section): the base entries (`tan`, `cot`, `sec`, `csc`,
  *  `sec·tan`, `sin·cos`, the hyperbolics `sinh`…`csch·coth`, `ln²v`, `ln(v)/v`,
- *  `1/(v·ln v)`, `eᵛ/(1+eᵛ)`, the cyclic `eᵛ·sin v`/`eᵛ·cos v`); the 3.15 special-integral
- *  connections (`Si`/`Ci`/`Ei`/`li`/`erf`/Fresnel); and the 3.16 bulk transcription —
+ *  `1/(v·ln v)`, `eᵛ/(1+eᵛ)`, the cyclic `eᵛ·sin v`/`eᵛ·cos v`); the special-integral
+ *  connections (`Si`/`Ci`/`Ei`/`li`/`erf`/Fresnel); and the bulk transcription —
  *  symbolic-slope hyperbolics (`sinh(a·v)` …), the standalone inverse functions
  *  (`asin` … `atanh`), the remaining hyperbolics (`sech`, `csch`, `tanh²`, `coth²`), the
  *  symbolic-`a` algebraic and radical family (`1/(a²−v²)`, `1/√(a²±v²)`, `1/√(v²−a²)`),
@@ -65,12 +65,12 @@ object integralRules:
    *  @param v   the integration variable
    *  @param pre `e` already normalised by `simplifyFully`, when the caller has it — `resolve`
    *             computes exactly this form for its second compiled attempt, so passing it in
-   *             spares a redundant pass (issue 2.7)
+   *             spares a redundant pass
    *  @return the antiderivative, already simplified, or `None` when no rule applies
    */
   private[scalar] def applyTo(e: _Expression, v: _Variable,
                               pre: Option[_Expression] = None): Option[_Expression] =
-    // Normalise into the canonical spelling first (issue 3.9): `1/cos → sec`, `cos/sin → cot`,
+    // Normalise into the canonical spelling first: `1/cos → sec`, `cos/sin → cot`,
     // so a rule written over the reciprocal-function nodes matches a ratio the user typed.
     val ne = pre.getOrElse(simplifyFully(e))
     rules.iterator
@@ -86,7 +86,7 @@ object integralRules:
       .nextOption()
       .map(simplifyFully)
 
-  /** Admissible bases for `∫ aᵛ dv = aᵛ/ln(a)` (issue 3.8 retired the old refusal).
+  /** Admissible bases for `∫ aᵛ dv = aᵛ/ln(a)`.
    *
    *  A **symbolic** base is accepted and answered formally — the variable is now threaded, so
    *  `freeOf("a")` already established it is free of the integration variable.  A **numeric**
@@ -100,7 +100,7 @@ object integralRules:
         case _                 => a.freeVars.nonEmpty    // symbolic base free of v -> formal
     }
 
-  /** `a`/`b` are distinct frequencies (issue 3.16's product-to-sum rules): numerically
+  /** `a`/`b` are distinct frequencies (the product-to-sum rules): numerically
    *  `|a| ≠ |b|` and both non-zero — either the sum or the difference of the frequencies
    *  would otherwise vanish, and the product-to-sum denominators with it — and symbolically,
    *  structurally distinct and not an explicit negation of one another.  This is "not
@@ -121,7 +121,7 @@ object integralRules:
   private[scalar] val rules: List[RewriteRule] = List(
 
     // ── trigonometric ────────────────────────────────────────────────────────
-    // Written over the first-class sec/csc/cot nodes (issue 3.9); `applyTo` normalises a
+    // Written over the first-class sec/csc/cot nodes; `applyTo` normalises a
     // ratio the user typed (`1/cos`, `cos/sin`) into these before matching.
 
     // ∫ tan(v) dv = -ln(cos(v))
@@ -131,7 +131,7 @@ object integralRules:
       name = "tan"),
 
     // NOTE: the integer POWERS tan^n / cot^n / sec^n / csc^n (n >= 2) are handled by the
-    // compiled reduction tier (issue 3.11, reduceTanCotPower / reduceSecCscPower in
+    // compiled reduction tier (reduceTanCotPower / reduceSecCscPower in
     // Integrate.scala), which recurses down to these n=1 base cases. No tan^2 / sec^2 / csc^2
     // entries live here: a table rule that never fires (the compiled tier closes it first)
     // would only be a second, silently-diverging definition of the same fact.
@@ -170,7 +170,7 @@ object integralRules:
       rhs  = Ratio(Power(Sin(V), _Number(2)), _Number(2)),
       name = "cos*sin"),
 
-    // ── hyperbolic (issue 3.9) ────────────────────────────────────────────────
+    // ── hyperbolic ────────────────────────────────────────────────
 
     RewriteRule(lhs = Sinh(V), rhs = Cosh(V), name = "sinh"),
     RewriteRule(lhs = Cosh(V), rhs = Sinh(V), name = "cosh"),
@@ -246,7 +246,7 @@ object integralRules:
       rhs  = Ratio(Product(Exp(V), Sum(Sin(V), Cos(V))), _Number(2)),
       name = "cos*exp"),
 
-    // ── special integral functions (issue 3.15) ──────────────────────────────
+    // ── special integral functions ──────────────────────────────
     // These antiderivatives are NOT elementary; the named nodes (Si/Ci/Ei/li, Fresnel S/C,
     // erf) ARE the answers, the same convention that lets Gamma be a symbolic node with a
     // numeric kernel. Every rule gains the linear-argument chain rule from applyTo, so
@@ -264,7 +264,7 @@ object integralRules:
     // ∫ dv/ln(v) = li(v)
     RewriteRule(lhs = Ratio(_Number(1), Ln(V)), rhs = Li(V), name = "1/ln"),
 
-    // ∫ e^(−v²) dv = (√π/2)·erf(v) — the near-free connection: Erf existed since 4.O,
+    // ∫ e^(−v²) dv = (√π/2)·erf(v) — the near-free connection: Erf already existed,
     // integrate simply never produced it.
     RewriteRule(
       lhs  = Exp(Product(_Number(-1), Power(V, _Number(2)))),
@@ -291,7 +291,7 @@ object integralRules:
       rhs  = FresnelC(V),
       name = "cos(pi/2 v^2)"),
 
-    // ── bulk transcription (issue 3.16) — symbolic-slope hyperbolics ─────────
+    // ── bulk transcription — symbolic-slope hyperbolics ─────────
     // u-substitution already closes exp(a·v)/sin(a·v)/cos(a·v) with a symbolic slope
     // (the census pinned it), because their n=1 integrals are COMPILED arms it can recurse
     // into. sinh/cosh/tanh are table-only, so the same route dies inside the recursion;
@@ -315,7 +315,7 @@ object integralRules:
     RewriteRule(lhs = Tanh(Product(V, A)), rhs = Ratio(Ln(Cosh(Product(A, V))), A),
                 condition = freeOf("a") && nonZero("a"), name = "tanh(v a)"),
 
-    // ── bulk transcription (issue 3.16) — inverse functions ──────────────────
+    // ── bulk transcription — inverse functions ──────────────────
     // The standard by-parts closed forms; the compiled parts tier reaches only ln and atan.
 
     // ∫ asin(v) dv = v·asin(v) + √(1 − v²)
@@ -354,7 +354,7 @@ object integralRules:
                  Ratio(Ln(Sum(_Number(1), Product(_Number(-1), Power(V, _Number(2))))), _Number(2))),
       name = "atanh"),
 
-    // ── bulk transcription (issue 3.16) — remaining hyperbolics ──────────────
+    // ── bulk transcription — remaining hyperbolics ──────────────
 
     // ∫ sech(v) dv = atan(sinh(v))     (the gudermannian antiderivative)
     RewriteRule(lhs = Sech(V), rhs = Atan(Sinh(V)), name = "sech"),
@@ -368,10 +368,10 @@ object integralRules:
     RewriteRule(lhs = Power(Coth(V), _Number(2)),
                 rhs = Sum(V, Product(_Number(-1), Coth(V))), name = "coth^2"),
 
-    // ── bulk transcription (issue 3.16) — algebraic and radical, symbolic a ──
-    // The NUMERIC versions of all of these close earlier (the rational tier, 3.13's trig
+    // ── bulk transcription — algebraic and radical, symbolic a ──
+    // The NUMERIC versions of all of these close earlier (the rational tier, the trig
     // substitution), and a numeric constant folds before it can match `Power(A, 2)` — so
-    // these fire only for the literally-written symbolic spelling, exactly like 3.8's
+    // these fire only for the literally-written symbolic spelling, exactly like the
     // 1/(a²+v²) precedent. The radical answers assume the table's usual `a > 0` reading.
 
     // ∫ dv/(a² − v²) = atanh(v/a)/a   and the v² − a² mirror (both sum orders)
@@ -424,7 +424,7 @@ object integralRules:
       condition = freeOf("a") && nonZero("a"),
       name      = "1/sqrt(v^2-a^2)"),
 
-    // ── bulk transcription (issue 3.16) — product-to-sum ─────────────────────
+    // ── bulk transcription — product-to-sum ─────────────────────
     // ∫ sin(a·v)cos(b·v), ∫ sin·sin, ∫ cos·cos with distinct frequencies. sin·sin and
     // cos·cos are symmetric under a↔b, so ONE entry covers both operand orders (the swap
     // just renames the bindings); sin·cos is not, so it carries its mirrored twin.
@@ -468,7 +468,7 @@ object integralRules:
       condition = freeOf("a") && freeOf("b") && ((b, _) => distinctFrequencies(b)),
       name      = "cos(a v)*cos(b v)"),
 
-    // ── bulk transcription (issue 3.16) — general exponential-trigonometric ──
+    // ── bulk transcription — general exponential-trigonometric ──
     // The cyclic pair with independent frequencies; the same-argument eᵛ·sin v entries
     // above fire first for that special case, so these never shadow them.
 
@@ -508,10 +508,10 @@ object integralRules:
       condition = freeOf("a") && freeOf("b") && nonZero("a") && nonZero("b"),
       name      = "cos(b v)*exp(a v)"),
 
-    // ── rational / parameterised (issue 3.8) ──────────────────────────────────
+    // ── rational / parameterised ──────────────────────────────────
     // ∫ dv/(a² + v²) = atan(v/a)/a, for `a` free of v and non-zero.  A numeric base closes
     // earlier in the compiled rational tier, so this fires only for a SYMBOLIC `a` — exactly
-    // the parameterised capability 3.8 unlocks.  Both operand orders, since a sum commutes.
+    // the parameterised-rule capability.  Both operand orders, since a sum commutes.
     RewriteRule(
       lhs       = Ratio(_Number(1), Sum(Power(A, _Number(2)), Power(V, _Number(2)))),
       rhs       = Ratio(Atan(Ratio(V, A)), A),
@@ -524,7 +524,7 @@ object integralRules:
       condition = freeOf("a") && nonZero("a"),
       name      = "1/(v^2+a^2)"),
 
-    // ∫ v·aᵛ dv = aᵛ·(v·ln(a) − 1)/ln²(a)   (issue 3.16; both operand orders)
+    // ∫ v·aᵛ dv = aᵛ·(v·ln(a) − 1)/ln²(a)   (both operand orders)
     RewriteRule(
       lhs       = Product(V, Power(A, V)),
       rhs       = Ratio(Product(Power(A, V), Sum(Product(V, Ln(A)), _Number(-1))),
@@ -538,7 +538,7 @@ object integralRules:
       condition = freeOf("a") && ((b, _) => admissibleExpBase(b)),
       name      = "a^v*v"),
 
-    // ∫ vᵃ dv = v^(a+1)/(a+1) for a SYMBOLIC exponent free of v (issue 3.16; a numeric
+    // ∫ vᵃ dv = v^(a+1)/(a+1) for a SYMBOLIC exponent free of v (a numeric
     // exponent closes in the compiled power rule and never reaches here).  Refuses only the
     // literal a = −1, whose antiderivative is the compiled ∫ 1/v = ln v.  Listed before
     // the general a^v rule; on `x^y` this one answers x^(y+1)/(y+1) — the base carries the
@@ -551,7 +551,7 @@ object integralRules:
 
     // ∫ aᵛ dv = aᵛ / ln(a).  LAST: the pattern is the most general in the table, and only the
     // condition keeps it from claiming every power.  Symbolic bases are answered formally;
-    // numeric bases are guarded to `> 0` and `≠ 1` (issue 3.8).
+    // numeric bases are guarded to `> 0` and `≠ 1`.
     RewriteRule(
       lhs       = Power(A, V),
       rhs       = Ratio(Power(A, V), Ln(A)),

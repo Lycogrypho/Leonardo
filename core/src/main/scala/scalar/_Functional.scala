@@ -265,7 +265,7 @@ case class _Pade(e: _Expression, v: _Variable, m: _Expression, n: _Expression)
           case None    => Left(this)
       case _ => Left(this)
 
-/** AST node for `laurent(e, v, point, m, n)` — issue 3.4.
+/** AST node for `laurent(e, v, point, m, n)`.
  *
  *  Expands `e` about an isolated singularity as `Σ(k = −m to n) c_k·(v − point)ᵏ`.
  *
@@ -274,7 +274,7 @@ case class _Pade(e: _Expression, v: _Variable, m: _Expression, n: _Expression)
  *  variable the expansion is taken in.
  *
  *  **`m` is optional.**  When absent the pole order is detected with `singularitiesOf`
- *  (3.3 slice D), whose `Pole(order)` *is* the length of the principal part.  A `Removable`
+ *  whose `Pole(order)` *is* the length of the principal part.  A `Removable`
  *  singularity gives `m = 0`, which is an ordinary Taylor series — returned rather than
  *  refused, since the caller asked a well-formed question that simply has no principal part.
  *
@@ -311,7 +311,7 @@ case class _Laurent(e: _Expression, v: _Variable, point: _Expression,
           case None    => Left(this)
       case _ => Left(this)
 
-  /** The pole order at `point`, from the 3.3 singularity classifier. */
+  /** The pole order at `point`, from the singularity classifier. */
   private def detectedOrder(env: Environment): Option[Int] =
     point.eval(env) match
       case Right(_Number(a)) if !a.isNaN && !a.isInfinite =>

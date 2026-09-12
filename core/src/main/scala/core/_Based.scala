@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package core
 
 
-/** An integer that remembers the base it is written in — issue 3.5.
+/** An integer that remembers the base it is written in.
  *
  *  The **fourth sibling** of [[_Number]], after [[_Complex]], [[_Truth]] and [[_Rational]],
  *  and built to the same pattern: a private constructor behind a smart factory, and a value
@@ -88,7 +88,7 @@ object _Based:
 
   /** Balanced-ternary digits, using `T` for the digit `-1`.
    *
-   *  The digit set is `{-1, 0, 1}` — the same alphabet 4.G's symmetric ternary logic uses,
+   *  The digit set is `{-1, 0, 1}` — the same alphabet the symmetric ternary logic uses,
    *  which is why this base belongs in the library rather than being a bare utility.
    */
   def balancedDigits(n: Long): String =

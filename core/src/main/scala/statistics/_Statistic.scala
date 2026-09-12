@@ -108,7 +108,7 @@ case class _PairStatistic(kind: PairStatKind, a: _Expression, b: _Expression) ex
     result.map(Right(_)).getOrElse(Left(_PairStatistic(kind, ra.toExpression, rb.toExpression)))
 
 
-/** Ordinary least squares: `regress(X, y)` — issue 4.Q slice B.
+/** Ordinary least squares: `regress(X, y)`.
  *
  *  Returns the `p × 1` coefficient vector.  **No intercept column is added**: a constant term
  *  is a column of ones the caller supplies, because a silently inserted column would make
@@ -143,10 +143,10 @@ object TestKind:
     case ChiSqTest => "chisqtest"
 
 
-/** An inference test — issue 4.Q slice C.
+/** An inference test.
  *
- *  Thin wrappers, exactly as the plan predicted: the work was in 4.O's incomplete beta and
- *  gamma and in 4.P's distribution carrier, both of which already existed.  What this adds is
+ *  Thin wrappers: the work was in the incomplete beta and
+ *  gamma kernels and in the distribution carrier, both of which already existed.  What this adds is
  *  the test statistics themselves and the routing.
  *
  *  @param kind the test
@@ -171,7 +171,7 @@ case class _Test(kind: TestKind, a: _Expression, b: _Expression) extends _Expres
  *
  *  Regression and the tests are `Double` algorithms — QR iteration and the cdf kernels are
  *  not exact whatever their input — so an exact matrix demotes here rather than losing the
- *  operation, the pattern 4.L slice B established for the decompositions.
+ *  operation, the pattern the exact tier established for the decompositions.
  */
 private def denseOf(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
   case Right(mv: _MatrixValue) => Some(mv)

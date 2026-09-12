@@ -5,11 +5,11 @@ import core.*
 import scalar.*
 
 
-/** Transfer-function algebra, poles and zeros, stability, and frequency response.
+/** [[https://en.wikipedia.org/wiki/Transfer_function Transfer-function]] algebra, poles and zeros, stability, and frequency response.
  *
  *  Every function takes the **frequency variable explicitly** — `s` for continuous time, `z`
  *  for discrete — because a transfer function is an ordinary `Ratio` and carries no type to
- *  dispatch on (6.29 Decision A).
+ *  dispatch on.
  */
 
 /** Series (cascade) connection: `G * H`.
@@ -37,8 +37,8 @@ def parallel(g: _Expression, h: _Expression, v: _Variable): _Expression =
  *  **The sign convention is stated because it cannot be inferred.**  Negative feedback is the
  *  control convention and what a unity-feedback loop means by default; a substantial part of
  *  the literature writes the positive form `G/(1 - G*H)`, and choosing silently would make
- *  every closed-loop result wrong for half its readers.  This is the lesson issue 6.26
- *  recorded for the spherical polar angle.  For positive feedback, negate `h`.
+ *  every closed-loop result wrong for half its readers — the reasoning that also fixes the
+ *  spherical polar-angle convention in the vector package.  For positive feedback, negate `h`.
  *
  *  @param g the forward path
  *  @param h the feedback path (use `_Number(1)` for unity feedback)
@@ -147,7 +147,7 @@ private def modulus(p: _Value): Option[Double] = p match
 
 /** Continuous-time stability: every pole strictly in the left half-plane.
  *
- *  **Decided from the poles rather than from a Routh table**, a deliberate departure from the
+ *  **Decided from the poles rather than from a [[https://en.wikipedia.org/wiki/Routh%E2%80%93Hurwitz_stability_criterion Routh table]]**, a deliberate departure from the
  *  original plan.  Routh's advantage is symbolic coefficients, but it carries well-known
  *  degenerate cases — a zero in the first column, or an identically zero row — each needing
  *  its own repair, and a mis-handled one yields a confident *wrong* verdict rather than a
@@ -221,7 +221,7 @@ def routhTable(g: _Expression, v: _Variable): Option[Vector[Vector[Double]]] =
       case stop => rows.take(stop + 1)
   }
 
-/** Frequency response of `G` at angular frequency `w`: substitute `v -> i*w`.
+/** [[https://en.wikipedia.org/wiki/Frequency_response Frequency response]] of `G` at angular frequency `w`: substitute `v -> i*w`.
  *
  *  Rides the existing `_Complex` closure — no new arithmetic — which is why the whole of
  *  Bode and Nyquist is one substitution.
@@ -240,7 +240,7 @@ def bode(g: _Expression, v: _Variable, w: Double): Option[(Double, Double)] =
     case Right(_Number(d)) if d.isFinite => Some((math.abs(d), if d < 0 then math.Pi else 0.0))
     case _                               => None
 
-/** Nyquist point: the real and imaginary parts of `G(i*w)`.
+/** [[https://en.wikipedia.org/wiki/Nyquist_stability_criterion Nyquist]] point: the real and imaginary parts of `G(i*w)`.
  *
  *  The same substitution as [[bode]], reported in rectangular rather than polar form — the two
  *  are one computation presented two ways, not two computations.

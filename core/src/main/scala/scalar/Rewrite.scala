@@ -4,7 +4,7 @@ package scalar
 import core.*
 
 
-/** A pattern-variable unifier and rule engine, so a rule can be **data** — issue 6.21.
+/** A pattern-variable unifier and rule engine, so a rule can be **data**.
  *
  *  **The hybrid, not the migration.**  The ~389 existing `case` arms across `scalar`,
  *  `transform` and `probability` stay compiled Scala matches: porting them would buy
@@ -44,7 +44,7 @@ case class _Pattern(name: String) extends _Expression:
  *  @param rhs       the template, whose `_Pattern` holes are filled from the match
  *  @param condition a guard over the bindings *and the context variable* — `∫ dv/(a²+v²)`
  *                   needs the hole `a` to be free of the integration variable, which is only
- *                   readable once that variable is threaded in (issue 3.8).  The combinators
+ *                   readable once that variable is threaded in.  The combinators
  *                   below ([[freeOf]], [[nonZero]], …) are the intended way to build one.
  *  @param name      a label, for diagnostics and test failure messages
  */
@@ -134,7 +134,7 @@ private def rewriteOnce(rules: List[RewriteRule], e: _Expression, v: _Variable):
   val withKids = e.rebuild(e.children.map(rewriteOnce(rules, _, v)))
   applyRules(rules, withKids, v).getOrElse(withKids)
 
-// ── condition combinators (issue 3.8) ────────────────────────────────────────
+// ── condition combinators ────────────────────────────────────────
 // One place to build a rule's guard.  Each returns a `(bindings, contextVariable)`
 // predicate, so it drops straight into `RewriteRule.condition`.  They compose with `&&`.
 

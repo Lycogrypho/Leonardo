@@ -57,10 +57,10 @@ case class _Fourier(e: _Expression, t: _Variable, w: _Variable) extends _Functio
  *  rule table in [[zTransformOf]].  The summation binder `n` is excluded from `children` per
  *  the `_Functional` convention; `z` names the output variable and appears free in the result.
  *
- *  One-sided rather than bilateral by issue 6.33 Decision A, matching `laplace`, which is
+ *  One-sided rather than bilateral by design, matching `laplace`, which is
  *  itself unilateral.  A bilateral transform would have to carry a **region of convergence**
  *  on every result — without one the same `X(z)` inverts to a causal or an anti-causal signal,
- *  so the inverse would have to guess — and that is deferred to issue 6.37.
+ *  so the inverse would have to guess — and that is deferred as future work.
  *
  *  `eval` applies [[zTransformOf]] and guards against the fixpoint (stays symbolic when the
  *  rule table cannot reduce the expression), the convention shared with [[_Laplace]].

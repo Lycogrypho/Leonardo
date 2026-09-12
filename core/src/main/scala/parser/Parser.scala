@@ -70,50 +70,50 @@ object Parser extends JavaTokenParsers:
    */
   val ReservedWords: Set[String] = Set(
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
-    "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",   // hyperbolic (3.9)
-    "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic (3.9)
+    "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",   // hyperbolic
+    "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
-    "expm",                                                                                 // 6.39 matrix exponential
-    "series", "parallel", "feedback", "impulse",                                            // 6.29 control theory
+    "expm",                                                                                 // matrix exponential
+    "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
                                                          // library function with no grammar
                                                          // production, so reserving the word
                                                          // taxed a plausible variable name
-                                                         // and bought nothing (issue 2.13).
+                                                         // and bought nothing.
                                                          // Reserve a word when a production
                                                          // needs it, not in anticipation of
                                                          // one -- releasing an unpublished
                                                          // reservation is free, reclaiming a
                                                          // released one breaks saved scripts
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
-    "ztrans", "invztrans",                                                                  // 6.33 z-transform
-    "domain", "differentiable", "singularities",         // domain analysis (3.3)
+    "ztrans", "invztrans",                                                                  // z-transform
+    "domain", "differentiable", "singularities",         // domain analysis
     "taylor", "maclaurin", "fourierSeries", "pade", "laurent",
-    "tobase", "balanced",                                // base conversion (3.5)      // series expansions (4.J)
+    "tobase", "balanced",                                // base conversion            // series expansions
     "and", "or", "not", "implies", "xor",                // logic connectives
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
-    "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions (4.I);
-    "normal", "uniform", "exponential", "binomial", "poisson",  // 4.P distributions
-    "pdf", "cdf", "prob", "quantile", "expect", "variance",     // 4.P queries + moments
-    "studentt", "chisq",                                       // 4.Q distributions
-    "mean", "pvariance", "stddev", "pstddev", "covariance", "correlation",  // 4.Q descriptive
-    "regress", "ttest", "confint", "chisqtest",                // 4.Q regression + inference
-    "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",  // 4.O; all lowercase-safe --
+    "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions;
+    "normal", "uniform", "exponential", "binomial", "poisson",  // distributions
+    "pdf", "cdf", "prob", "quantile", "expect", "variance",     // queries + moments
+    "studentt", "chisq",                                       // t / chi-squared distributions
+    "mean", "pvariance", "stddev", "pstddev", "covariance", "correlation",  // descriptive statistics
+    "regress", "ttest", "confint", "chisqtest",                // regression + inference
+    "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",  // analytic tier; lowercase-safe --
                                                          // none is a plausible variable
                                                          // name, unlike gamma/beta
                                                          // Gamma/Beta are capitalised so the
                                                          // lowercase names stay free as variables
-    "Si", "Ci", "Ei", "li", "fresnelS", "fresnelC",      // special integral functions (3.15);
+    "Si", "Ci", "Ei", "li", "fresnelS", "fresnelC",      // special integral functions;
                                                          // Si/Ci/Ei capitalised and reserved
                                                          // (plausible variable names, the
                                                          // Gamma/Beta reasoning); li keeps the
                                                          // C spelling; Fresnel spelled out --
                                                          // bare S/C would be homoglyph traps
-    "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus (6.24)
-    "fib", "lucas", "pell", "jacobsthal",                // numeric sequences (6.28)
+    "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus
+    "fib", "lucas", "pell", "jacobsthal",                // numeric sequences
     "binom", "catalan", "harmonic", "tabulate",          // combinatorial + the tabulator
-    "cartesian", "cylindrical", "spherical", "sphericalmaths",  // coordinate systems (6.26,
-                                                         // 6.27). Each needs its own entry:
+    "cartesian", "cylindrical", "spherical", "sphericalmaths",  // coordinate systems. Each
+                                                         // needs its own entry:
                                                          // the reserved check is exact, so
                                                          // "sphericalmaths" would otherwise
                                                          // still be a legal variable name.
@@ -230,7 +230,8 @@ object Parser extends JavaTokenParsers:
    *  Subtraction is built as `a + (-1)·b`, so getting this wrong would quietly route
    *  *every* subtraction and negation through the promotion lattice's float contagion:
    *  `3 - 5` would leave the exact tier before it ever entered it.  The matrix form below
-   *  stays a `_Number` deliberately — matrix entries are `Double` until slice B.
+   *  stays a `_Number` deliberately — the dense matrix kernels compute in `Double`,
+   *  so an exact `-1` would be demoted on contact anyway.
    */
   private def negOne: _Value = literalInt(-1)
 
@@ -260,7 +261,7 @@ object Parser extends JavaTokenParsers:
    */
   private def applySign(sign: Option[String], e: _Expression): _Expression = (sign, e) match
     // Exact literals first: `_Number` is a widening extractor, so without these two a
-    // negated exact literal would fold into an inexact one at parse time (issue 4.L).
+    // negated exact literal would fold into an inexact one at parse time.
     case (Some("-"), r: _Rational)                => r.negate
     case (Some("-"), Product(r: _Rational, rest)) => Product(r.negate, rest)
     case (Some("-"), _Number(n))                => _Number(-n)
@@ -446,7 +447,7 @@ object Parser extends JavaTokenParsers:
     "eigen("  ~> guardedExpr <~ ")"                                       ^^ _EigenDecomposition.apply     |
     "eig("    ~> guardedExpr <~ ")"                                       ^^ _EigDecomposition.apply       |
     "jordan(" ~> guardedExpr <~ ")"                                       ^^ _JordanDecomposition.apply    |
-    // step(G, s, t) is the 6.29 step RESPONSE; step(e) is the Heaviside unit step. The
+    // step(G, s, t) is the control-domain step RESPONSE; step(e) is the Heaviside unit step. The
     // 3-argument form is listed FIRST, or the 1-arg alternative matches and then chokes on
     // the comma -- the arity-overloading precedent of log(x) / log(x, b) and expect(...).
     "step("   ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
@@ -473,8 +474,8 @@ object Parser extends JavaTokenParsers:
     "dfact("  ~> guardedExpr <~ ")"       ^^ { n => MultiFactorial(n, literalInt(2)) }                     |
     "mfact("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case n ~ _ ~ k => MultiFactorial(n, k) }      |
     "lgamma(" ~> guardedExpr <~ ")"                                       ^^ LogGamma.apply                |
-    // Special functions, 4.O tier.
-    // Probability, 4.P.  `expect`/`variance` take a one- OR two-argument form, the same
+    // Special functions, analytic tier.
+    // Probability.  `expect`/`variance` take a one- OR two-argument form, the same
     // shape `log(x)` / `log(x, b)` already established; the two-argument form names the
     // random variable, which is a BINDER and so must be parsed as a variable, not an expr.
     "normal("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.Normal, List(a, b)) }   |
@@ -482,7 +483,7 @@ object Parser extends JavaTokenParsers:
     "binomial("    ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.Binomial, List(a, b)) } |
     "exponential(" ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Exponential, List(a)) }                            |
     "poisson("     ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Poisson, List(a)) }                                |
-    // Statistics, 4.Q.  `mean` and `variance` accept a sample OR a distribution.
+    // Statistics.  `mean` and `variance` accept a sample OR a distribution.
     "mean("        ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.Mean, e) }          |
     "pvariance("   ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.PVariance, e) }     |
     "stddev("      ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.StdDev, e) }        |
@@ -493,14 +494,14 @@ object Parser extends JavaTokenParsers:
     "ttest("       ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.TTest, a, b) }     |
     "confint("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ConfInt, a, b) }   |
     "chisqtest("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ChiSqTest, a, b) } |
-    // The two distribution families 4.Q needed and 4.P had not shipped.
+    // The two distribution families the inference tier needs.
     "studentt("    ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.StudentT, List(a)) }   |
     "chisq("       ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.ChiSquared, List(a)) } |    "pdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Pdf, d, List(x)) }      |
     "cdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Cdf, d, List(x)) }      |
     "quantile(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Quantile, d, List(x)) } |
     "prob("     ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case d ~ _ ~ lo ~ _ ~ hi => _DistributionQuery(Query.Prob, d, List(lo, hi)) }                                               |
-    // The predicate form (4.R): `prob(X < 2)`, `prob(0 < X and X < 1)`.  Takes a full LOGIC
+    // The predicate form: `prob(X < 2)`, `prob(0 < X and X < 1)`.  Takes a full LOGIC
     // expression so `and` is available, and is tried after the three-argument form so the
     // interval spelling is not shadowed.
     "prob("     ~> guardedLogicExpr <~ ")" ^^ { p => _DistributionQuery(Query.ProbOf, p, Nil) } |
@@ -517,10 +518,10 @@ object Parser extends JavaTokenParsers:
     "gammaQ("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ x => GammaQ(a, x) }            |
     "betaI("   ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case x ~ _ ~ a ~ _ ~ b => BetaI(x, a, b) }                                                          |
-    // Special integral functions (3.15). "Si("/"Ci("/"Ei(" are case-sensitive literals, so
+    // Special integral functions. "Si("/"Ci("/"Ei(" are case-sensitive literals, so
     // they cannot shadow "sin(" and friends; "fresnelS(" is listed before "fresnelC(" only
     // for tidiness -- the two do not prefix each other.
-    // Numeric sequences (6.28). `fib` alone takes the 3-argument seeded form, listed first
+    // Numeric sequences. `fib` alone takes the 3-argument seeded form, listed first
     // so the greedy 1-argument alternative cannot claim it and then choke on the comma.
     "fib("      ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case n ~ _ ~ a ~ _ ~ b => _Sequence(SeqKind.Fibonacci, n, List(a, b)) }                            |
@@ -541,7 +542,7 @@ object Parser extends JavaTokenParsers:
     "fresnelS(" ~> guardedExpr <~ ")"                                    ^^ FresnelS.apply                |
     "fresnelC(" ~> guardedExpr <~ ")"                                    ^^ FresnelC.apply                |
     "Gamma("  ~> guardedExpr <~ ")"                                       ^^ Gamma.apply                   |
-    // Greek aliases (4.K). No ReservedWords entry is needed: the variable regex is
+    // Greek aliases. No ReservedWords entry is needed: the variable regex is
     // ASCII-only, so no Greek letter can ever be a variable name and there is nothing to
     // collide with. toString keeps emitting the ASCII spelling, so :save scripts stay
     // portable to terminals that cannot render or type these.
@@ -596,7 +597,7 @@ object Parser extends JavaTokenParsers:
     }                                                                                             |
     // invztrans(...) is listed BEFORE ztrans(...) although neither is a prefix of the other,
     // so the order is not load-bearing here -- it simply keeps each transform beside its
-    // inverse, as laplace/invlaplace are.  Issue 6.33; one-sided by Decision A.
+    // inverse, as laplace/invlaplace are.  One-sided by design, matching laplace.
     "invztrans(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
       case f ~ _ ~ zv ~ _ ~ nv            => _InverseZTransform(f, zv, nv)
     }                                                                                             |
@@ -627,14 +628,14 @@ object Parser extends JavaTokenParsers:
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
     "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
-    // Base conversion (3.5).  `tobase` covers any radix 2..36; `balanced` is ternary with
-    // the {-1, 0, 1} digit set that 4.G's symmetric logic already uses.
+    // Base conversion.  `tobase` covers any radix 2..36; `balanced` is ternary with
+    // the {-1, 0, 1} digit set that the symmetric ternary logic already uses.
     "tobase(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case e ~ _ ~ b => _ToBase(e, b) } |
-    "balanced(" ~> guardedExpr <~ ")"                   ^^ { e              => _Balanced(e)  } |    // Laurent series (3.4).  The five-argument form states the pole order; the four-argument
+    "balanced(" ~> guardedExpr <~ ")"                   ^^ { e              => _Balanced(e)  } |    // Laurent series.  The five-argument form states the pole order; the four-argument
     // form omits it and lets `singularitiesOf` detect it.  Longest first, or the 4-arg rule
     // would match and then choke on the extra comma.
     "laurent(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case e ~ _ ~ v ~ _ ~ a ~ _ ~ m ~ _ ~ n => _Laurent(e, v, a, Some(m), n) } |
-    "laurent(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")"                     ^^ { case e ~ _ ~ v ~ _ ~ a ~ _ ~ n         => _Laurent(e, v, a, None, n)    } |    // Domain analysis (3.3).  The optional third argument selects the number system; it is
+    "laurent(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")"                     ^^ { case e ~ _ ~ v ~ _ ~ a ~ _ ~ n         => _Laurent(e, v, a, None, n)    } |    // Domain analysis.  The optional third argument selects the number system; it is
     // matched as a bare literal only in this position, so `real` and `complex` stay usable
     // as ordinary variable names everywhere else and need no `ReservedWords` entry.
     "domain(" ~> guardedExpr ~ "," ~ variable ~ opt("," ~> ("real" | "complex")) <~ ")"        ^^ { case e ~ _ ~ v ~ k          => _Domain(e, v, domainKind(k))          } |
@@ -642,17 +643,17 @@ object Parser extends JavaTokenParsers:
     "singularities(" ~> guardedExpr ~ "," ~ variable <~ ")"                                     ^^ { case e ~ _ ~ v             => _Singularities(e, v)                  } |
     // guardedLogicExpr, not guardedExpr: `logicExpr` sits ABOVE `equationExpr`, so this
     // accepts everything the narrower rule did -- "solve(x = 5, x)", "solve(h, x)",
-    // "solve(x^2 - 4 > 0, x)" -- and additionally the connectives, which issue 3.2 needs for
+    // "solve(x^2 - 4 > 0, x)" -- and additionally the connectives, which inequality solving needs for
     // "solve(2x > 2 and x < 5, x)".  With guardedExpr the argument stopped below `and`/`or`
     // and those spelled out as "'and' is a reserved word and cannot be used as a variable".
     "solve("    ~> guardedLogicExpr ~ "," ~ variable <~ ")"                                       ^^ { case e ~ _ ~ v             => _Solve(e, v)                 } |
     // equations is a matrix of _Equation nodes; variables are listed after the first comma.
     "solveSystem(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")"                          ^^ { case eqs ~ _ ~ vars         => _SolveSystem(eqs, vars)      } |
-    // Vector calculus (6.24): field/scalar, then the ORDERED coordinate tuple -- the same
+    // Vector calculus: field/scalar, then the ORDERED coordinate tuple -- the same
     // shape as solveSystem, because the coordinate list is exactly as position-significant
     // as a solve-variable list and must never be inferred from freeVars.
-    // The optional trailing coordinate system (6.26) follows the tuple; omitted means
-    // Cartesian, so every 6.24 spelling parses unchanged.
+    // The optional trailing coordinate system follows the tuple; omitted means
+    // Cartesian, so every Cartesian spelling parses unchanged.
     "grad("      ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Grad(f, vs.toVector, cSys(s))      } |
     "div("       ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Div(f, vs.toVector, cSys(s))       } |
     "curl("      ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Curl(f, vs.toVector, cSys(s))      } |
@@ -660,7 +661,7 @@ object Parser extends JavaTokenParsers:
     "jacobian("  ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Jacobian(f, vs.toVector, cSys(s))  } |
     "hessian("   ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Hessian(f, vs.toVector, cSys(s))   }
 
-  /** The coordinate-system keyword of a vector operator (issues 6.26 and 6.27).
+  /** The coordinate-system keyword of a vector operator.
    *
    *  `sphericalmaths` is listed BEFORE `spherical`, the longest-first rule the relational
    *  operators already follow: the shorter alternative matches the prefix and would leave

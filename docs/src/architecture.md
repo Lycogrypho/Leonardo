@@ -9,11 +9,25 @@ nav_order: 13
 <div style="clear:both"></div>
 
 Leonardo is structured as a layered set of packages. Dependencies point inward:
-every domain package imports `core`; nothing imports `cli` or `parser`.
+every domain package imports `core` (and usually `scalar`); nothing imports `cli` or
+`parser`; the graph is a strict DAG.
 
 ```
-core  ←  scalar  ←  matrix  ←  equation  ←  parser  ←  cli
+                            cli
+                             │
+                           parser
+   ┌────────┬─────────┬──────┼──────┬─────────┬─────────┬────────┐
+ matrix  equation  transform ode  logic  probability  domain  vector … control
+   └────────┴─────────┴──────┴──────┴─────────┴─────────┴────────┘
+                           scalar
+                             │
+                            core
 ```
+
+The picture is a simplification — some domains also import each other in one direction
+(`equation` imports `logic`, `statistics` imports `probability` and `matrix`, `control`
+imports `transform` and `matrix`) — but the invariants hold everywhere: `core` imports no
+domain, every arrow is one-way, and `parser` and `cli` sit above all of them.
 
 ## Modules
 
@@ -47,10 +61,18 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 
 | Package | Role | Documentation |
 |---------|------|---------------|
-| **`core`** | `_Expression` trait, `_Value` marker, `_Number`, `_Bool`, `_Complex`, `_Variable`, `_MatrixValue`, `Environment` — the foundation shared by every domain | [Expressions & Evaluation](expressions.md) |
-| **`scalar`** | AST nodes (`Sum`, `Product`, `Power`, functions, functionals) and all algorithms: `derive`, `integrate`, `simplify`, `expand`, `normalize`, `compile`, `sample`, plus a data-driven rewrite-rule engine (`Rewrite`) backing the parameterised table of integrals (`IntegralRules`) | [Expressions & Evaluation](expressions.md) · [Calculus](calculus.md) |
-| **`matrix`** | `_Matrix` symbolic node + `_MatrixOperation` nodes (`MatSum`, `MatProduct`, `MatScale`, `Transpose`); dense `_MatrixValue` kernels live in `core` | [Matrices](matrix.md) |
-| **`equation`** | `_Equation` relation, `_EqualityCheck`, `_Solve`, `_SolveSystem` AST nodes; `solve` and `solveSystem` algorithms | [Equations & Complex Numbers](equations.md) |
+| **`core`** | `_Expression` trait, `_Value` marker, `_Number`, `_Bool`, `_Complex`, `_Rational`, `_Truth`, `_Based`, `_Variable`, `_MatrixValue`, `Environment` — the foundation shared by every domain | [Expressions & Evaluation](expressions.md) |
+| **`scalar`** | AST nodes (`Sum`, `Product`, `Power`, functions, functionals) and all algorithms: `derive`, `integrate`, `simplify`, `expand`, `normalize`, `compile`, `sample`, series expansions, domain analysis, plus a data-driven rewrite-rule engine (`Rewrite`) backing the parameterised table of integrals (`IntegralRules`) | [Expressions & Evaluation](expressions.md) · [Calculus](calculus.md) |
+| **`matrix`** | `_Matrix` symbolic node + `_MatrixOperation` nodes, constructors, the decompositions and `expm`; dense `_MatrixValue` kernels live in `core` | [Matrices](matrix.md) |
+| **`equation`** | `_Equation`, `_Comparison`, `_EqualityCheck` relation nodes; `solve` (equations, inequalities, matrix unknowns) and `solveSystem` | [Equations & Complex Numbers](equations.md) |
+| **`transform`** | Laplace, Fourier, inverse Laplace, and the one-sided z-transform and its inverse | [Features](features.md) |
+| **`ode`** | `_ODE` node; closed-form linear and separable tiers, Runge–Kutta fallback | [Features](features.md) |
+| **`logic`** | The five connectives over one Kleene/fuzzy rule table; simplification, CNF/DNF, truth tables, membership curves, defuzzification | [Logic](logic.md) |
+| **`probability`** | Distributions as first-class values; `pdf`/`cdf`/`prob`/`quantile`; `expect`/`variance` by a linearity rule table | [Features](features.md) |
+| **`statistics`** | Descriptive statistics, regression by QR, elementary inference (`ttest`, `confint`, `chisqtest`) | [Features](features.md) |
+| **`domain`** | Renders the neutral domain analysis (`domain`, `differentiable`, `singularities`) into relation nodes | [Features](features.md) |
+| **`vector`** | `grad`/`div`/`curl`/`laplacian`/`jacobian`/`hessian` over an ordered coordinate tuple, in three coordinate systems | [Calculus](calculus.md) |
+| **`control`** | Transfer-function algebra, stability, time and frequency response, state space, discretisation | [Control Systems](control.md) |
 | **`parser`** | Recursive-descent `Parser` (extends `JavaTokenParsers`); produces all AST node types; `ReservedWords` guard | [Getting Started](getting-started.md) |
 | **`cli`** | Interactive `Session` (pure, IO-free core) + `repl` read loop; session scripts (`:save`/`:load`). **Ships as the separate `leonardo-repl` artifact** | [Interactive REPL](repl.md) |
 

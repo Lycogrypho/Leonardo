@@ -164,18 +164,18 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
 // ── High-degree rational inverse: square-free factorisation + partial fractions ──
 //
 // `derivPoly` and `polyRoots` were local copies of `scalar.derivCoeffs` / `scalar.polyRoots`;
-// both now come from `scalar/Polynomial.scala` (issue 3.1), which issue 2.5 extended with the
+// both now come from `scalar/Polynomial.scala`, which also carries the
 // coefficient arithmetic and square-free factorisation this tier now shares with the
 // integrator's rational tier.
 //
-// Issue 3.17 replaced the residue formula `A_r = N(r)/D'(r)` used here: it is defined only
+// The residue formula `A_r = N(r)/D'(r)` once used here was replaced: it is defined only
 // for a SIMPLE pole (it divides by `D'(r)`, which vanishes exactly when the pole repeats), so
 // `evalPolyAt` and `pairConjugates` — the complex-root residue machinery — went with it.
 
 /** Inverts a strictly proper `N(s)/D(s)` with `deg D >= 3`, repeated poles included.
  *
- *  **Multiplicities come from square-free factorisation, not from root-finding** (issue
- *  3.17, reusing the `scalar` helpers issue 2.5 made shareable).  The former residue
+ *  **Multiplicities come from square-free factorisation, not from root-finding** (the
+ *  shared `scalar` polynomial helpers).  The former residue
  *  formula `A_r = N(r)/D'(r)` is defined only for a *simple* pole — it divides by `D'(r)`,
  *  which vanishes exactly when the pole repeats — so repeated poles had to be refused.
  *  `squareFreeFactors` splits `D` by multiplicity arithmetically first, which also sidesteps
@@ -200,7 +200,7 @@ private def invHigherDegree(
     if terms.isEmpty then _Number(0) else terms.reduce(sum)
   }
 
-/** Decomposes `N(s)/D(s)` into partial fractions and inverts each piece (issue 3.17).
+/** Decomposes `N(s)/D(s)` into partial fractions and inverts each piece.
  *
  *  Mirrors `scalar.integratePartialFractions`: factor `D` into real linear factors and
  *  irreducible quadratics with their multiplicities, build one unknown per basis element

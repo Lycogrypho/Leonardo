@@ -5,7 +5,7 @@ import core.*
 import scalar.*
 
 
-/** Unilateral Fourier transform via the Laplace-to-Fourier substitution.
+/** Unilateral [[https://en.wikipedia.org/wiki/Fourier_transform Fourier transform]] via the Laplace-to-Fourier substitution.
  *
  *  The unilateral Fourier transform `F{f(t)} = integral_0^inf f(t) * exp(-i*w*t) dt`
  *  equals `L{f(t)}` evaluated at `s = i*w`.  [[fourierOf]] computes the Laplace

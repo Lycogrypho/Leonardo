@@ -14,7 +14,7 @@ trait _Operation extends _Expression
  *  Goes through the `_MatrixShaped` marker rather than `matrix._Matrix`, which `scalar`
  *  cannot see — the same route `_Function.mapMatrixExpr` takes.
  *
- *  Needed because issue 4.L slice B stopped an exactly-written matrix from collapsing into
+ *  Needed because the exact tier stops an exactly-written matrix from collapsing into
  *  the dense carrier: operations here that used to receive a `Right(_MatrixValue)` now get a
  *  `Left(_Matrix)` instead, and the ones that cannot be exact have to demote or they would
  *  silently stop working in exact mode.
@@ -77,7 +77,7 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
     (a.eval(env), b.eval(env)) match
       // matrix cases precede the zero short-circuit: 0 * M is the zero MATRIX.
       // `_Number(k)` here also matches an exact scalar, so `2 * A` keeps working in exact
-      // mode; exact matrix ENTRIES are slice B.
+      // mode; exact matrix ENTRIES ride the symbolic `_Matrix` and never reach this arm.
       case (Right(_Number(k)), Right(m: _MatrixValue))      => m.scale(k).guarded(this)
       case (Right(m: _MatrixValue), Right(_Number(k)))      => m.scale(k).guarded(this)
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
@@ -132,7 +132,7 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
         y.inverse match
           case Some(yi) if x.cols == yi.rows => x.multiply(yi).guarded(this)
           case _                             => Left(this)
-      // Since issue 4.L slice B an exactly-written matrix stays symbolic, so these three
+      // An exactly-written matrix stays symbolic (see `matrix.Exact`), so these three
       // shapes now arrive as `Left`s.  M / k divides cell by cell and so stays EXACT --
       // `_MatrixShaped` is a core marker, so this needs no scalar -> matrix dependency.
       case (Left(m: _MatrixShaped), Right(k @ _Number(_))) =>
@@ -189,10 +189,10 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
         matrixPower(m, e).getOrElse(Left(this))
       // Same, with an exact exponent: in exact mode `A^2` carries a _Rational, and without
       // this arm it would fall through to the complex kernel and lose matrix power entirely.
-      // Exact matrix ENTRIES are slice B; this only keeps the existing feature working.
+      // Exact matrix ENTRIES ride the symbolic `_Matrix`; this only keeps the feature working.
       case (Right(m: _MatrixValue), Right(r: _Rational)) =>
         matrixPower(m, r.toDouble).getOrElse(Left(this))
-      // Since issue 4.L slice B a matrix with exact entries stays a symbolic `_Matrix`
+      // A matrix with exact entries stays a symbolic `_Matrix`
       // rather than collapsing, so it arrives here as a `Left`.  Read it as dense: `A^n`
       // therefore computes in `Double` even in exact mode, because `scalar` cannot build a
       // matrix product and so cannot do exact repeated multiplication from this node.
@@ -227,7 +227,7 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
    *
    *  Not closed over the rationals — `2^(1/2)` is irrational — so it is computed and
    *  re-approximated to the working precision, like every transcendental.  A positive base
-   *  goes through spire's `Real` (issue 4.N), which is what lets a high working precision
+   *  goes through spire's `Real`, which is what lets a high working precision
    *  mean something here; a negative base with a fractional exponent is the complex case and
    *  keeps the `Double` route, which owns the principal-value fallback.
    *

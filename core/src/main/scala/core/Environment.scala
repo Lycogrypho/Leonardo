@@ -31,7 +31,7 @@ object Environment:
   val DefaultPrecision: Int = 5
 
   /** Canonical default *working* precision, in decimal digits, for the exact-arithmetic
-   *  tier (issue 4.L).
+   *  tier.
    *
    *  A different quantity from [[DefaultPrecision]], and deliberately a separate field
    *  rather than an overload of it: `precision` decides how a result is *shown*, working
@@ -63,7 +63,7 @@ object Environment:
  *                        defaults to [[LogicSemantics.MinMax]].  Like `symmetricLogic`
  *                        this is a knob on `eval`, not a separate node hierarchy.
  *  @param workingPrecision decimal digits an irrational is approximated to before exact
- *                        arithmetic continues (issue 4.L).  Read by `eval` wherever a
+ *                        arithmetic continues.  Read by `eval` wherever a
  *                        [[_Rational]] meets an operation that is not closed over the
  *                        rationals.  Note this is *not* the exact-mode switch: whether a
  *                        value is exact is carried by its own type, so the only component
@@ -79,7 +79,7 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
 
   /** The reduction policy sized for this environment's working precision.
    *
-   *  Derived rather than stored: the 4.M benchmark showed that a bound below the operand
+   *  Derived rather than stored: the gcd-policy benchmark showed that a bound below the operand
    *  size a precision implies degenerates [[GcdPolicy.Threshold]] into [[GcdPolicy.Eager]],
    *  so the two have to move together.
    */

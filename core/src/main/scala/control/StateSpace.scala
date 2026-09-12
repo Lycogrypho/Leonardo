@@ -6,11 +6,11 @@ import scalar.*
 import matrix.*
 
 
-/** State-space models and the discretisation that needs them (issue 6.29 slices 5 and 6).
+/** [[https://en.wikipedia.org/wiki/State-space_representation State-space]] models and the discretisation that needs them.
  *
  *  **A model is a 1x4 `matrix._Matrix` of matrices**, exactly the shape `lu`/`qr`/`eig` return,
  *  so `at(model, 1, k)` indexes it and `:save` round-trips it with no new machinery
- *  (6.29 Decision A).
+ *  — the shared indexing convention.
  */
 
 /** Bundles `(A, B, C, D)` into the 1x4 row that represents a state-space model.
@@ -51,7 +51,7 @@ private def hcat(l: _MatrixValue, r: _MatrixValue): _MatrixValue =
  *  transpose is what makes it applicable: a controllability matrix is `n x (n*m)` and so is
  *  wide for every multi-input plant, while QR requires rows >= cols.
  *
- *  **Deliberately not `det(M * Mᵀ)`, which is the trap this replaced** (issue 2.11).  That
+ *  **Deliberately not `det(M * Mᵀ)`, which is the trap this replaced**.  That
  *  form is wrong twice over.  Forming the Gram matrix **squares the condition number** — the
  *  very reason `statistics.leastSquares` solves by QR rather than by the normal equations, so
  *  using it here contradicted a rule the library had already settled.  And a determinant
@@ -63,7 +63,7 @@ private def hcat(l: _MatrixValue, r: _MatrixValue): _MatrixValue =
 private def fullRowRank(m: _MatrixValue): Boolean =
   m.transpose.qrDecompose.isDefined
 
-/** Is the pair `(A, B)` controllable — can the input steer every state?
+/** Is the pair `(A, B)` [[https://en.wikipedia.org/wiki/Controllability controllable]] — can the input steer every state?
  *
  *  @param a the state matrix
  *  @param b the input matrix
@@ -75,7 +75,7 @@ def controllable(a: _Expression, b: _Expression): Option[Boolean] =
     if am.rows == am.cols && bm.rows == am.rows
   yield fullRowRank(ctrbOf(am, bm))
 
-/** Is the pair `(A, C)` observable — can the output distinguish every state?
+/** Is the pair `(A, C)` [[https://en.wikipedia.org/wiki/Observability observable]] — can the output distinguish every state?
  *
  *  Observability of `(A, C)` is controllability of `(Aᵀ, Cᵀ)` — the duality, used here rather
  *  than restated, so the two can never disagree.
@@ -98,7 +98,7 @@ def observable(a: _Expression, c: _Expression): Option[Boolean] =
  *  though `B_d` exists.  A singular `A` is entirely ordinary: any system with an integrator
  *  has one, so the naive form would fail on a common case rather than an exotic one.
  *
- *  This is what issue 6.39 was carved out of 6.29 to supply, and what a Kalman filter needs.
+ *  This is what the matrix exponential exists to supply, and what a Kalman filter needs.
  *
  *  @param a  the continuous state matrix
  *  @param b  the continuous input matrix

@@ -9,7 +9,7 @@
 
 ## Introduction
 
-Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). The name is an homage to [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), commonly known as Fibonacci, the Italian mathematician and author of [Liber Abbaci](https://en.wikipedia.org/wiki/Liber_Abaci#cite_note-sigler-3): with his works he introduced Indo/Arabic numerals and mathematical notation to the Western world.
+Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). The name is an homage to [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), commonly known as Fibonacci, the Italian mathematician and author of the [Liber Abaci](https://en.wikipedia.org/wiki/Liber_Abaci): with his works he introduced Indo/Arabic numerals and mathematical notation to the Western world.
 
 This project was loosely inspired by the Scala project [Cascala/Galileo](https://github.com/cascala/galileo), though the codebase has been completely rewritten from scratch and Leonardo is now basically unrelated to Galileo.
 
@@ -232,8 +232,8 @@ bindings, definitions) as a script that `:load` replays.
 
 ## Planned Features
 
-Candidate domains, each recorded in full in the project's issue list. They are placeholders
-rather than commitments, listed roughly by effort-to-value:
+Candidate domains under consideration. They are placeholders rather than commitments,
+listed roughly by effort-to-value:
 
 - **Number theory** — primes, `primepi`, continued fractions, modular arithmetic and the
   classical integer functions; the cheapest of the open domains and already half-specified.

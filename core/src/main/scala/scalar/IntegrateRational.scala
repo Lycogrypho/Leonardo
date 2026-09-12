@@ -9,13 +9,13 @@ import scala.annotation.tailrec
 /** Rational-function integration: long division, completing the square, and the full
  *  partial-fraction decomposition.
  *
- *  Split out of `Integrate.scala` by issue 2.6 (see that file for the dispatch order).
- *  The coefficient arithmetic this tier runs on lives in `Polynomial.scala` (issue 2.5),
+ *  Split out of `Integrate.scala` (see that file for the dispatch order).
+ *  The coefficient arithmetic this tier runs on lives in `Polynomial.scala`,
  *  shared with `Singularity` and the inverse Laplace transform.
  */
 
 
-// ── Rational-function integration by partial fractions (issue 4.C) ──────────────
+// ── Rational-function integration by partial fractions ──────────────
 //
 // integrateRational handles Ratio(N(v), D(v)) where N and D are polynomials in v with
 // numeric coefficients: polynomial long division peels an improper fraction into a
@@ -28,7 +28,7 @@ import scala.annotation.tailrec
 // Laplace transform draws (transform.InverseLaplaceTransform).
 
 // `RationalEps`, `polyDegree`, `derivCoeffs` and `polyRoots` live in `Polynomial.scala`
-// (issue 3.1) — they are shared with the inverse Laplace transform's residue rule.
+// — they are shared with the inverse Laplace transform's residue rule.
 
 /** Evaluates `e` in an empty environment, returning `Some(d)` for a concrete number. */
 private def constValue(e: _Expression): Option[Double] =
@@ -113,7 +113,7 @@ private def integrateQuadraticDen(num: Vector[Double], den: Vector[Double], v: _
     val a2 = (n1 * r2 + n0) / (r2 - r1)
     Some(simplifyFully(Sum(logTerm(a1, Sum(v, _Number(-r1))), logTerm(a2, Sum(v, _Number(-r2))))))
 
-// ── Full partial-fraction decomposition (issue 3.12) ────────────────────────────
+// ── Full partial-fraction decomposition ────────────────────────────
 //
 // Generalises the old residue-only path (distinct real roots) to the complete real
 // decomposition: repeated real roots (v - r)^m, and irreducible quadratics (v^2 + p v + q)
@@ -127,7 +127,7 @@ private def integrateQuadraticDen(num: Vector[Double], den: Vector[Double], v: _
 // are handed to `polyRoots`.
 
 // `polyMul`, `polyTrim`, `polySub`, `polyMonic`, `polyGcd`, `polyDivide`, `evalCoeffsReal`,
-// `squareFreeFactors` and `rootsOfSquareFree` live in `Polynomial.scala` (issue 2.5) — they
+// `squareFreeFactors` and `rootsOfSquareFree` live in `Polynomial.scala` — they
 // are shared with `Singularity` and the inverse Laplace transform.
 
 /** Factorises `den` into real linear factors `(v - r)^m` and irreducible quadratics
@@ -191,7 +191,7 @@ private def integrateQuadPowerTerm(bCoef: Double, cCoef: Double, p: Double, q: D
   Sum(derivPart, constPart)
 
 /** Integrates a proper rational `num/den` (`deg den >= 3`, numeric coefficients) by the full
- *  real partial-fraction decomposition (issue 3.12).
+ *  real partial-fraction decomposition.
  *
  *  @return the antiderivative, or `None` when the denominator cannot be factored/reconstructed
  *          or the coefficient system is singular

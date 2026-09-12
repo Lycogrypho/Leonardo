@@ -58,18 +58,18 @@ final class Session:
   private val MaxPrecision = 15
   private var precision: Int = Environment.DefaultPrecision
   private var colorSchemeName: String = "dark"
-  // Multi-line, column-aligned matrix display (issue 4.6). Off by default so the
+  // Multi-line, column-aligned matrix display. Off by default so the
   // single-line `[[…], […]]` form (which tests and :save scripts rely on) is unchanged;
   // `pretty on` opts in, mirroring the `colors` toggle.
   private var prettyMatrix: Boolean = false
-  // Symmetric ternary display/parse encoding (issue 4.G): {-1, 0, 1} instead of
-  // {false, unknown, true}. Off by default so the 4.F alphabet is unchanged; an
+  // Symmetric ternary display/parse encoding: {-1, 0, 1} instead of
+  // {false, unknown, true}. Off by default so the word alphabet is unchanged; an
   // *encoding* toggle only -- the min-max rule table is the same either way.
   private var symmetricLogic: Boolean = false
-  // Fuzzy t-norm family (issue 4.H). MinMax is the default and the only lattice of the
+  // Fuzzy t-norm family. MinMax is the default and the only lattice of the
   // three, so the boolean and three-valued tiers are unaffected by it.
   private var semantics: LogicSemantics = LogicSemantics.MinMax
-  // Exact arithmetic (issue 4.L). Off by default so the Double path is byte-identical.
+  // Exact arithmetic. Off by default so the Double path is byte-identical.
   // Held HERE rather than in Environment because it is a *parse-time* decision -- what a
   // literal becomes -- and by eval time exactness is carried by the value's own type.
   // `workingPrecision` is the separate quantity that eval does need, and that one IS an
@@ -90,7 +90,7 @@ final class Session:
   private val assignment      = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=(.+)""".r
   private val multiAssignment = """([a-zA-Z][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]*)+)\s*:=(.+)""".r
   // "name := consolidate(expr)" — freeze the simplified + evaluated result into `name`
-  // (issue 4.9). consolidate(...) is NOT a grammar function; it is recognised here on the
+  // consolidate(...) is NOT a grammar function; it is recognised here on the
   // whole RHS so the inner text is handed to the ordinary expression parser via withParsed.
   private val consolidation   = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=\s*consolidate\((.+)\)""".r
   // Lazy first group lets the regex engine find the shortest expression that still
@@ -171,7 +171,7 @@ final class Session:
     case r: _Rational => r.exact
     // Before the _Number arm for the same reason as _Rational: _Number widens over _Based
     // and would write a bare decimal, losing the base. `toString` is the literal form
-    // (0xFF, 0t1TT) or the tobase(...) call, both of which re-parse (3.5).
+    // (0xFF, 0t1TT) or the tobase(...) call, both of which re-parse.
     case b: _Based    => b.toString
     // A distribution serializes as the grammar call that rebuilds it -- toString is that
     // call, at full parameter precision, so a bound distribution survives :save/:load.
@@ -232,8 +232,8 @@ final class Session:
           catch case NonFatal(e) => s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}"
         else
           val base = s"parse error: ${result.toString.linesIterator.next()}"
-          // "g(x)"-style call syntax on a defined name is a common spelling of issue
-          // 1.1's derive(g(x), f(x)); the grammar has bare variables only, so hint.
+          // "g(x)"-style call syntax on a defined name is a common spelling of
+          // derive(g(x), f(x)); the grammar has bare variables only, so hint.
           definitions.keys.find(n => input.matches(s".*\\b$n\\s*\\(.*")) match
             case Some(n) => s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'"
             case None    => base
@@ -428,7 +428,7 @@ final class Session:
 
   /** Explains a symbolic `limit` / definite integral when a domain violation is the reason.
    *
-   *  Issue 3.3 slice F.  A fallback that says nothing is the complaint this issue exists to
+   *  A fallback that says nothing is the complaint this note exists to
    *  answer: `limit(ln(x), x, -1)` echoes itself back with no hint that `-1` is simply
    *  outside `ln`'s domain.
    *
@@ -1141,7 +1141,7 @@ private[cli] def greekKeySequences: List[(String, String)] =
  *  its `get` yields `null` for a reader without a MAIN map, and binding through that
  *  reference would fail REPL start-up with an NPE.  A session without the chords is
  *  strictly better than one that will not start, so an absent map skips the binding step
- *  and the widgets are registered regardless (issue 1.4).
+ *  and the widgets are registered regardless.
  *
  *  @param reader the line reader whose MAIN key map is extended
  */

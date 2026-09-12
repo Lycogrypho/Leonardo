@@ -10,7 +10,7 @@ It parses mathematical expressions into an immutable AST and evaluates them eith
 numerically — when all variables are bound — or symbolically, returning a simplified
 expression tree.
 
-Named after [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci) (aka Fibonacci), the author of [Liber Abbaci](https://en.wikipedia.org/wiki/Liber_Abaci#cite_note-sigler-3).
+Named after [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), known as Fibonacci, the author of the [Liber Abaci](https://en.wikipedia.org/wiki/Liber_Abaci).
 
 ## Quick start
 
@@ -46,6 +46,14 @@ d.eval(env)
 | **Matrices** | Symbolic `_Matrix` + dense `_MatrixValue`; sum, product, transpose, scale, determinant, inverse (`det`, `inv`, `1/A`) |
 | **Equations** | `_Equation` relation; `solve` (linear exact, quadratic, numeric bisection); `solveSystem` (Gaussian elimination) |
 | **Complex** | `_Complex(re, im)`; full field arithmetic; `exp log sin cos tan` on complex args; principal roots |
+| **Transforms** | Laplace, Fourier, inverse Laplace, and the one-sided z-transform and its inverse |
+| **Series** | Taylor and Maclaurin, numeric Fourier series, Padé approximants, Laurent series about a pole |
+| **Logic** | Boolean, three-valued (Kleene), symmetric ternary, and fuzzy — one shared rule table |
+| **Probability & statistics** | Distributions as first-class values; `expect`/`variance` by linearity; descriptive statistics, regression by QR, elementary inference |
+| **Vector calculus** | `grad div curl laplacian jacobian hessian` in Cartesian, cylindrical, and spherical coordinates |
+| **Control** | Transfer-function algebra, poles and stability, step/impulse response, Bode/Nyquist, state space, discretisation |
+| **ODEs** | First-order initial-value problems: closed forms where possible, Runge–Kutta otherwise |
+| **Exact arithmetic** | Opt-in rational tier with arbitrary-precision transcendentals and a user-settable working precision |
 | **Sampling** | `sample(e, v, lo, hi, n)` → `Vector[(Double, Double)]`; compiled `Double ⇒ Double` fast path |
 | **REPL** | Interactive session with bindings, named functions, session scripts |
 
@@ -57,6 +65,7 @@ d.eval(env)
 - [Calculus](calculus.md) — differentiation, integration, sampling
 - [Matrices](matrix.md) — the matrix domain
 - [Equations](equations.md) — relations, solver, complex numbers
+- [Logic](logic.md) — boolean, three-valued, symmetric ternary, and fuzzy logic
 - [Sequences](sequences.md) — Fibonacci and friends, and the generic tabulator
 - [Control Systems](control.md) — transfer functions, stability, response, discretisation
 - [Interactive REPL](repl.md) — session commands and scripts

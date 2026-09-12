@@ -5,7 +5,7 @@ import core.*
 import scalar.*
 
 
-/** Laplace transform rule table.
+/** [[https://en.wikipedia.org/wiki/Laplace_transform Laplace transform]] rule table.
  *
  *  [[laplaceOf]] computes `L{e}` treating `t` as the time variable and `s` as the
  *  complex frequency variable.  Returns [[_Laplace]]`(e, t, s)` unchanged when no

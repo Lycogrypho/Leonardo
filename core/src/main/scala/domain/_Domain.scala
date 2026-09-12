@@ -50,9 +50,9 @@ case class _Differentiable(e: _Expression, v: _Variable, kind: DomainKind = Doma
  *
  *  - **some** — a `2×n` matrix, locations in the first row and pole order in the second,
  *    with `0` marking a removable singularity.  Two rows rather than one because the order
- *    is the part 6.14 (Laurent) actually needs — it is the length of the principal part —
+ *    is the part the Laurent series actually needs — it is the length of the principal part —
  *    and a bare list of locations would lose it.
- *  - **provably none** — `_Bool(false)`, the empty set.  This follows 3.2, which renders an
+ *  - **provably none** — `_Bool(false)`, the empty set.  This follows the inequality solver, which renders an
  *    empty solution set the same way, and `_Matrix` cannot be `2×0` in any case.
  *  - **cannot enumerate** — stays symbolic, which is everything that is not a numeric
  *    rational function.  Collapsing this into "none" would turn "I do not know" into a

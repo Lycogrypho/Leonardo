@@ -17,7 +17,7 @@ private val MaxNormalFormClauses = 1024
 /** Rewrites `e` into conjunctive normal form: a conjunction of disjunctions of literals.
  *
  *  Pipeline: [[simplifyLogic]] fixpoint (folds connective-level constants away), desugar
- *  `implies`/`xor`, push `not` to the leaves via De Morgan, then distribute `or` over
+ *  `implies`/`xor`, push `not` to the leaves via [[https://en.wikipedia.org/wiki/De_Morgan%27s_laws De Morgan]], then distribute `or` over
  *  `and`.  Trivially-true clauses (containing a complementary literal pair) and duplicate
  *  literals/clauses are dropped; when every clause is trivially true the result is
  *  `_Bool(true)`.

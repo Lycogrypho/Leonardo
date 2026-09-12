@@ -30,7 +30,7 @@ private[equation] def compareSides(
     // representation error; two exact rationals carry none, and in the exact tier
     // `1/3 == 0.33333` should be false rather than true-within-a-display-precision.
     //
-    // It also keeps `==` consistent with `<` (issue 4.R): if equality were tolerant here
+    // It also keeps `==` consistent with `<`: if equality were tolerant here
     // while ordering was exact, two rationals a hair apart would satisfy BOTH `a == b` and
     // `a > b`, breaking trichotomy.  Outside exact mode no `_Rational` is ever constructed,
     // so this arm is unreachable and the `Double` path is byte-identical.

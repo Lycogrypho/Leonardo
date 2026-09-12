@@ -6,7 +6,7 @@ import scalar.*
 import matrix._Matrix
 
 
-/** The coordinate system a vector operator is evaluated in (issues 6.24 and 6.26).
+/** The coordinate system a vector operator is evaluated in.
  *
  *  All three are **orthogonal curvilinear**, so a single set of formulas parameterised by the
  *  scale factors (Lamé coefficients) covers them — see [[_VectorOperator.scaleFactors]].
@@ -22,7 +22,7 @@ import matrix._Matrix
  *    variable names, and choosing silently would make every spherical result wrong for half
  *    its readers, so it is stated here, in the cheat sheet and in the README.
  *  - `SphericalMaths` — the mathematics convention `(r, θ, φ)` with `θ` **azimuthal** and `φ`
- *    **polar**: the same geometry with the last two coordinates exchanged (issue 6.27).
+ *    **polar**: the same geometry with the last two coordinates exchanged.
  *
  *  **The difference between the two spherical cases is argument *order*, not naming.**  The
  *  operators read `coords` by position and never look at the spellings, so a reader who calls
@@ -57,7 +57,7 @@ sealed trait _VectorOperator extends _Expression:
     val tail = if system == CoordinateSystem.Cartesian then "" else s", ${system.toString.toLowerCase}"
     s"$opName($e, ${coords.mkString(", ")}$tail)"
 
-  /** The scale factors `(h₁, h₂, …)` for this coordinate system and tuple (issue 6.26).
+  /** The scale factors `(h₁, h₂, …)` for this coordinate system and tuple.
    *
    *  Every operator below is written once, in terms of these; Cartesian is the `h = 1` case,
    *  which is why generalising the formulas left its results untouched.  `None` when the
@@ -73,7 +73,7 @@ sealed trait _VectorOperator extends _Expression:
     case CoordinateSystem.Spherical   =>
       Option.when(coords.sizeIs == 3)(
         Vector(_Number(1), coords(0), Product(coords(0), Sin(coords(1)))))
-    // (r, θ, φ), θ azimuthal and φ polar — the same geometry, last two exchanged (6.27)
+    // (r, θ, φ), θ azimuthal and φ polar — the same geometry, last two exchanged
     case CoordinateSystem.SphericalMaths =>
       Option.when(coords.sizeIs == 3)(
         Vector(_Number(1), Product(coords(0), Sin(coords(2))), coords(0)))
@@ -92,7 +92,7 @@ sealed trait _VectorOperator extends _Expression:
   protected def jacobianFactor: _Expression =
     if h.isEmpty then _Number(1) else h.reduce(Product.apply)
 
-  /** Orientation of the ordered basis: `+1` right-handed, `-1` left-handed (issue 6.27).
+  /** Orientation of the ordered basis: `+1` right-handed, `-1` left-handed.
    *
    *  **Only `curl` reads this, and it must.**  The curl formula below is derived for a
    *  right-handed `(q₁, q₂, q₃)`; `SphericalMaths` exchanges the last two coordinates of
@@ -113,7 +113,7 @@ sealed trait _VectorOperator extends _Expression:
    *  confidently wrong answer rather than a refusal.
    *
    *  Only a non-literal argument is evaluated, which covers the variable-bound-to-a-matrix
-   *  case (the issue-1.2 lesson that matrix-vs-scalar cannot always be decided at parse
+   *  case (the general lesson that matrix-vs-scalar cannot always be decided at parse
    *  time).  An `Environment` holds `_Value`s, so such a binding is necessarily a *dense*
    *  `_MatrixValue`: its cells are constants and their derivatives are legitimately zero.
    *
@@ -192,7 +192,7 @@ case class _Div(e: _Expression, coords: Vector[_Variable],
  *  **Three dimensions only.**  In 2-D the natural object is a *scalar* curl — a different
  *  result type, not a degenerate case of this one — and in higher dimensions the
  *  cross-product form does not exist at all.  Every other arity is refused rather than
- *  guessed, the rule issue 3.3 sets for an analysis that must describe what the library
+ *  guessed — the rule that an analysis must describe what the library
  *  actually computes.
  *
  *  @param e      the vector field (3×1)
@@ -214,7 +214,7 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
         // component i is (1/hⱼhₖ)·[∂(hₖFₖ)/∂qⱼ − ∂(hⱼFⱼ)/∂qₖ] over the cyclic (i, j, k);
         // the h = 1 case is (∂F₃/∂x₂ − ∂F₂/∂x₃, ∂F₁/∂x₃ − ∂F₃/∂x₁, ∂F₂/∂x₁ − ∂F₁/∂x₂).
         // The formula assumes a RIGHT-handed ordering, so a left-handed system negates it
-        // (see `handedness`) -- curl is a pseudo-vector, and this is the whole of 6.27's risk.
+        // (see `handedness`) -- curl is a pseudo-vector, and this is the exchange's whole risk.
         val raw = Vector.tabulate(3) { i =>
           val (j, k) = ((i + 1) % 3, (i + 2) % 3)
           Ratio(Sum(d(Product(h(k), comps(k)), j),
@@ -228,7 +228,7 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
 /** `laplacian(f, x, y, …)` — the Laplacian of a scalar field, a **scalar**.
  *
  *  Defined as `div(grad(f))` rather than as its own sum of second derivatives, so the two can
- *  never disagree.  **That definition is why issue 6.26 needed no change here**: composing
+ *  never disagree.  **That definition is why the curvilinear systems needed no change here**: composing
  *  the curvilinear `grad` and `div` yields `(1/J)·Σᵢ ∂/∂qᵢ (J/hᵢ² · ∂f/∂qᵢ)`, which is exactly
  *  the general orthogonal-curvilinear Laplacian — a formula written out separately would have
  *  been a second definition to keep in step, and this one cannot drift.
@@ -237,7 +237,7 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
  *  cautious one: outside Cartesian coordinates the vector Laplacian is *not* the
  *  component-wise scalar Laplacian (it is `grad(div F) − curl(curl F)`), so answering it by
  *  mapping this scalar formula over the components would be wrong in exactly the systems
- *  6.26 adds.
+ *  the curvilinear systems add.
  *
  *  @param e      the scalar field
  *  @param coords the ordered coordinate tuple

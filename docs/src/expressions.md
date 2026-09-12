@@ -19,11 +19,11 @@ Every node in the AST extends `_Expression`. The main families are:
 
 | Type | Examples |
 |------|---------|
-| **Values** (`_Value`) | `_Number(d)`, `_Complex(re, im)`, `_MatrixValue`, `_Bool` |
+| **Values** (`_Value`) | `_Number(d)`, `_Complex(re, im)`, `_Rational`, `_MatrixValue`, `_Bool`, `_Truth` |
 | **Atoms** | `_Variable("x")` |
 | **Operations** | `Sum`, `Product`, `Ratio`, `Power` |
-| **Functions** | `Sin`, `Cos`, `Tg`, `Exp`, `Log`, `Asin`, `Acos`, `Atan` |
-| **Functionals** | `_Derivative`, `_Integral`, `_DefIntegral` |
+| **Functions** | `Sin`, `Cos`, `Tg`, `Exp`, `Ln`, `LogBase`, `Asin`, `Acos`, `Atan`, plus the hyperbolic and reciprocal families |
+| **Functionals** | `_Derivative`, `_Integral`, `_DefIntegral`, `_Limit`, `_Taylor`, `_Laplace`, … |
 
 All nodes are immutable; the tree is value-typed and safe to share across threads.
 
@@ -36,7 +36,9 @@ def eval(env: Environment): Either[_Expression, _Value]
 ```
 
 `Right[_Value]` means the expression reduced to a concrete result.
-`Left[_Expression]` means it stayed symbolic — one or more variables are still free.
+`Left[_Expression]` means it stayed symbolic: variables remain free, or the operation is
+undefined at the point — `1/0` and `ln(0)` stay symbolic rather than throwing or producing
+an infinity.
 
 ```scala mdoc:silent
 val x = _Variable("x")

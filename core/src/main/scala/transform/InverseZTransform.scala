@@ -5,7 +5,7 @@ import core.*
 import scalar.*
 
 
-/** Inverse one-sided z-transform — issue 6.33 slice 2.
+/** Inverse one-sided z-transform.
  *
  *  [[inverseZTransformOf]] recovers `x[n]` from a rational `X(z)`, returning
  *  [[_InverseZTransform]]`(f, z, n)` unchanged when no rule applies.
@@ -22,7 +22,7 @@ import scalar.*
  *  - `j = 2` gives `n * r^(n-1)`,
  *  - `j = 3` gives `n*(n-1)/2 * r^(n-2)`, and so on.
  *
- *  The binomial coefficient is emitted as the `binom` node from issue 6.28 rather than
+ *  The binomial coefficient is emitted as the `binom` node rather than
  *  expanded into a polynomial in `n`, so a repeated pole of any order needs no special case.
  *
  *  **Complex poles are declined, not approximated.**  A conjugate pair inverts to a damped
@@ -70,9 +70,9 @@ private def invZImpl(f: _Expression, z: _Variable, n: _Variable): _Expression =
  *  depends on `z`.  Matching on `Ratio` inverted the table's own output for some entries and
  *  not others, which is exactly the kind of gap a round-trip test exists to catch.
  *
- *  The normalisation itself is `scalar.rationalCoeffs`; it began here and moved when 6.29
- *  became its third caller, the point at which issues 3.1 and 2.5 each promoted a helper
- *  rather than let a copy diverge.
+ *  The normalisation itself is `scalar.rationalCoeffs`; it began here and moved when the
+ *  control domain became its third caller — the point at which this library promotes a
+ *  helper rather than let a copy diverge.
  */
 private def invRationalZ(f: _Expression, z: _Variable, n: _Variable): Option[_Expression] =
   for
@@ -89,8 +89,8 @@ private case class ZTerm(coeff: Double, root: Double, power: Int)
 
 /** Decomposes `ns/ds` into real partial fractions, or `None` if any pole is complex.
  *
- *  Multiplicities come from [[squareFreeFactors]] rather than from counting roots, for the
- *  reason issue 2.5 records: the QR iteration does not merely scatter a repeated root, it can
+ *  Multiplicities come from [[squareFreeFactors]] rather than from counting roots: the QR
+ *  iteration does not merely scatter a repeated root, it can
  *  fail to converge on one outright, so the polynomial is split by multiplicity arithmetically
  *  and only the square-free parts — simple, well-conditioned roots — reach a root finder.
  */

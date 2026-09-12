@@ -38,7 +38,7 @@ def substitute(e: _Expression, definitions: Map[String, _Expression]): _Expressi
  *  Pigeonhole: among the `|reserved| + 1` candidates `prefix0 … prefix|reserved|`
  *  at least one is free, so the search always succeeds and the `getOrElse` default is
  *  unreachable.  Shared by every tier that must invent an internal variable — the
- *  Laplace-to-Fourier frequency name and the u-substitution integrator (issue 3.10).
+ *  Laplace-to-Fourier frequency name and the u-substitution integrator.
  *
  *  @param reserved names the new variable must avoid (typically some `freeVars` set)
  *  @param prefix   the name stem (default `__u`; the Fourier tier passes `__lts`)
@@ -54,7 +54,7 @@ private[leonardo] def freshVar(reserved: Set[String], prefix: String = "__u"): _
  *
  *  Unlike [[substitute]], which replaces variables *by name*, this rewrites an arbitrary
  *  sub-term structurally (by value equality), so a compound argument such as `g(v)` can be
- *  swapped for a fresh `u` — the mechanism u-substitution (issue 3.10) needs.  Binder
+ *  swapped for a fresh `u` — the mechanism u-substitution needs.  Binder
  *  positions are excluded from `children`, so a binder is never rewritten.
  *
  *  @param e           the expression to rewrite

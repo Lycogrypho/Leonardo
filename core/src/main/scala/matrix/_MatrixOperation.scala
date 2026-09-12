@@ -32,7 +32,7 @@ private def asLiteral(r: Either[_Expression, _Value]): Option[_Matrix] = r match
 /** Folds two already-reduced operands with `+`, avoiding a redundant eval pass.
  *
  *  The exact case comes first because `_Number` is a widening extractor; without it every
- *  element-wise matrix sum would drop out of the exact tier (issue 4.L slice B).  The
+ *  element-wise matrix sum would drop out of the exact tier.  The
  *  reduction policy is the benchmarked default rather than the environment's, since these
  *  helpers take no `Environment` — the policy is a cost knob, never a semantic one.
  */
@@ -321,7 +321,7 @@ case class Determinant(m: _Expression) extends _Expression:
         mv.determinant.map(d => Right(_Number(d))).getOrElse(Left(this))
       case r => asLiteral(r) match
         // Exact entries go to Gaussian elimination, not the cofactor expansion: O(n^3)
-        // rather than O(n!), so this path carries no dimension cap (issue 4.L slice B).
+        // rather than O(n!), so this path carries no dimension cap.
         case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
           exactCells(lit).map(c => Right(exactDeterminant(c, lit.rows, env.rationalPolicy)))
             .getOrElse(Left(this))
@@ -421,7 +421,7 @@ case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOpe
 /** The operand of a decomposition as a **dense** matrix, demoting exact entries.
  *
  *  `lu`, `qr`, `eigen`, `eig` and `jordan` are iterative `Double` algorithms — QR iteration,
- *  Gram–Schmidt — so they cannot be exact whatever their input.  Since issue 4.L slice B an
+ *  Gram–Schmidt — so they cannot be exact whatever their input.  An
  *  exactly-written matrix stays a symbolic `_Matrix` rather than collapsing, which would
  *  otherwise make every one of them silently stop working in exact mode.  Demoting here
  *  keeps the feature and is honest about what these kernels can deliver.
@@ -461,7 +461,7 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
  *
  *  @param m the matrix expression to decompose
  */
-/** Matrix exponential: `expm(A)` -- issue 6.39.
+/** Matrix exponential: `expm(A)`.
  *
  *  Evaluates when `A` reduces to a square dense `_MatrixValue`, via the
  *  [[core._MatrixValue.expm]] kernel (scaling and squaring with a degree-13 Padé
@@ -471,7 +471,7 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
  *  a single matrix rather than a row of them -- so `isMatrixShaped` picks it up and
  *  `expm(A) * B` dispatches as a matrix product rather than a scalar one.
  *
- *  Distinct from `A^n` (issue 4.8): that is repeated multiplication by binary exponentiation,
+ *  Distinct from `A^n`: that is repeated multiplication by binary exponentiation,
  *  this is the exponential series, and the two share no machinery.
  *
  *  @param m the matrix expression to exponentiate

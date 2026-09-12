@@ -24,9 +24,9 @@ enum DistKind:
   case Binomial
   /** `poisson(lambda)` — parameter `(lambda)`, with `lambda > 0`. */
   case Poisson
-  /** `studentt(nu)` — parameter `(nu)`, the degrees of freedom, with `nu > 0` (added by 4.Q). */
+  /** `studentt(nu)` — parameter `(nu)`, the degrees of freedom, with `nu > 0`. */
   case StudentT
-  /** `chisq(k)` — parameter `(k)`, the degrees of freedom, with `k > 0` (added by 4.Q). */
+  /** `chisq(k)` — parameter `(k)`, the degrees of freedom, with `k > 0`. */
   case ChiSquared
 
 object DistKind:
@@ -154,7 +154,7 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
 
   /** The cumulative distribution function `P(X ≤ x)`.
    *
-   *  Every one of these is a closed form built on 4.O's kernels rather than a numeric
+   *  Every one of these is a closed form built on the special-function kernels rather than a numeric
    *  integral of [[pdf]]: the normal is `erfc`, the gamma-family tails are the regularised
    *  incomplete gamma, and the binomial tail is the regularised incomplete beta.  Numeric
    *  integration is available through `_DefIntegral` for anything added later that has no
@@ -190,7 +190,7 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
         if k < 0.0 then Some(0.0) else upperGammaQ(k + 1.0, l)   // P(X <= k) = Q(k+1, lambda)
       case DistKind.StudentT =>
         // P(T <= t) = 1 - I_z(nu/2, 1/2)/2 for t > 0, with z = nu/(nu+t^2); mirrored below
-        // zero by symmetry.  Exactly the incomplete beta 4.O added, as the plan predicted.
+        // zero by symmetry.  Exactly what the incomplete beta exists for.
         val nu = params(0)
         val z  = nu / (nu + x * x)
         incompleteBetaOf(z, nu / 2.0, 0.5).flatMap { ib =>

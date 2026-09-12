@@ -1,7 +1,7 @@
 package it.grypho.scala.leonardo
 
 /** Probability distributions as first-class values, with expectation and variance as
- *  functionals over them (issue 4.P).
+ *  functionals over them.
  *
  *  Imports `core` + `scalar`; nothing imports this except the parser and, later, the
  *  inference half of `statistics`.  In particular `probability` must never import
@@ -9,7 +9,7 @@ package it.grypho.scala.leonardo
  *
  *  **A distribution is a `core._Value`.**  It is a concrete, fully-reduced object a user
  *  binds to a name, exactly like a matrix or a truth value.  That sounds expensive after
- *  issue 4.L, where adding `_Rational` meant a widening extractor and a hundred-odd touched
+ *  the exact tier, where adding `_Rational` meant a widening extractor and a hundred-odd touched
  *  sites — but the cases are not alike, and the difference is the general rule:
  *
  *  > Adding a `_Value` is cheap unless it has to be **readable as an existing one**.

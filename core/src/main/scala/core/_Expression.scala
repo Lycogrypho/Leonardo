@@ -80,7 +80,7 @@ object _Number:
    *  [[_Rational]] — the widening reader for the numeric tier.
    *
    *  This replaces the synthesized case-class extractor deliberately, and it is the single
-   *  decision that let the exact tier (issue 4.L) be added without editing the hundred-odd
+   *  decision that let the exact tier be added without editing the hundred-odd
    *  `case _Number(x)` sites across the library.  The rule it establishes:
    *
    *  > `case _Number(x)` means "reads as the real number `x`".  Code that must *preserve*
@@ -101,7 +101,7 @@ object _Number:
   def unapply(e: _Expression): Option[Double] = e match
     case n: _Number   => Some(n.d)
     case r: _Rational => Some(r.toDouble)
-    // A based integer reads as its value (3.5): the base is a display property, so every
+    // A based integer reads as its value: the base is a display property, so every
     // existing `case _Number(x)` site keeps matching and arithmetic simply yields decimal.
     case b: _Based    => Some(b.value)
     case _            => None

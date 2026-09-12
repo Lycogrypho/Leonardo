@@ -2,11 +2,10 @@ package it.grypho.scala.leonardo
 /** Transform domain: the Laplace and Fourier transforms, the z-transform, and their inverses.
  *
  *  **Every transform here is one-sided (unilateral)**, and deliberately so: `laplace` integrates
- *  from `0`, `fourier` is derived from it, and the z-transform sums from `n = 0` (issue 6.33
- *  Decision A).  A bilateral transform would have to carry a **region of convergence** on every
+ *  from `0`, `fourier` is derived from it, and the z-transform sums from `n = 0`.  A bilateral transform would have to carry a **region of convergence** on every
  *  result — without one the same `X(z)` inverts to a causal or an anti-causal signal, so the
  *  inverse would have to guess — which is a new piece of state on a value and is therefore its
- *  own issue (6.37) rather than a flag here.
+ *  own future extension rather than a flag here.
  *
  *  The AST nodes and their algorithm functions are:
  *  - [[_Laplace]] / [[laplaceOf]] -- `laplace(e, t, s)` computes `L{e(t)}` as a

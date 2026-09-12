@@ -5,7 +5,7 @@ import core.*
 import matrix._Matrix
 
 
-/** Which linear recurrence a [[_Sequence]] denotes — issue 6.28.
+/** Which linear recurrence a [[_Sequence]] denotes.
  *
  *  Every case is `x(k) = p*x(k-1) + q*x(k-2)` with its own seeds and coefficients, so there
  *  is **one** definition of the recurrence and the named variants are spellings of it:
@@ -33,12 +33,12 @@ enum SeqKind(val fnName: String, val a: Int, val b: Int, val p: Int, val q: Int)
 
 
 /** A term of a linear recurrence: `fib(n)`, `lucas(n)`, `pell(n)`, `jacobsthal(n)`, and the
- *  seed-generalised `fib(n, a, b)` — issue 6.28.
+ *  seed-generalised `fib(n, a, b)`.
  *
  *  **Indexing is the standard one**: `x(0) = 0`, `x(1) = 1`, so `fib(10) = 55`, matching OEIS
- *  A000045 and every published table.  The "classic rabbit" pair is `fib(n, 1, 1)`, which is
+ *  [[https://oeis.org/A000045 A000045]] and every published table.  The "classic rabbit" pair is `fib(n, 1, 1)`, which is
  *  this sequence shifted by one (`fib(n, 1, 1) = fib(n+1)`).  Stated here because it cannot
- *  be inferred and an off-by-one would be silent — the rule 6.26 follows for the polar angle.
+ *  be inferred and an off-by-one would be silent — the rule also applied to the spherical polar angle.
  *
  *  **These are *numeric* sequences, not integer ones.**  The recurrence needs only addition
  *  and multiplication, so `fib(5, 1.5, -pi)` is a legitimate call and exact seeds stay exact.
@@ -105,7 +105,7 @@ case class _Sequence(kind: SeqKind, n: _Expression, seeds: List[_Expression] = N
 val MaxTabulateTerms: Int = 1000
 
 /** `tabulate(e, k, lo, hi)` — evaluates `e` at each integer `k` in `[lo, hi]`, as a row
- *  matrix (issue 6.28).
+ *  matrix.
  *
  *  **The generic answer to "how do I get a list of terms?"**  It is not specific to the
  *  sequences: `tabulate(binom(4, k), k, 0, 4)` is a Pascal row and `tabulate(k^2, k, 1, 5)`

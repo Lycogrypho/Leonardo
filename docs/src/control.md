@@ -8,10 +8,10 @@ nav_order: 10
 # Control Systems
 <div style="clear:both"></div>
 
-A transfer function in Leonardo is **an ordinary expression** — a `Ratio` of polynomials in a
-variable you name. There is no `TransferFunction` type, no model object, and nothing to
-construct: `1/(s+1)` is one, and so is anything the rest of the library produces that happens
-to be rational.
+A [transfer function](https://en.wikipedia.org/wiki/Transfer_function) in Leonardo is **an
+ordinary expression** — a `Ratio` of polynomials in a variable you name. There is no
+`TransferFunction` type, no model object, and nothing to construct: `1/(s+1)` is one, and so
+is anything the rest of the library produces that happens to be rational.
 
 That is a deliberate decision, and it has a visible consequence in every signature on this
 page: **the frequency variable is always an explicit argument**, because a plain `Ratio`
@@ -121,7 +121,10 @@ bode(tf("1/(s+1)"), s, 1.0)
 nyquist(tf("1/(s+1)"), s, 1.0)
 ```
 
-`(magnitude, phase-in-radians)` and `(real, imaginary)` — one computation presented two ways.
+`(magnitude, phase-in-radians)` — the data of a
+[Bode plot](https://en.wikipedia.org/wiki/Bode_plot) — and `(real, imaginary)` — the data of
+a [Nyquist plot](https://en.wikipedia.org/wiki/Nyquist_stability_criterion) — one
+computation presented two ways.
 At the corner frequency of a first-order lag the magnitude is `1/√2` (−3 dB) and the phase
 −45°, as it should be. The whole of the frequency response is a single substitution `s → iω`
 riding the existing complex closure; no new arithmetic was written for it.
@@ -135,8 +138,12 @@ bode(tf("1/s"), s, 0.0)
 
 ## State space
 
-A model is a `1×4` row of matrices — the same shape `lu`, `qr` and `eig` return — so `at(m, 1, k)`
-indexes it and a session `:save` round-trips it with no new machinery.
+A [state-space model](https://en.wikipedia.org/wiki/State-space_representation) is a `1×4`
+row of matrices — the same shape `lu`, `qr` and `eig` return — so `at(m, 1, k)` indexes it
+and a session `:save` round-trips it with no new machinery.
+[Controllability](https://en.wikipedia.org/wiki/Controllability) asks whether the input can
+steer every state; [observability](https://en.wikipedia.org/wiki/Observability) whether the
+output can distinguish them:
 
 ```scala mdoc
 controllable(tf("[[0, 1], [-2, -3]]"), tf("[[0], [1]]"))
@@ -154,9 +161,11 @@ the same plant with `B` in millivolts rather than volts came back *uncontrollabl
 
 ## Discrete time
 
-Discretisation always names its method. The same plant discretised by zero-order hold and by
-Tustin has **different** discrete poles, so a silent default would make two correct-looking
-answers disagree with no way to see why.
+Discretisation always names its method — the
+[zero-order hold](https://en.wikipedia.org/wiki/Zero-order_hold) `Zoh` or the
+[bilinear (Tustin) transform](https://en.wikipedia.org/wiki/Bilinear_transform) `Tustin`.
+The same plant discretised the two ways has **different** discrete poles, so a silent
+default would make two correct-looking answers disagree with no way to see why.
 
 ```scala mdoc
 c2d(tf("1/(s+1)"), s, z, 0.1, Tustin).map(_.toString)
@@ -184,7 +193,8 @@ isStableDiscrete(tf("1/(z - 0.5)"), z)
 isStableDiscrete(tf("1/(z - 1.5)"), z)
 ```
 
-Exact state-space discretisation uses the matrix exponential of the block matrix
+Exact state-space discretisation uses the
+[matrix exponential](https://en.wikipedia.org/wiki/Matrix_exponential) of the block matrix
 `[[A, B], [0, 0]]·Ts`, **not** `B_d = A⁻¹(A_d − I)B`. That is a correctness matter: the block
 form is defined for a **singular** `A`, and any system with an integrator has one.
 
@@ -196,8 +206,9 @@ c2dExact(tf("[[0, 1], [0, 0]]"), tf("[[0], [1]]"), 0.5)
 
 The refusals are as much of the design as the features.
 
-A dead-time term is not rational, so it has no poles — and it is not silently
-Padé-approximated. `pade` exists, and reaching for it is the user's decision:
+A [dead-time](https://en.wikipedia.org/wiki/Dead_time) term is not rational, so it has no
+poles — and it is not silently Padé-approximated. `pade` exists, and reaching for it is the
+user's decision:
 
 ```scala mdoc
 poles(tf("exp(-2*s)/(s+1)"), s).map(_.mkString(", "))
@@ -229,5 +240,7 @@ Kronecker delta, which `core` has no node for.
 > impulse(1/(s+1), s, t)
 ```
 
-Note that `step` is **arity-overloaded**: `step(x)` is the Heaviside unit step, while
-`step(G, s, t)` is the step response of a system.
+Note that `step` is **arity-overloaded**: `step(x)` is the
+[Heaviside unit step](https://en.wikipedia.org/wiki/Heaviside_step_function), while
+`step(G, s, t)` is the [step response](https://en.wikipedia.org/wiki/Step_response) of a
+system.

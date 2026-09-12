@@ -1,0 +1,61 @@
+name: Generate docs/Gemfile.lock
+
+# Produces the documentation site's lockfile AS A DOWNLOADABLE ARTIFACT, for a human to
+# review and commit (issue 2.14).
+#
+# WHY A WORKFLOW rather than a local `bundle lock`.  A lockfile must name the platform that
+# will consume it: bundler >= 2.2 refuses one that does not list the running platform, so a
+# lock generated on a developer's Windows machine fails EVERY Pages deploy on the Ubuntu
+# runner.  Generating it here produces it in the same environment, at the same Ruby version,
+# that `pages.yml` will install from -- so the failure mode cannot arise, rather than being
+# worked around by remembering a flag.
+#
+# WHY IT DOES NOT COMMIT.  Writing to the repository needs `contents: write`, and issue 2.10
+# holds every workflow to least privilege precisely because `release.yml` carries the GPG
+# signing key and `scala-steward.yml` a repository-writing PAT.  A downloadable artifact
+# costs one manual step and no new permission.
+#
+# NOT one-shot: re-run it whenever `docs/Gemfile` changes, then commit the refreshed lock.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Ruby
+        # The version pages.yml builds with. `bundler-cache` is deliberately off: this job
+        # resolves the dependency graph, it does not install it.
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        with:
+          ruby-version: "3.3"
+
+      - name: Resolve the dependency graph
+        working-directory: docs
+        # `bundle lock` writes Gemfile.lock without installing the gems. The explicit
+        # --add-platform is belt and braces -- this runner is already x86_64-linux, so the
+        # first command records it -- but naming it keeps the lock correct if the job is ever
+        # moved to another runner image.
+        run: |
+          bundle lock
+          bundle lock --add-platform x86_64-linux
+
+      - name: Show the resolved versions
+        working-directory: docs
+        # Printed so the resolution can be reviewed in the run log before the artifact is
+        # trusted and committed.
+        run: cat Gemfile.lock
+
+      - name: Upload the lockfile
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: docs-gemfile-lock
+          path: docs/Gemfile.lock
+          if-no-files-found: error

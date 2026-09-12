@@ -238,19 +238,28 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `x := 3` | Bind value |
 | `f := sin(x)` | Define function |
 | `h := lhs = rhs` | Bind equation |
+| `g := consolidate(expr)` | Freeze the current value/simplified form (not late-bound) |
+| `L, U, P := lu(A)` | Tuple binding from a 1×n decomposition result |
 | `lhs = rhs` | Evaluate relation (true/false) |
 | `lhs == rhs` | Explicit equality check |
 | `simplify <expr>` | Structural simplification |
 | `expand <expr>` | Distribute products over sums |
 | `eval <expr>` | Force numeric evaluation |
 | `samples e v lo hi [n]` | Sample function over range |
+| `truth <expr>` | Boolean truth table over the free variables |
+| `truth3 <expr>` | Three-valued (Kleene) truth table |
+| `logic symmetric on\|off` | Spell truth values as `-1 / 0 / 1` |
+| `logic minmax\|product\|lukasiewicz` | Select the fuzzy t-norm family |
 | `precision <n>` | Set decimal digits |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to |
 | `pretty on` / `off` | Multi-line, column-aligned matrix display |
-| `env` | Show session state |
+| `colors dark\|light\|none` | Syntax-highlight scheme |
+| `env` / `vars` | Show session state |
 | `unset <name>` | Remove binding or definition |
 | `:save <file>` | Write replayable script |
 | `:load <file>` | Replay a script |
 | `help [topic]` | Show help |
 | `quit` / `exit` | Leave the REPL |
+
+The [cheat sheet](cheatsheet.md) lists every command and expression form on one page.

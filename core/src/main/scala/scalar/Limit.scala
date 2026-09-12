@@ -8,7 +8,7 @@ import scala.math
 /** Four-tier limit engine: lim_{`v` → `point`[`dir`]} `e`.
  *
  *  - Tier 1 — **direct substitution**: works for continuous functions at non-singular points.
- *  - Tier 2 — **L'Hôpital's rule** (≤ 5 steps): applied when a `Ratio` evaluates to the
+ *  - Tier 2 — **[[https://en.wikipedia.org/wiki/L%27H%C3%B4pital%27s_rule L'Hôpital's rule]]** (≤ 5 steps): applied when a `Ratio` evaluates to the
  *    `0/0` or `∞/∞` indeterminate form.  Also detects the `c/0` form and returns `±∞`
  *    based on the direction of approach of the denominator.
  *  - Tier 3 — **structural rules at ±∞**: polynomial rationals via [[collect]]

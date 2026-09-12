@@ -18,8 +18,11 @@ val env = new Environment()
 
 ## Symbolic differentiation
 
-`derive(e, v)` applies standard differentiation rules and returns a symbolic
-expression. Chain rule, product rule, and quotient rule are all handled:
+`derive(e, v)` applies the standard differentiation rules and returns a symbolic
+expression. The
+[chain rule](https://en.wikipedia.org/wiki/Chain_rule),
+[product rule](https://en.wikipedia.org/wiki/Product_rule), and
+[quotient rule](https://en.wikipedia.org/wiki/Quotient_rule) are all handled:
 
 ```scala mdoc
 derive(Power(x, _Number(3.0)), x).toString
@@ -91,27 +94,36 @@ integrate(Ratio(_Number(1.0), x), x).toString
 integrate(Sin(Product(_Number(3.0), x)), x).toString
 ```
 
-Beyond the linear chain rule, non-linear **u-substitution** closes `∫ f(g(x))·g'(x) dx`:
-the engine tries candidate inner functions `g`, divides the integrand by `g'`, and
-integrates in `g` only when the quotient is free of `x`.
+Beyond the linear chain rule, non-linear
+**[u-substitution](https://en.wikipedia.org/wiki/Integration_by_substitution)** closes
+`∫ f(g(x))·g'(x) dx`: the engine tries candidate inner functions `g`, divides the integrand
+by `g'`, and integrates in `g` only when the quotient is free of `x`.
 
 ```scala mdoc
 // ∫ x·e^(x²) dx = e^(x²)/2   (u = x²)
 integrate(Product(x, Exp(Power(x, _Number(2.0)))), x).toString
 ```
 
-Radical integrands close by **trigonometric / hyperbolic substitution**; `√(a²+x²)` and
-`√(x²−a²)` use the hyperbolic substitution, so the result is written with the `asinh`/`acosh`
-functions:
+Radical integrands close by
+**[trigonometric](https://en.wikipedia.org/wiki/Trigonometric_substitution) /
+[hyperbolic](https://en.wikipedia.org/wiki/Hyperbolic_substitution) substitution**;
+`√(a²+x²)` and `√(x²−a²)` use the hyperbolic substitution, so the result is written with the
+`asinh`/`acosh` functions:
 
 ```scala mdoc
 // ∫ dx/√(x²+1) = asinh(x)
 integrate(Ratio(_Number(1.0), Power(Sum(Power(x, _Number(2.0)), _Number(1.0)), _Number(0.5))), x).toString
 ```
 
-Classic non-elementary integrals are answered with their **named special functions**
-(`Si`, `Ci`, `Ei`, `li`, `fresnelS`, `fresnelC`, `erf`) — symbolic nodes with numeric
-kernels, so the antiderivative still evaluates:
+Classic [non-elementary integrals](https://en.wikipedia.org/wiki/Nonelementary_integral)
+are answered with their **named special functions** — the
+[trigonometric integrals](https://en.wikipedia.org/wiki/Trigonometric_integral) `Si`/`Ci`,
+the [exponential integral](https://en.wikipedia.org/wiki/Exponential_integral) `Ei`,
+the [logarithmic integral](https://en.wikipedia.org/wiki/Logarithmic_integral_function) `li`,
+the [Fresnel integrals](https://en.wikipedia.org/wiki/Fresnel_integral)
+`fresnelS`/`fresnelC`, and the
+[error function](https://en.wikipedia.org/wiki/Error_function) `erf` — symbolic nodes with
+numeric kernels, so the antiderivative still evaluates:
 
 ```scala mdoc
 // ∫ sin(x)/x dx = Si(x)
@@ -126,9 +138,14 @@ integrate(Sin(Product(x, x)), x).toString    // sin(x²) has no closed form
 
 ## Vector calculus
 
-`grad`, `div`, `curl`, `laplacian`, `jacobian` and `hessian` take a scalar or vector field
-followed by the **ordered coordinate tuple** — the order is never inferred, because it fixes
-the order of the result's components.  A vector field is an n×1 matrix.
+The [gradient](https://en.wikipedia.org/wiki/Gradient) `grad`,
+[divergence](https://en.wikipedia.org/wiki/Divergence) `div`,
+[curl](https://en.wikipedia.org/wiki/Curl_(mathematics)) `curl`,
+[Laplacian](https://en.wikipedia.org/wiki/Laplace_operator) `laplacian`,
+[Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant) `jacobian` and
+[Hessian](https://en.wikipedia.org/wiki/Hessian_matrix) `hessian` take a scalar or vector
+field followed by the **ordered coordinate tuple** — the order is never inferred, because it
+fixes the order of the result's components.  A vector field is an n×1 matrix.
 
 ```scala mdoc
 import it.grypho.scala.leonardo.vector.*
@@ -145,9 +162,12 @@ cannot disagree.  Shapes that have no meaning — a `curl` outside three dimensi
 component/coordinate count mismatch, a repeated coordinate — stay symbolic rather than being
 guessed.
 
-**Cartesian, cylindrical and spherical** coordinates are all supported, through *one* set of
-orthogonal-curvilinear formulas parameterised by the system's scale factors — Cartesian is
-simply the case where they are all `1`:
+**Cartesian, [cylindrical](https://en.wikipedia.org/wiki/Cylindrical_coordinate_system) and
+[spherical](https://en.wikipedia.org/wiki/Spherical_coordinate_system)** coordinates are all
+supported, through *one* set of
+[orthogonal-curvilinear](https://en.wikipedia.org/wiki/Orthogonal_coordinates) formulas
+parameterised by the system's scale factors — Cartesian is simply the case where they are
+all `1`:
 
 ```scala mdoc:silent
 val r  = _Variable("r")
@@ -157,9 +177,11 @@ val atPoint = new Environment(variables =
   Map("r" -> _Number(2.0), "t" -> _Number(0.7), "p" -> _Number(0.4)))
 ```
 
-The Newtonian potential is harmonic away from the origin — `∇²(1/r) = 0` — and that is a
-sharp check on the scale factors, since a single wrong one breaks it.  The symbolic form does
-not visibly collapse (`simplify` does no common-factor cancellation), so evaluate it:
+The [Newtonian potential](https://en.wikipedia.org/wiki/Newtonian_potential) is
+[harmonic](https://en.wikipedia.org/wiki/Harmonic_function) away from the origin —
+`∇²(1/r) = 0` — and that is a sharp check on the scale factors, since a single wrong one
+breaks it.  The symbolic form does not visibly collapse (`simplify` does no common-factor
+cancellation), so evaluate it:
 
 ```scala mdoc
 _Laplacian(Ratio(_Number(1.0), r), Vector(r, th, ph), CoordinateSystem.Spherical).eval(atPoint)
@@ -174,9 +196,10 @@ matching sign; the two conventions agree on the curl of the same physical field.
 
 ## Definite integration (Simpson's rule)
 
-`_DefIntegral(e, v, lo, hi)` computes the definite integral numerically using
-adaptive Simpson's rule. It uses a compiled `Double ⇒ Double` closure when
-the integrand is free of unresolvable nodes — no per-step allocation:
+`_DefIntegral(e, v, lo, hi)` computes the definite integral numerically using composite
+[Simpson's rule](https://en.wikipedia.org/wiki/Simpson%27s_rule). It uses a compiled
+`Double ⇒ Double` closure when the integrand is free of unresolvable nodes — no per-step
+allocation:
 
 ```scala mdoc
 // ∫₀¹ x² dx = 1/3

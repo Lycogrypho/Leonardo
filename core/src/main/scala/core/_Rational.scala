@@ -10,12 +10,12 @@ import scala.annotation.tailrec
  *  rational, and [[_Rational.equals]] compares by cross-multiplication precisely so that
  *  the choice stays invisible to callers.  What it does change is cost — `gcd` is the
  *  expensive step of rational arithmetic, while skipping it roughly *doubles* operand size
- *  per operation — which is why it is a measured decision (issue 4.M) rather than a guess.
+ *  per operation — which is why it is a measured decision rather than a guess.
  *
  *  Selected per call site rather than through [[Environment]], following the
  *  `simplifyLogic(e, symmetric, semantics)` precedent: nothing in this tier goes through
  *  `eval` yet, so an environment field would be unread.  It moves into `Environment` with
- *  the tier-1 AST integration (issue 4.L), alongside the working precision.
+ *  the tier-1 AST integration, alongside the working precision.
  */
 enum GcdPolicy:
   /** Reduce on every construction — what spire's `Rational` does, and the conventional
@@ -43,7 +43,7 @@ object _Rational:
   /** The multiplicative identity, `1/1`. */
   val One: _Rational = new _Rational(BigInt(1), BigInt(1))
 
-  /** Default bit-length bound for [[GcdPolicy.Threshold]], chosen by the 4.M benchmark.
+  /** Default bit-length bound for [[GcdPolicy.Threshold]], chosen by the gcd-policy benchmark.
    *
    *  It has to clear the operand size a *working precision* implies, or the policy fires on
    *  every operation and is [[GcdPolicy.Eager]] under another name — the benchmark shows
@@ -55,7 +55,7 @@ object _Rational:
    */
   val DefaultThresholdBits: Int = 256
 
-  /** The reduction policy chosen by the 4.M benchmark, and what a caller with no opinion
+  /** The reduction policy chosen by the gcd-policy benchmark, and what a caller with no opinion
    *  should get.
    *
    *  [[GcdPolicy.Lazy]] was rejected on the exact arm — where nothing re-approximates,
@@ -183,13 +183,13 @@ object _Rational:
    *  rationals — every transcendental, and any fractional power — is currently evaluated in
    *  `Double` and re-approximated, so asking for thirty digits of `sin(1/3)` would
    *  manufacture fifteen digits that are not there.  Lifting this needs an arbitrary
-   *  precision engine for the functions themselves (issue 4.L tier 2, spire's `Real`); the
+   *  precision engine for the functions themselves (spire's `Real`); the
    *  working precision meanwhile bounds the *arithmetic* around them, which is where the
    *  cancellation lives.
    */
   val DoubleReliableDigits: Int = 15
 
-  /** Size ceiling, in bits, for the result of an exact integer power (issue 2.4).
+  /** Size ceiling, in bits, for the result of an exact integer power.
    *
    *  `2^20` bits is roughly a 315 000-digit number: far past anything a session needs, and
    *  still computed in milliseconds.  The cap exists for the same reason
@@ -262,8 +262,8 @@ object _Rational:
  *
  *  **Why a private `BigInt` pair rather than spire's `Rational`.**  spire normalises to
  *  lowest terms on every construction, which would have settled [[GcdPolicy]] at
- *  [[GcdPolicy.Eager]] by fiat and made the 4.M benchmark unrunnable.  spire remains the
- *  intended engine for *irrationals* (`Real` / `Algebraic`, issue 4.L tier 2); the
+ *  [[GcdPolicy.Eager]] by fiat and made the gcd-policy benchmark unrunnable.  spire remains the
+ *  intended engine for *irrationals* (`Real` / `Algebraic`); the
  *  rational representation stays in-house.
  *
  *  Equality is by value, not by representation: `2/6 == 1/3` holds under every policy.
@@ -287,7 +287,7 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
    *
    *  Deliberately the naive cross-multiplication rather than the usual
    *  `gcd(d, d')` refinement — that refinement is an eager-flavoured optimisation and
-   *  would confound the two arms of the 4.M benchmark, which must vary reduction alone.
+   *  would confound the two arms of the gcd-policy benchmark, which must vary reduction alone.
    *
    *  @param that   the addend
    *  @param policy reduction policy for the result
@@ -368,7 +368,7 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
     val (rn, rd) = _Rational.reduce(num, den)
     if rd == BigInt(1) then Some(rn) else None
 
-  /** The larger of the two terms' bit lengths — the size measure the 4.M benchmark
+  /** The larger of the two terms' bit lengths — the size measure the gcd-policy benchmark
    *  records, since it is what explains the wall-clock and predicts behaviour at
    *  precisions that were not measured.
    */

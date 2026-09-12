@@ -43,7 +43,7 @@ def collect(e: _Expression, v: _Variable): Option[Vector[_Expression]] =
   // The padding zero and the unit coefficient are synthesised, so they must join the tier of
   // the expression being collected.  Hard-coded `_Number`s here would demote every
   // coefficient the moment they were summed in, and the exact tier would never reach any
-  // caller of `collect` -- which is most of the solver (issue 4.N).
+  // caller of `collect` -- which is most of the solver.
   val zero: _Expression = _Rational.literalLike(0, e)
   val one:  _Expression = _Rational.literalLike(1, e)
 

@@ -4,14 +4,14 @@ package statistics
 import core.*
 
 
-/** Ordinary least squares — issue 4.Q slice B.
+/** [[https://en.wikipedia.org/wiki/Ordinary_least_squares Ordinary least squares]].
  *
  *  **Solved by QR, not by the normal equations**, and that is the whole design decision.
  *  `β = (XᵀX)⁻¹Xᵀy` is the textbook form and every piece of it already exists
- *  (`transpose`, `multiply`, `inverse`), but forming `XᵀX` **squares the condition number**:
+ *  (`transpose`, `multiply`, `inverse`), but forming `XᵀX` **squares the [[https://en.wikipedia.org/wiki/Condition_number condition number]]**:
  *  a design matrix that merely looks poorly scaled loses about half the available digits
  *  before the solve even starts.  It is the same class of trap as the one-pass variance next
- *  door and as the quadratic formula in issue 1.1 — an algebraically equivalent rearrangement
+ *  door and as the textbook quadratic formula — an algebraically equivalent rearrangement
  *  that is numerically far worse.
  *
  *  `qrDecompose` gives `X = QR` with `R` upper triangular, so `Rβ = Qᵀy` is solved directly

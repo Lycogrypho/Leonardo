@@ -39,7 +39,7 @@ case class _Solve(eq: _Expression, v: _Variable) extends _Expression:
           case Nil           => Left(this)
           case single :: Nil => Left(single)
           case many          => Left(_Matrix(1, many.size, many.toVector))
-      // Inequalities (issue 3.2). The solution set is written in the language itself -- a
+      // Inequalities. The solution set is written in the language itself -- a
       // comparison, an `or` of two, or a `_Bool` for the universal/empty set -- so unlike
       // the equality case there is no list to interpret and no `_Matrix` to build.
       case c: _Comparison =>

@@ -8,13 +8,13 @@ import scala.annotation.tailrec
 
 /** Integration by parts and the power-reduction formulas.
  *
- *  Split out of `Integrate.scala` by issue 2.6, which left that file the dispatcher only.
+ *  Split out of `Integrate.scala`, which keeps only the dispatcher.
  *  Everything here is a top-level definition in `package scalar`, so the split is a pure
  *  file reorganisation: no visibility changed and no call site moved.
  *
  *  Two families live here.  **Integration by parts** (`∫ u dv = u·V − ∫ V du`) with the
- *  LIATE split, and the **power reductions** — `sin`/`cos` (4.C), `tan`/`cot`/`sec`/`csc`
- *  (3.11) and `sinh`/`cosh` (3.13) — which recurse on the exponent rather than on shape.
+ *  LIATE split, and the **power reductions** — `sin`/`cos`, `tan`/`cot`/`sec`/`csc`
+ *  and `sinh`/`cosh` — which recurse on the exponent rather than on shape.
  */
 
 /** Maximum nested integration-by-parts applications before giving up.
@@ -183,7 +183,7 @@ private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variab
     else Some(simplifyFully(Sum(boundary, Product(Ratio(_Number(n - 1), _Number(n)), lower))))
   }
 
-/** Reduction formula for a tangent or cotangent power (issue 3.11).
+/** Reduction formula for a tangent or cotangent power.
  *
  *  {{{
  *  ∫ tan^n(u) dx =  tan^(n-1)(u)/((n-1)·a) − ∫ tan^(n-2)(u) dx
@@ -210,7 +210,7 @@ private def reduceTanCotPower(isTan: Boolean, u: _Expression, n: Int, v: _Variab
     else Some(simplifyFully(Sum(boundary, Product(_Number(-1), lower))))
   }
 
-/** Reduction formula for a secant or cosecant power (issue 3.11).
+/** Reduction formula for a secant or cosecant power.
  *
  *  {{{
  *  ∫ sec^n(u) dx =  sec^(n-2)(u)·tan(u)/((n-1)·a) + (n-2)/(n-1)·∫ sec^(n-2)(u) dx

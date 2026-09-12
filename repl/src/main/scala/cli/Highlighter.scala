@@ -115,7 +115,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
                                "taylor", "maclaurin", "fourierSeries", "pade")
   private val LogicOps  = Set("and", "or", "not", "implies", "xor")
   private val Constants = Set("pi", "e", "i", "true", "false", "unknown")
-  /** Greek aliases of the special functions (issue 4.K); single characters, not words. */
+  /** Greek aliases of the special functions; single characters, not words. */
   private val GreekFunctions = Set('Γ', 'β')
 
   private val NumPat  = raw"\d+(?:\.\d+)?(?:[eE][+-]?\d+)?".r
@@ -170,7 +170,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
               // single characters rather than as word tokens.
               case c if GreekFunctions.contains(c) => cs.function
               case '+' | '-' | '*' | '/' | '^' => cs.operator
-              // Relations share the equation style: =, == and the 4.R comparisons.
+              // Relations share the equation style: =, == and the comparison operators.
               case '=' | '<' | '>' | '!'        => cs.equation
               case '(' | ')' | '[' | ']'       => cs.paren
               case _                            => cs.variable

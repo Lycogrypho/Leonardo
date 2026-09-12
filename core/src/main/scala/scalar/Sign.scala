@@ -4,7 +4,7 @@ package scalar
 import core.*
 
 
-/** Sign determination for an expression — issue 3.2's central primitive.
+/** Sign determination for an expression — the inequality solver's central primitive.
  *
  *  Dividing an inequality by a coefficient **flips its direction** when that coefficient is
  *  negative, so every tier of the inequality solver has to ask the same question first: what
@@ -24,7 +24,7 @@ import core.*
  *  wants to divide must therefore see `Some(1)` or `Some(-1)`; both `Some(0)` and `None`
  *  refuse, for different reasons.
  *
- *  This table is shared with issue 6.13, whose `Positive` / `NonNegative` domain
+ *  This table is shared with the domain analysis, whose `Positive` / `NonNegative` domain
  *  requirements are the same machinery viewed from the other side.  It lives in `scalar`
  *  precisely so both `equation` (inequalities) and a future domain analysis can reach it.
  */
@@ -99,7 +99,7 @@ private def structuralSign(e: _Expression, env: Environment): Option[Int] = e ma
  *  An even power is the motivating case: it cannot be divided by, because it may be zero,
  *  yet it can safely be *added* to a strictly positive quantity.
  *
- *  Widened from `private` to `private[leonardo]` by issue 3.3, whose `NonNegative` domain
+ *  Widened from `private` to `private[leonardo]` for the domain analysis, whose `NonNegative` domain
  *  requirement asks exactly this question from the other side.
  */
 private[leonardo] def isNonNegative(e: _Expression, env: Environment): Boolean =

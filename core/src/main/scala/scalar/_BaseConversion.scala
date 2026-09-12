@@ -4,7 +4,7 @@ package scalar
 import core.*
 
 
-/** `tobase(n, b)` — reads `n` as an integer written in base `b` — issue 3.5.
+/** `tobase(n, b)` — reads `n` as an integer written in base `b`.
  *
  *  Evaluates to a `core._Based`, which *is* the number and additionally remembers its
  *  base for display.  There is no inverse node: a `_Based` already reads as its value
@@ -32,7 +32,7 @@ case class _ToBase(e: _Expression, base: _Expression) extends _Expression:
 
 /** `balanced(n)` — the balanced-ternary form of `n`, with digits `{-1, 0, 1}`.
  *
- *  Written `T`/`0`/`1`, the same alphabet 4.G's symmetric ternary logic uses for
+ *  Written `T`/`0`/`1`, the same alphabet the symmetric ternary logic uses for
  *  `{false, unknown, true}`.  That shared alphabet is why balanced ternary belongs in this
  *  library rather than being a bare utility: `logic symmetric on` and `balanced(n)` are the
  *  same three digits seen from two sides.

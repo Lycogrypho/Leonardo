@@ -118,7 +118,7 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case Acos(a)              => dmul(dmul(_Number(-1), Ratio(_Number(1), Power(Sum(_Number(1), dmul(_Number(-1), Power(a, _Number(2)))), _Number(0.5)))), derive(a, v))
   // atan'(u) =  u' / (1 + u²)
   case Atan(a)              => dmul(Ratio(_Number(1), Sum(_Number(1), Power(a, _Number(2)))), derive(a, v))
-  // hyperbolic and reciprocal-trigonometric derivatives (issue 3.9)
+  // hyperbolic and reciprocal-trigonometric derivatives
   case Sinh(a)              => dmul(Cosh(a), derive(a, v))
   case Cosh(a)              => dmul(Sinh(a), derive(a, v))
   case Tanh(a)              => dmul(Power(Sech(a), _Number(2)), derive(a, v))
@@ -136,7 +136,7 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case Sech(a)              => dmul(dmul(_Number(-1), Product(Sech(a), Tanh(a))), derive(a, v))
   case Csch(a)              => dmul(dmul(_Number(-1), Product(Csch(a), Coth(a))), derive(a, v))
   case Coth(a)              => dmul(dmul(_Number(-1), Power(Csch(a), _Number(2))), derive(a, v))
-  // 4.O: with digamma available, the gamma family is finally differentiable.  Before it,
+  // With digamma available, the gamma family is differentiable.  Before it,
   // Gamma and fact had no rule at all and fell through to a bare _Derivative wrapper.
   //   d/dx Gamma(u) = Gamma(u)*psi(u)*u'   and   d/dx u! = Gamma(u+1)*psi(u+1)*u'
   //   d/dx lgamma(u) = psi(u)*u'           -- the reason lgamma is the tidier one to use
@@ -146,14 +146,14 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
     val ap = Sum(a, _Number(1))
     dmul(Product(Gamma(ap), Digamma(ap)), derive(a, v))
   // NOTE there is deliberately no rule for `Digamma` itself: its derivative is the
-  // trigamma function, which 4.O does not introduce.  It falls through to the generic
+  // trigamma function, which the library does not implement.  It falls through to the generic
   // `_Derivative` wrapper, which is the same "no rule" behaviour Gamma had until now.
   // erf'(u) = 2/sqrt(pi) * e^(-u^2) * u'
   case Erf(a)               =>
     dmul(Product(_Number(2.0 / math.sqrt(math.Pi)),
                  Exp(dmul(_Number(-1), Power(a, _Number(2))))), derive(a, v))
   case Erfc(a)              => dmul(_Number(-1), derive(Erf(a), v))
-  // The special integral functions (3.15) ARE derivatives by definition:
+  // The special integral functions ARE derivatives by definition:
   //   Si'(u) = sin(u)/u·u',  Ci'(u) = cos(u)/u·u',  Ei'(u) = e^u/u·u',  li'(u) = u'/ln(u),
   //   fresnelS'(u) = sin(π u²/2)·u',  fresnelC'(u) = cos(π u²/2)·u'
   case Si(a)                => dmul(Ratio(Sin(a), a), derive(a, v))

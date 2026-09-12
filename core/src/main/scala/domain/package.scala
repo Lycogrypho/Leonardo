@@ -1,6 +1,6 @@
 package it.grypho.scala.leonardo
 
-/** Domain analysis as a user-facing question — issue 3.3 slice E.
+/** Domain analysis as a user-facing question.
  *
  *  The analysis itself lives in `scalar` (`scalar.domainOf`, `scalar.singularitiesOf`),
  *  because `scalar.integrate` and `scalar.Limit` have to be able to call it as a guard.  It
@@ -15,6 +15,6 @@ package it.grypho.scala.leonardo
  *  **What cannot be rendered stays symbolic.**  `tan`'s excluded points and the `Gamma`
  *  poles are infinite sets, and the language has no quantifier, so `domain(tan(x), x)` does
  *  not reduce.  Emitting a truncated list of exclusions would read as exhaustive, which is
- *  the failure mode this whole issue exists to avoid.
+ *  the failure mode this package exists to avoid.
  */
 package object domain

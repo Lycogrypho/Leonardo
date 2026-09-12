@@ -7,9 +7,9 @@ import scala.annotation.tailrec
 
 
 /** The substitution tiers: non-linear u-substitution, trigonometric/hyperbolic
- *  substitution, and the Weierstrass half-angle substitution.
+ *  [[https://en.wikipedia.org/wiki/Trigonometric_substitution substitution]], and the [[https://en.wikipedia.org/wiki/Weierstrass_substitution Weierstrass half-angle substitution]].
  *
- *  Split out of `Integrate.scala` by issue 2.6.  All three are consulted from `resolve`
+ *  Split out of `Integrate.scala`.  All three are consulted from `resolve`
  *  only after every compiled arm has declined, in the order written there — each is a
  *  fallback, and the later ones are progressively more general and more expensive.
  */
@@ -61,7 +61,7 @@ private def cancelRatio(num: _Expression, den: _Expression): _Expression =
   val denG = groupByBase(denF.toList)
   // A negative exponent belongs on the other side of the fraction: `cos(w)^-2` in the
   // numerator is `cos(w)^2` in the denominator, which is the spelling the reciprocal-node
-  // normalisation and the power-reduction tiers recognise (issue 3.18).
+  // normalisation and the power-reduction tiers recognise.
   val (numPos, numNeg) = numG.partition(_._2 > 0.0)
   val (denPos, denNeg) = denG.partition(_._2 > 0.0)
   def flip(ps: List[(_Expression, Double)]): List[(_Expression, Double)] = ps.map((b, n) => (b, -n))
@@ -99,7 +99,7 @@ private def rebuildFactors(ps: List[(_Expression, Double)]): _Expression =
 /** Collects candidate inner functions `g` for u-substitution from the integrand.
  *
  *  The plausible inner functions are the arguments of function nodes, the bases (radicands)
- *  of powers, and the denominators of ratios (see issue 3.10).  Each is simplified, the bare
+ *  of powers, and the denominators of ratios.  Each is simplified, the bare
  *  variable and `v`-independent terms dropped, duplicates removed, and the list ordered most
  *  specific (largest) first and capped.
  *
@@ -124,7 +124,7 @@ private def substitutionCandidates(e: _Expression, v: _Variable): List[_Expressi
     .sortBy(g => -treeSize(g))
     .take(MaxSubstitutionCandidates)
 
-/** Attempts non-linear u-substitution `∫ f(g(v))·g'(v) dv = ∫ f(u) du` (issue 3.10).
+/** Attempts non-linear u-substitution `∫ f(g(v))·g'(v) dv = ∫ f(u) du`.
  *
  *  For each candidate inner function `g` (see [[substitutionCandidates]]): form
  *  `integrand / g'`, cancel the shared factors, and replace every `g` with a fresh `u`.
@@ -158,12 +158,12 @@ private def integrateBySubstitution(e: _Expression, v: _Variable, subDepth: Int)
     }.nextOption()
 
 
-// ── Trigonometric / hyperbolic substitution (issue 3.13) ────────────────────────
+// ── Trigonometric / hyperbolic substitution ────────────────────────
 //
 // Radical integrands √(a²−v²), √(a²+v²), √(v²−a²) close by the substitution that turns the
 // radical into a single trig/hyperbolic factor. The ± cases use the HYPERBOLIC substitution
 // (v = a·sinh t / a·cosh t) rather than tan/sec, so the "angle" back-substitutes through the
-// 3.9 inverse-hyperbolic nodes (asinh / acosh) and the result is written in them directly:
+// inverse-hyperbolic nodes (asinh / acosh) and the result is written in them directly:
 //   √(a²−v²): v = a·sinθ,  dv = a·cosθ dθ,  radical → a·cosθ,   θ = asin(v/a)
 //   √(a²+v²): v = a·sinh t, dv = a·cosh t dt, radical → a·cosh t, t = asinh(v/a)
 //   √(v²−a²): v = a·cosh t, dv = a·sinh t dt, radical → a·sinh t, t = acosh(v/a)
@@ -194,7 +194,7 @@ private def integrateByTrigSub(e: _Expression, v: _Variable): Option[_Expression
   radicals.iterator.flatMap(r => trigSubWith(e, v, r)).nextOption()
 
 /** True when `ex` is a half-integer (`2·ex` an odd integer): `±0.5`, `±1.5`, `±2.5`, … —
- *  every power whose reduced form still carries one square root (issue 3.18).  A whole
+ *  every power whose reduced form still carries one square root.  A whole
  *  exponent is excluded: it needs no substitution and the power rule owns it. */
 private def isHalfInteger(ex: Double): Boolean =
   val twice = ex * 2.0
@@ -230,7 +230,7 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
       else None
     (hw, hpw, gExpr0, inverse) = setup
     // `radicand^(halves/2) = (√radicand)^halves`, so the whole power is replaced by the
-    // θ-form raised to `halves` — `^0.5` is the `halves = 1` case (issue 3.18).
+    // θ-form raised to `halves` — `^0.5` is the `halves = 1` case.
     gExpr = if halves == 1 then gExpr0 else Power(gExpr0, _Number(halves))
     // Replace the radical FIRST (simplify cannot reduce √(a²−a²sin²w)), then substitute v.
     // Combine into one factor-cancelled fraction — `simplify` alone does not cancel the
@@ -243,10 +243,10 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
   yield simplifyFully(substitute(fW, Map(w.variable -> inverse)))
 
 
-// ── Weierstrass (half-angle) substitution (issue 3.14) ──────────────────────────
+// ── Weierstrass (half-angle) substitution ──────────────────────────
 //
 // t = tan(v/2) turns ANY rational function of sin v / cos v into a rational function of t
-// (sin = 2t/(1+t²), cos = (1−t²)/(1+t²), dv = 2/(1+t²)dt), which the 3.12 rational tier
+// (sin = 2t/(1+t²), cos = (1−t²)/(1+t²), dv = 2/(1+t²)dt), which the rational tier
 // finishes. Dispatched last: it is the general fallback for trig rationals that none of the
 // specific trig rules closed. The rationality test is DECIDABLE: the substituted integrand is
 // normalised into one polynomial fraction over t (`ratNormalize`); any node that is not
@@ -307,7 +307,7 @@ private def integrateCoeffRational(num: Vector[Double], den: Vector[Double], t: 
  *  bare variable as its argument; each is replaced by its half-angle form, the `2/(1+t²)`
  *  measure appended, and the result normalised by [[ratNormalize]] — the decidable check that
  *  the integrand really is rational in `sin v`/`cos v`.  The rational-in-`t` fraction is
- *  finished by the 3.12 tier and `t = tan(v/2)` substituted back.
+ *  finished by the rational tier and `t = tan(v/2)` substituted back.
  *
  *  @param e the integrand
  *  @param v the integration variable

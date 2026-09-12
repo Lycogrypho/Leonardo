@@ -59,6 +59,17 @@ jobs:
           python3 .github/scripts/fix-mojibake.py --check core/src repl/src docs
           python3 .github/scripts/check-charset.py core/src repl/src docs
 
+      - name: Action pinning
+        # Guards the issue-2.10 sweep the way "Encoding hygiene" guards 2.8's: both were
+        # one-time repairs of a condition that decays silently. Every `uses:` must name a
+        # commit SHA, because a tag is mutable and `ruby/setup-ruby@v1` is a *branch* -- so
+        # an unpinned action lets its owner change what runs in release.yml, which holds the
+        # GPG key, and scala-steward.yml, which holds a repository-writing PAT.
+        #
+        # Added with the fifth workflow (issue 2.14), the first addition since 2.10 where
+        # keeping the invariant rested purely on remembering it.
+        run: python3 .github/scripts/check-action-pins.py
+
       - name: Binary compatibility
         # Checks both published modules against the `mimaBaseline` in build.sbt (issue 2.9).
         # `versionScheme := early-semver` promises that a patch release stays binary-compatible;

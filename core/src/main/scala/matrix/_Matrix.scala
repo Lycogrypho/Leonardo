@@ -78,7 +78,7 @@ case class _Matrix(rows: Int, cols: Int, elems: Vector[_Expression]) extends _El
     // An exactly-written matrix must NOT collapse into the dense carrier: `_MatrixValue`
     // holds an `Array[Double]` by design, so collapsing would silently discard exactness at
     // the literal, before any operation could use it.  The symbolic `_Matrix` IS the exact
-    // carrier (issue 4.L slice B); see `matrix.Exact` for why there is no second dense type.
+    // carrier; see `matrix.Exact` for why there is no second dense type.
     val hasExact = reduced.exists { case Right(_: _Rational) => true; case _ => false }
     val numbers  = reduced.collect { case Right(_Number(d)) => d }
     if !hasExact && numbers.size == elems.size then Right(_MatrixValue(rows, cols, numbers.toArray))

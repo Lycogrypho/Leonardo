@@ -23,7 +23,8 @@ val env = new Environment()
 The `logic` package provides the five connectives — `And`, `Or`, `Not`,
 `Implies`, `Xor` — as ordinary expression nodes over the shared AST. Operands are
 untyped `_Expression`s, so equations and any other domain compose freely. `eval`
-runs the Kleene/Zadeh min–max rule table (`and` = min, `or` = max, `not` = 1 − a)
+runs the [Kleene](https://en.wikipedia.org/wiki/Three-valued_logic#Kleene_and_Priest_logics)/[Zadeh](https://en.wikipedia.org/wiki/Fuzzy_logic)
+min–max rule table (`and` = min, `or` = max, `not` = 1 − a)
 and reduces to a `_Bool` when the operands do:
 
 ```scala mdoc
@@ -121,7 +122,8 @@ restriction of `simplifyLogic`, `toCNF`, and `toDNF`. If a variable may hold
 
 ## Symmetric ternary: the same logic in different digits
 
-Symmetric ternary spells the three truth values with the digits `{-1, 0, 1}`
+Symmetric ternary spells the three truth values with the digits `{-1, 0, 1}` —
+the alphabet of [balanced ternary](https://en.wikipedia.org/wiki/Balanced_ternary) —
 instead of `{false, unknown, true}`. The two alphabets are related by the affine
 map `t = (s + 1) / 2`, so this is an **encoding**, not a second semantics — the
 rule table above is untouched:
@@ -200,9 +202,9 @@ Not(_Truth.of(0.3)).eval(env)                     // 1 - a
 
 ### Membership functions and hedges
 
-Membership curves map a crisp measurement into `[0, 1]`, and the hedges reshape a
-degree. They evaluate to truth values, so they compose with the connectives directly
-— no cast at each step:
+[Membership curves](https://en.wikipedia.org/wiki/Membership_function_(mathematics)) map a
+crisp measurement into `[0, 1]`, and the hedges reshape a degree. They evaluate to truth
+values, so they compose with the connectives directly — no cast at each step:
 
 ```scala mdoc
 Parser.parse("trimf(2.5, 0, 5, 10)").get.eval(env)     // triangular, halfway up
@@ -279,9 +281,10 @@ of `defuzz`, `very`, and `somewhat`. Ordinary function arguments stay arithmetic
 
 ### Alternative t-norms
 
-Which t-norm combines degrees is an `Environment` parameter, not a separate package or
-node: min–max (the default), product, or Łukasiewicz. All three agree with classical
-logic on the crisp values, so the boolean and three-valued tiers are unaffected:
+Which [t-norm](https://en.wikipedia.org/wiki/T-norm) combines degrees is an `Environment`
+parameter, not a separate package or node: min–max (the default), product, or
+[Łukasiewicz](https://en.wikipedia.org/wiki/%C5%81ukasiewicz_logic). All three agree with
+classical logic on the crisp values, so the boolean and three-valued tiers are unaffected:
 
 ```scala mdoc:silent
 val prod  = new Environment(Environment.DefaultPrecision, Map.empty, false, LogicSemantics.Product)
@@ -306,9 +309,9 @@ simplifyLogicFully(And(_Truth.of(0.3), _Truth.of(0.3)), identity, false, LogicSe
 
 ### Defuzzification
 
-Defuzzifying collapses a membership curve back to one crisp value. `centroid` (the
-centre of gravity) is what `defuzz(e, v, lo, hi)` uses in the grammar; `meanOfMaxima`
-and `bisector` are available as library functions:
+[Defuzzifying](https://en.wikipedia.org/wiki/Defuzzification) collapses a membership curve
+back to one crisp value. `centroid` (the centre of gravity) is what `defuzz(e, v, lo, hi)`
+uses in the grammar; `meanOfMaxima` and `bisector` are available as library functions:
 
 ```scala mdoc
 val tri = Parser.parse("trimf(x, 0, 5, 10)").get
@@ -338,10 +341,13 @@ The REPL's `simplify` command runs this pass after the scalar pass, injecting
 
 ## Normal forms
 
-`toCNF` / `toDNF` rewrite an expression into conjunctive / disjunctive normal
-form: `implies`/`xor` are desugared, `not` is pushed to the leaves via De Morgan,
-and the appropriate connective is distributed. A distribution that would exceed
-1024 clauses returns the input unchanged:
+`toCNF` / `toDNF` rewrite an expression into
+[conjunctive](https://en.wikipedia.org/wiki/Conjunctive_normal_form) /
+[disjunctive](https://en.wikipedia.org/wiki/Disjunctive_normal_form) normal form:
+`implies`/`xor` are desugared, `not` is pushed to the leaves via
+[De Morgan's laws](https://en.wikipedia.org/wiki/De_Morgan%27s_laws), and the appropriate
+connective is distributed. A distribution that would exceed 1024 clauses returns the input
+unchanged:
 
 ```scala mdoc
 toCNF(Not(And(a, b)))

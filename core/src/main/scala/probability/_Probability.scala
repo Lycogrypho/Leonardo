@@ -36,7 +36,7 @@ enum Query:
   case Cdf
   /** `prob(d, lo, hi)` — `P(lo ≤ X ≤ hi)`. */
   case Prob
-  /** `prob(pred)` — the probability that a predicate over a random variable holds (4.R). */
+  /** `prob(pred)` — the probability that a predicate over a random variable holds. */
   case ProbOf
   /** `quantile(d, p)` — the inverse cdf. */
   case Quantile
@@ -77,7 +77,7 @@ case class _DistributionQuery(query: Query, dist: _Expression, args: List[_Expre
   override def eval(env: Environment): Either[_Expression, _Value] =
     if query == Query.ProbOf then evalPredicate(env) else evalNumeric(env)
 
-  /** `prob(pred)` — the predicate form (issue 4.R slice B).
+  /** `prob(pred)` — the predicate form.
    *
    *  Its single `dist` slot holds the *predicate*, not a distribution, so it takes none of
    *  the numeric-argument path below.  An unrecognised predicate stays symbolic: the bad

@@ -3,8 +3,6 @@ title: Developer Guide
 nav_order: 14
 ---
 
----
-
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
 
 # Leonardo Developer Guide
@@ -44,8 +42,10 @@ conventions, and a step-by-step recipe for adding new features.
 
 Leonardo is a Scala 3 symbolic math library.  It parses a string into an abstract syntax
 tree (AST), then either evaluates the tree numerically (when all variables are bound) or
-returns a simplified symbolic expression.  The library covers scalar algebra, matrix algebra,
-equation solving, integral transforms, and first-order ODEs.
+returns a simplified symbolic expression.  The library covers scalar algebra and calculus,
+matrix algebra, equation and inequality solving, integral transforms (Laplace, Fourier,
+z-transform), first-order ODEs, logic (boolean through fuzzy), probability and statistics,
+domain analysis, vector calculus, control systems, and an opt-in exact-arithmetic tier.
 
 Read the [architecture page](architecture.md) for the high-level layering diagram and the
 [expressions page](expressions.md) for user-facing usage examples.
@@ -57,25 +57,30 @@ Read the [architecture page](architecture.md) for the high-level layering diagra
 Dependencies point **inward** toward `core`; no inner package imports an outer one.
 
 ```
-core           _Expression, _Value, Environment, _Number, _Bool, _MatrixValue
+core           _Expression, _Value, Environment, _Number, _Bool, _MatrixValue, …
   ↑
 scalar         Sum, Product, Ratio, Power, functions, Derive, Integrate, Simplify, …
   ↑
-matrix         _Matrix, MatSum, MatProduct, decompositions
-  ↑
-equation       _Equation, _Solve, SolveSystem
-  ↑
-transform      _Laplace, _Fourier, _InverseLaplace, LaplaceTransform
-  ↑
+── the domain packages, each importing core + scalar (some also one another, one-way): ──
+matrix         _Matrix, MatSum, MatProduct, decompositions, expm
+equation       _Equation, _Comparison, _Solve, SolveSystem     (also imports matrix, logic)
+transform      Laplace, Fourier, inverse Laplace, z-transform
 ode            _ODE, SolveODE, SolveODESymbolic
+logic          connectives, Kleene/fuzzy rule table, CNF/DNF, defuzzification
+probability    distributions, moments by linearity
+statistics     descriptive stats, regression, inference        (also imports matrix, probability)
+domain         rendering of the domain analysis into relations (also imports equation, logic)
+vector         grad/div/curl/laplacian/jacobian/hessian        (also imports matrix)
+control        transfer functions, stability, discretisation   (also imports matrix, transform)
   ↑
-parser         Parser — string → AST; imports all domains
+parser         Parser — string → AST; imports every domain
   ↑
 cli            Repl, Session; leaf, nothing imports it
 ```
 
-This graph is a strict DAG.  Adding a cross-layer import is a design violation and will
-create a circular dependency in sbt.
+This graph is a strict DAG: every cross-domain arrow is one-way (`equation` imports
+`logic`, never the reverse; `statistics` imports `probability`, never the reverse).  Adding
+an import against an arrow is a design violation and creates a circular dependency in sbt.
 
 ---
 
@@ -196,10 +201,11 @@ val env2 = env.withBinding("x", _Number(3.14))   // scoped copy — original unc
 `withBinding` into recursive `eval` calls is how binder variables are scoped during
 `_DefIntegral`, `_ODE`, etc.
 
-`Environment` carries four fields today — `precision`, the variable bindings,
-`symmetricLogic` and `semantics` — the last two added as *defaulted* parameters so
-existing call sites keep compiling (see [Recurring design patterns](#recurring-design-patterns),
-pattern 4).
+`Environment` carries five fields — `precision`, the variable bindings, `symmetricLogic`,
+`semantics` and `workingPrecision` (the digits an irrational is approximated to in exact
+mode, a different quantity from the display precision) — all but the first two added as
+*defaulted* parameters so existing call sites keep compiling (see
+[Recurring design patterns](#recurring-design-patterns), pattern 4).
 
 `Environment.DefaultPrecision = 5` is the single source of truth for rounding, and one
 point is easy to get wrong: **rounding is a display concern only**.  `_Number.eval` is
@@ -285,8 +291,8 @@ types or forked packages:
 ```scala
 class Environment(precision:      Int             = DefaultPrecision,
                   variables:      Map[String, _Value] = Map(),
-                  symmetricLogic: Boolean         = false,           // 4.G
-                  semantics:      LogicSemantics  = MinMax)          // 4.H
+                  symmetricLogic: Boolean         = false,
+                  semantics:      LogicSemantics  = MinMax)
 ```
 
 Defaulting keeps roughly 500 existing positional call sites compiling untouched, and the
@@ -359,13 +365,13 @@ treatment: nobody binds it.
 Weigh this whenever a new keyword is added.  Names that merely *start* with a reserved word
 (`gamma1`, `betaX`, `sina`) are always still legal.
 
-**Reserve a word when a production needs it, never in anticipation of one.**  Issue 6.29
-reserved `routh` alongside its four real keywords, but `routhTable` is a library function with
-no grammar production — so the word was taxed from every user and bought nothing.  It was
-released in 2.13.  The asymmetry is what makes this worth getting right at the time: a
-reservation that has not yet appeared in a published release can be dropped for free, while
-reclaiming a name users have bound breaks their saved scripts.  If a production is merely
-*planned*, leave the name alone until it exists.
+**Reserve a word when a production needs it, never in anticipation of one.**  The control
+domain once reserved `routh` alongside its four real keywords, but `routhTable` is a library
+function with no grammar production — so the word was taxed from every user and bought
+nothing, and the reservation was released.  The asymmetry is what makes this worth getting
+right at the time: a reservation that has not yet appeared in a published release can be
+dropped for free, while reclaiming a name users have bound breaks their saved scripts.  If a
+production is merely *planned*, leave the name alone until it exists.
 
 **The same problem runs the other way when an algorithm invents a name of its own.**  The
 Laplace-to-Fourier substitution needs a frequency variable, u-substitution needs a `u`, and
@@ -378,7 +384,7 @@ succeeds.
 
 Parsed input cannot collide, since the variable regex is alphanumeric and cannot produce a
 leading underscore.  **That is not a reason to skip it**, for two reasons the ZOH case
-illustrates (issue 2.12).  The library API is public, so an expression built programmatically
+illustrates.  The library API is public, so an expression built programmatically
 can hold any name at all.  And the argument for *why* a particular collision cannot happen
 usually turns out to rest on some **other** tier's current limitation — there, the
 inverse-Laplace tier's numeric-coefficient requirement, which its own documentation calls a
@@ -434,15 +440,17 @@ The cache is `private[scalar]`, so it is invisible to callers outside the packag
 ## The parser
 
 `parser/Parser.scala` extends `JavaTokenParsers` (scala-parser-combinators).  It uses
-recursive descent with explicit priority levels:
+[recursive descent](https://en.wikipedia.org/wiki/Recursive_descent_parser) with explicit
+priority levels — the logic connectives bind loosest, then the relations, then arithmetic:
 
 ```
-topLevel → expr ("=" | "==") expr
-expr     → ["+" | "-"] simpleExpr
+topLevel   → logicExpr                    (not > and > xor > or > implies)
+equationExpr → expr [relop expr]          (relop: >= <= != == > < = — longest first)
+expr       → ["+" | "-"] simpleExpr
 simpleExpr → term (("+"|"-") term)*
-term     → signedPower (("*"|"/") signedPower | implicit signedPower)*
-power    → factor ["^" signedPower]
-factor   → function | functional | matrix | value | "(" expr ")"
+term       → signedPower (("*"|"/") signedPower | implicit signedPower)*
+power      → factor ["^" signedPower]
+factor     → function | functional | matrix | value | "(" expr ")"
 ```
 
 Key parser decisions:
@@ -466,7 +474,7 @@ alternative of `factor`, then wire it into `function` with `|`.
 `Session.execute(line: String): String` — a pure function with no IO — so it is fully
 testable without starting the REPL.
 
-Session state is stored in two mutable maps inside `Session`:
+Session state is held in two mutable references inside `Session`:
 - `env: Environment` — `_Value` bindings (numbers, matrices, booleans)
 - `definitions: Map[String, _Expression]` — symbolic expressions, late-bound
 
@@ -498,7 +506,7 @@ dispatcher and the compiled `integrateImpl` table; the tiers themselves live bes
 | Tier | Technique | Lives in |
 |---|---|---|
 | Linear chain rule | `∫f(a·v+b)dv = F(a·v+b)/a` | `Integrate.scala` |
-| Integration by parts | `∫u dv = u·V − ∫V du`, LIATE heuristic | `IntegrateParts.scala` |
+| Integration by parts | `∫u dv = u·V − ∫V du`, [LIATE heuristic](https://en.wikipedia.org/wiki/Integration_by_parts#LIATE_rule) | `IntegrateParts.scala` |
 | Power reduction | `∫sinⁿ`/`∫cosⁿ`, `∫tanⁿ`/`∫secⁿ`/`∫cscⁿ`/`∫cotⁿ`, `∫sinhⁿ`/`∫coshⁿ` | `IntegrateParts.scala` |
 | Rational functions | Long division → square-free factorisation → undetermined coefficients | `IntegrateRational.scala` |
 | u-substitution | `∫f(g(v))·g'(v)dv`, via the decidable "free of v" test | `IntegrateSubstitution.scala` |
@@ -524,13 +532,14 @@ root — and only the resulting square-free parts reach
 #### The data-driven table and parameterised rules
 
 After every compiled tier declines, `integrate` consults the table in `IntegralRules.scala`
-— a `List[RewriteRule]` run through the unifier in `Rewrite.scala` (issue 6.21).  It is
+— a `List[RewriteRule]` run through the unifier in `Rewrite.scala` (a small
+[term-rewriting](https://en.wikipedia.org/wiki/Rewriting) engine).  It is
 tried *last*, so nothing that already integrates can change.  The integration variable is a
 pattern hole `?v` that may bind a linear `a·v + b`; the engine divides the result by the
 slope, so each rule gains its chain-rule case from one place.
 
 A rule's `condition` is `(Map[String, _Expression], _Variable) => Boolean` — the bindings
-**and the integration variable** (issue 3.8).  Threading the variable is what lets a rule
+**and the integration variable**.  Threading the variable is what lets a rule
 speak about a *parameter*: `∫ dv/(a² + v²) = atan(v/a)/a` requires the hole `a` to be free of
 `v`, and `∫ aᵛ dv = aᵛ/ln(a)` requires the same plus an admissible base.  Build a guard from
 the combinators — `freeOf`, `isNumeric`, `isPositiveInteger`, `nonZero`, `distinct` —
@@ -639,6 +648,30 @@ Reference: [Wikipedia — Runge–Kutta methods](https://en.wikipedia.org/wiki/R
 
 The step count scales with interval length so accuracy is maintained across arbitrarily
 long integration spans.
+
+### z-transform and control (`transform/`, `control/`)
+
+| Topic | Reference |
+|---|---|
+| z-transform (one-sided) and its inverse | [Wikipedia — Z-transform](https://en.wikipedia.org/wiki/Z-transform) |
+| Transfer functions, poles and zeros | [Wikipedia — Transfer function](https://en.wikipedia.org/wiki/Transfer_function) |
+| Routh–Hurwitz stability criterion (`routhTable`) | [Wikipedia — Routh–Hurwitz](https://en.wikipedia.org/wiki/Routh%E2%80%93Hurwitz_stability_criterion) |
+| Bode and Nyquist response | [Wikipedia — Bode plot](https://en.wikipedia.org/wiki/Bode_plot) · [Nyquist criterion](https://en.wikipedia.org/wiki/Nyquist_stability_criterion) |
+| Controllability and observability | [Wikipedia — Controllability](https://en.wikipedia.org/wiki/Controllability) · [Observability](https://en.wikipedia.org/wiki/Observability) |
+| Bilinear (Tustin) discretisation | [Wikipedia — Bilinear transform](https://en.wikipedia.org/wiki/Bilinear_transform) |
+| Zero-order hold | [Wikipedia — Zero-order hold](https://en.wikipedia.org/wiki/Zero-order_hold) |
+| Matrix exponential, scaling and squaring | [Wikipedia — Matrix exponential](https://en.wikipedia.org/wiki/Matrix_exponential) |
+
+### Probability and statistics (`probability/`, `statistics/`)
+
+| Topic | Reference |
+|---|---|
+| The distribution families | [Wikipedia — Normal](https://en.wikipedia.org/wiki/Normal_distribution) · [Binomial](https://en.wikipedia.org/wiki/Binomial_distribution) · [Poisson](https://en.wikipedia.org/wiki/Poisson_distribution) · [Student's t](https://en.wikipedia.org/wiki/Student%27s_t-distribution) · [Chi-squared](https://en.wikipedia.org/wiki/Chi-squared_distribution) |
+| Linearity of expectation (the `expect` rule table) | [Wikipedia — Expected value](https://en.wikipedia.org/wiki/Expected_value#Properties) |
+| Unbiased sample variance (`n − 1`) | [Wikipedia — Bessel's correction](https://en.wikipedia.org/wiki/Bessel%27s_correction) |
+| Least squares by QR | [Wikipedia — Ordinary least squares](https://en.wikipedia.org/wiki/Ordinary_least_squares) · [Numerical methods](https://en.wikipedia.org/wiki/Numerical_methods_for_linear_least_squares) |
+| One-sample t-test, confidence intervals, goodness of fit | [Wikipedia — Student's t-test](https://en.wikipedia.org/wiki/Student%27s_t-test) · [Confidence interval](https://en.wikipedia.org/wiki/Confidence_interval) · [Pearson's chi-squared test](https://en.wikipedia.org/wiki/Pearson%27s_chi-squared_test) |
+| The error function and incomplete gamma behind every cdf | [Wikipedia — Error function](https://en.wikipedia.org/wiki/Error_function) · [Incomplete gamma function](https://en.wikipedia.org/wiki/Incomplete_gamma_function) |
 
 ---
 
@@ -784,15 +817,17 @@ probe of spire's `Algebraic` returns `-1.00000000000000010000000000000E-8` for e
 equation.  That is the distinction between tiers 1 and 2 of the exact-arithmetic plan
 below, and the reason tier 2 exists at all.
 
-**A second worked example: a threshold that was really a claim about units.**  Issue 2.11
+**A second worked example: a threshold that was really a claim about units.**  A review
 found `control.controllable` deciding rank by `det(M·Mᵀ) > 1e-9`.  Both halves are wrong.
-Forming `M·Mᵀ` **squares the condition number**, which is the same objection that makes
-`regress` solve by QR rather than by the normal equations — so the library had already
-settled the rule and this contradicted it.  Worse, a determinant scales like `‖M‖^(2n)`, so
-the fixed `1e-9` silently encoded an assumption about the *magnitude* of the model: writing
-`B` in millivolts instead of volts shrank the determinant of a perfectly controllable
-two-state plant to `1e-12` and reported it uncontrollable.  Controllability is invariant
-under that scaling; the threshold was not.
+Forming the [Gram matrix](https://en.wikipedia.org/wiki/Gram_matrix) `M·Mᵀ` **squares the
+[condition number](https://en.wikipedia.org/wiki/Condition_number)**, which is the same
+objection that makes `regress` solve by QR rather than by the
+[normal equations](https://en.wikipedia.org/wiki/Ordinary_least_squares#Normal_equations) —
+so the library had already settled the rule and this contradicted it.  Worse, a determinant
+scales like `‖M‖^(2n)`, so the fixed `1e-9` silently encoded an assumption about the
+*magnitude* of the model: writing `B` in millivolts instead of volts shrank the determinant
+of a perfectly controllable two-state plant to `1e-12` and reported it uncontrollable.
+Controllability is invariant under that scaling; the threshold was not.
 
 The fix needed no new algorithm, only the recognition that one already existed:
 `qrDecompose` returns `None` exactly when its input is rank-deficient, so
@@ -953,7 +988,7 @@ below by fiat, before it could be measured.
 `gcd` is the expensive step of rational arithmetic; skipping it makes each operation cheaper
 but roughly *doubles* operand size.  Which wins is not obvious, so `GcdPolicy` offers three
 answers — `Eager` (reduce always, what spire does), `Lazy` (never), `Threshold(bits)` (only
-once an operand outgrows a bound) — and issue 4.M benchmarked them, with the exit criteria
+once an operand outgrows a bound) — and the three were benchmarked, with the exit criteria
 written down *before* the numbers existed.  Run it with `sbt bench`; the full record is in
 `docs/benchmarks/gcd-policy-2026-08.txt`.
 
@@ -1267,3 +1302,26 @@ The public docs site is hosted on GitHub Pages (Just the Docs theme) and rebuilt
 automatically by `.github/workflows/pages.yml` on every push to `main`.  Prose pages go in
 `docs/src/` with Jekyll front matter (`title`, `nav_order`).  The `mdoc` plugin verifies
 all ` ```scala mdoc ``` ` code blocks in the docs.
+
+The site's Ruby gems are resolved from `docs/Gemfile`.  To refresh the lockfile, run the
+**`Generate docs/Gemfile.lock`** workflow from the Actions tab and commit the artifact it
+uploads.  It exists as a workflow rather than as a local command for one reason worth
+knowing: bundler refuses a lockfile that does not list the running platform, so a lock
+generated on a Windows or macOS machine fails *every* Pages deploy on the Ubuntu runner.
+Generating it on the runner removes that failure mode instead of relying on anyone
+remembering `--add-platform x86_64-linux`.
+
+### One-time repairs need standing guards
+
+Three CI checks exist because a one-time sweep of a decaying condition does not stay swept:
+
+| Guard | Protects |
+|---|---|
+| `fix-mojibake.py --check` | the UTF-8 sources against reintroduced cp1252 mojibake |
+| `check-charset.py` | against bad repairs landing in an unrelated script |
+| `check-action-pins.py` | every workflow `uses:` naming a commit SHA, not a tag or branch |
+
+The pattern generalises past these three.  When a fix consists of bringing many sites into
+line — an encoding, a pinning convention, an import rule — the fix itself is the easy half;
+what keeps it true is a check that fails the next divergence.  Without one the condition
+decays quietly and the next person finds no evidence that it was ever deliberate.

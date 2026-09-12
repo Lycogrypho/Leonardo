@@ -4,7 +4,7 @@ package ode
 import core.*
 
 
-/** Fourth-order Runge-Kutta integrator for first-order IVPs.
+/** Fourth-order [[https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods Runge-Kutta]] integrator for first-order IVPs.
  *
  *  Computes `y(target)` for `y' = rhs(t, y)`, `y(t0) = y0` using the classic
  *  RK4 scheme.  Returns `Some(result)` when every stage evaluates to a finite
