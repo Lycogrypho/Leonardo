@@ -96,19 +96,20 @@ private case class ZTerm(coeff: Double, root: Double, power: Int)
  */
 private def decomposeReal(ns: Vector[Double], ds: Vector[Double]): Option[Vector[ZTerm]] =
   val degree = polyDegree(ds)
-  if degree < 1 then return None
 
   // (root, multiplicity) for every pole, refusing the moment one is not real.
-  val poles = squareFreeFactors(ds).foldLeft(Option(Vector.empty[(Double, Int)])) {
-    case (None, _) => None
-    case (Some(acc), (factor, mult)) =>
-      rootsOfSquareFree(factor) match
-        case Some(rs) if rs.forall((_, im) => math.abs(im) < 1e-9) =>
-          Some(acc ++ rs.map((re, _) => (re, mult)))
-        case _ => None
-  }
+  def polesOf: Option[Vector[(Double, Int)]] =
+    squareFreeFactors(ds).foldLeft(Option(Vector.empty[(Double, Int)])) {
+      case (None, _) => None
+      case (Some(acc), (factor, mult)) =>
+        rootsOfSquareFree(factor) match
+          case Some(rs) if rs.forall((_, im) => math.abs(im) < 1e-9) =>
+            Some(acc ++ rs.map((re, _) => (re, mult)))
+          case _ => None
+    }
 
-  poles.flatMap { ps =>
+  if degree < 1 then None
+  else polesOf.flatMap { ps =>
     // One basis function per (pole, power): 1/(v - r)^j for j = 1..multiplicity. Over the
     // common denominator each contributes the polynomial ds / (v - r)^j, so the columns of
     // the system are those quotients and the right-hand side is ns.

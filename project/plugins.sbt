@@ -14,7 +14,7 @@ addSbtPlugin("com.github.sbt"     % "sbt-ci-release"   % "1.9.2")
 // split would fragment the published /api into two disjoint trees, and `cli` would drop out
 // of the API reference entirely. Build-only, like PlantUML: an sbt plugin never appears in a
 // published POM.
-addSbtPlugin("com.github.sbt"     % "sbt-unidoc"       % "0.5.0")
+addSbtPlugin("com.github.sbt"     % "sbt-unidoc"       % "0.6.1")
 // Binary-compatibility checking against the previous release (issue 2.9). `versionScheme :=
 // early-semver` in build.sbt is a *promise* that a patch release stays binary-compatible;
 // until 3.7.1 published there was no baseline to check it against, so the promise was

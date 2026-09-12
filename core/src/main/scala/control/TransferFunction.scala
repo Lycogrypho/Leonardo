@@ -194,18 +194,31 @@ def isStableDiscrete(g: _Expression, v: _Variable): Option[Boolean] =
  *  @return the array, row by row from the highest power down, or `None`
  */
 def routhTable(g: _Expression, v: _Variable): Option[Vector[Vector[Double]]] =
+  /** The next row from the previous two; empty when the pivot vanishes (a degenerate case
+   *  this tier reports rather than repairs — see [[isStable]] for why it is not consulted). */
+  def nextRow(a: Vector[Double], b: Vector[Double]): Vector[Double] =
+    val pivot = b.headOption.getOrElse(0.0)
+    if math.abs(pivot) < RationalEps then Vector.empty
+    else Vector.tabulate(math.max(0, a.size - 1)) { i =>
+      (pivot * a.lift(i + 1).getOrElse(0.0) - a.head * b.lift(i + 1).getOrElse(0.0)) / pivot
+    }
+
+  def exhausted(r: Vector[Double]): Boolean = !r.exists(math.abs(_) > RationalEps)
+
   coeffsOf(g, v).map { (_, den) =>
     val cs = den.reverse                      // descending powers
     val (first, second) = cs.zipWithIndex.partition(_._2 % 2 == 0)
-    val rows = scala.collection.mutable.ListBuffer(first.map(_._1), second.map(_._1))
-    while rows.last.count(math.abs(_) > RationalEps) > 0 && rows.size < cs.size do
-      val (a, b) = (rows(rows.size - 2), rows.last)
-      val pivot  = b.headOption.getOrElse(0.0)
-      rows += (if math.abs(pivot) < RationalEps then Vector.empty
-               else Vector.tabulate(math.max(0, a.size - 1)) { i =>
-                 (pivot * a.lift(i + 1).getOrElse(0.0) - a.head * b.lift(i + 1).getOrElse(0.0)) / pivot
-               })
-    rows.toVector
+    // The array is a two-term recurrence, so it unfolds from the pair of seed rows: the
+    // even- and odd-indexed coefficients. At most `cs.size` rows, and it stops at the first
+    // exhausted row — which is *kept*, since a zero row is itself the diagnostic.
+    val rows = LazyList
+      .iterate((first.map(_._1), second.map(_._1)))((a, b) => (b, nextRow(a, b)))
+      .map(_._1).take(cs.size).toVector
+    // Scanning from index 1: the leading coefficient is non-zero by construction (the
+    // denominator arrives trimmed), so the seed row never terminates the array.
+    rows.indexWhere(exhausted, 1) match
+      case -1   => rows
+      case stop => rows.take(stop + 1)
   }
 
 /** Frequency response of `G` at angular frequency `w`: substitute `v -> i*w`.

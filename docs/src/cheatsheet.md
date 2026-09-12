@@ -597,7 +597,8 @@ zeros(g, s)      Option[Vector[_Value]]   numerator roots      (_Complex when os
 dcgain(g, s)     Option[Double]           G(0)
 isStable(g, s)   Option[Boolean]          every pole strictly in the LEFT HALF-PLANE
 isStableDiscrete(g, z)                    every pole strictly INSIDE THE UNIT CIRCLE
-routhTable(g, s) Option[Vector[Vector[Double]]]
+routhTable(g, s) Option[Vector[Vector[Double]]]   jagged rows; no grammar form, so
+                                          `routh` stays a legal variable name
 bode(g, s, w)    Option[(magnitude, phase-radians)]
 nyquist(g, s, w) Option[(real, imaginary)]
 

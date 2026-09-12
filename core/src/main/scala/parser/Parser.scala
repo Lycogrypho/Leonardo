@@ -74,7 +74,17 @@ object Parser extends JavaTokenParsers:
     "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic (3.9)
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "expm",                                                                                 // 6.39 matrix exponential
-    "series", "parallel", "feedback", "impulse", "routh",                                   // 6.29 control theory
+    "series", "parallel", "feedback", "impulse",                                            // 6.29 control theory
+                                                         // NOT "routh": `routhTable` is a
+                                                         // library function with no grammar
+                                                         // production, so reserving the word
+                                                         // taxed a plausible variable name
+                                                         // and bought nothing (issue 2.13).
+                                                         // Reserve a word when a production
+                                                         // needs it, not in anticipation of
+                                                         // one -- releasing an unpublished
+                                                         // reservation is free, reclaiming a
+                                                         // released one breaks saved scripts
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "ztrans", "invztrans",                                                                  // 6.33 z-transform
     "domain", "differentiable", "singularities",         // domain analysis (3.3)

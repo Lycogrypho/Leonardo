@@ -359,6 +359,14 @@ treatment: nobody binds it.
 Weigh this whenever a new keyword is added.  Names that merely *start* with a reserved word
 (`gamma1`, `betaX`, `sina`) are always still legal.
 
+**Reserve a word when a production needs it, never in anticipation of one.**  Issue 6.29
+reserved `routh` alongside its four real keywords, but `routhTable` is a library function with
+no grammar production — so the word was taxed from every user and bought nothing.  It was
+released in 2.13.  The asymmetry is what makes this worth getting right at the time: a
+reservation that has not yet appeared in a published release can be dropped for free, while
+reclaiming a name users have bound breaks their saved scripts.  If a production is merely
+*planned*, leave the name alone until it exists.
+
 **The same problem runs the other way when an algorithm invents a name of its own.**  The
 Laplace-to-Fourier substitution needs a frequency variable, u-substitution needs a `u`, and
 zero-order-hold discretisation needs both a time variable and a sample index.  Writing any of

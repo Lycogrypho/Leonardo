@@ -156,6 +156,44 @@ class ControlTest extends AnyFlatSpec:
     assert(isStable(parse("1/(s^2 + a*s + 1)"), s).isEmpty)
   }
 
+  "the Routh array" should "have as many first-column sign changes as right-half-plane poles" in
+  {
+    // The criterion itself, checked against the poles rather than against a transcribed
+    // table: an identity holds for every input, where a copied array only pins one.
+    for src <- Seq("1/(s^2 + 3*s + 2)",        // (s+1)(s+2)      -- 0 RHP
+                   "1/(s^2 + s - 2)",          // (s+2)(s-1)      -- 1 RHP
+                   "1/(s^3 + 6*s^2 + 11*s + 6)",   // (s+1)(s+2)(s+3) -- 0 RHP
+                   "1/(s^3 + s^2 + s + 6)") do // one real RHP pair-free root
+      val g     = parse(src)
+      val table = routhTable(g, s).getOrElse(fail(s"expected a Routh array for $src"))
+      val first = table.flatMap(_.headOption)
+      val changes = first.sliding(2).count { case Seq(a, b) => a * b < 0; case _ => false }
+      val rhp = poles(g, s).getOrElse(fail(s"expected poles for $src"))
+        .count(p => realPartOf(p).exists(_ > 1e-9))
+      assert(changes == rhp, s"$src: $changes sign changes in ${first.mkString(", ")} but $rhp RHP poles")
+  }
+
+  it should "start from the denominator's descending coefficients" in
+  {
+    // s^2 + 3s + 2 -> rows [1, 2] / [3] / [2]; the first two rows are the even- and
+    // odd-indexed coefficients, which is the array's definition rather than a derived fact.
+    routhTable(parse("1/(s^2 + 3*s + 2)"), s) match
+      case Some(Vector(Vector(1.0, 2.0), Vector(3.0), Vector(c))) =>
+        assert(math.abs(c - 2.0) < 1e-9, s"third row should be [2], got [$c]")
+      case other => fail(s"unexpected array: $other")
+  }
+
+  it should "decline a non-rational G, as every other reader of the coefficients does" in
+  {
+    assert(routhTable(parse("exp(-2*s)/(s+1)"), s).isEmpty)
+  }
+
+  /** Real part of a pole, for the Routh cross-check. */
+  def realPartOf(p: _Value): Option[Double] = p match
+    case c: _Complex => _Complex.parts(c).map(_._1)
+    case _Number(d)  => Some(d)
+    case _           => None
+
   // --- slice 4: frequency response ---
 
   "bode magnitude at w = 0" should "be the DC gain" in
@@ -301,6 +339,17 @@ class ControlTest extends AnyFlatSpec:
 
   "bare control keywords" should "be reserved words" in
   {
-    for w <- List("series", "parallel", "feedback", "impulse", "routh") do
+    for w <- List("series", "parallel", "feedback", "impulse") do
       assert(!Parser.parse(w).successful, s"'$w' should be reserved")
+  }
+
+  "routh" should "be an ordinary variable name, not a reserved word" in
+  {
+    // 2.13 decision 3: `routhTable` is library-only, so reserving the word taxed every user
+    // a plausible variable name and bought nothing. Settled before 3.8.0 published it --
+    // releasing an unpublished reservation is free, reclaiming a released one is not.
+    Parser.parse("routh") match
+      case r if r.successful => assert(r.get == _Variable("routh"), s"got ${r.get}")
+      case r                 => fail(s"'routh' should parse as a variable: $r")
+    assert(Parser.parse("routh + 1").successful, "'routh' should compose like any variable")
   }
