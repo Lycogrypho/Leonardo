@@ -247,6 +247,30 @@ class ControlTest extends AnyFlatSpec:
     assertAgrees(gc, g, s, pts, 1e-6)
   }
 
+  /** The ZOH path's internal variables are generated, not named by hand (issue 2.12).
+   *
+   *  **These are not regression tests for a live capture, and saying so is the point.**  The
+   *  capture is unreachable today: `stepResponse` routes through the inverse-Laplace tier,
+   *  which requires numeric coefficients, so a plant carrying any free parameter is declined
+   *  before the substitution is reached — as the second test below pins.  The generated names
+   *  close the hole *in advance* of symbolic inversion landing, since the safety otherwise
+   *  rests on a neighbouring tier's limitation rather than on this one's code.
+   */
+  "the ZOH internal variables" should "not leak into the result" in
+  {
+    val gd = c2d(parse("1/(s+1)"), s, z, 0.1, Zoh).getOrElse(fail("expected a discretisation"))
+    assert(gd.freeVars == Set("z"), s"only z should remain free; got ${gd.freeVars} in $gd")
+  }
+
+  it should "be the only reason a free parameter is currently refused" in
+  {
+    // Pins the ASSUMPTION the unreachability argument rests on, so that the day symbolic
+    // inverse-Laplace lands this test fails and sends the reader to the capture question --
+    // rather than the capture silently becoming reachable with nothing to notice it.
+    assert(c2d(Product(_Variable("kk"), parse("1/(s+1)")), s, z, 0.1, Zoh).isEmpty,
+           "a symbolic gain now survives stepResponse: re-check the 2.12 capture argument")
+  }
+
   "discrete stability" should "use the unit circle, not the left half-plane" in
   {
     // z = 0.5 is stable in discrete time; the same value as a CONTINUOUS pole would not be.

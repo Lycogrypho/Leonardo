@@ -1310,6 +1310,10 @@ package "control" {
         c2d: Tustin = substitution;
              Zoh = step response -> sample -> ztrans
              -> (1 - z^-1) factor   [needs 6.33]
+             ZOH time / index vars come from
+             freshVar, never literal names: a
+             literal would capture a plant
+             parameter of the same name (2.12)
         d2c: Tustin only; a Zoh inverse needs a
              matrix logarithm -> declined
     }

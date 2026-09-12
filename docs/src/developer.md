@@ -359,6 +359,26 @@ treatment: nobody binds it.
 Weigh this whenever a new keyword is added.  Names that merely *start* with a reserved word
 (`gamma1`, `betaX`, `sina`) are always still legal.
 
+**The same problem runs the other way when an algorithm invents a name of its own.**  The
+Laplace-to-Fourier substitution needs a frequency variable, u-substitution needs a `u`, and
+zero-order-hold discretisation needs both a time variable and a sample index.  Writing any of
+them as a literal `_Variable("__t")` makes the tier unsafe for an input that happens to carry
+a parameter of that name: it is substituted along with the invented one, and a constant gain
+quietly becomes time-varying.  Use `scalar.freshVar(reserved, prefix)`, passing the input's
+own `freeVars` as `reserved` — the pigeonhole argument in its doc guarantees the search
+succeeds.
+
+Parsed input cannot collide, since the variable regex is alphanumeric and cannot produce a
+leading underscore.  **That is not a reason to skip it**, for two reasons the ZOH case
+illustrates (issue 2.12).  The library API is public, so an expression built programmatically
+can hold any name at all.  And the argument for *why* a particular collision cannot happen
+usually turns out to rest on some **other** tier's current limitation — there, the
+inverse-Laplace tier's numeric-coefficient requirement, which its own documentation calls a
+boundary rather than a law.  Safety that depends on a neighbour's incompleteness lapses
+silently the day the neighbour improves.  Generating the name costs a line and removes the
+coupling; where that reasoning is load-bearing, pin the assumption with a test that fails
+when it stops holding.
+
 ---
 
 ## Algorithm modules
