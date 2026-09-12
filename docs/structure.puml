@@ -1286,6 +1286,11 @@ package "control" {
           the lu/qr/eig shape: at(m,1,k) and :save
           come free, no new carrier
         controllable(A, B) via ctrb + full row rank
+          rank = M'.qrDecompose.isDefined, NOT
+          det(M*M') > eps: the Gram form squares
+          the condition number and a determinant
+          scales like ||M||^(2n), so the verdict
+          would depend on the model's UNITS
         observable(A, C) = controllable(A', C')
           DEFINED by duality, never restated
         c2dExact(A, B, Ts): expm([[A,B],[0,0]]*Ts)

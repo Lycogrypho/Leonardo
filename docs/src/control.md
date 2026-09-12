@@ -145,6 +145,12 @@ controllable(tf("[[1, 0], [0, 2]]"), tf("[[1], [0]]"))
 Observability is *defined* as controllability of the dual pair `(Aᵀ, Cᵀ)` rather than restated,
 so the two can never disagree.
 
+Both answers are **independent of the units the model is written in**, which is less obvious
+than it sounds. Rank is decided by QR of the transposed controllability matrix, not by
+`det(M·Mᵀ)` against a threshold: a determinant scales like `‖M‖^(2n)`, so with the older test
+the same plant with `B` in millivolts rather than volts came back *uncontrollable*. Scaling
+`B` cannot change which states the input can reach, and the tests pin that it does not.
+
 ## Discrete time
 
 Discretisation always names its method. The same plant discretised by zero-order hold and by

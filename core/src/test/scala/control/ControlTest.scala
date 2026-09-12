@@ -200,6 +200,35 @@ class ControlTest extends AnyFlatSpec:
     assert(controllable(parse("[[1, 0], [0, 2]]"), parse("[[1], [0]]")).contains(false))
   }
 
+  "controllability" should "not depend on the units B is expressed in" in
+  {
+    // Scaling B by k != 0 spans the same reachable subspace, so the verdict must not move:
+    // millivolts and volts describe one system. The det(M*M^T) test fails this outright --
+    // a determinant scales like ||M||^(2n), so 1e-3 on a 2-state system lands the value at
+    // 1e-12, under any fixed threshold, and reports a perfectly controllable plant as not.
+    val a = parse("[[0, 1], [-2, -3]]")
+    for scale <- Seq("1", "0.001", "1000") do
+      assert(controllable(a, parse(s"[[0], [$scale]]")).contains(true), s"B scaled by $scale")
+  }
+
+  it should "not depend on the units A is expressed in either" in
+  {
+    // The same argument on the other operand: A*k changes the time scale, not reachability.
+    for scale <- Seq("0.001", "1000") do
+      assert(controllable(parse(s"[[0, $scale], [0, 0]]"), parse("[[0], [1]]")).contains(true),
+             s"A scaled by $scale")
+  }
+
+  "observability" should "be unit-invariant by the same duality" in
+  {
+    // observable(A, C) is controllable(A', C'), so it inherits the property rather than
+    // needing its own fix -- which is the point of defining it that way.
+    val a = parse("[[0, 1], [-2, -3]]")
+    for scale <- Seq("1", "0.001", "1000") do
+      assert(observable(a, parse(s"[[$scale, 0]]")).contains(true), s"C scaled by $scale")
+    assert(observable(parse("[[1, 0], [0, 2]]"), parse("[[0.001, 0]]")).contains(false))
+  }
+
   // --- slice 6: discrete time (needs 6.33 and 6.39) ---
 
   "c2d by Tustin" should "substitute s = (2/Ts)*(z-1)/(z+1)" in

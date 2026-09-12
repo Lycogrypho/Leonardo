@@ -756,6 +756,30 @@ probe of spire's `Algebraic` returns `-1.00000000000000010000000000000E-8` for e
 equation.  That is the distinction between tiers 1 and 2 of the exact-arithmetic plan
 below, and the reason tier 2 exists at all.
 
+**A second worked example: a threshold that was really a claim about units.**  Issue 2.11
+found `control.controllable` deciding rank by `det(M·Mᵀ) > 1e-9`.  Both halves are wrong.
+Forming `M·Mᵀ` **squares the condition number**, which is the same objection that makes
+`regress` solve by QR rather than by the normal equations — so the library had already
+settled the rule and this contradicted it.  Worse, a determinant scales like `‖M‖^(2n)`, so
+the fixed `1e-9` silently encoded an assumption about the *magnitude* of the model: writing
+`B` in millivolts instead of volts shrank the determinant of a perfectly controllable
+two-state plant to `1e-12` and reported it uncontrollable.  Controllability is invariant
+under that scaling; the threshold was not.
+
+The fix needed no new algorithm, only the recognition that one already existed:
+`qrDecompose` returns `None` exactly when its input is rank-deficient, so
+`Mᵀ.qrDecompose.isDefined` *is* the full-row-rank test (transposed because QR wants
+rows ≥ cols and a controllability matrix is wide).
+
+Two checks to run on any numeric predicate, from these two cases together:
+
+- **Ask what happens under `x → k·x`.**  If the verdict moves but the mathematics does not,
+  the test is wrong however well it behaves on the examples to hand.  A fixed absolute
+  threshold on a scale-dependent quantity is a units bug waiting for a user with different
+  units.
+- **Check whether an existing kernel already answers it.**  A decomposition that declines is
+  often a predicate in disguise.
+
 ### Exact arithmetic — the rational tier (`core/_Rational.scala`)
 
 The counterpart of the section above.  Numerical stability is about rearranging a formula so

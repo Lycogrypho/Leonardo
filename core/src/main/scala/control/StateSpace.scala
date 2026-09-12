@@ -44,13 +44,24 @@ private def hcat(l: _MatrixValue, r: _MatrixValue): _MatrixValue =
     for j <- 0 until r.cols do out(i * cols + l.cols + j) = r(i, j)
   _MatrixValue(l.rows, cols, out)
 
-/** Full row rank test via `det(M * Mᵀ)`.
+/** Full row rank test, by QR of the transpose.
  *
- *  Works for any shape, where a plain determinant would need a square matrix — a
- *  controllability matrix is `n x (n*m)` and only square for a single input.
+ *  `qrDecompose` returns `None` exactly when its input is rank-deficient (a column
+ *  orthogonalises to zero norm), so `rank(M) = rows` is precisely `Mᵀ` decomposing.  The
+ *  transpose is what makes it applicable: a controllability matrix is `n x (n*m)` and so is
+ *  wide for every multi-input plant, while QR requires rows >= cols.
+ *
+ *  **Deliberately not `det(M * Mᵀ)`, which is the trap this replaced** (issue 2.11).  That
+ *  form is wrong twice over.  Forming the Gram matrix **squares the condition number** — the
+ *  very reason `statistics.leastSquares` solves by QR rather than by the normal equations, so
+ *  using it here contradicted a rule the library had already settled.  And a determinant
+ *  scales like `‖M‖^(2n)`, so any fixed threshold is really a statement about the *units* of
+ *  the model: scaling `B` by `1e-3` — millivolts instead of volts — drove a perfectly
+ *  controllable two-state plant to `1e-12` and reported it uncontrollable.  Controllability
+ *  is invariant under that scaling, which is what the tests pin.
  */
-private def fullRowRank(m: _MatrixValue): Option[Boolean] =
-  m.multiply(m.transpose).determinant.map(math.abs(_) > 1e-9)
+private def fullRowRank(m: _MatrixValue): Boolean =
+  m.transpose.qrDecompose.isDefined
 
 /** Is the pair `(A, B)` controllable — can the input steer every state?
  *
@@ -62,8 +73,7 @@ def controllable(a: _Expression, b: _Expression): Option[Boolean] =
   for
     am <- denseOf(a); bm <- denseOf(b)
     if am.rows == am.cols && bm.rows == am.rows
-    rank <- fullRowRank(ctrbOf(am, bm))
-  yield rank
+  yield fullRowRank(ctrbOf(am, bm))
 
 /** Is the pair `(A, C)` observable — can the output distinguish every state?
  *
@@ -78,8 +88,7 @@ def observable(a: _Expression, c: _Expression): Option[Boolean] =
   for
     am <- denseOf(a); cm <- denseOf(c)
     if am.rows == am.cols && cm.cols == am.rows
-    rank <- fullRowRank(ctrbOf(am.transpose, cm.transpose))
-  yield rank
+  yield fullRowRank(ctrbOf(am.transpose, cm.transpose))
 
 /** **Exact** state-space discretisation over one sample period: `A_d = e^(A*Ts)`.
  *
