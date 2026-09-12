@@ -49,13 +49,48 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 
 ## Class and package diagram
 
-<div style="text-align:center;margin:24px 0">
-  <object data="structure.svg" type="image/svg+xml"
-          style="max-width:100%;width:100%;min-height:500px">
-    <img src="structure.svg" alt="Leonardo architecture diagram"
-         style="max-width:100%;width:100%"/>
-  </object>
+<div style="margin:24px 0">
+  <div style="width:100%;height:75vh;border:1px solid #d0d0d8;border-radius:4px;overflow:hidden;background:#ffffff">
+    <object id="structure-diagram" data="structure.svg" type="image/svg+xml"
+            style="display:block;width:100%;height:100%">
+      <img src="structure.svg" alt="Leonardo architecture diagram"
+           style="max-width:100%"/>
+    </object>
+  </div>
+  <p style="font-size:0.85em;color:#666;margin-top:6px;text-align:center">
+    Drag to pan · scroll, double-click, or use the corner controls to zoom ·
+    <a href="structure.svg" target="_blank" rel="noopener">open the diagram in its own tab</a>
+  </p>
 </div>
+<script src="js/svg-pan-zoom.min.js"></script>
+<script>
+  (function () {
+    var diagram = document.getElementById("structure-diagram");
+    var started = false;
+    function start() {
+      // Same-origin embed, so contentDocument is readable; bail quietly otherwise
+      // (e.g. a viewer with scripting disabled), leaving the plain embed and the
+      // open-in-tab link as the fallback.
+      if (started || !window.svgPanZoom) return;
+      var doc = diagram.contentDocument;
+      if (!doc || !doc.documentElement || doc.documentElement.nodeName !== "svg") return;
+      started = true;
+      // The diagram is ~37000 x 3700 units, so the fitted overview is ~2% scale and the
+      // ceiling must allow ~50x before package-table text is comfortable.
+      svgPanZoom(diagram, {
+        zoomEnabled: true,
+        controlIconsEnabled: true,
+        fit: true,
+        center: true,
+        zoomScaleSensitivity: 0.3,
+        minZoom: 0.8,
+        maxZoom: 120
+      });
+    }
+    diagram.addEventListener("load", start);
+    if (diagram.contentDocument && diagram.contentDocument.readyState === "complete") start();
+  })();
+</script>
 
 ## Package guide
 
