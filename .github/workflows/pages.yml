@@ -51,8 +51,9 @@ jobs:
         #   `docs/mdoc` -- MdocPlugin is enabled on the `docs` project, not root, so that mdoc
         #                  stays out of the published POM. Bare `mdoc` is not a valid task.
         #   `unidoc`    -- plain `doc` now writes core/target and repl/target separately and
-        #                  produces NOTHING at target/scala-3.3.6/api, which is the path the
-        #                  assemble step below copies. It would also drop `cli` from the API.
+        #                  produces NOTHING at target/scala-<version>/api, which is the path
+        #                  the assemble step below copies. It would also drop `cli` from the
+        #                  API.  (The version is deliberately not spelled here -- see below.)
         run: sbt "docs/mdoc; unidoc; injectApiStyles"
 
       # ── Jekyll prose site (Just the Docs over docs/src) ──────────────────────
@@ -87,8 +88,20 @@ jobs:
       # ── Assemble: prose at root, API at /api, .nojekyll so the _-prefixed
       #    Scaladoc file names survive static serving. ───────────────────────────
       - name: Add API reference and .nojekyll
+        # A GLOB, deliberately, and it is a Scala Steward matter rather than a style one.
+        # Steward rewrites an outdated version literal wherever it appears -- comments
+        # included, so no file may spell the Scala version, not even to explain this rule.
+        # A hardcoded scala-<version> path here made Steward's Scala-bump branch edit THIS
+        # FILE -- and pushing a change under
+        # .github/workflows is refused for a PAT without the `workflow` scope, which failed
+        # the entire run ('refusing to allow a Personal Access Token to create or update
+        # workflow pages.yml'). Widening the PAT would have granted the automation the power
+        # to rewrite the workflows that hold the signing key; dropping the literal keeps the
+        # token minimal and this workflow valid across Scala bumps with no edit at all.
+        # The glob is deterministic here: a fresh CI checkout builds exactly one
+        # target/scala-* directory, and if none exists cp fails loudly.
         run: |
-          cp -r target/scala-3.3.6/api _site/api
+          cp -r target/scala-*/api _site/api
           touch _site/.nojekyll
 
       - name: Upload Pages artifact
