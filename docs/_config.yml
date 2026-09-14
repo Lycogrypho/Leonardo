@@ -11,7 +11,15 @@
 # (it is NOT produced by Jekyll). See docs/README.md for the full build story.
 
 title: Leonardo
-description: A Scala 3 symbolic mathematics library and Computer Algebra System (CAS).
+# Consumed by jekyll-seo-tag as the site's meta description and og:description, so it is what
+# a shared link shows. Kept identical to the GitHub repository description on purpose: the two
+# links are shared interchangeably and a reader should not meet two different taglines.
+description: "A Computer Algebra System for Scala 3: symbolic calculus, exact arithmetic, linear algebra, integral transforms, control theory, and a REPL."
+
+# NOTE: the Open Graph card image is NOT set here. jekyll-seo-tag reads `image` from a page's
+# FRONT MATTER and ignores a root-level key in this file, so `image:` at this level is silently
+# inert -- it produces no og:image and no error. It is set through `defaults:` below instead,
+# which is the documented site-wide route.
 
 # GitHub project page: https://lycogrypho.github.io/Leonardo/
 # `url` is the origin, `baseurl` the repo sub-path. If the repo is renamed or served
@@ -43,6 +51,18 @@ defaults:
       path: ""
     values:
       layout: default
+      # The Open Graph card image, injected as front matter on every page because that is the
+      # only level jekyll-seo-tag reads it from. Without it the plugin emits no og:image at
+      # all and falls back to twitter:card=summary -- a small text-only card -- so a shared
+      # documentation link previews worse than the repository link does.
+      #
+      # logo2.png, NOT logo2.svg: Mastodon, Slack and X do not render SVG as an og:image, and
+      # it must be a raster at roughly 1.91:1. This is the 1280x640 export made for GitHub's
+      # social-preview template, so one asset serves both surfaces.
+      #
+      # Resolved through `absolute_url`, so the leading "/" picks up the baseurl and must not
+      # repeat it -- the same rule as `logo:` below.
+      image: "/logo2.png"
 
 # ── Just the Docs options ──────────────────────────────────────────────────────
 # Renders in place of the text site title in the sidebar (the theme's title.html switches
@@ -69,9 +89,14 @@ aux_links_new_tab: false
 #                `-project-logo`, so both published views are branded identically
 #   logo_bw.svg  the per-page inline logo carried by each prose page
 #   structure.svg  referenced by architecture.md
+#   logo2.png    the Open Graph card (`image:` above). Excluding it would leave every shared
+#                link pointing at a 404, which no build step would catch
 exclude:
   - logo.svg
   - logo2.svg
+  # Unreferenced by any page, and 1.1 MB. Publishing it would cost more than the whole prose
+  # site; the PNG export beside it is what is actually used.
+  - logo3.svg
   - logo_bkp.svg
   - logo_bkp2.svg
   - _assets
