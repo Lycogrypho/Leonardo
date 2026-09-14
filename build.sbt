@@ -371,7 +371,7 @@ lazy val replModule = (project in file("repl"))
 
 // ThisBuild: both modules have test suites, and a bare `libraryDependencies +=` would give
 // ScalaTest to root only -- leaving the four cli suites uncompilable in the repl module.
-ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
+ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % "test"
 
 ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.19" % "test"
 
