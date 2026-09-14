@@ -363,7 +363,7 @@ lazy val replModule = (project in file("repl"))
   .settings(
     name             := "leonardo-repl",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
-    libraryDependencies += "org.jline" % "jline" % "3.30.15",
+    libraryDependencies += "org.jline" % "jline" % "3.30.17",
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline)
