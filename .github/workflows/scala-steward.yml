@@ -53,3 +53,23 @@ jobs:
           # applies. Grant it contents:write + pull-requests:write on this repository and
           # store it as the repository secret STEWARD_TOKEN.
           github-token: ${{ secrets.STEWARD_TOKEN || secrets.GITHUB_TOKEN }}
+
+          # WITHOUT THESE THE ACTION REFUSES TO START, and the message names neither the token
+          # nor the permissions: "Unable to find author's email. Either ensure that the token's
+          # GitHub Account has the email privacy feature disabled for at least one email or use
+          # the `author-email` input to provide one."
+          #
+          # Steward has to author commits, so it asks the API for the token owner's email. With
+          # GitHub's email privacy enabled -- the sensible setting, and the one in force here --
+          # the API returns none and the run stops before doing any work. It fails in seconds
+          # and never reaches a dependency, which is what makes it look like an auth problem.
+          #
+          # The `@users.noreply.github.com` form is GitHub's own answer to this: it keeps the
+          # real address private, and GitHub still attributes the commits to the account, so
+          # disabling email privacy to satisfy a bot is not necessary.
+          #
+          # The author NAME is deliberately not the maintainer's. Steward's commits should be
+          # identifiable as machine-generated in `git log`, the way `dependabot[bot]` already
+          # is; a bot committing under a human's name removes a signal for no benefit.
+          author-name: Scala Steward
+          author-email: 115467880+Lycogrypho@users.noreply.github.com
