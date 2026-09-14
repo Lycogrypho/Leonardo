@@ -128,7 +128,7 @@ import conventions and a fuller tour.
 
 ## Documentation
 
-📖 **Documentation site**: [lycogrypho.github.io/Leonardo](https://lycogrypho.github.io/Leonardo/) — guides, examples, and the full Scaladoc API reference published to GitHub Pages. See [`docs/README.md`](docs/README.md) for the build details.
+📖 **Documentation site**: [lycogrypho.github.io/Leonardo](https://lycogrypho.github.io/Leonardo/) — guides, examples, and the full Scaladoc API reference published to GitHub Pages.
 
 📖 **Individual pages** (published; the sources under `docs/src/` are mdoc *input* and show
 their examples unevaluated):

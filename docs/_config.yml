@@ -11,7 +11,22 @@
 # (it is NOT produced by Jekyll). See docs/README.md for the full build story.
 
 title: Leonardo
-description: A Scala 3 symbolic mathematics library and Computer Algebra System (CAS).
+# Consumed by jekyll-seo-tag as the site's meta description and og:description, so it is what
+# a shared link shows. Kept identical to the GitHub repository description on purpose: the two
+# links are shared interchangeably and a reader should not meet two different taglines.
+description: "A Computer Algebra System for Scala 3: symbolic calculus, exact arithmetic, linear algebra, integral transforms, control theory, and a REPL."
+
+# The Open Graph card image. WITHOUT this, jekyll-seo-tag emits no og:image at all and falls
+# back to twitter:card=summary -- a small text-only card -- so a shared documentation link
+# previewed worse than the repository link did.
+#
+# logo2.png, NOT logo2.svg: Mastodon, Slack and X do not render SVG as an og:image, and the
+# file must be a raster at roughly 1.91:1. This one is the 1280x640 export made for GitHub's
+# social-preview template, so the same asset serves both surfaces.
+#
+# Resolved through `absolute_url`, so the leading "/" picks up the baseurl and must not repeat
+# it -- the same rule as `logo:` below.
+image: "/logo2.png"
 
 # GitHub project page: https://lycogrypho.github.io/Leonardo/
 # `url` is the origin, `baseurl` the repo sub-path. If the repo is renamed or served
@@ -69,9 +84,14 @@ aux_links_new_tab: false
 #                `-project-logo`, so both published views are branded identically
 #   logo_bw.svg  the per-page inline logo carried by each prose page
 #   structure.svg  referenced by architecture.md
+#   logo2.png    the Open Graph card (`image:` above). Excluding it would leave every shared
+#                link pointing at a 404, which no build step would catch
 exclude:
   - logo.svg
   - logo2.svg
+  # Unreferenced by any page, and 1.1 MB. Publishing it would cost more than the whole prose
+  # site; the PNG export beside it is what is actually used.
+  - logo3.svg
   - logo_bkp.svg
   - logo_bkp2.svg
   - _assets
