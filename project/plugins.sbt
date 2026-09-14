@@ -9,7 +9,7 @@ addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.1.0")
 // just because something else happens to pull it in. sbt evicts to the higher version.
 //
 // Check https://mvnrepository.com/artifact/com.github.sbt/sbt-ci-release for the latest.
-addSbtPlugin("com.github.sbt"     % "sbt-ci-release"   % "1.9.2")
+addSbtPlugin("com.github.sbt"     % "sbt-ci-release"   % "1.9.3")
 // One combined Scaladoc across both modules (issue 5.2 phase 1.1). Without it the module
 // split would fragment the published /api into two disjoint trees, and `cli` would drop out
 // of the API reference entirely. Build-only, like PlantUML: an sbt plugin never appears in a
