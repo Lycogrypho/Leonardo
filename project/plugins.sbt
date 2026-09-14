@@ -22,4 +22,4 @@ addSbtPlugin("com.github.sbt"     % "sbt-unidoc"       % "0.6.1")
 // Check https://mvnrepository.com/artifact/com.typesafe/sbt-mima-plugin for the latest.
 addSbtPlugin("com.typesafe"       % "sbt-mima-plugin"  % "1.2.0")
 // Check https://mvnrepository.com/artifact/org.scalameta/sbt-mdoc for the latest version.
-addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.6.1")
+addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.6.5")
