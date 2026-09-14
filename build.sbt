@@ -373,7 +373,7 @@ lazy val replModule = (project in file("repl"))
 // ScalaTest to root only -- leaving the four cli suites uncompilable in the repl module.
 ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % "test"
 
-ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.19" % "test"
+ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.20" % "test"
 
 // Shortcut for the interactive REPL: `sbt repl` instead of the full runMain path.
 // Project-qualified since the split -- `cli` lives in the repl module now.
