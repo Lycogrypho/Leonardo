@@ -26,7 +26,7 @@ target/
 /_site/
 /docs/_site/
 /docs/.jekyll-cache/
-/docs/Gemfile.lock
+
 
 /CLAUDE.md
 /.sbtopts
@@ -35,3 +35,8 @@ target/
 
 # Python bytecode from the .github/scripts guards (issue 2.8); regenerated on every run.
 __pycache__/
+
+# Claude Code's scratch utilities. Never build or test scripts -- those belong to sbt and to
+# .github/scripts, which ARE committed because CI runs them. This directory is one-off tooling
+# (a ToDo.md re-ordering pass, a one-time scan) that must not reach the repository.
+/.claudetools/

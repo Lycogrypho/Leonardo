@@ -1068,6 +1068,38 @@ Write a comment only when the *why* is non-obvious — a hidden constraint, a ma
 invariant, a workaround.  Do not describe what the code does (names already do that), and
 do not reference the PR or issue number (that belongs in the commit message).
 
+### Issue IDs
+
+Source comments, commit subjects and these pages cite issue IDs — `(issue 2.11)`,
+`6.29 Decision A`, `4.L`.  They point into the project's planning files, which are kept in the
+maintainer's checkout and **are not published**.  A citation is therefore a provenance marker
+rather than a link you can follow: it records that the choice beside it was deliberate and that
+the reasoning was written down somewhere.
+
+**An ID is a stable name, never a position.**  It is fixed when an entry is filed and never
+changes, because it is quoted in commit subjects and those cannot be rewritten.  That is why
+the numbers look unordered in the source — `1.5` sits beside `6.29` and `4.L`, and none of them
+imply priority, sequence or age.
+
+Two schemes coexist.  They are textually distinct, so there is never any doubt which is meant:
+
+| Scheme | Form | Applies to |
+|---|---|---|
+| Legacy | `N.M` (`2.11`, `6.29`), sometimes `N.<letter>` (`4.L`, `4.Q`) | entries filed under the original numbering |
+| Current | `F_####` for code, `D_####` for documentation and distribution | everything filed since |
+
+The reason for the change is worth one sentence, because it is the same design instinct the
+library applies elsewhere: the legacy IDs shared a namespace with the planning file's own
+*section* numbers, so identity and position could collide and an entry could not be
+re-prioritised freely.  The opaque form separates the two.  The letter is frozen at creation
+and never corrected — a prefix that can be revised is one that can go stale in a commit
+subject, which is exactly the failure the scheme exists to avoid.
+
+**In a comment, cite an ID only as provenance for a non-obvious decision.**  The rule above
+concerns tracker chatter — `fixes #123`, `see PR 42` — not a pointer to recorded rationale.
+`// The zero test must go through polyDegree … (issue 1.5)` earns its citation; a bare
+`// TODO: see F_0004` does not.
+
 ### Documentation
 
 All public types and `def`s carry a `/** … */` ScalaDoc comment.  The first sentence is a

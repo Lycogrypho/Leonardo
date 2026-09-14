@@ -11,6 +11,8 @@
 
 Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). The name is an homage to [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), commonly known as Fibonacci, the Italian mathematician and author of the [Liber Abaci](https://en.wikipedia.org/wiki/Liber_Abaci): with his works he introduced Indo/Arabic numerals and mathematical notation to the Western world.
 
+**Where it fits.** Scala is well served for *numerical* work — [Spire](https://github.com/typelevel/spire) for generic numerics, [Breeze](https://github.com/scalanlp/breeze) for linear algebra — but symbolic mathematics has meant reaching outside the language, to [SymPy](https://www.sympy.org/) on Python or [Symja](https://github.com/axkr/symja_android_library) on Java. Leonardo fills that slot natively: it differentiates and integrates expressions, solves them symbolically, and keeps `1/3` exactly `1/3`, with no Python runtime, no foreign binary, and no interop layer — just a dependency line.
+
 This project was loosely inspired by the Scala project [Cascala/Galileo](https://github.com/cascala/galileo), though the codebase has been completely rewritten from scratch and Leonardo is now basically unrelated to Galileo.
 
 ## Overview
@@ -77,7 +79,7 @@ Leonardo is published to Maven Central for **Scala 3.3 LTS**. The library is wha
 always want:
 
 ```scala
-libraryDependencies += "it.grypho" %% "leonardo" % "3.7.1"
+libraryDependencies += "it.grypho" %% "leonardo" % "3.7.2"
 ```
 
 The interactive REPL is a second artifact: a standalone program that drives Leonardo from the
@@ -85,14 +87,14 @@ command line. It depends on `leonardo`, so this line replaces the one above rath
 joining it:
 
 ```scala
-libraryDependencies += "it.grypho" %% "leonardo-repl" % "3.7.1"
+libraryDependencies += "it.grypho" %% "leonardo-repl" % "3.7.2"
 ```
 
 To simply *try* the REPL, nothing needs to be cloned, built or added to a project — with
 [coursier](https://get-coursier.io/) installed, one command fetches it and starts a session:
 
 ```
-cs launch it.grypho:leonardo-repl_3:3.7.1 -M it.grypho.scala.leonardo.cli.repl
+cs launch it.grypho:leonardo-repl_3:3.7.2 -M it.grypho.scala.leonardo.cli.repl
 ```
 
 ### First steps in code
