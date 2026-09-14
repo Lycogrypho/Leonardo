@@ -1,10 +1,14 @@
 name: Release
 
-# Publishes to Maven Central (issue 5.2 phase 2).
+# Publishes to Maven Central (issue 5.2 phase 2), then creates the GitHub Release.
 #
 # Releasing is `git tag 3.6.4 && git push origin 3.6.4` and nothing else: sbt-dynver derives
 # the version from the tag, so there is no version string to edit and no way for the tag and
 # the artifact to disagree. An untagged push publishes a -SNAPSHOT instead.
+#
+# The Release notes come from the tag's section in CHANGELOG.md, so write that section BEFORE
+# tagging -- the workflow reads the file as it stands at the tagged commit, and a missing
+# section degrades to auto-generated notes with a warning rather than failing.
 #
 # The four secrets this needs are documented in the `env` block below. None of them lives in
 # the repository.
@@ -65,3 +69,52 @@ jobs:
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+
+  # A SEPARATE job, and the separation is the point: this one needs `contents: write` to create
+  # the Release, while `publish` above holds the GPG key. Keeping them apart means the job that
+  # can sign artifacts cannot write to the repository, and the job that can write to the
+  # repository never sees a secret. `needs:` also delays the Release until Central has actually
+  # accepted the artifacts -- a Release pointing at a publish that failed is worse than none.
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Only CHANGELOG.md is read, so the default shallow clone is enough here.
+
+      - name: Create GitHub Release from the tag
+        # `gh` rather than a release action, deliberately. It is preinstalled on the runner, so
+        # this adds NO third-party code to the workflow that holds the signing key -- which is
+        # the whole reason issue 2.10 pinned every action to a SHA in the first place. Nothing
+        # to pin, nothing for Dependabot to bump, nothing whose owner can change what runs.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # CHANGELOG.md is the single source of the notes, so the published Release and the
+          # file in the repository cannot drift. Extract this version's section: everything
+          # between its `## <version>` heading and the next `##` heading.
+          # Matches `## 3.8.0` and `## 3.8.0 - 2026-01-31` alike: exact, or the heading
+          # followed by a space. The trailing space is what keeps 3.7.1 from also matching a
+          # hypothetical 3.7.10 section. Comparing by index rather than by regex avoids having
+          # to escape the dots in the version.
+          notes=$(awk -v want="## $VERSION" '
+            !grab && ($0 == want || index($0, want " ") == 1) { grab = 1; next }
+            grab && /^## /                                    { exit }
+            grab                                              { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+            # No section for this tag: fall back to generated notes rather than failing the
+            # release. The artifacts are already on Central at this point and cannot be undone,
+            # so refusing here would leave a published version with no Release at all.
+            echo "::warning::no CHANGELOG.md section for $VERSION; using generated notes"
+            gh release create "$VERSION" --title "$VERSION" --verify-tag --generate-notes
+          else
+            printf '%s\n' "$notes" |
+              gh release create "$VERSION" --title "$VERSION" --verify-tag --notes-file -
+          fi

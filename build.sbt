@@ -1,6 +1,7 @@
 // MiMa's filter vocabulary (issue 2.9). `ProblemFilters` and the `Problem` hierarchy are not
-// among the keys sbt auto-imports into a .sbt file, so without this the filters below fail to
-// compile with a bare "not found: value ProblemFilters".
+// among the keys sbt auto-imports into a .sbt file, so without this a filter fails to compile
+// with a bare "not found: value ProblemFilters". Kept while the filter list is empty: the next
+// intentional break needs it, and that error message does not point at a missing import.
 import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
 
 ThisBuild / scalaVersion := "3.3.6"
@@ -74,8 +75,9 @@ ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
 // PROMISES that a patch release stays binary-compatible; MiMa is what makes that promise
 // enforced rather than merely declared, and it only became checkable when 3.7.1 published the
 // first baseline. Bump this on every release, and prefer bumping it in the release commit so
-// the value and the tag cannot drift apart.
-lazy val mimaBaseline = "3.7.1"
+// the value and the tag cannot drift apart -- 3.7.2 shipped without the bump, which is how it
+// stayed on 3.7.1 for a release.
+lazy val mimaBaseline = "3.7.2"
 
 // ThisBuild, not bare: a bare `scalacOptions ++=` in build.sbt applies to the ROOT project
 // only, so after the module split the repl module would silently compile without -explain,
@@ -276,20 +278,17 @@ lazy val core = (project in file("core"))
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo" % mimaBaseline),
-    mimaBinaryIssueFilters ++= Seq(
-      // INTENTIONAL, and the reason the next release is 3.8.0 rather than a patch: the `expr`
-      // package held a single enum, `EvalResult`, that nothing in the library or outside it
-      // ever referenced (issue 2.7). It predated the dual-eval model, whose
-      // `Either[_Expression, _Value]` is what it would have been, and it reached 3.7.1's
-      // published Scaladoc only because nobody noticed it. Removing public API IS a binary
-      // break under early-semver, so it is declared here rather than quietly filtered away.
-      //
-      // A package wildcard rather than one filter per class: a Scala 3 `enum` compiles to a
-      // class plus synthetic companions and case children whose exact JVM names are an
-      // implementation detail of the compiler, and enumerating guesses at them would be both
-      // brittle and misleading about what was actually removed. The whole package is gone.
-      ProblemFilters.exclude[Problem]("it.grypho.scala.leonardo.expr.*")
-    ),
+    // Empty on purpose, and the emptiness is the point: this list is the record of every
+    // deliberate incompatibility still in force, so a filter that no longer suppresses
+    // anything is noise that makes the real ones harder to trust.
+    //
+    // It held one entry until the baseline moved to 3.7.2. The `expr` package -- a single
+    // enum, `EvalResult`, that nothing ever referenced (issue 2.7) -- was removed after
+    // 3.7.1 published it, so while the baseline WAS 3.7.1 its absence read as a binary
+    // break and had to be declared. 3.7.2 shipped that removal, so against a 3.7.2 baseline
+    // there is nothing to compare and nothing to excuse: the filter retired with the
+    // baseline it existed for, which is the normal end of every entry here.
+    mimaBinaryIssueFilters ++= Seq(),
 
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
 
