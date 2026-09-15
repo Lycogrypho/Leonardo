@@ -290,7 +290,7 @@ lazy val core = (project in file("core"))
     // baseline it existed for, which is the normal end of every entry here.
     mimaBinaryIssueFilters ++= Seq(),
 
-    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
+    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.5.0",
 
     // Spire powers the exact-arithmetic tier's irrational engine (issue 4.N): `Real` computes
     // a transcendental to any requested precision, replacing the ~15-digit `Double` ceiling
