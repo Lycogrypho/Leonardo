@@ -463,6 +463,39 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     publish / skip        := true
   )
 
+// The browser front end (F_0003 phase 3).  JS ONLY and publishes NOTHING: it emits static
+// files for the Pages site, so it has no coordinate and no consumer to stay compatible with.
+//
+// The size probe it started as was not a placeholder: `fullLinkJS` on a library with no entry
+// point emits an EMPTY directory, because dead-code elimination removes everything
+// unreachable.  That is why phase 1 could not measure the bundle and why this module is what
+// finally could — a figure exists only once something calls the library.
+//
+// NOT aggregated by root, and that is a judgement rather than an oversight: linking a bundle
+// on every `sbt test` would put front-end work in the path of every library change.  The cost
+// is that `web/test` must be named explicitly, which ci.yml does.
+lazy val web = (project in file("web"))
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(replModule.js)
+  .settings(
+    name           := "leonardo-web",
+    publish / skip := true,
+
+    // %%% and not %%: this project is Scala.js only, and the JVM `scalatest_3` artifact landing
+    // on a Scala.js classpath beside `scalatest_sjs1_3` is a LINKER error rather than a
+    // resolution one, so it fails late and confusingly (see the ThisBuild note below).
+    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % Test,
+
+    // Publishes nothing, so there is no baseline to compare against (see root).
+    mimaPreviousArtifacts := Set.empty,
+
+    // NoModule: the output is a plain <script> the Pages site can include, with the exported
+    // entry points reachable as globals.  ESModule would be the choice if a bundler were ever
+    // introduced -- there is deliberately none, matching the vendored-not-bundled stance the
+    // docs site already takes with svg-pan-zoom.
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.NoModule) }
+  )
+
 // ScalaTest is declared PER PROJECT rather than on ThisBuild since the cross-build (F_0003).
 // A `ThisBuild / libraryDependencies += ... %% "scalatest"` reaches core.js too, and the JVM
 // artifact `scalatest_3` would land on the Scala.js classpath beside `scalatest_sjs1_3` --

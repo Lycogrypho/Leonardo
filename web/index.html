@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<!--
+  Leonardo in the browser (issue F_0003 phase 3).
+
+  Deployment is phase 4: these files are copied into the Pages build under /app.  Nothing here
+  talks to a server, and that is a property worth keeping rather than an accident of the
+  current state - the whole CAS is in main.js, sessions live in localStorage, and a shared
+  link carries its session in the URL FRAGMENT, which browsers never transmit.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Leonardo - browser REPL</title>
+
+    <!--
+      Plotly is VENDORED rather than loaded from a CDN (F_0003 Decision 2), following the
+      precedent the docs site set with svg-pan-zoom.  The page then has no third-party origin,
+      works offline, and cannot break when someone else's CDN does - which for a page whose
+      selling point is that no user data leaves the browser is a promise worth keeping literal.
+      The licence is recorded in NOTICE.
+
+      This is the `cartesian` partial distribution, not the full one: it carries scatter, bar,
+      heatmap and contour, which covers every 2-D figure Leonardo produces, at a fraction of
+      the full bundle's weight.  Move to the full distribution only if 3-D surfaces land.
+    -->
+    <script src="vendor/plotly.min.js" charset="utf-8"></script>
+
+    <style>
+      :root {
+        --bg: #fbfbfd; --fg: #1a1a1c; --dim: #6a6a72;
+        --accent: #2a5db0; --edge: #dcdce4; --panel: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16161a; --fg: #e6e6ea; --dim: #9a9aa4;
+          --accent: #7aa2e8; --edge: #2c2c34; --panel: #1d1d22;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 1.25rem; background: var(--bg); color: var(--fg);
+        font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 62rem; margin: 0 auto; }
+      header { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; }
+      h1 { font-size: 1.3rem; margin: 0 0 .25rem; font-weight: 600; }
+      header p { margin: 0; color: var(--dim); font-size: .875rem; }
+      .mono { font-family: ui-monospace, "Cascadia Code", Consolas, "DejaVu Sans Mono", monospace; }
+
+      #transcript {
+        background: var(--panel); border: 1px solid var(--edge); border-radius: 6px;
+        padding: .75rem .9rem; margin: .9rem 0 0; height: 24rem; overflow-y: auto;
+        white-space: pre-wrap; word-break: break-word; font-size: 13.5px;
+      }
+      #transcript .echo { color: var(--accent); font-weight: 600; }
+      #transcript .note { color: var(--dim); }
+
+      .prompt { display: flex; gap: .5rem; align-items: center; margin-top: .6rem; }
+      .prompt span { color: var(--accent); font-weight: 700; }
+      #input {
+        flex: 1; padding: .55rem .7rem; border: 1px solid var(--edge); border-radius: 6px;
+        background: var(--panel); color: var(--fg); font-size: 14px;
+      }
+      #input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+      .bar { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+      button {
+        padding: .4rem .75rem; border: 1px solid var(--edge); border-radius: 6px;
+        background: var(--panel); color: var(--fg); font-size: 13px; cursor: pointer;
+      }
+      button:hover { border-color: var(--accent); color: var(--accent); }
+
+      /* Stays out of the flow until a figure is drawn, so the REPL is not pushed down the
+         page by an empty box on load. */
+      #figure:empty { display: none; }
+      #figure {
+        margin-top: .9rem; background: var(--panel);
+        border: 1px solid var(--edge); border-radius: 6px;
+      }
+
+      footer { margin-top: 1.1rem; color: var(--dim); font-size: .8rem; }
+      footer a { color: var(--accent); }
+      noscript { color: var(--dim); }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <header>
+        <h1>Leonardo</h1>
+        <p>a symbolic maths REPL, running entirely in this tab</p>
+      </header>
+
+      <noscript>This page is a JavaScript program; with scripting off there is nothing to show.</noscript>
+
+      <div id="transcript" class="mono" role="log" aria-live="polite"></div>
+
+      <div class="prompt">
+        <span class="mono" aria-hidden="true">&gt;</span>
+        <label for="input" class="visually-hidden" hidden>Expression</label>
+        <input id="input" class="mono" type="text" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" placeholder="try:  derive(sin(x)^2, x)">
+      </div>
+
+      <div class="bar">
+        <button id="share" type="button">Copy shareable link</button>
+        <button id="clear" type="button">Clear transcript</button>
+      </div>
+
+      <div id="figure"></div>
+
+      <footer>
+        <code class="mono">help</code> lists the commands.
+        <code class="mono">plot f x 0 10</code> draws one;
+        <code class="mono">points</code> draws coordinates.
+        <code class="mono">:save name</code> and <code class="mono">:load name</code> use this
+        browser's storage. Nothing you type leaves this tab.
+      </footer>
+    </main>
+
+    <!--
+      main.js declares its exports with `let`, which is a LEXICAL binding and so never becomes
+      a property of globalThis.  It must therefore be called as a bare identifier: a guard
+      written as `window.leonardoStart` would report the bundle as missing even when it loaded
+      perfectly.  The same fact is why `require()` cannot load this file (issue F_0003).
+    -->
+    <script src="main.js"></script>
+    <script>leonardoStart();</script>
+  </body>
+</html>

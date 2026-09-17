@@ -1080,6 +1080,62 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(out.linesIterator.size == 3, s"expected 3 sample rows, got: $out")
   }
 
+  // --- F_0003 phase 3: samplePoints, the data behind the `samples` command ---
+  // The browser front end plots these points; the terminal prints them. Both must come from
+  // ONE sampling, so these cases pin that the data agrees with the printed table, that it is
+  // NOT rounded the way the table is, and that every failure the command reports is a Left.
+
+  "samplePoints" should "return the points the samples command prints" in
+  {
+    val s = session
+    s.samplePoints("x^2 x 0 2 3") match
+      case Left(why) => fail(s"expected points, got: $why")
+      case Right(r)  =>
+        assert(r.points.map(_._1) == Vector(0.0, 1.0, 2.0), s"unexpected grid: ${r.points}")
+        assert(r.points.map(_._2) == Vector(0.0, 1.0, 4.0), s"unexpected values: ${r.points}")
+        // The labels a figure is titled with come from the SAME parse as the data, so a plot
+        // cannot end up described as something other than what it draws.
+        assert(r.expr == "x^2" && r.variable == "x", s"unexpected labels: ${r.expr} / ${r.variable}")
+  }
+
+  it should "carry full precision, not the display rounding the printed table shows" in
+  {
+    val s = session
+    s.execute("precision 3")
+    // The table rounds to the SESSION precision, so a plotter that re-read that text would
+    // draw a deliberately lossy copy of a full-Double computation. This is the whole reason
+    // samplePoints exists rather than the browser parsing `samples` output back.
+    val printed = s.execute("samples 1/3 x 0 0.5 2")
+    assert(printed.contains("0.333") && !printed.contains("0.3333"),
+           s"expected the table rounded to 3 decimals, got: $printed")
+    s.samplePoints("1/3 x 0 0.5 2") match
+      case Left(why) => fail(s"expected points, got: $why")
+      case Right(r)  =>
+        assert(r.points.forall((_, y) => y == 1.0 / 3.0),
+               s"data path must not round: ${r.points.map(_._2)}")
+  }
+
+  it should "report the same failures the command reports" in
+  {
+    val s = session
+    assert(s.samplePoints("x x 2 1").isLeft, "lo >= hi must fail")
+    assert(s.samplePoints("x x 1..2 3").isLeft, "a malformed bound must fail, not throw")
+    assert(s.samplePoints("nonsense").isLeft, "a malformed command must fail")
+    assert(s.samplePoints("sin( x 0 1").isLeft, "a parse error must be reported, not thrown")
+    // Each message is what the command would have printed, so the two renderings agree.
+    assert(s.samplePoints("x x 2 1").left.exists(_ == s.execute("samples x x 2 1")),
+           "the data path's message must be the command's message")
+  }
+
+  it should "resolve definitions, as the command does" in
+  {
+    val s = session
+    s.execute("f := x^2")
+    s.samplePoints("f x 0 2 3") match
+      case Left(why) => fail(s"a defined name must sample, got: $why")
+      case Right(r)  => assert(r.points.map(_._2) == Vector(0.0, 1.0, 4.0), s"got: ${r.points}")
+  }
+
   // --- issue 4.5: REPL read-loop dispatch (Session.step) ---
   // The JLine line-editing / persistent-history plumbing in repl() itself is
   // interactive-only and not unit-testable, but the loop's dispatch logic is

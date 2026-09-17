@@ -65,6 +65,36 @@ out. The file system was the only JVM-bound part of `:save`, and it never lived 
 Nothing Scala.js is published yet: the cross-build exists to prove the library runs in a
 browser and to keep that true, since CI runs the JavaScript suite on every push.
 
+## The browser front end
+
+A third project, `web`, is the page itself. It is JS-only, publishes nothing, and is kept out
+of the root aggregate so that linking a bundle is never in the path of an ordinary library
+change; CI names it explicitly instead.
+
+**It is almost entirely not there**, which is the point. `Session.step` already dispatches
+every command on both platforms, so the page is a text box, a transcript and a history ring.
+Only two things are genuinely browser-only: the `plot` / `points` commands, which a terminal
+cannot honour, and the shareable link.
+
+| Weight over the wire | |
+|---|---|
+| Leonardo, the whole CAS | 3.46 MB raw, **475 KB gzipped** |
+| Plotly (`cartesian` distribution, vendored) | 1.3 MB raw, **436 KB gzipped** |
+
+Under a megabyte for a computer algebra system with interactive plotting, which is what
+removed the one real risk in the plan: no module splitting and no lazy loading is needed.
+
+**Plotting adopts no Scala dependency.** Plotly's input is plain JSON, so the facade is a
+string builder — pure, and therefore unit-tested without a browser. The one line of it that
+chose Plotly over Vega-Lite is `scaleanchor`: a Nyquist diagram, a pole-zero map or a
+two-element vector drawn as a point is *geometry*, and on unequal axes the unit circle becomes
+an ellipse. Vega-Lite has no aspect lock, and deriving one from the data range stops holding
+the moment the reader zooms — a confidently wrong picture rather than a refusal.
+
+Nothing the user types leaves the tab: the CAS is in the bundle, sessions live in
+`localStorage`, and a shared link carries its session in the URL **fragment**, which browsers
+never transmit.
+
 The diagram below is generated automatically from `docs/structure.puml` by
 running `sbt puml` (or `sbt site` which runs the full pipeline).
 

@@ -225,19 +225,37 @@ final class Session:
    *  up front, and catching a fatal error would leave the JVM in an unknown state.
    */
   private def withParsed(input: String)(f: _Expression => String): String =
+    parsed(input)(e => Right(f(e))).merge
+
+  /** [[withParsed]]'s data-returning form: the same parse and the same guard, but reporting
+   *  failure as a `Left` instead of as the returned text.
+   *
+   *  It exists because a caller that *draws* a result needs the numbers, not a rendering of
+   *  them — [[samplePoints]] is the one such caller today, feeding the browser's plotter.
+   *  `withParsed` is defined in terms of this rather than beside it, so there is exactly one
+   *  definition of how a parse failure reads and of which throwables are caught; two copies
+   *  would only be a way for the printed and the drawn paths to disagree about what is an
+   *  error.
+   *
+   *  @tparam A what the caller produces from a successfully parsed expression
+   *  @param input the text to parse
+   *  @param f     the caller's own step, itself allowed to fail with a message
+   *  @return `f`'s result, or the message explaining why there is none
+   */
+  private def parsed[A](input: String)(f: _Expression => Either[String, A]): Either[String, A] =
     scala.util.Try(Parser.parse(input, exactPrecision)).fold(
-      e => s"parse error: ${e.getMessage}",
+      e => Left(s"parse error: ${e.getMessage}"),
       result =>
         if result.successful then
           try f(result.get)
-          catch case NonFatal(e) => s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}"
+          catch case NonFatal(e) => Left(s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}")
         else
           val base = s"parse error: ${result.toString.linesIterator.next()}"
           // "g(x)"-style call syntax on a defined name is a common spelling of
           // derive(g(x), f(x)); the grammar has bare variables only, so hint.
           definitions.keys.find(n => input.matches(s".*\\b$n\\s*\\(.*")) match
-            case Some(n) => s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'"
-            case None    => base
+            case Some(n) => Left(s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'")
+            case None    => Left(base)
     )
 
   /** Formats an eval result for display, applying session precision. */
@@ -608,28 +626,49 @@ final class Session:
                   case _ =>
                     s"tuple assignment: right-hand side must evaluate to a 1xn row (use lu, qr, eig, jordan, eigen)"
 
-  /** Handles the `samples <expr> <var> <lo> <hi> [<n>]` command. */
-  private def doSamples(rest: String): String = rest.trim match
+  /** Samples an expression over a range, returning the POINTS rather than a rendering of them.
+   *
+   *  This is the `samples` command's argument syntax — `<expr> <var> <lo> <hi> [<n>]`, exactly
+   *  the text that follows the keyword — resolved to data.  [[doSamples]] renders it as the
+   *  tab-separated table the terminal REPL prints, and the browser front end (F_0003 phase 3)
+   *  hands the same vector to a plotting library.
+   *
+   *  **The split is what keeps the two honest.**  A plotter cannot re-read the printed table:
+   *  that text is rounded to the session's *display* precision, so parsing it back would plot
+   *  a deliberately lossy copy of a full-precision computation.  Having one method own the
+   *  argument parsing, the bounds validation and the sampling — with printing and drawing as
+   *  two renderings of its result — is the same arrangement `logic.simplifyLogic` uses for its
+   *  injected leaf pass, and it means a plot and a printed table can never disagree about what
+   *  was sampled.
+   *
+   *  @param rest the command's arguments: `<expr> <var> <lo> <hi> [<n>]`
+   *  @return the sampling, or the message explaining why nothing could be sampled
+   */
+  def samplePoints(rest: String): Either[String, Session.Samples] = rest.trim match
     case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
       // The samples regex admits malformed literals like "1..2" (its [\d.]+ class allows
       // several dots), so parse the bounds with toDoubleOption rather than toDouble, which
       // would throw a NumberFormatException and — this path runs outside withParsed — crash
       // the REPL loop.
       (loStr.toDoubleOption, hiStr.toDoubleOption) match
-        case (Some(lo), Some(hi)) if lo >= hi => "samples: lo must be strictly less than hi"
+        case (Some(lo), Some(hi)) if lo >= hi => Left("samples: lo must be strictly less than hi")
         case (Some(lo), Some(hi)) =>
-          val n = Option(nStr).flatMap(_.toIntOption).getOrElse(200)
-          withParsed(exprStr.trim) { e =>
-            val v      = _Variable(varStr)
-            val points = sample(substitute(e, definitions), v, lo, hi, n, env)
-            if points.isEmpty then "(no finite values in range)"
-            else
-              points.map((x, y) =>
-                s"${_Number(x).display(precision)}\t${_Number(y).display(precision)}"
-              ).mkString("\n")
+          val n = Option(nStr).flatMap(_.toIntOption).getOrElse(Session.DefaultSampleCount)
+          parsed(exprStr.trim) { e =>
+            val points = sample(substitute(e, definitions), _Variable(varStr), lo, hi, n, env)
+            Right(Session.Samples(exprStr.trim, varStr, points))
           }
-        case _ => "samples: <lo> and <hi> must be numbers"
-    case _ => "usage: samples <expr> <var> <lo> <hi> [<n>]"
+        case _ => Left("samples: <lo> and <hi> must be numbers")
+    case _ => Left("usage: samples <expr> <var> <lo> <hi> [<n>]")
+
+  /** Handles the `samples <expr> <var> <lo> <hi> [<n>]` command — [[samplePoints]], printed. */
+  private def doSamples(rest: String): String = samplePoints(rest) match
+    case Left(message)                     => message
+    case Right(s) if s.points.isEmpty      => "(no finite values in range)"
+    case Right(s) =>
+      s.points.map((x, y) =>
+        s"${_Number(x).display(precision)}\t${_Number(y).display(precision)}"
+      ).mkString("\n")
 
   /** Sets the display precision, rejecting out-of-range values. */
   private def setPrecision(text: String): String =
@@ -720,6 +759,28 @@ final class Session:
 object Session:
   /** Names the parser always resolves as constants; assignment to them is rejected. */
   val ReservedConstants: Set[String] = Set("pi", "e")
+
+  /** Points taken by `samples` / [[Session.samplePoints]] when the count is omitted.
+   *
+   *  Named rather than inlined because it is now read by two renderings of one sampling — the
+   *  printed table and the browser's plot — and a plot drawn at a different default density
+   *  from the table beside it would be quietly confusing.
+   */
+  val DefaultSampleCount: Int = 200
+
+  /** A completed sampling: the points, and the text they came from.
+   *
+   *  The two strings are carried because **a plot has to say what it is showing** — they title
+   *  the axes — and the alternative was for the caller to split the command a second time to
+   *  recover them.  A second parse of the same text is exactly the sort of duplicate this
+   *  codebase removes on sight: the two could disagree, and then a figure would be labelled
+   *  with something other than what it plots.
+   *
+   *  @param expr     the expression as the user typed it
+   *  @param variable the name sampled over
+   *  @param points   the `(x, y)` pairs, with non-finite results already dropped
+   */
+  final case class Samples(expr: String, variable: String, points: Vector[(Double, Double)])
 
   /** Per-command help text, keyed by the command token (`:=`, `simplify`, ...).
    *  Returned by `help <topic>`; bare `help` still shows the full help listing.

@@ -50,6 +50,29 @@ jobs:
         # there is no setup step -- if that ever changes, this is the job that goes red first.
         run: sbt test
 
+      - name: Browser front end
+        # The `web` project is deliberately NOT in the root aggregate -- linking a bundle on
+        # every `sbt test` would put front-end work in the path of every library change -- so
+        # it has to be named here or it would never be built at all.
+        #
+        # check-web-app.js is the part worth having: it drives the linked bundle's entry point
+        # against a minimal fake DOM, which is the only thing that checks index.html's element
+        # ids against App.scala. A typo there is invisible until someone opens the page; this
+        # turns it into a red build. It also pins that a line still evaluates, that the history
+        # keys work, and that `plot` emits a document Plotly could read -- including that a
+        # coordinates plot carries its aspect lock, which is the whole reason Plotly was chosen
+        # over Vega-Lite (F_0003 Decision 1).
+        #
+        # The sizes are PRINTED, not asserted: a threshold would be either so loose it never
+        # fires or so tight it fails on an unrelated Scala.js release. A figure in the log lets
+        # a regression be seen by comparing two runs, which is what anyone would actually do.
+        run: |
+          sbt web/test web/fullLinkJS
+          node .github/scripts/check-web-app.js
+          bundle=web/target/scala-3.3.6/leonardo-web-opt/main.js
+          echo "leonardo: $(stat -c%s $bundle) raw / $(gzip -c $bundle | wc -c) gzipped"
+          echo "plotly:   $(stat -c%s web/vendor/plotly.min.js) raw / $(gzip -c web/vendor/plotly.min.js | wc -c) gzipped"
+
       - name: Encoding hygiene
         # Guards the issue-2.8 repair. 27 test files had accumulated UTF-8-read-as-cp1252
         # mojibake, largely by copy-paste from an already-damaged neighbour, so a one-time
@@ -61,8 +84,8 @@ jobs:
         # Hebrew ZAYIN). check-charset catches that class by flagging any script this
         # codebase cannot legitimately contain.
         run: |
-          python3 .github/scripts/fix-mojibake.py --check core/src repl/src docs
-          python3 .github/scripts/check-charset.py core/src repl/src docs
+          python3 .github/scripts/fix-mojibake.py --check core/src repl/src web/src docs
+          python3 .github/scripts/check-charset.py core/src repl/src web/src docs
 
       - name: Action pinning
         # Guards the issue-2.10 sweep the way "Encoding hygiene" guards 2.8's: both were

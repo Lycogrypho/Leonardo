@@ -15,6 +15,9 @@
             <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\docs" />
             <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\project" />
             <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\repl" />
+            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\repl\.js" />
+            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\repl\.jvm" />
+            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\web" />
           </set>
         </option>
         <option name="sbtVersion" value="1.10.11" />

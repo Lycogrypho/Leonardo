@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="Leonardo.Leonardo.coreJVM.main,Leonardo.Leonardo.coreJVM.test,Leonardo.Leonardo.main,Leonardo.Leonardo.test,Leonardo.leonardo-docs.main,Leonardo.leonardo-docs.test,Leonardo.leonardo-repl.main,Leonardo.leonardo-repl.test,Leonardo.main,Leonardo.main~1,Leonardo.test,Leonardo.test~1">
+    <profile name="sbt 1" modules="Leonardo.Leonardo.coreJVM.main,Leonardo.Leonardo.coreJVM.test,Leonardo.Leonardo.main,Leonardo.Leonardo.test,Leonardo.leonardo-docs.main,Leonardo.leonardo-docs.test,Leonardo.leonardo-repl.main,Leonardo.leonardo-repl.replModuleJVM.main,Leonardo.leonardo-repl.replModuleJVM.test,Leonardo.leonardo-repl.test,Leonardo.main,Leonardo.main~1,Leonardo.test,Leonardo.test~1">
       <option name="deprecationWarnings" value="true" />
       <option name="featureWarnings" value="true" />
       <parameters>
@@ -10,8 +10,8 @@
         <parameter value="-Wconf:src=.*package\.scala:silent" />
       </parameters>
     </profile>
-    <profile name="sbt 2" modules="Leonardo,Leonardo.Leonardo,Leonardo.Leonardo.coreJS,Leonardo.Leonardo.coreJVM,Leonardo.leonardo-docs,Leonardo.leonardo-repl,leonardo_5360" />
-    <profile name="sbt 3" modules="Leonardo.Leonardo.coreJS.main,Leonardo.Leonardo.coreJS.test">
+    <profile name="sbt 2" modules="Leonardo,Leonardo.Leonardo,Leonardo.Leonardo.coreJS,Leonardo.Leonardo.coreJVM,Leonardo.leonardo-docs,Leonardo.leonardo-repl,Leonardo.leonardo-repl.replModuleJS,Leonardo.leonardo-repl.replModuleJVM,Leonardo.leonardo-web,leonardo_5360" />
+    <profile name="sbt 3" modules="Leonardo.Leonardo.coreJS.main,Leonardo.Leonardo.coreJS.test,Leonardo.leonardo-repl.replModuleJS.main,Leonardo.leonardo-repl.replModuleJS.test,Leonardo.leonardo-web.main,Leonardo.leonardo-web.test">
       <option name="deprecationWarnings" value="true" />
       <option name="featureWarnings" value="true" />
       <parameters>
