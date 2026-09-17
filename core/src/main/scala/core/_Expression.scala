@@ -131,7 +131,7 @@ object _Number:
    *  The JVM implementation is `d.toString`; the Scala.js one rebuilds the JDK's presentation.
    *  See `core/jvm-src` and `core/js-src`.
    */
-  private[core] inline def render(d: Double): String = DoubleRender.render(d)
+  private[leonardo] def render(d: Double): String = DoubleRender.render(d)
 
 /** Concrete real scalar value.
  *

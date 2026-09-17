@@ -2,7 +2,7 @@
 // among the keys sbt auto-imports into a .sbt file, so without this a filter fails to compile
 // with a bare "not found: value ProblemFilters". Kept while the filter list is empty: the next
 // intentional break needs it, and that error message does not point at a missing import.
-import com.typesafe.tools.mima.core.{Problem, ProblemFilters}
+import com.typesafe.tools.mima.core.{MissingClassProblem, Problem, ProblemFilters}
 
 ThisBuild / scalaVersion := "3.3.6"
 
@@ -136,8 +136,9 @@ lazy val injectApiStyles = taskKey[Unit]("Inject custom CSS into generated scala
 // module appears.
 lazy val root = (project in file("."))
   .enablePlugins(ScalaUnidocPlugin)
-  // core.js is aggregated so `sbt test` covers it; it is filtered out of unidoc below.
-  .aggregate(core.jvm, core.js, replModule)
+  // The JS projects are aggregated so `sbt test` covers them; they are filtered out of unidoc
+  // below, since they compile the same shared sources as their JVM twins.
+  .aggregate(core.jvm, core.js, replModule.jvm, replModule.js)
   .settings(
     name           := "Leonardo",
     // Nothing to publish from the aggregate: the artifacts are core's and replModule's. An
@@ -243,7 +244,7 @@ lazy val root = (project in file("."))
 
     // core.js is excluded: it compiles the SAME shared sources as core.jvm, so including it
     // would feed unidoc two copies of every class and duplicate the whole API reference.
-    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(core.jvm, replModule),
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(core.jvm, replModule.jvm),
 
     // ── Custom CSS injection ───────────────────────────────────────────────────
     injectApiStyles := {
@@ -368,7 +369,7 @@ lazy val docs = (project in file("docs"))
   // than being a bare tool invocation.
   // BOTH modules: docs/src/getting-started.md has an mdoc block that imports `cli.Session`,
   // so depending on the library alone would break the site build rather than the compile.
-  .dependsOn(core.jvm, replModule)
+  .dependsOn(core.jvm, replModule.jvm)
   .settings(
     name           := "leonardo-docs",
     publish / skip := true,
@@ -400,17 +401,66 @@ lazy val docs = (project in file("docs"))
 // The project *id* is `replModule`, not `repl`, deliberately: `repl` is a command alias below,
 // and a project of the same name would make `sbt repl` ambiguous. The directory and the
 // published artifact are both plainly `repl` / `leonardo-repl`.
-lazy val replModule = (project in file("repl"))
-  .dependsOn(core.jvm)
+// CROSS-BUILT since F_0003 phase 2, on the same CrossType.Pure layout as core: shared sources
+// stay in `repl/src`, platform code lives in `repl/jvm-src` and `repl/js-src`.
+//
+// `Session` -- the whole of the REPL's behaviour -- was ALREADY platform-free and needed no
+// change: `execute`, `script` and `load` are pure string in / string out, and nothing above the
+// read loop ever touched JLine. That is what made this phase cheap, and it was the finding
+// phase 1 rested on. Only three things are JVM-only: the JLine read loop and its Greek chords
+// (`jvm-src/cli/Terminal.scala`), the highlighter, and the `Main` demo.
+lazy val replModule = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("repl"))
+  .dependsOn(core)
   .settings(
     name             := "leonardo-repl",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
+
+    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % Test
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "main" / "scala",
+    Test    / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "test" / "scala",
+
+    // JLine is confined to the JVM side, which is the point of the split: it is the one
+    // dependency a browser cannot have, and the module boundary that made the 5.2 artifact
+    // split worthwhile is the same one that makes this work.
     libraryDependencies += "org.jline" % "jline" % "3.30.15",
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline),
 
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
+    mimaBinaryIssueFilters ++= Seq(
+      // INTENTIONAL, and an artefact of Scala 3's encoding rather than an API change.
+      //
+      // Scala 3 gathers a file's TOP-LEVEL defs and vals into a synthetic class named after
+      // the FILE, so `Repl.scala` produced `cli.Repl$package`. Phase 2 moved the read loop and
+      // its key bindings out of that file into `jvm-src/cli/Terminal.scala`, because they are
+      // JLine-bound and cannot cross-compile -- so those members now live in
+      // `cli.Terminal$package` and the old class is gone. Nothing was removed and no signature
+      // changed: the definitions were renamed by being relocated.
+      //
+      // Safe because nothing outside the module referenced it. The launcher entry point is the
+      // class `@main def repl` generates, named `cli.repl` independently of its file, so
+      // `cs launch -M it.grypho.scala.leonardo.cli.repl` is unaffected; every other moved
+      // member is `private[cli]`. `Session`, which IS this module's API, did not move.
+      //
+      // The rule worth carrying: in Scala 3, moving a top-level `def` or `val` to a
+      // differently-named file is a BINARY change even though no source consumer can tell.
+      // Splitting a file for a cross-build is exactly when that bites.
+      ProblemFilters.exclude[MissingClassProblem]("it.grypho.scala.leonardo.cli.Repl$package"),
+      ProblemFilters.exclude[MissingClassProblem]("it.grypho.scala.leonardo.cli.Repl$package$")
+    )
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "js-src" / "main" / "scala",
+    Test    / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "js-src" / "test" / "scala",
+
+    // As for coreJS: no published baseline to compare against, and phase 2 proves the port
+    // rather than committing to support a published JS artifact.
+    mimaPreviousArtifacts := Set.empty,
+    publish / skip        := true
   )
 
 // ScalaTest is declared PER PROJECT rather than on ThisBuild since the cross-build (F_0003).
@@ -423,9 +473,9 @@ ThisBuild / libraryDependencies ++= Nil
 
 // Shortcut for the interactive REPL: `sbt repl` instead of the full runMain path.
 // Project-qualified since the split -- `cli` lives in the repl module now.
-addCommandAlias("repl", "replModule/runMain it.grypho.scala.leonardo.cli.repl")
+addCommandAlias("repl", "replModuleJVM/runMain it.grypho.scala.leonardo.cli.repl")
 // The parser demo, likewise moved: a published library artifact carries no main class.
-addCommandAlias("demo", "replModule/runMain it.grypho.scala.leonardo.main")
+addCommandAlias("demo", "replModuleJVM/runMain it.grypho.scala.leonardo.main")
 // Full site: regenerate UML diagram → validate code examples → Scaladoc site + CSS.
 // `docs/mdoc`, not `mdoc`: MdocPlugin is enabled on the docs project, not on root, so that
 // the mdoc dependency stays out of the published POM. `unidoc`, not `doc`: since the module

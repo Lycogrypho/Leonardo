@@ -247,7 +247,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
    *  **Not the eigen route.**  `V·diag(e^λ)·V⁻¹` is tempting because [[spectralDecompose]]
    *  already exists, but it needs an eigenbasis and a **defective** matrix has none — and a
    *  defective matrix is ordinary in the problems that want this, since a repeated pole
-   *  produces one.  A Jordan block `[[λ,1],[0,λ]]` would come back wrong rather than refused.
+   *  produces one.  A Jordan block `(λ 1; 0 λ)` would come back wrong rather than refused.
    *  Scaling and squaring is uniform over both cases, which is why it is the standard method.
    *
    *  The identity `e^A = (e^(A/2^s))^(2^s)` is what makes it work: `A` is scaled until its

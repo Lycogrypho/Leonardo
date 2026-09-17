@@ -1,7 +1,7 @@
 package it.grypho.scala.leonardo
 package cli
 
-import cli.{Session, LeonardoHighlighter}
+import cli.Session
 import org.scalatest.flatspec.AnyFlatSpec
 import core.Environment
 
@@ -456,25 +456,6 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(session.execute(":save foo.txt").contains("interactive"))
   }
 
-  "saveFile then loadFile" should "round-trip session state through a real file" in
-  {
-    val tmp = java.io.File.createTempFile("leonardo-session", ".txt")
-    tmp.deleteOnExit()
-    try
-      val original = session
-      original.execute("precision 6")
-      original.execute("k := 7")
-      original.execute("h := k + x")
-      assert(Session.saveFile(original, tmp.getPath) == s"saved to ${tmp.getPath}")
-
-      val restored = session
-      val out = Session.loadFile(restored, tmp.getPath)
-      assert(!out.startsWith("could not read"), out)
-      assert(restored.execute("k") == "7.0")
-      restored.execute("x := 1")
-      assert(restored.execute("h") == "8.0")
-    finally tmp.delete()
-  }
 
   "loadFile on a missing file" should "report a read error" in
   {
@@ -611,24 +592,6 @@ class ReplSessionTest extends AnyFlatSpec:
 
   // --- issue 2.7: :load / :save must use UTF-8, not the platform default charset ---
 
-  "Session.saveFile / loadFile" should "round-trip the session state through a temp file" in
-  {
-    val s1 = session
-    s1.execute("precision 8")
-    s1.execute("x := 3.00000001")
-    s1.execute("g := sin(y) + y")   // y is unbound → stays a definition after reload
-    val tmp = java.io.File.createTempFile("leonardo_test", ".leo")
-    try
-      val saveMsg = Session.saveFile(s1, tmp.getPath)
-      assert(saveMsg.startsWith("saved"), s"save failed: $saveMsg")
-      val s2 = session
-      Session.loadFile(s2, tmp.getPath)
-      assert(s2.execute("env").contains("precision = 8"))
-      assert(s2.execute("x") == "3.00000001")
-      assert(s2.execute("g") == "(sin(y) + y)")
-    finally
-      tmp.delete()
-  }
 
   // --- issue 1.6: _MatrixValue display must respect session precision ---
 
@@ -715,19 +678,6 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s2.currentColorScheme == "light")
   }
 
-  "colors setting" should "round-trip through saveFile / loadFile" in
-  {
-    val tmp = java.io.File.createTempFile("leonardo-colors", ".txt")
-    tmp.deleteOnExit()
-    try
-      val s1 = session
-      s1.execute("colors none")
-      Session.saveFile(s1, tmp.getPath)
-      val s2 = session
-      Session.loadFile(s2, tmp.getPath)
-      assert(s2.currentColorScheme == "none")
-    finally tmp.delete()
-  }
 
   // --- issue 4.L slice A: exact rational arithmetic ---
 
@@ -1076,53 +1026,11 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s2.execute("pretty") == "pretty = on")
   }
 
-  // LeonardoHighlighter -- verify content is preserved for all three schemes.
+  // The LeonardoHighlighter cases moved to jvm-src: they are JLine-bound (issue F_0003).
 
-  "LeonardoHighlighter with none scheme" should "preserve buffer content unchanged" in
-  {
-    val h = LeonardoHighlighter(() => "none")
-    val inputs = List(
-      "sin(pi) + 3.14",
-      "simplify x + 0",
-      "derive(f, x)",
-      "x := 2 * pi",
-      "solve(x^2 = 4, x)",
-      "e + i + pi"
-    )
-    for input <- inputs do
-      assert(h.highlightBuffer(input).toString == input,
-        s"none scheme must not alter content for: $input")
-  }
 
-  "LeonardoHighlighter with dark scheme" should "preserve buffer content unchanged" in
-  {
-    val h = LeonardoHighlighter(() => "dark")
-    val inputs = List("simplify sin(x) + 0", "x := 3", "1.5e-3 + 2", "pi * e")
-    for input <- inputs do
-      assert(h.highlightBuffer(input).toString == input,
-        s"dark scheme must not alter content for: $input")
-  }
 
-  "LeonardoHighlighter with light scheme" should "preserve buffer content unchanged" in
-  {
-    val h = LeonardoHighlighter(() => "light")
-    val inputs = List("expand (x + 1)^2", "integral(x^2, x)", "cos(pi) + i")
-    for input <- inputs do
-      assert(h.highlightBuffer(input).toString == input,
-        s"light scheme must not alter content for: $input")
-  }
 
-  "LeonardoHighlighter" should "colour 'ode' as a function like the other functionals" in
-  {
-    val h        = LeonardoHighlighter(() => "dark")
-    val odeStyle = h.highlightBuffer("ode(y, y, t, 0, 1, 1)").styleAt(0)
-    val sinStyle = h.highlightBuffer("sin(x)").styleAt(0)
-    val varStyle = h.highlightBuffer("abc").styleAt(0)
-    assert(odeStyle == sinStyle, "'ode' should share the function colour")
-    assert(odeStyle != varStyle, "'ode' should not be coloured as a plain variable")
-    // and content must still be preserved
-    assert(h.highlightBuffer("ode(y, y, t, 0, 1, 1)").toString == "ode(y, y, t, 0, 1, 1)")
-  }
 
   // --- ode: end-to-end evaluation and assignment through Session ---
 
@@ -1204,24 +1112,6 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(Session.step(session, Some("")).contains(""))
   }
 
-  "step on :load and :save" should "perform the file IO the bare execute path refuses" in
-  {
-    val tmp = java.io.File.createTempFile("leonardo-step", ".txt")
-    tmp.deleteOnExit()
-    try
-      val s1 = session
-      s1.execute("a := 9")
-      val saved = Session.step(s1, Some(s":save ${tmp.getPath}"))
-      assert(saved.exists(_.startsWith("saved to")), s"expected save confirmation, got: $saved")
-
-      val s2 = session
-      val loaded = Session.step(s2, Some(s":load ${tmp.getPath}"))
-      assert(loaded.exists(!_.startsWith("could not read")), s"expected a successful load, got: $loaded")
-      assert(s2.execute("a") == "9.0")
-      // contrast: the same tokens through execute are refused as interactive-only
-      assert(s2.execute(":save foo.txt").contains("interactive"))
-    finally tmp.delete()
-  }
 
   // --- auto-bind on solve ---
 
@@ -1606,11 +1496,6 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s2.execute("ok") == "true")
   }
 
-  "the highlighter" should "accept logic keywords without error" in
-  {
-    val h = LeonardoHighlighter(() => "dark")
-    assert(h.highlightBuffer("truth a and not b or true").toString == "truth a and not b or true")
-  }
 
   // --- issue 4.F: ternary (Kleene) logic ---
 
@@ -1689,11 +1574,6 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("truth3 := 3").contains("reserved word"))
   }
 
-  "the highlighter" should "accept the unknown literal without error" in
-  {
-    val h = LeonardoHighlighter(() => "dark")
-    assert(h.highlightBuffer("truth3 a and unknown").toString == "truth3 a and unknown")
-  }
   // --- issue 4.G: symmetric ternary encoding ---
 
   "the logic symmetric toggle" should "default to off and report its state" in
@@ -1914,12 +1794,6 @@ class ReplSessionTest extends AnyFlatSpec:
       assert(s.execute(s"$name := 3").contains("reserved word"), s"'$name' must be reserved")
   }
 
-  "the highlighter" should "accept the fuzzy vocabulary without error" in
-  {
-    val h = LeonardoHighlighter(() => "dark")
-    val line = "defuzz(very(trimf(x, 0, 5, 10)), x, 0, 10)"
-    assert(h.highlightBuffer(line).toString == line)
-  }
   // --- issue 4.K: Greek-letter aliases and their insertion chords ---
 
   "the Greek aliases" should "parse to the same nodes as the ASCII spellings" in
@@ -1967,11 +1841,4 @@ class ReplSessionTest extends AnyFlatSpec:
     s.execute("B := 5")
     assert(s.execute("B") == "5.0")
     assert(!parser.Parser.parse("B(1, 4)").successful, "B(...) must not be a Beta call")
-  }
-
-  "the highlighter" should "accept the Greek glyphs without error" in
-  {
-    val h = LeonardoHighlighter(() => "dark")
-    val line = "Γ(5) + β(1, 2)"
-    assert(h.highlightBuffer(line).toString == line)
   }

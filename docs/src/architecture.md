@@ -40,9 +40,30 @@ published separately — and it is, so that a library consumer never resolves JL
 | `it.grypho:leonardo-repl` | `cli` only; depends on `leonardo` | `jline` |
 
 The split cost no code change, which is the practical dividend of the layering rule: `cli`
-being a leaf that nothing imports is exactly what made it detachable. It also leaves the
-library free of any terminal dependency, which is the one thing that would block a future
-Scala.js or Scala Native cross-build.
+being a leaf that nothing imports is exactly what made it detachable. It also left the library
+free of any terminal dependency — the one thing that would have blocked a Scala.js cross-build.
+
+## Running off the JVM
+
+Both modules **cross-build for Scala.js**, and the whole suite runs on Node as well as the JVM:
+1781 library cases on each, plus the REPL's. The port needed two platform-specific pieces in
+the library and four in the REPL; everything else is the same source.
+
+| Platform-specific | Why |
+|---|---|
+| Parallel block dispatch | `java.util.stream` has no Scala.js counterpart, and a browser is single-threaded anyway |
+| `Double` rendering | Scala.js renders a `Double` the JavaScript way — `1` for `1.0`, `0.00003` for `3.0E-5` |
+| JLine read loop, highlighter | a terminal line editor has no meaning in a browser |
+| `:save` / `:load` storage | files on the JVM, `localStorage` in a browser — **the same commands either way** |
+
+The interesting part is what did *not* need changing. `Session` — the entire REPL behaviour,
+including command parsing, display and session scripts — is untouched, because
+`Session.execute`, `Session.script` and `Session.load` were already pure string in / string
+out. The file system was the only JVM-bound part of `:save`, and it never lived inside
+`Session`.
+
+Nothing Scala.js is published yet: the cross-build exists to prove the library runs in a
+browser and to keep that true, since CI runs the JavaScript suite on every push.
 
 The diagram below is generated automatically from `docs/structure.puml` by
 running `sbt puml` (or `sbt site` which runs the full pipeline).
