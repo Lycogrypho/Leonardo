@@ -23,3 +23,14 @@ addSbtPlugin("com.github.sbt"     % "sbt-unidoc"       % "0.6.1")
 addSbtPlugin("com.typesafe"       % "sbt-mima-plugin"  % "1.2.0")
 // Check https://mvnrepository.com/artifact/org.scalameta/sbt-mdoc for the latest version.
 addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.6.1")
+
+// Scala.js cross-build (issue F_0003 phase 1). Two plugins because they do different jobs:
+// sbt-scalajs compiles Scala to JavaScript, sbt-scalajs-crossproject supplies the
+// `crossProject(JVMPlatform, JSPlatform)` builder that lets ONE project definition produce
+// both. Neither reaches a published POM -- they are build-only, like sbt-unidoc.
+//
+// The JVM build is unaffected: `coreJVM` compiles exactly the sources `core` did, and the
+// only platform-specific file is the parallel-multiply shim (see build.sbt).
+// Check https://mvnrepository.com/artifact/org.scala-js/sbt-scalajs for the latest.
+addSbtPlugin("org.scala-js"       % "sbt-scalajs"                % "1.22.0")
+addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject"   % "1.4.0")

@@ -191,13 +191,16 @@ case class _Complex private (re: Double, im: Double) extends _Value:
   def display(precision: Int): String =
     val r = _Number.round(re, precision)
     val m = _Number.round(im, precision)
+    // Every Double reaches the string through _Number.render: a bare interpolation renders
+    // the JavaScript way under Scala.js and would make this type print differently in a
+    // browser (issue F_0003).
     def imTerm(x: Double): String = x match
       case 1.0  => "i"
       case -1.0 => "-i"
-      case _    => s"${x}i"
-    if m == 0.0 then r.toString
+      case _    => s"${_Number.render(x)}i"
+    if m == 0.0 then _Number.render(r)
     else if r == 0.0 then imTerm(m)
     else
       val (sign, mag) = if m < 0.0 then ("-", -m) else ("+", m)
-      val magStr = if mag == 1.0 then "i" else s"${mag}i"
-      s"($r $sign $magStr)"
+      val magStr = if mag == 1.0 then "i" else s"${_Number.render(mag)}i"
+      s"(${_Number.render(r)} $sign $magStr)"

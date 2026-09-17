@@ -524,7 +524,7 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
         // exists to make visible: the small root of an ill-conditioned quadratic.  Fall back
         // to `precision` SIGNIFICANT digits, which keeps the magnitude.
         if rounded == 0.0 && !isZero then toBigDecimal(math.max(precision, 1)).toString
-        else rounded.toString
+        else _Number.render(rounded)
 
   /** Decimal digit count of `n`, sign excluded. */
   private def digitsOf(n: BigInt): Int =

@@ -94,7 +94,10 @@ class BaseConversionTest extends AnyFlatSpec:
       val printed = run(s"balanced($n)")
       val back    = run(printed)
       assert(back == printed, s"$n printed as $printed but re-parsed to $back")
-      assert(run(s"$printed + 0") == s"${n.toDouble}", s"$printed should be worth $n")
+      // _Number.toString, not s"${n.toDouble}": interpolating a Double renders the JavaScript
+      // way under Scala.js ("-13" for "-13.0"), so the expectation, not the library, was what
+      // failed the cross-build here (issue F_0003).
+      assert(run(s"$printed + 0") == _Number(n.toDouble).toString, s"$printed should be worth $n")
   }
 
   // ── literals ───────────────────────────────────────────────────────────────

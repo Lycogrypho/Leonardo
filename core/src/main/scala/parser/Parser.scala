@@ -129,7 +129,20 @@ object Parser extends JavaTokenParsers:
     "unset", "samples", "colors", "pretty", "exact", "truth3", "logic", "help", "quit", "exit" // REPL commands
   )
 
-  private val MaxDepth = 500
+  // 200, not 500, and the limit is deliberately UNIFORM across platforms (issue F_0003).
+  //
+  // The guard exists so that pathological input yields a parse error instead of a crash, and
+  // 500 only achieved that on the JVM: under Node the same 600-paren input raised
+  // `RangeError: Maximum call stack size exceeded` from inside the combinators *before* the
+  // counter reached 500, because a JavaScript engine's stack is far shallower and each parse
+  // level costs several frames.  A guard that the stack outruns is not a guard.
+  //
+  // Making it platform-specific was rejected: two limits mean an expression that parses on
+  // the JVM fails in the browser, which is a worse outcome than one lower bound -- the library
+  // would answer differently depending on where it runs, and that is the one thing a shared
+  // language must not do.  Nothing real approaches 200 levels of nesting; the guard is there
+  // for hostile input, not expressive input.
+  private val MaxDepth = 200
   private val depth = new ThreadLocal[Int]:
     override def initialValue(): Int = 0
 

@@ -136,7 +136,8 @@ lazy val injectApiStyles = taskKey[Unit]("Inject custom CSS into generated scala
 // module appears.
 lazy val root = (project in file("."))
   .enablePlugins(ScalaUnidocPlugin)
-  .aggregate(core, replModule)
+  // core.js is aggregated so `sbt test` covers it; it is filtered out of unidoc below.
+  .aggregate(core.jvm, core.js, replModule)
   .settings(
     name           := "Leonardo",
     // Nothing to publish from the aggregate: the artifacts are core's and replModule's. An
@@ -240,6 +241,10 @@ lazy val root = (project in file("."))
     // outside this file.
     ScalaUnidoc / unidoc / target := target.value / s"scala-${scalaVersion.value}" / "api",
 
+    // core.js is excluded: it compiles the SAME shared sources as core.jvm, so including it
+    // would feed unidoc two copies of every class and duplicate the whole API reference.
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(core.jvm, replModule),
+
     // ── Custom CSS injection ───────────────────────────────────────────────────
     injectApiStyles := {
       val log    = streams.value.log
@@ -271,10 +276,32 @@ lazy val root = (project in file("."))
 // almost always wants. The directory is `core/` (the conventional name for the base module)
 // while the artifact stays `leonardo`; `name` drives both, via sbt's `normalizedName`, which
 // lowercases it.
-lazy val core = (project in file("core"))
+// CROSS-BUILT for the JVM and Scala.js since F_0003 phase 1.  `core.jvm` is what publishes
+// and is byte-for-byte the project this used to be; `core.js` exists to prove the library
+// runs off the JVM and to keep that true -- `ci.yml` runs its suite.
+//
+// CrossType.Pure, NOT CrossType.Full, and the choice is worth stating: Full expects sources
+// under `core/shared/src/main/scala` and would have MOVED 163 files for the sake of one
+// platform-specific object.  Pure leaves every shared source exactly where it is and costs
+// only the two `unmanagedSourceDirectories` lines below.  The `.jvm` / `.js` directories it
+// creates under `core/` hold build output only and are already ignored by the unanchored
+// `target/` rule.
+lazy val core = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("core"))
   .settings(
     name             := "Leonardo",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
+
+    libraryDependencies += "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.4.0",
+    libraryDependencies += "org.typelevel"          %%% "spire"                    % "0.18.0",
+    libraryDependencies += "org.scalatest"          %%% "scalatest"                % "3.2.19" % Test
+  )
+  .jvmSettings(
+    // Platform sources live beside the shared tree rather than under it, because CrossType.Pure
+    // reserves `core/.jvm` and `core/.js` for build output.  `baseDirectory` for coreJVM IS
+    // `core/.jvm`, hence the `getParentFile`.
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "main" / "scala",
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo" % mimaBaseline),
@@ -288,20 +315,35 @@ lazy val core = (project in file("core"))
     // break and had to be declared. 3.7.2 shipped that removal, so against a 3.7.2 baseline
     // there is nothing to compare and nothing to excuse: the filter retired with the
     // baseline it existed for, which is the normal end of every entry here.
-    mimaBinaryIssueFilters ++= Seq(),
-
-    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "2.4.0",
-
-    // Spire powers the exact-arithmetic tier's irrational engine (issue 4.N): `Real` computes
-    // a transcendental to any requested precision, replacing the ~15-digit `Double` ceiling
-    // that tier 1 had to live with. MIT licensed, so one-way compatible with Apache-2.0.
-    //
-    // PINNED DELIBERATELY. spire_3 has exactly one stable release, 0.18.0 of June 2022, and
-    // the transitive `typelevel/algebra` is archived. The licence is what bounds that risk: if
-    // spire is ever truly abandoned, the handful of `Real` sources can be vendored in under
-    // Apache-2.0 with the MIT notice preserved and recorded in NOTICE. Do not plan on upgrades.
-    libraryDependencies += "org.typelevel" %% "spire" % "0.18.0"
+    mimaBinaryIssueFilters ++= Seq()
   )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "js-src" / "main" / "scala",
+
+    // MiMa is disabled here because there is no baseline to check against: `leonardo_sjs1_3`
+    // has never been published, so `mimaPreviousArtifacts` would ask Coursier for an artifact
+    // that does not exist and fail the build rather than report an incompatibility.
+    mimaPreviousArtifacts := Set.empty,
+
+    // PHASE 1 DOES NOT PUBLISH A JS ARTIFACT.  Proving the port and committing to support it
+    // are different decisions, and publishing is the irreversible one -- a coordinate on
+    // Central can never be withdrawn.  Flip this when the browser front end (phase 3) gives
+    // the artifact a consumer; until then the JS build exists to be tested, not resolved.
+    publish / skip := true
+  )
+
+// Spire powers the exact-arithmetic tier's irrational engine (issue 4.N): `Real` computes a
+// transcendental to any requested precision, replacing the ~15-digit `Double` ceiling that
+// tier 1 had to live with. MIT licensed, so one-way compatible with Apache-2.0.
+//
+// PINNED DELIBERATELY. spire_3 has exactly one stable release, 0.18.0 of June 2022, and the
+// transitive `typelevel/algebra` is archived. The licence is what bounds that risk: if spire
+// is ever truly abandoned, the handful of `Real` sources can be vendored in under Apache-2.0
+// with the MIT notice preserved and recorded in NOTICE. Do not plan on upgrades.
+//
+// Note the `%%%` above rather than `%%`: in a crossProject that resolves `spire_3` for the JVM
+// and `spire_sjs1_3` for Scala.js. Both exist at 0.18.0 -- verified on Central before the
+// cross-build was attempted, since a missing JS artifact would have sunk it.
 
 // ── mdoc lives in its own project, and MUST NOT be enabled on root ─────────────
 // MdocPlugin adds `org.scalameta:mdoc` to the enabled project's libraryDependencies, and
@@ -326,7 +368,7 @@ lazy val docs = (project in file("docs"))
   // than being a bare tool invocation.
   // BOTH modules: docs/src/getting-started.md has an mdoc block that imports `cli.Session`,
   // so depending on the library alone would break the site build rather than the compile.
-  .dependsOn(core, replModule)
+  .dependsOn(core.jvm, replModule)
   .settings(
     name           := "leonardo-docs",
     publish / skip := true,
@@ -359,21 +401,25 @@ lazy val docs = (project in file("docs"))
 // and a project of the same name would make `sbt repl` ambiguous. The directory and the
 // published artifact are both plainly `repl` / `leonardo-repl`.
 lazy val replModule = (project in file("repl"))
-  .dependsOn(core)
+  .dependsOn(core.jvm)
   .settings(
     name             := "leonardo-repl",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
     libraryDependencies += "org.jline" % "jline" % "3.30.15",
 
     // Binary compatibility against the previous release (issue 2.9).
-    mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline)
+    mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline),
+
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test
   )
 
-// ThisBuild: both modules have test suites, and a bare `libraryDependencies +=` would give
-// ScalaTest to root only -- leaving the four cli suites uncompilable in the repl module.
-ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
-
-ThisBuild / libraryDependencies += "org.scalatest" %% "scalatest-flatspec" % "3.2.19" % "test"
+// ScalaTest is declared PER PROJECT rather than on ThisBuild since the cross-build (F_0003).
+// A `ThisBuild / libraryDependencies += ... %% "scalatest"` reaches core.js too, and the JVM
+// artifact `scalatest_3` would land on the Scala.js classpath beside `scalatest_sjs1_3` --
+// two jars carrying the same fully-qualified class names, which is a linker error rather than
+// a resolution one and so fails late and confusingly.  core declares it with `%%%` (see its
+// settings); replModule is JVM-only and declares it here.
+ThisBuild / libraryDependencies ++= Nil
 
 // Shortcut for the interactive REPL: `sbt repl` instead of the full runMain path.
 // Project-qualified since the split -- `cli` lives in the repl module now.

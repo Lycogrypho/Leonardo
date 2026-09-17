@@ -120,6 +120,19 @@ object _Number:
       if scala.math.abs(d) * factor > Long.MaxValue.toDouble then d
       else (d * factor).round.toDouble / factor
 
+  /** Renders a `Double` identically on every platform (issue F_0003).
+   *
+   *  **Every display path must go through here rather than interpolating a `Double`.**
+   *  Scala.js renders a `Double` the JavaScript way, not the Java way — `1` for `1.0`, and
+   *  `0.00003` for `3.0E-5` — so a bare `s"$d"` produces a different string in a browser than
+   *  on the JVM.  Since `toString` output is what `:save` writes and what the round-trip
+   *  invariant re-parses, that would make the two builds serialise different dialects.
+   *
+   *  The JVM implementation is `d.toString`; the Scala.js one rebuilds the JDK's presentation.
+   *  See `core/jvm-src` and `core/js-src`.
+   */
+  private[core] inline def render(d: Double): String = DoubleRender.render(d)
+
 /** Concrete real scalar value.
  *
  *  Rounding is a display concern only: `toString` and `display` round for output; `eval`
@@ -135,7 +148,7 @@ case class _Number(d: Double) extends _Value:
   override def toString: String =
     if d.isPosInfinity then "inf"
     else if d.isNegInfinity then "-inf"
-    else _Number.round(d, Environment.DefaultPrecision).toString
+    else _Number.render(_Number.round(d, Environment.DefaultPrecision))
 
   /** Renders this number at `precision` decimal places for REPL display.
    *  @param precision number of decimal places to show
@@ -143,7 +156,7 @@ case class _Number(d: Double) extends _Value:
   def display(precision: Int): String =
     if d.isPosInfinity then "inf"
     else if d.isNegInfinity then "-inf"
-    else _Number.round(d, precision).toString
+    else _Number.render(_Number.round(d, precision))
 
   /** Returns `Right(this)` — a concrete number needs no further reduction. */
   override def eval(env: Environment): Either[_Expression, _Value] = Right(this)

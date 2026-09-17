@@ -42,7 +42,12 @@ jobs:
         uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8 # v1.5.9
 
       - name: Test
-        # Aggregated across both modules from the root project: 1704 library + 284 REPL.
+        # Aggregated from the root project, which since the Scala.js cross-build (F_0003)
+        # covers THREE suites: 1781 library on the JVM, the same 1781 on Node, and 284 REPL.
+        # `core.js` is aggregated precisely so that a bare `sbt test` cannot forget it.
+        #
+        # Node is required for the Scala.js run and the runner image already provides it, so
+        # there is no setup step -- if that ever changes, this is the job that goes red first.
         run: sbt test
 
       - name: Encoding hygiene

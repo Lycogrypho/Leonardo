@@ -102,7 +102,7 @@ case class _Truth private (d: Double) extends _Value:
    */
   def display(precision: Int): String =
     val r = _Number.round(d, precision)
-    if r == 0.5 then "unknown" else s"truth($r)"
+    if r == 0.5 then "unknown" else s"truth(${_Number.render(r)})"
 
   /** This degree written as a symmetric ternary digit: `2 * d - 1`, so `0.5` is `0`.
    *  The inverse of [[_Truth.fromSymmetric]].

@@ -1,7 +1,6 @@
 package it.grypho.scala.leonardo
 package core
 
-import java.util.stream.IntStream
 
 
 /** Companion for the dense concrete matrix value [[_MatrixValue]]. */
@@ -115,7 +114,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
    */
   def display(precision: Int): String =
     (0 until rows).map(i =>
-      (0 until cols).map(j => _Number.round(this(i, j), precision))
+      (0 until cols).map(j => _Number.render(_Number.round(this(i, j), precision)))
         .mkString("[", ", ", "]")
     ).mkString("[", ", ", "]")
 
@@ -732,12 +731,11 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           jj += tile
         kk += tile
 
-    val blocks = (rows + tile - 1) / tile
-    if rows.toLong * n * w >= _MatrixValue.ParallelThreshold && blocks > 1 then
-      IntStream.range(0, blocks).parallel().forEach(b => blockKernel(b * tile))
-    else
-      var b = 0
-      while b < blocks do
-        blockKernel(b * tile)
-        b += 1
+    // Dispatch is platform-specific and lives in BlockDispatch: `java.util.stream` is the one
+    // JDK API this library uses that Scala.js does not provide (issue F_0003). The JS side is
+    // sequential, which costs nothing in correctness -- blocks write disjoint slices of `out`,
+    // so parallel and sequential were always required to agree.
+    val blocks   = (rows + tile - 1) / tile
+    val parallel = rows.toLong * n * w >= _MatrixValue.ParallelThreshold && blocks > 1
+    BlockDispatch.foreachBlock(blocks, parallel)(b => blockKernel(b * tile))
     new _MatrixValue(rows, that.cols, out)
