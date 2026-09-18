@@ -7,6 +7,12 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Scala](https://img.shields.io/badge/scala-3.3%20LTS-red.svg)](https://www.scala-lang.org/)
 
+### [▶ Try Leonardo in your browser](https://lycogrypho.github.io/Leonardo/app/)
+
+The whole CAS compiled to JavaScript — no install, no sign-up, no server. Differentiate,
+integrate, solve, invert a matrix, take a Laplace transform, plot a function. Nothing you type
+leaves the tab.
+
 ## Introduction
 
 Leonardo is a Scala 3 symbolic math library and Computer Algebra System (CAS). The name is an homage to [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), commonly known as Fibonacci, the Italian mathematician and author of the [Liber Abaci](https://en.wikipedia.org/wiki/Liber_Abaci): with his works he introduced Indo/Arabic numerals and mathematical notation to the Western world.

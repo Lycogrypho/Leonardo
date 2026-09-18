@@ -1,8 +1,9 @@
 name: Deploy documentation site to GitHub Pages
 
 # Publishes the Leonardo support site: the "Just the Docs" prose (docs/src) at the site
-# root, plus the Scaladoc API reference at /api. Runs on every push to main; can also be
-# triggered manually. One-time repo setup: Settings -> Pages -> Source = "GitHub Actions".
+# root, the Scaladoc API reference at /api, and the browser REPL at /app. Runs on every push
+# to main; can also be triggered manually. One-time repo setup: Settings -> Pages -> Source =
+# "GitHub Actions".
 
 on:
   push:
@@ -10,7 +11,16 @@ on:
     # Only rebuild when something that affects the site changes.
     paths:
       - "docs/**"
-      - "src/main/**"
+      # core/ and repl/ rather than src/main/: the 5.2 module split moved every source out of
+      # a top-level src/, which no longer exists -- so "src/main/**" silently matched NOTHING
+      # and a library change stopped rebuilding the site at all. The published Scaladoc went
+      # stale until some other path happened to fire. Found while adding web/ below.
+      - "core/src/main/**"
+      - "core/js-src/main/**"
+      - "repl/src/main/**"
+      - "repl/js-src/main/**"
+      # The browser REPL is deployed from here too (F_0003 phase 4).
+      - "web/**"
       - "build.sbt"
       - "project/**"
       - ".github/workflows/pages.yml"
@@ -55,6 +65,13 @@ jobs:
         #                  the assemble step below copies. It would also drop `cli` from the
         #                  API.  (The version is deliberately not spelled here -- see below.)
         run: sbt "docs/mdoc; unidoc; injectApiStyles"
+
+      # ── Browser REPL (the /app subfolder, F_0003 phase 4) ──────────────────
+      - name: Link the browser REPL
+        # `web` is deliberately outside the root aggregate, so it must be named: the task above
+        # does not reach it. fullLinkJS rather than fastLinkJS because this is what ships --
+        # 3.46 MB against fastLink's ~20 MB, and the gzipped figure is what a reader pays.
+        run: sbt web/fullLinkJS
 
       # ── Jekyll prose site (Just the Docs over docs/src) ──────────────────────
       - name: Set up Ruby
@@ -103,6 +120,33 @@ jobs:
         run: |
           cp -r target/scala-*/api _site/api
           touch _site/.nojekyll
+
+      - name: Add the browser REPL at /app
+        # Same glob reasoning as the API copy above: no file may spell the Scala version, or
+        # Scala Steward's bump branch edits this workflow and the push is refused for want of
+        # the `workflow` PAT scope. A fresh checkout links exactly one leonardo-web-opt, and
+        # cp fails loudly if it linked none.
+        #
+        # Jekyll never sees any of this: it builds target/mdoc into _site, and /app is added
+        # afterwards. So index.html is served exactly as written, with no front matter and no
+        # Liquid processing -- which matters, because the page is full of {{ }}-free but
+        # brace-heavy JavaScript that Liquid would otherwise be entitled to interpret.
+        run: |
+          mkdir -p _site/app
+          cp web/index.html _site/app/index.html
+          cp web/target/scala-*/leonardo-web-opt/main.js _site/app/main.js
+          cp -r web/vendor _site/app/vendor
+
+      - name: Verify the deployed app is complete
+        # Cheap, and it guards the failure mode this layout actually has: a page that loads,
+        # renders its chrome, and then does nothing because one file was not copied. Checking
+        # here means a broken deployment never reaches the site.
+        run: |
+          test -s _site/app/index.html
+          test -s _site/app/main.js
+          test -s _site/app/vendor/plotly.min.js
+          grep -q 'leonardoStart' _site/app/main.js
+          echo "app: $(stat -c%s _site/app/main.js) bytes of Leonardo, $(stat -c%s _site/app/vendor/plotly.min.js) of Plotly"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

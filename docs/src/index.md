@@ -12,6 +12,15 @@ expression tree.
 
 Named after [Leonardo Pisano](https://en.wikipedia.org/wiki/Fibonacci), known as Fibonacci, the author of the [Liber Abaci](https://en.wikipedia.org/wiki/Liber_Abaci).
 
+## Try it in your browser
+
+**[Open the browser REPL](https://lycogrypho.github.io/Leonardo/app/){: .btn .btn-primary }**
+
+The whole system compiled to JavaScript — no install, no sign-up, no server. Differentiate,
+integrate, solve, invert a matrix, take a Laplace transform, or plot a function. Sessions are
+saved in your own browser and a link carries its session in the URL fragment, so nothing you
+type ever leaves the tab.
+
 ## Quick start
 
 ```scala mdoc:silent
@@ -69,6 +78,7 @@ d.eval(env)
 - [Sequences](sequences.md) — Fibonacci and friends, and the generic tabulator
 - [Control Systems](control.md) — transfer functions, stability, response, discretisation
 - [Interactive REPL](repl.md) — session commands and scripts
+- [Browser REPL](https://lycogrypho.github.io/Leonardo/app/) — the same REPL, in your browser
 - [Cheat sheet](cheatsheet.md) — every REPL command on one page
 - [Architecture](architecture.md) — package diagram and design decisions
 - [Developer Guide](developer.md) — onboarding reference for contributors

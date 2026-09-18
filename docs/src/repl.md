@@ -184,6 +184,33 @@ s.execute("pretty off")
 s.execute("samples x*x x 0 1 5")
 ```
 
+The same sampling backs the browser REPL's plots, so a figure and this table always show the
+same numbers — `Session.samplePoints` returns the points and `samples` prints them. Note that
+the printed table is rounded to the session precision while the data is not, which is why a
+plot is never built from this text.
+
+## In the browser
+
+The [browser REPL](https://lycogrypho.github.io/Leonardo/app/) runs this same `Session`
+compiled to JavaScript. Every command on this page works there unchanged, including `:save`
+and `:load` — which keep their exact spelling but write to your browser's storage rather than
+to files. Nothing you type leaves the tab.
+
+Two commands exist **only** there, because a terminal cannot honour them:
+
+| Command | Draws |
+|---|---|
+| `plot <expr> <var> <lo> <hi> [<n>]` | `y = f(x)` as a line — the arguments are `samples`' arguments |
+| `points <expr> <var> <lo> <hi> [<n>]` | the same sampling as points, **with the axes locked to the same scale** |
+
+Use `points` whenever the picture is *geometry* rather than a function of one variable — a
+vector drawn as a coordinate, or anything in the complex plane. On unequal axes a circle looks
+like an ellipse, so the lock is a correctness matter rather than a preference.
+
+The **Copy shareable link** button puts the whole session in the URL fragment. Opening that
+link restores the bindings and definitions; because it is a fragment, it is never sent to any
+server.
+
 ## Unset a binding
 
 ```scala mdoc

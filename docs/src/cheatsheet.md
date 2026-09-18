@@ -34,9 +34,11 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `logic symmetric on\|off` | Spell truth values as -1 / 0 / 1 (default: off) |
 | `logic minmax\|product\|lukasiewicz` | Fuzzy t-norm family (default: minmax) |
 | `unset <name>` | Remove a binding or definition |
-| `:save <file>` | Write session to a replayable script |
-| `:load <file>` | Replay a session script from file |
+| `:save <file>` | Write session to a replayable script (browser: its own storage) |
+| `:load <file>` | Replay a session script (browser: its own storage) |
 | `quit` / `exit` | Leave the REPL |
+| `plot <expr> <v> <lo> <hi> [n]` | **Browser only** — draw `y = f(x)` as a line |
+| `points <expr> <v> <lo> <hi> [n]` | **Browser only** — draw the samples as points, axes locked to the same scale |
 
 ---
 
