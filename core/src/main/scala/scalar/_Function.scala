@@ -14,6 +14,33 @@ import scala.math.{exp, log, log10, sin, cos, tan, asin, acos, atan}
  *  `core` type, so these helpers stay within the `core -> scalar` layering.
  */
 abstract class _Function extends _Expression:
+
+  /** The token this function prints and parses as — `"exp"`, `"tan"`, `"Gamma"`.
+   *
+   *  **Abstract on purpose, and deriving it was rejected rather than overlooked.**  A case
+   *  class knows its own name through `productPrefix`, so `name` could have defaulted to it —
+   *  but `Exp` prints `exp` while `Gamma` prints `Gamma` (capitalised by 4.K so the lower-case
+   *  name stays free as a variable), and `Tg` prints `tan`.  Neither `productPrefix` nor its
+   *  lower-cased form is right for all three, and a default that is right for most nodes and
+   *  silently wrong for a few is the confidently-wrong failure this codebase declines
+   *  everywhere — here it would mean a session saving under one spelling and reloading under
+   *  another.  Requiring each node to state its token makes a new one a compile error instead.
+   */
+  def name: String
+
+  /** Renders as `name(arg, arg, …)` — the grammar's own call syntax, so it re-parses.
+   *
+   *  One definition replacing 41 identical hand-written overrides (issue F_0016 step 0).
+   *
+   *  **`_Functional` is a separate hierarchy and deliberately does not get this.**  Its nine
+   *  nodes — `_Derivative`, the integrals, `_Limit` and the transforms — print a *binder* that
+   *  `children` excludes on purpose, so rendering from `children` alone would emit
+   *  `derive(e)` for what is `derive(e, v)` and silently lose the variable.  They keep their
+   *  own `toString`, and they gain nothing from a `name` either: their LaTeX is `\int`,
+   *  `\frac{d}{dx}` and `\lim`, which is bespoke however the token is spelled.
+   */
+  override def toString: String = s"$name(${children.mkString(", ")})"
+
   /** Applies a real scalar function element-wise over a dense matrix argument.
    *
    *  An out-of-domain element (e.g. `ln` of a negative entry yields NaN) leaves the
@@ -122,7 +149,7 @@ abstract class _Function extends _Expression:
  *  @param e the exponent expression
  */
 case class Exp(e: _Expression) extends _Function:
-  override def toString: String = s"exp($e)"
+  override def name: String = "exp"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Exp(c.head)
 
@@ -149,7 +176,7 @@ case class Exp(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Ln(e: _Expression) extends _Function:
-  override def toString: String = s"ln($e)"
+  override def name: String = "ln"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Ln(c.head)
 
@@ -186,7 +213,7 @@ case class Ln(e: _Expression) extends _Function:
  *  @param base the logarithm base
  */
 case class LogBase(e: _Expression, base: _Expression) extends _Function:
-  override def toString: String = s"log($e, $base)"
+  override def name: String = "log"
   override def children: List[_Expression] = List(e, base)
   override def rebuild(c: List[_Expression]): _Expression = LogBase(c.head, c(1))
 
@@ -218,7 +245,7 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Sin(e: _Expression) extends _Function:
-  override def toString: String = s"sin($e)"
+  override def name: String = "sin"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sin(c.head)
 
@@ -243,7 +270,7 @@ case class Sin(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Cos(e: _Expression) extends _Function:
-  override def toString: String = s"cos($e)"
+  override def name: String = "cos"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Cos(c.head)
 
@@ -269,7 +296,7 @@ case class Cos(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Tg(e: _Expression) extends _Function:
-  override def toString: String = s"tan($e)"
+  override def name: String = "tan"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Tg(c.head)
 
@@ -300,7 +327,7 @@ case class Tg(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Asin(e: _Expression) extends _Function:
-  override def toString: String = s"asin($e)"
+  override def name: String = "asin"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Asin(c.head)
 
@@ -327,7 +354,7 @@ case class Asin(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Acos(e: _Expression) extends _Function:
-  override def toString: String = s"acos($e)"
+  override def name: String = "acos"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Acos(c.head)
 
@@ -354,7 +381,7 @@ case class Acos(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Atan(e: _Expression) extends _Function:
-  override def toString: String = s"atan($e)"
+  override def name: String = "atan"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Atan(c.head)
 
@@ -388,7 +415,7 @@ private def atanhD(x: Double): Double = 0.5 * math.log((1.0 + x) / (1.0 - x))
 
 /** The hyperbolic sine `sinh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
 case class Sinh(e: _Expression) extends _Function:
-  override def toString: String = s"sinh($e)"
+  override def name: String = "sinh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sinh(c.head)
 
@@ -404,7 +431,7 @@ case class Sinh(e: _Expression) extends _Function:
 
 /** The hyperbolic cosine `cosh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
 case class Cosh(e: _Expression) extends _Function:
-  override def toString: String = s"cosh($e)"
+  override def name: String = "cosh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Cosh(c.head)
 
@@ -420,7 +447,7 @@ case class Cosh(e: _Expression) extends _Function:
 
 /** The hyperbolic tangent `tanh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
 case class Tanh(e: _Expression) extends _Function:
-  override def toString: String = s"tanh($e)"
+  override def name: String = "tanh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Tanh(c.head)
 
@@ -437,7 +464,7 @@ case class Tanh(e: _Expression) extends _Function:
 /** The inverse hyperbolic sine `asinh(e)`.  Defined on all reals; complex inputs stay symbolic
  *  (the `Asin` convention).  Accepts `_MatrixValue` (element-wise). */
 case class Asinh(e: _Expression) extends _Function:
-  override def toString: String = s"asinh($e)"
+  override def name: String = "asinh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Asinh(c.head)
 
@@ -453,7 +480,7 @@ case class Asinh(e: _Expression) extends _Function:
 /** The inverse hyperbolic cosine `acosh(e)`.  Real only for `e ≥ 1`; out-of-domain and complex
  *  inputs stay symbolic.  Accepts `_MatrixValue` (element-wise). */
 case class Acosh(e: _Expression) extends _Function:
-  override def toString: String = s"acosh($e)"
+  override def name: String = "acosh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Acosh(c.head)
 
@@ -469,7 +496,7 @@ case class Acosh(e: _Expression) extends _Function:
 /** The inverse hyperbolic tangent `atanh(e)`.  Real only for `|e| < 1`; out-of-domain and
  *  complex inputs stay symbolic.  Accepts `_MatrixValue` (element-wise). */
 case class Atanh(e: _Expression) extends _Function:
-  override def toString: String = s"atanh($e)"
+  override def name: String = "atanh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Atanh(c.head)
 
@@ -485,7 +512,7 @@ case class Atanh(e: _Expression) extends _Function:
 /** The secant `sec(e) = 1/cos(e)`.  Symbolic at the poles (`cos = 0`); accepts `_MatrixValue`
  *  and `_Complex` arguments. */
 case class Sec(e: _Expression) extends _Function:
-  override def toString: String = s"sec($e)"
+  override def name: String = "sec"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sec(c.head)
 
@@ -502,7 +529,7 @@ case class Sec(e: _Expression) extends _Function:
 /** The cosecant `csc(e) = 1/sin(e)`.  Symbolic at the poles (`sin = 0`); accepts `_MatrixValue`
  *  and `_Complex` arguments. */
 case class Csc(e: _Expression) extends _Function:
-  override def toString: String = s"csc($e)"
+  override def name: String = "csc"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Csc(c.head)
 
@@ -519,7 +546,7 @@ case class Csc(e: _Expression) extends _Function:
 /** The cotangent `cot(e) = cos(e)/sin(e)`.  Symbolic at the poles (`sin = 0`); accepts
  *  `_MatrixValue` and `_Complex` arguments. */
 case class Cot(e: _Expression) extends _Function:
-  override def toString: String = s"cot($e)"
+  override def name: String = "cot"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Cot(c.head)
 
@@ -536,7 +563,7 @@ case class Cot(e: _Expression) extends _Function:
 /** The hyperbolic secant `sech(e) = 1/cosh(e)`.  Entire (`cosh ≥ 1`); accepts `_MatrixValue`
  *  and `_Complex` arguments. */
 case class Sech(e: _Expression) extends _Function:
-  override def toString: String = s"sech($e)"
+  override def name: String = "sech"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sech(c.head)
 
@@ -553,7 +580,7 @@ case class Sech(e: _Expression) extends _Function:
 /** The hyperbolic cosecant `csch(e) = 1/sinh(e)`.  Symbolic at `e = 0`; accepts `_MatrixValue`
  *  and `_Complex` arguments. */
 case class Csch(e: _Expression) extends _Function:
-  override def toString: String = s"csch($e)"
+  override def name: String = "csch"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Csch(c.head)
 
@@ -570,7 +597,7 @@ case class Csch(e: _Expression) extends _Function:
 /** The hyperbolic cotangent `coth(e) = cosh(e)/sinh(e)`.  Symbolic at `e = 0`; accepts
  *  `_MatrixValue` and `_Complex` arguments. */
 case class Coth(e: _Expression) extends _Function:
-  override def toString: String = s"coth($e)"
+  override def name: String = "coth"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Coth(c.head)
 
@@ -598,7 +625,7 @@ case class Coth(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Factorial(e: _Expression) extends _Function:
-  override def toString: String = s"fact($e)"
+  override def name: String = "fact"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Factorial(c.head)
 
@@ -626,7 +653,7 @@ case class Factorial(e: _Expression) extends _Function:
  *  @param k the step expression
  */
 case class MultiFactorial(e: _Expression, k: _Expression) extends _Function:
-  override def toString: String = s"mfact($e, $k)"
+  override def name: String = "mfact"
   override def children: List[_Expression] = List(e, k)
   override def rebuild(c: List[_Expression]): _Expression = MultiFactorial(c.head, c(1))
 
@@ -662,7 +689,7 @@ case class MultiFactorial(e: _Expression, k: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Gamma(e: _Expression) extends _Function:
-  override def toString: String = s"Gamma($e)"
+  override def name: String = "Gamma"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Gamma(c.head)
 
@@ -691,7 +718,7 @@ case class Gamma(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class LogGamma(e: _Expression) extends _Function:
-  override def toString: String = s"lgamma($e)"
+  override def name: String = "lgamma"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = LogGamma(c.head)
 
@@ -714,7 +741,7 @@ case class LogGamma(e: _Expression) extends _Function:
  *  @param b the second argument
  */
 case class Beta(a: _Expression, b: _Expression) extends _Function:
-  override def toString: String = s"Beta($a, $b)"
+  override def name: String = "Beta"
   override def children: List[_Expression] = List(a, b)
   override def rebuild(c: List[_Expression]): _Expression = Beta(c.head, c(1))
 
@@ -737,7 +764,7 @@ case class Beta(a: _Expression, b: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Erf(e: _Expression) extends _Function:
-  override def toString: String = s"erf($e)"
+  override def name: String = "erf"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Erf(c.head)
 
@@ -758,7 +785,7 @@ case class Erf(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Erfc(e: _Expression) extends _Function:
-  override def toString: String = s"erfc($e)"
+  override def name: String = "erfc"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Erfc(c.head)
 
@@ -779,7 +806,7 @@ case class Erfc(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Digamma(e: _Expression) extends _Function:
-  override def toString: String = s"digamma($e)"
+  override def name: String = "digamma"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Digamma(c.head)
 
@@ -807,7 +834,7 @@ case class Digamma(e: _Expression) extends _Function:
  *  @param k the lower index
  */
 case class Binom(n: _Expression, k: _Expression) extends _Function:
-  override def toString: String = s"binom($n, $k)"
+  override def name: String = "binom"
   override def children: List[_Expression] = List(n, k)
   override def rebuild(c: List[_Expression]): _Expression = Binom(c.head, c(1))
 
@@ -831,7 +858,7 @@ case class Binom(n: _Expression, k: _Expression) extends _Function:
  *  @param e the index
  */
 case class Catalan(e: _Expression) extends _Function:
-  override def toString: String = s"catalan($e)"
+  override def name: String = "catalan"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Catalan(c.head)
 
@@ -855,7 +882,7 @@ case class Catalan(e: _Expression) extends _Function:
  *  @param e the index
  */
 case class Harmonic(e: _Expression) extends _Function:
-  override def toString: String = s"harmonic($e)"
+  override def name: String = "harmonic"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Harmonic(c.head)
 
@@ -883,7 +910,7 @@ case class Harmonic(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Si(e: _Expression) extends _Function:
-  override def toString: String = s"Si($e)"
+  override def name: String = "Si"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Si(c.head)
 
@@ -901,7 +928,7 @@ case class Si(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Ci(e: _Expression) extends _Function:
-  override def toString: String = s"Ci($e)"
+  override def name: String = "Ci"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Ci(c.head)
 
@@ -919,7 +946,7 @@ case class Ci(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Ei(e: _Expression) extends _Function:
-  override def toString: String = s"Ei($e)"
+  override def name: String = "Ei"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Ei(c.head)
 
@@ -938,7 +965,7 @@ case class Ei(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class Li(e: _Expression) extends _Function:
-  override def toString: String = s"li($e)"
+  override def name: String = "li"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Li(c.head)
 
@@ -956,7 +983,7 @@ case class Li(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class FresnelS(e: _Expression) extends _Function:
-  override def toString: String = s"fresnelS($e)"
+  override def name: String = "fresnelS"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = FresnelS(c.head)
 
@@ -974,7 +1001,7 @@ case class FresnelS(e: _Expression) extends _Function:
  *  @param e the argument expression
  */
 case class FresnelC(e: _Expression) extends _Function:
-  override def toString: String = s"fresnelC($e)"
+  override def name: String = "fresnelC"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = FresnelC(c.head)
 
@@ -996,7 +1023,7 @@ case class FresnelC(e: _Expression) extends _Function:
  *  @param x the argument
  */
 case class GammaP(a: _Expression, x: _Expression) extends _Function:
-  override def toString: String = s"gammaP($a, $x)"
+  override def name: String = "gammaP"
   override def children: List[_Expression] = List(a, x)
   override def rebuild(c: List[_Expression]): _Expression = GammaP(c.head, c(1))
 
@@ -1016,7 +1043,7 @@ case class GammaP(a: _Expression, x: _Expression) extends _Function:
  *  @param x the argument
  */
 case class GammaQ(a: _Expression, x: _Expression) extends _Function:
-  override def toString: String = s"gammaQ($a, $x)"
+  override def name: String = "gammaQ"
   override def children: List[_Expression] = List(a, x)
   override def rebuild(c: List[_Expression]): _Expression = GammaQ(c.head, c(1))
 
@@ -1039,7 +1066,7 @@ case class GammaQ(a: _Expression, x: _Expression) extends _Function:
  *  @param b the second shape parameter
  */
 case class BetaI(x: _Expression, a: _Expression, b: _Expression) extends _Function:
-  override def toString: String = s"betaI($x, $a, $b)"
+  override def name: String = "betaI"
   override def children: List[_Expression] = List(x, a, b)
   override def rebuild(c: List[_Expression]): _Expression = BetaI(c.head, c(1), c(2))
 
