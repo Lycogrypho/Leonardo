@@ -353,3 +353,131 @@ class ControlTest extends AnyFlatSpec:
       case r                 => fail(s"'routh' should parse as a variable: $r")
     assert(Parser.parse("routh + 1").successful, "'routh' should compose like any variable")
   }
+
+  // ---------------------------------------------------------------------------------------
+  // F_0004 -- the log-spaced sweep with unwrapped phase.
+  //
+  // Every case here uses a plant whose response has a CLOSED FORM, so the assertion is
+  // against mathematics rather than against a previous run: |1/(iw)| = 1/w exactly, and
+  // arg(1/(1+iw)^3) = -3*atan(w) exactly. That is what makes this a test of the sweep rather
+  // than a recording of it.
+  // ---------------------------------------------------------------------------------------
+
+  "the sweep grid" should "be geometric, hitting both endpoints" in
+  {
+    val sweep = frequencyResponse(parse("1/s"), s, 0.01, 100.0, 5, new Environment())
+    val ws    = sweep.map(_._1)
+    assert(ws.size == 5, s"expected 5 points, got ${ws.size}")
+    assert(math.abs(ws.head - 0.01) < 1e-12, s"low endpoint: ${ws.head}")
+    assert(math.abs(ws.last - 100.0) < 1e-9, s"high endpoint: ${ws.last}")
+    // Four decades over five points is one decade per step. The constant RATIO is what makes
+    // this a log grid; a linear one would put four of the five points in the last decade and
+    // none near a corner at 0.1, which is the whole reason this entry exists.
+    val ratios = ws.sliding(2).map(p => p(1) / p(0)).toVector
+    for r <- ratios do assert(math.abs(r - 10.0) < 1e-9, s"ratios not constant: $ratios")
+  }
+
+  it should "be refused rather than fudged when it cannot be geometric" in
+  {
+    val env = new Environment()
+    val g   = parse("1/s")
+    // log(0) is not a number, so a geometric grid needs a positive, ordered interval and at
+    // least two points to span it. Each of these is empty rather than silently repaired: a
+    // caller asking for a sweep from zero has made a units mistake worth surfacing.
+    assert(frequencyResponse(g, s, 0.0, 10.0, 10, env).isEmpty, "wMin = 0 must be refused")
+    assert(frequencyResponse(g, s, -1.0, 10.0, 10, env).isEmpty, "negative wMin must be refused")
+    assert(frequencyResponse(g, s, 10.0, 1.0, 10, env).isEmpty, "wMin > wMax must be refused")
+    assert(frequencyResponse(g, s, 1.0, 1.0, 10, env).isEmpty, "a degenerate span must be refused")
+    assert(frequencyResponse(g, s, 1.0, 10.0, 1, env).isEmpty, "one point cannot span a grid")
+  }
+
+  "an integrator's sweep" should "fall at 20 dB per decade with a phase of exactly -90" in
+  {
+    // G = 1/s, so |G(iw)| = 1/w and arg = -pi/2 for every w > 0. Both are exact, which makes
+    // this the cleanest possible check of the dB and degree conversions.
+    val sweep = frequencyResponse(parse("1/s"), s, 0.1, 100.0, 13, new Environment())
+    assert(sweep.nonEmpty)
+    for (w, db, deg) <- sweep do
+      assert(math.abs(db - (-20.0 * math.log10(w))) < 1e-9, s"magnitude at w=$w: $db")
+      assert(math.abs(deg - (-90.0)) < 1e-9, s"phase at w=$w: $deg")
+  }
+
+  "a first-order lag" should "be -3 dB and -45 degrees at its corner" in
+  {
+    // The textbook reading of 1/(s+1): at w = 1 the magnitude is 1/sqrt(2) and the phase is
+    // exactly -45 degrees. Sweeping a single-point-wide band puts the corner on the grid.
+    val sweep = frequencyResponse(parse("1/(s+1)"), s, 1.0, 100.0, 3, new Environment())
+    val (w, db, deg) = sweep.head
+    assert(math.abs(w - 1.0) < 1e-12, s"expected the corner on the grid, got $w")
+    assert(math.abs(db - (-20.0 * math.log10(math.sqrt(2.0)))) < 1e-9, s"magnitude: $db")
+    assert(math.abs(deg - (-45.0)) < 1e-9, s"phase: $deg")
+  }
+
+  "the swept phase" should "be unwrapped past -180 degrees" in
+  {
+    // THE case this entry exists for. G = 1/(1+s)^3 has arg = -3*atan(w), which passes -180
+    // near w = 1.73 and tends to -270. atan2's principal value is (-180, 180], so a raw sweep
+    // reports +107 degrees at w = 10 -- an artefact of the arctangent, not of the plant, and
+    // one every reader of a raw sweep would inherit.
+    val sweep = frequencyResponse(parse("1/(s+1)^3"), s, 0.01, 1000.0, 400, new Environment())
+    assert(sweep.nonEmpty)
+    for (w, _, deg) <- sweep do
+      val exact = -3.0 * math.atan(w) * 180.0 / math.Pi
+      assert(math.abs(deg - exact) < 1e-6, s"at w=$w expected $exact but got $deg")
+    assert(sweep.last._3 < -260.0, s"phase should approach -270, got ${sweep.last._3}")
+  }
+
+  it should "be monotone and free of jumps for a monotone plant" in
+  {
+    // The structural counterpart of the case above: whatever the closed form, an unwrapped
+    // curve must not step by half a turn between neighbouring samples. This is the property a
+    // plotting caller actually depends on, and it holds without knowing the plant.
+    val sweep = frequencyResponse(parse("1/(s+1)^3"), s, 0.01, 1000.0, 400, new Environment())
+    val phases = sweep.map(_._3)
+    for pair <- phases.sliding(2) do
+      assert(pair(1) - pair(0) < 1e-9, s"phase must not increase for this plant: $pair")
+      assert(math.abs(pair(1) - pair(0)) < 180.0, s"unwrapped phase jumped: $pair")
+  }
+
+  "a resonant plant's sweep" should "still track its closed form across the resonance" in
+  {
+    // A lightly damped pair (w0 = 1, zeta = 0.05) is where a sparse grid would unwrap wrongly:
+    // the phase turns through 180 degrees in a fraction of a decade. With the grid resolving
+    // it, the unwrapped curve must still match -atan2(2*zeta*w, 1 - w^2).
+    val sweep = frequencyResponse(parse("1/(s^2 + 0.1*s + 1)"), s, 0.1, 10.0, 600, new Environment())
+    for (w, _, deg) <- sweep do
+      val exact = -math.atan2(0.1 * w, 1.0 - w * w) * 180.0 / math.Pi
+      assert(math.abs(deg - exact) < 1e-6, s"at w=$w expected $exact but got $deg")
+  }
+
+  "the Nyquist sweep" should "share the frequency grid and agree with bode point by point" in
+  {
+    // One sweep presented two ways, which is the relationship bode and nyquist already have.
+    // Comparing against `nyquist` at the SAME grid is what pins that they cannot drift.
+    val g     = parse("1/(s+1)")
+    val env   = new Environment()
+    val polar = frequencyResponse(g, s, 0.1, 10.0, 9, env)
+    val rect  = nyquistSweep(g, s, 0.1, 10.0, 9, env)
+    assert(rect.size == polar.size, s"grids differ: ${rect.size} vs ${polar.size}")
+    for ((w, _, _), (re, im)) <- polar.zip(rect) do
+      nyquist(g, s, w) match
+        case None => fail(s"nyquist declined at w=$w but the sweep produced a point")
+        case Some((re0, im0)) =>
+          assert(math.abs(re - re0) < 1e-12 && math.abs(im - im0) < 1e-12,
+                 s"at w=$w: ($re, $im) against ($re0, $im0)")
+  }
+
+  "a sweep of a parameterised plant" should "use the bindings it is given" in
+  {
+    // `bode` evaluates in an empty environment, so a plant carrying a free gain would not
+    // fold. The sweep takes an Environment precisely so a REPL session's bindings reach it.
+    val g   = parse("K/s")
+    val env = new Environment().withBinding("K", _Number(10.0))
+    val sweep = frequencyResponse(g, s, 1.0, 10.0, 3, env)
+    assert(sweep.nonEmpty, "a bound parameter must let the sweep fold")
+    for (w, db, _) <- sweep do
+      assert(math.abs(db - 20.0 * math.log10(10.0 / w)) < 1e-9, s"at w=$w: $db")
+    // Unbound, there is no number to report and the sweep is empty rather than invented.
+    assert(frequencyResponse(g, s, 1.0, 10.0, 3, new Environment()).isEmpty,
+           "a free parameter must not produce a fabricated response")
+  }

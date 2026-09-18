@@ -39,6 +39,8 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `quit` / `exit` | Leave the REPL |
 | `plot <expr> <v> <lo> <hi> [n]` | **Browser only** — draw `y = f(x)` as a line |
 | `points <expr> <v> <lo> <hi> [n]` | **Browser only** — draw the samples as points, axes locked to the same scale |
+| `bode <expr> <v> <wMin> <wMax> [n]` | **Browser only** — Bode diagram: dB and unwrapped degrees, log frequency axis (`wMin > 0`) |
+| `nyquist <expr> <v> <wMin> <wMax> [n]` | **Browser only** — Nyquist diagram in the complex plane, axes locked |
 
 ---
 
@@ -679,8 +681,13 @@ isStable(g, s)   Option[Boolean]          every pole strictly in the LEFT HALF-P
 isStableDiscrete(g, z)                    every pole strictly INSIDE THE UNIT CIRCLE
 routhTable(g, s) Option[Vector[Vector[Double]]]   jagged rows; no grammar form, so
                                           `routh` stays a legal variable name
-bode(g, s, w)    Option[(magnitude, phase-radians)]
-nyquist(g, s, w) Option[(real, imaginary)]
+bode(g, s, w)    Option[(magnitude, phase-radians)]     one frequency
+nyquist(g, s, w) Option[(real, imaginary)]               one frequency
+
+frequencyResponse(g, s, wMin, wMax, n, env)   Vector[(omega, dB, degrees)]
+                                          GEOMETRIC grid, phase UNWRAPPED past -180
+                                          wMin > 0: log(0) is not a number
+nyquistSweep(g, s, wMin, wMax, n, env)    Vector[(real, imaginary)]   the same grid
 
 stateSpace(a, b, c, d)          1x4 _Matrix of matrices, the lu/qr/eig shape
 controllable(a, b) / observable(a, c)     Option[Boolean]

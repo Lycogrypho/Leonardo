@@ -233,7 +233,18 @@ def routhTable(g: _Expression, v: _Variable): Option[Vector[Vector[Double]]] =
  *          (evaluating an integrator at `w = 0`, say) — never a fabricated infinity
  */
 def bode(g: _Expression, v: _Variable, w: Double): Option[(Double, Double)] =
-  substitute(g, Map(v.variable -> _Complex.of(0, w))).eval(new Environment()) match
+  responseAt(g, v, w, new Environment())
+
+/** [[bode]] with an environment, so a plant carrying a bound parameter can fold.
+ *
+ *  `bode` is defined as this at an empty environment rather than as a second copy of the
+ *  substitution — the arrangement `observable` has with `controllable`.  It exists because a
+ *  sweep is normally driven from a REPL session, where `K := 10` is an ordinary thing to have
+ *  written first, and `bode`'s own empty environment would leave such a plant symbolic.
+ */
+private def responseAt(g: _Expression, v: _Variable, w: Double,
+                       env: Environment): Option[(Double, Double)] =
+  substitute(g, Map(v.variable -> _Complex.of(0, w))).eval(env) match
     case Right(c: _Complex) =>
       _Complex.parts(c).filter((re, im) => re.isFinite && im.isFinite)
         .map((re, im) => (math.hypot(re, im), math.atan2(im, re)))
@@ -252,3 +263,112 @@ def bode(g: _Expression, v: _Variable, w: Double): Option[(Double, Double)] =
  */
 def nyquist(g: _Expression, v: _Variable, w: Double): Option[(Double, Double)] =
   bode(g, v, w).map((mag, phase) => (mag * math.cos(phase), mag * math.sin(phase)))
+
+/** The geometrically spaced grid both sweeps are read on (issue F_0004).
+ *
+ *  **Geometric rather than linear, and that is the whole point of the entry.**  A frequency
+ *  response is read on a logarithmic axis spanning decades, so a linear grid of 200 points
+ *  over `0.01 .. 100` puts 199 of them in the final decade and none near a corner at `0.1` —
+ *  the interesting part of the curve is exactly the part it fails to resolve.  `scalar.sample`
+ *  is the vector producer everywhere else in the library, but its grid is linear, which is why
+ *  this needs its own helper rather than a call to it.
+ *
+ *  Empty for any interval a geometric grid cannot span: `log(0)` is not a number, so the lower
+ *  bound must be strictly positive, the bounds strictly ordered, and there must be at least
+ *  two points.  **Refused rather than repaired** — a caller sweeping from zero has made a units
+ *  mistake, and quietly nudging the bound would hide it.
+ *
+ *  @param wMin   the lowest angular frequency, strictly positive
+ *  @param wMax   the highest angular frequency, strictly greater than `wMin`
+ *  @param points how many samples, at least 2
+ *  @return the grid, ascending, hitting both endpoints exactly; empty when it cannot be built
+ */
+private def logGrid(wMin: Double, wMax: Double, points: Int): Vector[Double] =
+  if !(wMin > 0.0) || !(wMax > wMin) || points < 2 || !wMax.isFinite then Vector.empty
+  else
+    // Interpolating the LOGARITHMS and exponentiating keeps the ratio between neighbours
+    // constant.  The endpoints are written back verbatim, since `exp(log(w))` drifts in the
+    // last bits and a sweep that misses the decade it was asked for reads as a bug.
+    val (lo, hi) = (math.log(wMin), math.log(wMax))
+    val step     = (hi - lo) / (points - 1)
+    Vector.tabulate(points) {
+      case 0                    => wMin
+      case k if k == points - 1 => wMax
+      case k                    => math.exp(lo + k * step)
+    }
+
+/** The Bode sweep: magnitude in decibels and **unwrapped** phase in degrees, over a
+ *  logarithmically spaced grid (issue F_0004).
+ *
+ *  **Unwrapping is the substance here, not the grid.**  `bode`'s phase comes from `atan2`,
+ *  whose principal value is `(-pi, pi]`, so a swept curve jumps by a full turn wherever it
+ *  crosses the branch cut — `1/(s+1)^3` tends to `-270` degrees but a raw sweep reports `+90`.
+ *  That jump is an artefact of the arctangent and not of the plant, and **every reader who
+ *  plots a raw sweep inherits it**.  This accumulates a turn whenever consecutive samples
+ *  differ by more than half a turn, which restores the continuous curve.
+ *
+ *  **dB and degrees rather than the raw pair**, because that is what a Bode plot *is*; the raw
+ *  magnitude and radian phase stay available from [[bode]] itself, so nothing is lost.
+ *
+ *  **The one assumption worth stating**: unwrapping cannot distinguish a genuine half-turn
+ *  step from a grid too coarse to resolve a fast one, so a sparse sweep across a lightly
+ *  damped resonance can unwrap the wrong way.  That is inherent to unwrapping rather than
+ *  particular to this implementation, and the remedy is points, not cleverness.
+ *
+ *  A frequency where the response is not finite — a pole on the imaginary axis — is dropped,
+ *  mirroring `scalar.sample`; the unwrapping state carries across the gap, so the curve
+ *  resumes rather than restarting.
+ *
+ *  @param g      the transfer function
+ *  @param v      the frequency variable
+ *  @param wMin   the lowest angular frequency, strictly positive
+ *  @param wMax   the highest angular frequency
+ *  @param points how many samples, at least 2
+ *  @param env    bindings for any parameter the plant carries
+ *  @return `(omega, magnitude-in-dB, unwrapped-phase-in-degrees)`, ascending in omega
+ */
+def frequencyResponse(g: _Expression, v: _Variable, wMin: Double, wMax: Double,
+                      points: Int, env: Environment): Vector[(Double, Double, Double)] =
+  // `turns` accumulates the whole turns atan2 removed, and `previous` holds the last RAW
+  // phase -- comparing against the unwrapped one would compound the correction rather than
+  // continue it.  A fold rather than a var, so the carried state is visible in the type.
+  val (out, _, _) =
+    logGrid(wMin, wMax, points)
+      .foldLeft((Vector.empty[(Double, Double, Double)], 0.0, Double.NaN)) {
+        case ((acc, turns, previous), w) =>
+          responseAt(g, v, w, env) match
+            case Some((mag, phase)) if mag > 0.0 && mag.isFinite =>
+              val shifted =
+                if previous.isNaN                   then turns
+                else if phase - previous > math.Pi  then turns - 2 * math.Pi
+                else if phase - previous < -math.Pi then turns + 2 * math.Pi
+                else turns
+              (acc :+ ((w, 20.0 * math.log10(mag), (phase + shifted) * 180.0 / math.Pi)),
+               shifted, phase)
+            // A zero magnitude is minus infinity decibels and a non-finite one has no decibel
+            // value at all; either would be unplottable, so the point is dropped.
+            case _ => (acc, turns, previous)
+      }
+  out
+
+/** The Nyquist sweep: the same grid as [[frequencyResponse]], in rectangular coordinates.
+ *
+ *  One sweep presented two ways — the relationship [[bode]] and [[nyquist]] already have, and
+ *  the reason both read the same [[logGrid]] rather than each building one.  Unwrapping does
+ *  not arise here: a point in the plane is unchanged by adding a turn to its argument.
+ *
+ *  @param g      the transfer function
+ *  @param v      the frequency variable
+ *  @param wMin   the lowest angular frequency, strictly positive
+ *  @param wMax   the highest angular frequency
+ *  @param points how many samples, at least 2
+ *  @param env    bindings for any parameter the plant carries
+ *  @return `(real, imaginary)` for each grid frequency, non-finite points dropped
+ */
+def nyquistSweep(g: _Expression, v: _Variable, wMin: Double, wMax: Double,
+                 points: Int, env: Environment): Vector[(Double, Double)] =
+  logGrid(wMin, wMax, points).flatMap { w =>
+    responseAt(g, v, w, env)
+      .map((mag, phase) => (mag * math.cos(phase), mag * math.sin(phase)))
+      .filter((re, im) => re.isFinite && im.isFinite)
+  }

@@ -202,6 +202,13 @@ Two commands exist **only** there, because a terminal cannot honour them:
 |---|---|
 | `plot <expr> <var> <lo> <hi> [<n>]` | `y = f(x)` as a line — the arguments are `samples`' arguments |
 | `points <expr> <var> <lo> <hi> [<n>]` | the same sampling as points, **with the axes locked to the same scale** |
+| `bode <expr> <var> <wMin> <wMax> [<n>]` | gain and **unwrapped** phase over a logarithmic frequency axis |
+| `nyquist <expr> <var> <wMin> <wMax> [<n>]` | the same sweep in the complex plane, axes locked |
+
+For `bode` and `nyquist` the bounds are a frequency **band**, so `wMin` must be greater than
+zero — a geometric grid cannot start at zero. See
+[Control Systems](control.md#sweeping-a-band) for what the sweep does and why the phase has to
+be unwrapped.
 
 Use `points` whenever the picture is *geometry* rather than a function of one variable — a
 vector drawn as a coordinate, or anything in the complex plane. On unequal axes a circle looks

@@ -93,8 +93,27 @@ check('function plot unlocked', drawn.layout.yaxis.scaleanchor, undefined);
 type('points x x -1 1 3');     check('points', lastOutput(), /plotted 3 points/);
 check('coordinates locked', drawn.layout.yaxis.scaleanchor, 'x');
 
+// Bode and Nyquist (F_0004): the log grid and the unwrapped phase, drawn.
+type('bode 1/(s+1)^3 s 0.01 100 60');
+check('bode', lastOutput(), /plotted 60 points/);
+check('bode has two panels', drawn.data.length, 2);
+check('bode x is log', drawn.layout.xaxis.type, 'log');
+check('bode panels linked', drawn.layout.xaxis2.matches, 'x');
+// The phase must end near -270 rather than wrapping up to +90, which is the whole entry.
+const endPhase = drawn.data[1].y[drawn.data[1].y.length - 1];
+check('phase unwrapped past -180', endPhase < -260 && endPhase > -271, true);
+// A geometric grid: the ratio between neighbours is constant, so a linear one would fail.
+const w = drawn.data[0].x;
+check('grid is geometric', Math.abs(w[1] / w[0] - w[2] / w[1]) < 1e-9, true);
+
+type('nyquist 1/(s+1) s 0.01 100 40');
+check('nyquist', lastOutput(), /plotted 40 points/);
+check('nyquist axes locked', drawn.layout.yaxis.scaleanchor, 'x');
+
 // Failures must read as messages, not as a dead page.
 type('plot');                  check('plot with no args', lastOutput(), /usage: plot/);
+type('bode');                  check('bode with no args', lastOutput(), /usage: bode/);
+type('bode 1/s s 0 10');       check('bode from zero', lastOutput(), /wMin must be > 0|logarithmic/);
 type('plot x x 2 1');          check('plot with lo >= hi', lastOutput(), /plot:/);
 type('sin(');                  check('parse error', lastOutput(), /parse error/);
 type('a * 6');                 check('still alive after errors', lastOutput(), '42.0');

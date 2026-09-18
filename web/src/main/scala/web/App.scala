@@ -33,6 +33,18 @@ object App:
    */
   private val PlotUsage = "usage: plot <expr> <var> <lo> <hi> [<n>]"
 
+  /** Shown for a bare `bode` / `nyquist`.  The bounds are a frequency BAND, not a range, and
+   *  the message says so — sweeping from zero is the mistake a newcomer makes first, and a
+   *  geometric grid cannot start there.
+   */
+  private val SweepUsage = "usage: bode <expr> <var> <wMin> <wMax> [<n>]   (wMin > 0)"
+
+  /** A sweep that produced nothing is almost always a band starting at zero, so the message
+   *  names that rather than leaving the reader to guess at an empty figure.
+   */
+  private val EmptySweep =
+    "(no response over that band — the frequency grid is logarithmic, so wMin must be > 0)"
+
   private val session = new Session()
   private var history: Vector[String] = Vector.empty
   private var cursor: Int             = 0
@@ -94,9 +106,12 @@ object App:
         // `points` are deliberately NOT added to Parser.ReservedWords: the commands exist
         // only in the browser, and reserving the names would tax the terminal REPL, where
         // they mean nothing, for a feature it does not have (the issue-2.13 rule).
-        case "plot" | "points" => PlotUsage
-        case s"plot $rest"     => plot(rest, geometric = false)
-        case s"points $rest"   => plot(rest, geometric = true)
+        case "plot" | "points"   => PlotUsage
+        case "bode" | "nyquist"  => SweepUsage
+        case s"plot $rest"       => plot(rest, geometric = false)
+        case s"points $rest"     => plot(rest, geometric = true)
+        case s"bode $rest"       => bode(rest)
+        case s"nyquist $rest"    => nyquist(rest)
         case other =>
           Session.step(session, Some(other))
             .getOrElse("(session ended — reload the page to start another)")
@@ -119,9 +134,31 @@ object App:
         val spec =
           if geometric then PlotSpec.coordinates(r.points, r.expr)
           else PlotSpec.line(r.points, r.expr, r.variable)
-        Plot.draw(spec, byId("figure")) match
-          case Right(_)  => s"(plotted ${r.points.size} points)"
-          case Left(why) => why
+        draw(spec, r.points.size)
+
+  /** Draws a Bode diagram — gain and unwrapped phase over a logarithmic frequency axis. */
+  private def bode(rest: String): String =
+    session.bodePoints(rest) match
+      case Left(why) if why.startsWith("usage:") => SweepUsage
+      case Left(why)                             => why
+      case Right(r) if r.points.isEmpty          => EmptySweep
+      case Right(r) =>
+        draw(PlotSpec.bode(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size)
+
+  /** Draws a Nyquist diagram — the same sweep in the complex plane, axes locked. */
+  private def nyquist(rest: String): String =
+    session.nyquistPoints(rest) match
+      case Left(why) if why.startsWith("usage:") => SweepUsage
+      case Left(why)                             => why
+      case Right(r) if r.points.isEmpty          => EmptySweep
+      case Right(r) =>
+        draw(PlotSpec.coordinates(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size)
+
+  /** Hands a spec to the page and answers with the line the transcript should carry. */
+  private def draw(spec: String, count: Int): String =
+    Plot.draw(spec, byId("figure")) match
+      case Right(_)  => s"(plotted $count points)"
+      case Left(why) => why
 
   /** Copies a link that restores this session. */
   private def share(): Unit =

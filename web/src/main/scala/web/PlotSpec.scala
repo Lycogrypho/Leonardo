@@ -61,6 +61,53 @@ object PlotSpec:
     )
     document(trace, title = label, xTitle = "Re", yTitle = "Im", equalAxes = true)
 
+  /** A Bode diagram: magnitude and phase stacked over one shared logarithmic frequency axis.
+   *
+   *  **Three things make this a Bode plot rather than two line charts** (issue F_0004), and
+   *  all three are visible in the spec:
+   *
+   *   - `xaxis.type = "log"`, because a frequency response is read across decades;
+   *   - `yaxis2.matches`/`anchor` pinning the two panels to the *same* x-axis, so panning one
+   *     pans the other and a reader can never compare a gain to the wrong frequency;
+   *   - the phase in degrees on its own scale, which is why this cannot be a second trace on
+   *     one pair of axes: decibels and degrees share no units.
+   *
+   *  The unwrapping and the geometric grid are upstream, in `control.frequencyResponse`; what
+   *  is here is only the presentation of what it returns.
+   *
+   *  @param points `(omega, dB, degrees)` triples, ascending in omega
+   *  @param label  the plant being drawn, used as the title
+   *  @return a Plotly `{data, layout}` document with two stacked subplots
+   */
+  def bode(points: Seq[(Double, Double, Double)], label: String): String =
+    val omega = arr(points.map(_._1))
+    val gain = obj(
+      "type" -> str("scatter"), "mode" -> str("lines"), "name" -> str("gain"),
+      "x"    -> omega,          "y"    -> arr(points.map(_._2))
+    )
+    val phase = obj(
+      "type" -> str("scatter"), "mode"  -> str("lines"), "name" -> str("phase"),
+      "x"    -> omega,          "y"     -> arr(points.map(_._3)),
+      "xaxis" -> str("x2"),     "yaxis" -> str("y2")
+    )
+    val layout = obj(
+      "title"  -> str(label),
+      // Two rows: gain on top, phase below, each with 45% of the height.
+      "xaxis"  -> obj("type" -> str("log"), "domain" -> "[0,1]", "anchor" -> str("y"),
+                      "showticklabels" -> "false"),
+      "yaxis"  -> obj("title" -> str("dB"), "domain" -> "[0.55,1]", "anchor" -> str("x"),
+                      "zeroline" -> "true"),
+      // `matches` is the link: zooming either panel moves both, so the two curves stay
+      // registered against one another whatever the reader does.
+      "xaxis2" -> obj("type" -> str("log"), "domain" -> "[0,1]", "anchor" -> str("y2"),
+                      "matches" -> str("x"), "title" -> str("ω (rad/s)")),
+      "yaxis2" -> obj("title" -> str("degrees"), "domain" -> "[0,0.45]", "anchor" -> str("x2"),
+                      "zeroline" -> "true"),
+      "margin"     -> obj("t" -> "40", "r" -> "20", "b" -> "45", "l" -> "60"),
+      "showlegend" -> "false"
+    )
+    obj("data" -> s"[$gain,$phase]", "layout" -> layout)
+
   /** Wraps one trace in the shared layout. */
   private def document(trace: String, title: String, xTitle: String, yTitle: String,
                        equalAxes: Boolean): String =

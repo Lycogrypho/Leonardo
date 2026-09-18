@@ -60,6 +60,33 @@ class PlotSpecTest extends AnyFlatSpec:
     assert(trace.mode.asInstanceOf[String] == "markers")
   }
 
+  "a Bode spec" should "stack two panels on one shared logarithmic frequency axis" in
+  {
+    // The three properties that make this a Bode diagram rather than two line charts
+    // (F_0004): a log frequency axis, two panels, and the second pinned to the first so a
+    // reader can never compare a gain against the wrong frequency.
+    val doc    = parsed(PlotSpec.bode(Vector((0.1, 20.0, -90.0), (1.0, 0.0, -135.0)), "1/s"))
+    val traces = doc.data.asInstanceOf[js.Array[js.Dynamic]]
+    assert(traces.length == 2, s"expected gain and phase, got ${traces.length}")
+    assert(doc.layout.xaxis.`type`.asInstanceOf[String] == "log")
+    assert(doc.layout.xaxis2.`type`.asInstanceOf[String] == "log")
+    assert(doc.layout.xaxis2.matches.asInstanceOf[String] == "x",
+           "the panels must share an x-axis, or panning one desynchronises the other")
+    assert(traces(1).yaxis.asInstanceOf[String] == "y2",
+           "phase belongs on its own scale: decibels and degrees share no units")
+  }
+
+  it should "carry the frequencies on both panels and the two curves apart" in
+  {
+    val doc    = parsed(PlotSpec.bode(Vector((0.1, 20.0, -90.0), (10.0, -20.0, -180.0)), "g"))
+    val traces = doc.data.asInstanceOf[js.Array[js.Dynamic]]
+    val gainX  = traces(0).x.asInstanceOf[js.Array[Double]].toVector
+    val phaseX = traces(1).x.asInstanceOf[js.Array[Double]].toVector
+    assert(gainX == Vector(0.1, 10.0) && phaseX == gainX, "both panels read the same grid")
+    assert(traces(0).y.asInstanceOf[js.Array[Double]].toVector == Vector(20.0, -20.0))
+    assert(traces(1).y.asInstanceOf[js.Array[Double]].toVector == Vector(-90.0, -180.0))
+  }
+
   "a label containing JSON metacharacters" should "survive as itself" in
   {
     // Labels are user-typed expression text, so this is reachable input, not a contrived one.

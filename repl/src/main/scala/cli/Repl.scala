@@ -644,22 +644,71 @@ final class Session:
    *  @param rest the command's arguments: `<expr> <var> <lo> <hi> [<n>]`
    *  @return the sampling, or the message explaining why nothing could be sampled
    */
-  def samplePoints(rest: String): Either[String, Session.Samples] = rest.trim match
-    case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
-      // The samples regex admits malformed literals like "1..2" (its [\d.]+ class allows
-      // several dots), so parse the bounds with toDoubleOption rather than toDouble, which
-      // would throw a NumberFormatException and — this path runs outside withParsed — crash
-      // the REPL loop.
-      (loStr.toDoubleOption, hiStr.toDoubleOption) match
-        case (Some(lo), Some(hi)) if lo >= hi => Left("samples: lo must be strictly less than hi")
-        case (Some(lo), Some(hi)) =>
-          val n = Option(nStr).flatMap(_.toIntOption).getOrElse(Session.DefaultSampleCount)
-          parsed(exprStr.trim) { e =>
-            val points = sample(substitute(e, definitions), _Variable(varStr), lo, hi, n, env)
-            Right(Session.Samples(exprStr.trim, varStr, points))
-          }
-        case _ => Left("samples: <lo> and <hi> must be numbers")
-    case _ => Left("usage: samples <expr> <var> <lo> <hi> [<n>]")
+  def samplePoints(rest: String): Either[String, Session.Samples] =
+    sweepArgs(rest, "samples").map { a =>
+      Session.Samples(a.expr, a.variable,
+                      sample(a.resolved, _Variable(a.variable), a.lo, a.hi, a.n, env))
+    }
+
+  /** The frequency sweep behind the browser's `bode` command (issue F_0004).
+   *
+   *  The same arguments as `samples`, read as a **frequency band** rather than a range: the
+   *  grid is geometric and the phase is unwrapped, neither of which `sample` does.  A Bode
+   *  diagram cannot be drawn from a linear grid — it would put almost every point in the last
+   *  decade — nor from a wrapped phase, which jumps a full turn at the arctangent's branch cut.
+   *
+   *  @param rest the command's arguments: `<expr> <var> <wMin> <wMax> [<n>]`
+   *  @return `(omega, dB, degrees)` triples, or the message explaining why there are none
+   */
+  def bodePoints(rest: String): Either[String, Session.Sweep] =
+    sweepArgs(rest, "bode").map { a =>
+      Session.Sweep(a.expr, a.variable,
+                    control.frequencyResponse(a.resolved, _Variable(a.variable),
+                                              a.lo, a.hi, a.n, env))
+    }
+
+  /** The Nyquist sweep — [[bodePoints]]'s grid, in rectangular coordinates (issue F_0004).
+   *
+   *  Returns [[Session.Samples]] rather than a type of its own because a Nyquist diagram *is*
+   *  a set of plane coordinates, which is exactly what the `points` plot already draws — and
+   *  draws with the axes locked to the same scale, without which the picture is wrong.
+   *
+   *  @param rest the command's arguments: `<expr> <var> <wMin> <wMax> [<n>]`
+   *  @return `(real, imaginary)` pairs, or the message explaining why there are none
+   */
+  def nyquistPoints(rest: String): Either[String, Session.Samples] =
+    sweepArgs(rest, "nyquist").map { a =>
+      Session.Samples(a.expr, a.variable,
+                      control.nyquistSweep(a.resolved, _Variable(a.variable),
+                                           a.lo, a.hi, a.n, env))
+    }
+
+  /** Reads the `<expr> <var> <lo> <hi> [<n>]` argument shape the sweeping commands share.
+   *
+   *  One definition of that syntax, so `samples`, `bode` and `nyquist` cannot drift in what
+   *  they accept or in how they refuse it; `command` only names the caller in the messages.
+   *
+   *  @param rest    the text following the command word
+   *  @param command the command's name, for the usage and error lines
+   *  @return the parsed arguments, or the message explaining why they could not be read
+   */
+  private def sweepArgs(rest: String, command: String): Either[String, Session.SweepArgs] =
+    rest.trim match
+      case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
+        // The regex admits malformed literals like "1..2" (its [\d.]+ class allows several
+        // dots), so the bounds are read with toDoubleOption rather than toDouble, which would
+        // throw a NumberFormatException and — this path runs outside withParsed — crash the
+        // REPL loop.
+        (loStr.toDoubleOption, hiStr.toDoubleOption) match
+          case (Some(lo), Some(hi)) if lo >= hi =>
+            Left(s"$command: lo must be strictly less than hi")
+          case (Some(lo), Some(hi)) =>
+            val n = Option(nStr).flatMap(_.toIntOption).getOrElse(Session.DefaultSampleCount)
+            parsed(exprStr.trim) { e =>
+              Right(Session.SweepArgs(substitute(e, definitions), exprStr.trim, varStr, lo, hi, n))
+            }
+          case _ => Left(s"$command: <lo> and <hi> must be numbers")
+      case _ => Left(s"usage: $command <expr> <var> <lo> <hi> [<n>]")
 
   /** Handles the `samples <expr> <var> <lo> <hi> [<n>]` command — [[samplePoints]], printed. */
   private def doSamples(rest: String): String = samplePoints(rest) match
@@ -781,6 +830,31 @@ object Session:
    *  @param points   the `(x, y)` pairs, with non-finite results already dropped
    */
   final case class Samples(expr: String, variable: String, points: Vector[(Double, Double)])
+
+  /** A completed frequency sweep: `(omega, magnitude-in-dB, unwrapped-phase-in-degrees)`.
+   *
+   *  Distinct from [[Samples]] because a Bode diagram is **two** curves over one shared
+   *  frequency axis, not one curve; flattening it to pairs would lose the pairing that makes
+   *  the two panels line up.
+   *
+   *  @param expr     the plant as the user typed it
+   *  @param variable the frequency variable
+   *  @param points   the swept response, ascending in omega
+   */
+  final case class Sweep(expr: String, variable: String,
+                         points: Vector[(Double, Double, Double)])
+
+  /** The parsed arguments the sweeping commands share — see `Session.sweepArgs`.
+   *
+   *  @param resolved the expression with the session's definitions already substituted
+   *  @param expr     the same expression as the user typed it, for labelling a figure
+   *  @param variable the name swept over
+   *  @param lo       the lower bound
+   *  @param hi       the upper bound, strictly greater than `lo`
+   *  @param n        how many samples
+   */
+  private[cli] final case class SweepArgs(resolved: _Expression, expr: String, variable: String,
+                                          lo: Double, hi: Double, n: Int)
 
   /** Per-command help text, keyed by the command token (`:=`, `simplify`, ...).
    *  Returned by `help <topic>`; bare `help` still shows the full help listing.

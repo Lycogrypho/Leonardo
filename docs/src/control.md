@@ -136,6 +136,43 @@ fabricated infinity:
 bode(tf("1/s"), s, 0.0)
 ```
 
+### Sweeping a band
+
+`bode` and `nyquist` answer for **one** frequency. A diagram needs a vector, and it needs two
+things that a plain `sample` cannot give it:
+
+```scala mdoc
+frequencyResponse(tf("1/(s+1)"), s, 0.1, 10.0, 5, new Environment())
+```
+
+`(ω, magnitude in dB, phase in degrees)` — dB and degrees because that is what a Bode plot
+*is*; the raw pair stays available from `bode` itself.
+
+**The grid is geometric, not linear.** A frequency response is read across decades, so a
+linear grid of 200 points over `0.01 .. 100` would put 199 of them in the last decade and none
+near a corner at `0.1` — the interesting part of the curve is exactly the part it fails to
+resolve.
+
+**The phase is unwrapped**, and this is the substance. `atan2` has principal value `(−π, π]`,
+so a swept curve jumps a full turn wherever it crosses the branch cut. That jump is an artefact
+of the arctangent, not of the plant. A third-order lag tends to −270°:
+
+```scala mdoc
+frequencyResponse(tf("1/(s+1)^3"), s, 1.0, 100.0, 3, new Environment()).map(_._3)
+```
+
+A raw sweep would report the last of those as `+90`. One caveat worth stating: unwrapping
+cannot tell a genuine half-turn step from a grid too coarse to resolve a fast one, so a sparse
+sweep across a lightly damped resonance can unwrap the wrong way — the remedy is points.
+
+`nyquistSweep` reads the same grid and returns `(real, imaginary)`, the one sweep presented
+two ways that `bode` and `nyquist` already are.
+
+Both take an `Environment`, so a plant carrying a bound parameter folds — which is what lets
+the [browser REPL](https://lycogrypho.github.io/Leonardo/app/) draw a diagram from a session
+where you wrote `K := 10` first. There, `bode G s 0.01 100` and `nyquist G s 0.01 100` draw
+them.
+
 ## State space
 
 A [state-space model](https://en.wikipedia.org/wiki/State-space_representation) is a `1×4`
