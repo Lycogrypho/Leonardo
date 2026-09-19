@@ -77,6 +77,12 @@ object ToLatex:
     case Product(n: _Number, b) => (s"${at(n, Atomic)} ${at(b, AtProduct)}", AtProduct)
     case Product(a, b)          => (s"${at(a, AtProduct)} \\cdot ${at(b, AtProduct)}", AtProduct)
 
+    // A root is a power written the other way round.  The radicand is Grouped because \sqrt
+    // delimits for itself -- the same argument \frac makes -- so `(a+b)^0.5` comes out as
+    // `\sqrt{a + b}` rather than `\sqrt{\left(a + b\right)}`.
+    case Power(a, Root(2))      => (s"\\sqrt{${at(a, Grouped)}}", Atomic)
+    case Power(a, Root(degree)) => (s"\\sqrt[$degree]{${at(a, Grouped)}}", Atomic)
+
     // The exponent is braced, hence Grouped and never parenthesised; the base must be Atomic,
     // which brackets `(a+b)^2`, `(2x)^2` and `(a/b)^2` while leaving `x^2` alone.  A power
     // reports BELOW Atomic on purpose: as the base of another power it must be re-bracketed,
@@ -84,6 +90,24 @@ object ToLatex:
     case Power(a, b) => (s"${at(a, Atomic)}^{${at(b, Grouped)}}", AtPower)
 
     case v: _Variable => (v.variable, Atomic)
+
+    // An exact rational stays a FRACTION.  Showing 1/3 as 0.33333 would discard precisely
+    // what the exact tier exists to preserve, and `display` is allowed to fall back to a
+    // decimal for a long one -- acceptable in a terminal, not in typeset mathematics.
+    // Reduced first, because the Lazy gcd policy permits an unreduced pair to reach here.
+    case r: _Rational =>
+      val g       = r.num.gcd(r.den)
+      val (n, d)  = (r.num / g, r.den / g)
+      // The sign belongs outside the fraction: -\frac{1}{2}, never \frac{-1}{2}.  That makes
+      // the text sum-level, so a product slot brackets it rather than emitting `2 \cdot -...`.
+      val body    = if d == 1 then n.abs.toString else s"\\frac{${n.abs}}{$d}"
+      if n.signum < 0 then (s"-$body", AtSum) else (body, if d == 1 then Atomic else AtProduct)
+
+    // A matrix is its own delimiter, so it is Atomic, and every cell sits in an alignment
+    // slot that groups for itself -- hence Grouped and never bracketed.
+    case m: _MatrixShaped => (pmatrix(m.rows, m.cols, i => at(m.children(i), Grouped)), Atomic)
+    case m: _MatrixValue  =>
+      (pmatrix(m.rows, m.cols, i => render(_Number(m.toVector(i)))._1), Atomic)
 
     // Concrete values render as the REPL shows them.  A leading minus makes the text a sum-
     // level term, so `2 \cdot -3.0` can never be emitted -- the slot brackets it instead.
@@ -99,6 +123,22 @@ object ToLatex:
       (s"\\mathrm{${escape(f.name)}}\\left($args\\right)", Atomic)
 
     case other => (fallback(other), Atomic)
+
+  /** Lays out `rows × cols` cells as a `pmatrix`, reading each by its row-major index.
+   *
+   *  Shared by the symbolic and dense carriers so the two cannot drift: they differ only in
+   *  what a cell *is* — an `_Expression` against a `Double` — which is exactly what the
+   *  `cell` function absorbs.
+   *
+   *  @param rows the row count
+   *  @param cols the column count
+   *  @param cell the already-rendered cell at a row-major index
+   */
+  private def pmatrix(rows: Int, cols: Int, cell: Int => String): String =
+    val body = (0 until rows)
+      .map(i => (0 until cols).map(j => cell(i * cols + j)).mkString(" & "))
+      .mkString(" \\\\ ")
+    s"\\begin{pmatrix} $body \\end{pmatrix}"
 
   /** Everything without a rule yet: its `toString`, escaped, upright.
    *
@@ -124,6 +164,36 @@ object ToLatex:
       case c                          => sb += c
     }
     sb.toString
+
+  /** Matches an exponent that denotes an `n`-th root, answering `n`.
+   *
+   *  **Three shapes, one meaning.**  `x^0.5` arrives as a `Double` literal, `x^(1/2)` as a
+   *  `Ratio` of two literals that nothing folds at parse time, and exact mode produces a
+   *  `_Rational` — all three are the same square root to a reader, so all three must find
+   *  the radical or the rendering would depend on how the user happened to type it.
+   *
+   *  Only a **unit** fraction qualifies: `x^(2/3)` is a genuine power and stays one, since
+   *  `\sqrt[3]{x^2}` is a different (if equal) statement and not what was written.  The
+   *  degree is capped at a readable size — past that `\sqrt[97]{}` is worse than the power.
+   */
+  private object Root:
+    private val MaxDegree = 9
+
+    def unapply(e: _Expression): Option[Int] = e match
+      // Matches a _Rational of one half too: `_Number` is a widening extractor, so exact mode
+      // finds the square root here without a case of its own.
+      case _Number(0.5)                    => Some(2)
+      case r: _Rational if r.num == 1      => degreeOf(BigDecimal(r.den))
+      case Ratio(_Number(1.0), _Number(d)) => degreeOf(BigDecimal(d))
+      case _                               => None
+
+    /** A denominator is a root degree only when it is a WHOLE number in `2..MaxDegree`.
+     *
+     *  The wholeness test is load-bearing: truncating would read `x^(1/3.5)` as a cube root,
+     *  which is a different number rendered with total confidence.
+     */
+    private def degreeOf(den: BigDecimal): Option[Int] =
+      if den.isWhole && den >= 2 && den <= MaxDegree then Some(den.toInt) else None
 
   /** Matches the AST's spellings of a negated term, answering its positive counterpart.
    *

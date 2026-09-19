@@ -90,6 +90,83 @@ class ToLatexTest extends AnyFlatSpec:
            "a function's own delimiters are a Grouped slot")
   }
 
+  // ── step 2: the compound rules ────────────────────────────────────────────
+
+  "a half power" should "become a radical, in each of the three shapes it arrives in" in
+  {
+    // The exponent reaches the renderer as a Double literal, as a Ratio of two literals, or
+    // — in exact mode — as a _Rational. All three are the same square root to a reader.
+    assert(tex("x^0.5")   == "\\sqrt{x}")
+    assert(tex("x^(1/2)") == "\\sqrt{x}")
+    assert(ToLatex(scalar.Power(_Variable("x"),
+                               _Rational.fromDecimalString("0.5").get)) == "\\sqrt{x}")
+  }
+
+  it should "take its radicand ungrouped, since \\sqrt brackets for itself" in
+  {
+    // The same argument as \frac: the radical's own rule already delimits, so transcribing
+    // toString's parentheses would give \sqrt{\left(a + b\right)} — correct and worse.
+    assert(tex("(a+b)^0.5") == "\\sqrt{a + b}")
+  }
+
+  "a unit fraction exponent" should "become an n-th root" in
+  {
+    assert(tex("x^(1/3)") == "\\sqrt[3]{x}")
+    assert(tex("x^(1/4)") == "\\sqrt[4]{x}")
+    // Not a unit fraction: 2/3 is a genuine power and must stay one.
+    assert(tex("x^(2/3)") == "x^{\\frac{2.0}{3.0}}")
+  }
+
+  "an exact rational" should "render as a fraction rather than collapse to a decimal" in
+  {
+    // Showing 1/3 as 0.33333 in LaTeX would throw away exactly what the exact tier exists to
+    // preserve. The value is reduced for display: 2/6 and 1/3 are the same number.
+    def r(s: String) = ToLatex(_Rational.fromDecimalString(s).get)
+    assert(r("0.5")  == "\\frac{1}{2}")
+    assert(r("0.25") == "\\frac{1}{4}")
+    assert(r("-0.5") == "-\\frac{1}{2}", "the sign belongs outside the fraction")
+    assert(r("3")    == "3", "an integral rational is an integer, not 3/1")
+  }
+
+  it should "bracket itself where a bare fraction would be misread" in
+  {
+    val half = _Rational.fromDecimalString("0.5").get
+    // A negative rational starts with a minus, so it is a sum-level term: `2 \cdot -\frac12`
+    // must not be emitted.
+    val neg = _Rational.fromDecimalString("-0.5").get
+    assert(ToLatex(scalar.Product(_Number(2), neg)) == "2.0 \\left(-\\frac{1}{2}\\right)")
+    // A positive one is atomic in a product but must re-bracket as a power base, exactly as
+    // a Ratio does.
+    assert(ToLatex(scalar.Product(half, _Variable("x"))) == "\\frac{1}{2} \\cdot x")
+    assert(ToLatex(scalar.Power(half, _Number(2))) == "\\left(\\frac{1}{2}\\right)^{2.0}")
+  }
+
+  "a matrix" should "render as a pmatrix, dense or symbolic" in
+  {
+    assert(tex("[[1, 2], [3, 4]]") ==
+           "\\begin{pmatrix} 1.0 & 2.0 \\\\ 3.0 & 4.0 \\end{pmatrix}")
+    assert(tex("[[a, b], [c, d]]") ==
+           "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}")
+  }
+
+  it should "leave its cells ungrouped and stay atomic where it is used" in
+  {
+    // Each cell sits in its own alignment slot, so nothing there ever needs brackets.
+    assert(tex("[[a + b, c]]") == "\\begin{pmatrix} a + b & c \\end{pmatrix}")
+    // \begin{pmatrix} carries its own delimiters, so a matrix is visually atomic -- even as
+    // the base of a power, the one slot that brackets a \frac.
+    assert(tex("[[1, 2]]^2") == "\\begin{pmatrix} 1.0 & 2.0 \\end{pmatrix}^{2.0}")
+  }
+
+  "a matrix OPERATION" should "still fall back, and that is the current boundary" in
+  {
+    // `2*[[1,2]]` is not a Product: the parser dispatches structurally on matrix-shaped
+    // operands, so it builds MatScale -- a `matrix` node with no rule yet. Pinned so the
+    // boundary is visible rather than discovered, and so step 3 has a failing case to fix.
+    val out = tex("2*[[1, 2]]")
+    assert(out.startsWith("\\mathrm{"), s"expected the fallback for MatScale, got: $out")
+  }
+
   "a node with no rule yet" should "fall back to escaped source rather than to broken LaTeX" in
   {
     val out = tex("derive(x^2, x)")
@@ -124,13 +201,10 @@ class ToLatexTest extends AnyFlatSpec:
     "normal(0, 1)", "fib(10)", "0xFF + 1", "sqrtish123 * x"
   )
 
+  /** Whether `open`/`close` nest correctly: never negative, and zero at the end. */
   private def balanced(s: String, open: Char, close: Char): Boolean =
-    var depth = 0
-    for c <- s do
-      if c == open then depth += 1
-      else if c == close then depth -= 1
-      if depth < 0 then return false
-    depth == 0
+    val depths = s.scanLeft(0)((d, c) => if c == open then d + 1 else if c == close then d - 1 else d)
+    depths.forall(_ >= 0) && depths.last == 0
 
   "every corpus rendering" should "balance its braces and its \\left/\\right pairs" in
   {
