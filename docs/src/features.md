@@ -141,6 +141,23 @@ For a command-by-command listing of the REPL see the [cheat sheet](cheatsheet.md
   the small root of `x² + 10⁸x + 1 = 0` gets steadily more accurate as you raise it. Off by
   default, so the floating-point path is unchanged.
 
+- **LaTeX output** (`latex on`): every result also comes back as LaTeX source. The
+  substance is a precedence pass, not a transcription: `toString` parenthesises defensively
+  because it must re-parse, while `\frac`, `\sqrt` and `^{…}` carry their own grouping, so
+  `(a+b)/(c+d)` renders as `\frac{a + b}{c + d}` with **both** pairs of parentheses gone —
+  and a power under a power is re-bracketed, because `x^{2}^{3}` is not ugly, it is a LaTeX
+  double-superscript *error*. The notation rules cover radicals (recognised from all three
+  ways a fractional exponent can arrive), exact rationals kept as fractions, `pmatrix`, the
+  binders (`\int … \,dx`, `\frac{d}{dx}`, `\lim_{x \to a}`, `\mathcal{L}\{f\}(s)`), Greek
+  names and LaTeX's own operator macros — `\sin`, not `\mathrm{sin}`, because the macro
+  carries the spacing that tells a reader a function from a product of three letters.
+  Anything without a rule degrades to `\mathrm{…}` of its ordinary spelling, so the emitter
+  is plain where it is incomplete and never wrong. **The printed answer does not change**:
+  the LaTeX travels on a second channel, because a terminal cannot typeset and would be left
+  showing markup where a result belongs. The
+  [browser REPL](https://lycogrypho.github.io/Leonardo/app/) reads that channel and typesets
+  the formula with a vendored render-only build of MathLive.
+
 - **Normalization**: `normalize(e, x)` collects like terms into an ascending polynomial in one variable (`10x - 2x` → `8x`, whatever the tree shape), and `collect(e, x)` extracts the dense coefficient list — the polynomial prerequisite the equation solver, the integration tiers and the transforms are all built on. Non-polynomial forms are left untouched.
 
 - **Linear system solver**: `solveSystem([[eq₁, eq₂, …]], x, y, …)` solves a square system of n linear equations in n unknowns. Coefficient extraction uses `collect` (the same polynomial prerequisite as `solve`). Dense path: Gaussian elimination with partial pivoting on Double arrays. Symbolic path: row reduction using `_Expression` arithmetic and `simplifyFully` when any coefficient or constant stays symbolic. Named equation matrices work too: `S := [[eq1, eq2]]; solveSystem(S, x, y)`. Solutions display as `[[x = 2.0, y = 1.0]]`.

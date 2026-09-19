@@ -126,7 +126,7 @@ object Parser extends JavaTokenParsers:
                                                          // a further coordinate
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
-    "unset", "samples", "colors", "pretty", "exact", "truth3", "logic", "help", "quit", "exit" // REPL commands
+    "unset", "samples", "colors", "pretty", "latex", "exact", "truth3", "logic", "help", "quit", "exit" // REPL commands
   )
 
   // 200, not 500, and the limit is deliberately UNIFORM across platforms (issue F_0003).

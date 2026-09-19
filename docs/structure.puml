@@ -247,6 +247,17 @@ package "scalar" {
         __ element-wise over a matrix arg __
         mapMatrix(mv, f) : distributes f over dense elements
     }
+    ' ── A TRAIT, not an abstract member on _Function, and that is a binary-compatibility
+    ' matter (F_0016 step 0): an abstract member on a published non-sealed class obliges
+    ' every external subclass to supply it (MiMa: ReversedMissingMethodProblem), and a `val`
+    ' is no escape -- the JVM has no abstract fields. Mixing in a new trait adds an
+    ' INTERFACE, not an obligation. _Functional's nine binder-carrying nodes stay outside:
+    ' they print a binder their `children` omit.
+    interface "NamedFunction" <<trait>> [[expressions.html]] {
+        + name: String
+        toString = name(child, child, ...)
+        mixed into the 41 uniformly-printed nodes
+    }
     class "Exp" <<case>> [[expressions.html]] {
         e : _Expression
     }
@@ -319,6 +330,8 @@ package "scalar" {
     }
 
     "_Function" --|> "_Expression"
+    "NamedFunction" --|> "_Expression"
+    "Exp"    ..|> "NamedFunction"
     "Exp"    --|> "_Function"
     "Ln"     --|> "_Function"
     "LogBase" --|> "_Function"
@@ -1514,6 +1527,36 @@ package "parser" {
 "Parser" ..> "FresnelS / FresnelC" : fresnelS / fresnelC
 
 ' ===================================================
+' PACKAGE: latex - AST -> LaTeX source (F_0016)
+' ===================================================
+' ── Display only: nothing ever reads this back, which is what lets it differ from `toString`
+' (the input grammar, which `:save` writes and the round-trip invariant re-parses).
+' It sits ABOVE every domain, like `parser`, because a renderer that must match on
+' `scalar.Sin` and `matrix._Matrix` cannot live in `core` -- which imports no domain.
+package "latex" <<Rectangle>> {
+    class "ToLatex" <<object>> [[repl.html]] {
+        + apply(e: _Expression): String
+        __ __
+        precedence: Grouped < AtSum < AtProduct
+                    < AtPower < Atomic
+        Grouped = a slot LaTeX already delimits,
+        so (a+b)/(c+d) -> \\frac{a + b}{c + d}
+        Power reports below Atomic: x^{2}^{3}
+        is a LaTeX ERROR, not a style choice
+        __ extractors __
+        Negated  : a - b is Sum(a, (-1)*b)
+        Root     : x^0.5 / x^(1/2) / _Rational
+        Transformed : the five L / F / Z shapes
+        __ fallback __
+        no rule -> \\mathrm{escaped toString}
+    }
+}
+
+"ToLatex" ..> "_Expression"    : renders any node
+"ToLatex" ..> "_MatrixShaped"  : pmatrix, without importing matrix
+"ToLatex" ..> "NamedFunction"  : one rule for 41 function nodes
+
+' ===================================================
 ' PACKAGE: cli   (leaf - nothing imports it)
 ' ===================================================
 ' ── The `cli` package ships as the SEPARATE `it.grypho:leonardo-repl` artifact (5.2 phase
@@ -1527,6 +1570,7 @@ package "cli" <<Rectangle>> {
         - bindings: Map
         - definitions: Map
         + execute(line: String): String
+        + lastLatex: Option[String]
         + currentColorScheme: String
         + script: String
         + load(text: String): String
@@ -1571,6 +1615,7 @@ package "cli" <<Rectangle>> {
 "Session" ..> "Substitute"  : resolves definitions
 "Session" ..> "SimplifyLogic" : simplify post-pass
 "Session" ..> "TruthTableLogic" : truth command
+"Session" ..> "ToLatex"     : latex on -> lastLatex (a SECOND channel;\nthe printed text is unchanged)
 
 legend right
   |=  Colour  |= Category |

@@ -115,7 +115,12 @@ object App:
         case other =>
           Session.step(session, Some(other))
             .getOrElse("(session ended — reload the page to start another)")
-      if out.nonEmpty then write(out, "out")
+      if out.nonEmpty then
+        // `latex on` fills the session's side channel with the LaTeX of this result -- and
+        // only of THIS one, since it is cleared per command. Typesetting is attempted here
+        // and nowhere else: if the renderer did not load, or the answer was not an
+        // expression, the plain text goes up exactly as it always did.
+        if !session.lastLatex.exists(writeMath) then write(out, "out")
 
   /** Draws a figure, and answers with the message the transcript should carry.
    *
@@ -199,6 +204,24 @@ object App:
     block.textContent = text
     transcript.appendChild(block)
     transcript.scrollTop = transcript.scrollHeight
+
+  /** Appends one typeset block, answering whether it was typeset.
+   *
+   *  The block is appended **only on success**, so a renderer that did not load leaves no
+   *  empty row behind for the caller's plain-text fallback to sit under.
+   *
+   *  @param latex math-mode source from the session's LaTeX channel
+   *  @return whether the transcript gained a formula
+   */
+  private def writeMath(latex: String): Boolean =
+    val block = document.createElement("div")
+    if !MathRender.render(latex, block) then false
+    else
+      block.className = "math"
+      val transcript = byId("transcript")
+      transcript.appendChild(block)
+      transcript.scrollTop = transcript.scrollHeight
+      true
 
   private def clearTranscript(): Unit =
     byId("transcript").innerHTML = ""

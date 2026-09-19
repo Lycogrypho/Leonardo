@@ -39,6 +39,13 @@ globalThis.navigator = {};
 let drawn = null;
 globalThis.Plotly = { react(_el, data, layout) { drawn = { data, layout }; }, purge() {} };
 
+// MathLive is stubbed for the same reason, and the stub is deliberately recognisable: what is
+// under test is that the page CALLS it with the LaTeX the session produced and puts the result
+// in the transcript -- not that MathLive can typeset, which is its own problem. index.html
+// installs the real one from an ES module; here the global is simply present.
+let typeset = [];
+globalThis.leonardoLatexToMarkup = (latex) => { typeset.push(latex); return '<span class="ml">' + latex + '</span>'; };
+
 // --- run ------------------------------------------------------------------------------------
 vm.runInThisContext(fs.readFileSync('web/target/scala-3.3.6/leonardo-web-opt/main.js', 'utf8'));
 vm.runInThisContext('leonardoStart()');
@@ -56,6 +63,10 @@ function press(key) {
 function lastOutput() {
   const out = transcript.children.filter(c => c.className === 'out');
   return out.length ? out[out.length - 1].textContent : '(nothing)';
+}
+function lastMath() {
+  const m = transcript.children.filter(c => c.className === 'math');
+  return m.length ? m[m.length - 1].innerHTML : '(nothing)';
 }
 
 let failures = 0;
@@ -109,6 +120,19 @@ check('grid is geometric', Math.abs(w[1] / w[0] - w[2] / w[1]) < 1e-9, true);
 type('nyquist 1/(s+1) s 0.01 100 40');
 check('nyquist', lastOutput(), /plotted 40 points/);
 check('nyquist axes locked', drawn.layout.yaxis.scaleanchor, 'x');
+
+// The `latex on` toggle (F_0016 step 5): a result becomes a typeset block instead of a text
+// one, and switching back restores the text. The toggle itself answers as text, which is the
+// property that keeps a setting readable while the mode is on.
+type('latex on');              check('latex toggle', lastOutput(), 'latex = on');
+type('1/x + 1');
+check('typeset result', typeset[typeset.length - 1], '\\frac{1.0}{x} + 1.0');
+check('math block in transcript', lastMath(), /\\frac/);
+// The text channel is untouched: the last plain `out` block is still the toggle's own answer,
+// so the formula replaced the text rather than being added beside it.
+check('text not duplicated', lastOutput(), 'latex = on');
+type('latex off');
+type('1/x + 1');               check('text again once off', lastOutput(), '((1.0 / x) + 1.0)');
 
 // Failures must read as messages, not as a dead page.
 type('plot');                  check('plot with no args', lastOutput(), /usage: plot/);

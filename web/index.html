@@ -26,6 +26,34 @@
     -->
     <script src="vendor/plotly.min.js" charset="utf-8"></script>
 
+    <!--
+      MathLive, vendored on the same terms, for the `latex on` toggle (issue F_0016 step 5).
+
+      This is the SSR distribution: the conversion functions and NOTHING else - no mathfield
+      element, no virtual keyboard, and therefore none of the package's 232 KB of keyboard
+      sounds. 111 KB gzipped against the full build's 227 KB, for the one call this page
+      makes. Neither build bundles @cortex-js/compute-engine (it is looked up on globalThis
+      and simply declined when absent), which was checked before vendoring: shipping a second
+      CAS inside a page whose purpose is the first one would be absurd.
+
+      The fonts are fetched only when a glyph needs them, so with `latex off` - the default -
+      none of the 254 KB of woff2 is ever requested.
+    -->
+    <link rel="stylesheet" href="vendor/mathlive/mathlive-static.css">
+    <link rel="stylesheet" href="vendor/mathlive/mathlive-fonts.css">
+    <!--
+      An ES module, so it is DEFERRED and runs after main.js - which is why MathRender tests
+      for the global rather than assuming it, and why a `latex on` result typed in the first
+      instants would degrade to text rather than fail. The file keeps a .js extension although
+      upstream names it .mjs: the bytes are identical and the extension means nothing to
+      `type="module"`, but .js has an unambiguous JavaScript MIME type on every static host,
+      and a module served as application/octet-stream does not load at all.
+    -->
+    <script type="module">
+      import { convertLatexToMarkup } from './vendor/mathlive/mathlive-ssr.min.js';
+      globalThis.leonardoLatexToMarkup = convertLatexToMarkup;
+    </script>
+
     <style>
       :root {
         --bg: #fbfbfd; --fg: #1a1a1c; --dim: #6a6a72;
@@ -55,6 +83,9 @@
       }
       #transcript .echo { color: var(--accent); font-weight: 600; }
       #transcript .note { color: var(--dim); }
+      /* A typeset result (`latex on`). Left to MathLive's own metrics apart from the size:
+         the transcript is 13.5px monospace and a formula at that size is unreadable. */
+      #transcript .math { font-size: 1.15rem; padding: .15rem 0; white-space: normal; }
 
       .prompt { display: flex; gap: .5rem; align-items: center; margin-top: .6rem; }
       .prompt span { color: var(--accent); font-weight: 700; }
@@ -114,6 +145,7 @@
         <code class="mono">help</code> lists the commands.
         <code class="mono">plot f x 0 10</code> draws one;
         <code class="mono">points</code> draws coordinates.
+        <code class="mono">latex on</code> typesets results.
         <code class="mono">:save name</code> and <code class="mono">:load name</code> use this
         browser's storage. Nothing you type leaves this tab.
       </footer>

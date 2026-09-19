@@ -7,6 +7,7 @@ import matrix.*
 import equation.{_Equation, _Solve}
 import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable,
                   MaxTruthTableVars, MaxKleeneTableVars}
+import latex.ToLatex
 import parser.Parser
 
 import scala.util.control.NonFatal
@@ -42,6 +43,8 @@ import scala.util.control.NonFatal
  *  exact on | off       exact rational arithmetic (default: off); see "help exact"
  *  exact precision <n>  digits an irrational is approximated to (default: 30)
  *  pretty on | off      multi-line, column-aligned matrix display (default: off)
+ *  latex on | off       also emit each result as LaTeX, for a front end that can
+ *                       typeset it (default: off); see [[Session.lastLatex]]
  *  logic symmetric on|off  spell truth values as -1 / 0 / 1 (default: off)
  *  logic minmax|product|lukasiewicz   fuzzy t-norm family (default: minmax)
  *  env                  list precision, bindings, and definitions
@@ -60,6 +63,16 @@ final class Session:
   // single-line `[[…], […]]` form (which tests and :save scripts rely on) is unchanged;
   // `pretty on` opts in, mirroring the `colors` toggle.
   private var prettyMatrix: Boolean = false
+  // LaTeX output. Off by default, and ON CHANGES NO TEXT: the toggle adds a side channel
+  // (`lastLatex`) rather than rerouting `execute`'s return value, because a terminal REPL
+  // cannot typeset and would be left printing markup instead of an answer. A front end that
+  // CAN typeset -- the browser page is the one that does -- reads the channel and renders it
+  // in place of the text.
+  private var latexMode: Boolean = false
+  // The LaTeX of the last expression result, or None. Reset on every `execute`, so it is
+  // never stale: a caller that rendered the previous result beside this command's text would
+  // be showing two different answers at once.
+  private var latexOut: Option[String] = None
   // Symmetric ternary display/parse encoding: {-1, 0, 1} instead of
   // {false, unknown, true}. Off by default so the word alphabet is unchanged; an
   // *encoding* toggle only -- the min-max rule table is the same either way.
@@ -103,7 +116,23 @@ final class Session:
    *  @param line the raw input line (not yet trimmed)
    *  @return the result to print, or `""` for silent commands
    */
-  def execute(line: String): String = line.trim match
+  def execute(line: String): String =
+    // Cleared FIRST, so the channel describes this command or nothing at all. Every arm that
+    // produces an expression fills it again through `withLatex`.
+    latexOut = None
+    dispatch(line.trim)
+
+  /** The LaTeX of the last expression [[execute]] produced, or `None`.
+   *
+   *  Always `None` while `latex off`, and always `None` after a command that produced no
+   *  expression — a `help` listing, an error, a bare setting. **This is a second channel,
+   *  not a second format**: `execute` returns exactly the same text either way, so a front
+   *  end that cannot typeset is unaffected and one that can chooses per result.
+   */
+  def lastLatex: Option[String] = latexOut
+
+  /** [[execute]] on already-trimmed input. */
+  private def dispatch(line: String): String = line match
     case ""                     => ""
     case "help" | "?"           => Session.help
     case s"help $rest" => Session.helpTopic(rest.trim)
@@ -128,6 +157,8 @@ final class Session:
     case s"exact $mode"         => setExact(mode.trim)
     case "pretty"               => s"pretty = ${if prettyMatrix then "on" else "off"}"
     case s"pretty $mode"        => setPretty(mode.trim)
+    case "latex"                => s"latex = ${if latexMode then "on" else "off"}"
+    case s"latex $mode"         => setLatex(mode.trim)
     case "logic"                => logicState
     case "logic symmetric"      => s"logic symmetric = ${if symmetricLogic then "on" else "off"}"
     case s"logic symmetric $mode" => setSymmetricLogic(mode.trim)
@@ -136,9 +167,12 @@ final class Session:
     // symmetricSpelling only overrides it when the result is itself a truth value.
     case s"simplify $rest"      => withParsed(rest) { e =>
       val r = simplifyPipeline(e)
-      symmetricSpelling(r).getOrElse(r.toString)
+      withLatex(r)(symmetricSpelling(r).getOrElse(r.toString))
     }
-    case s"expand $rest"        => withParsed(rest)(e => expand(resolveMatrixOps(substitute(e, definitions))).toString)
+    case s"expand $rest"        => withParsed(rest) { e =>
+      val r = expand(resolveMatrixOps(substitute(e, definitions)))
+      withLatex(r)(r.toString)
+    }
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
     case "truth"                => "usage: truth <expr>"
@@ -195,6 +229,7 @@ final class Session:
    */
   def script: String = buildLines(
     List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}",
+         s"latex ${if latexMode then "on" else "off"}",
          s"logic ${semanticsName(semantics)}",
          s"logic symmetric ${if symmetricLogic then "on" else "off"}",
          s"exact precision $workingPrecision",
@@ -261,6 +296,21 @@ final class Session:
   /** Formats an eval result for display, applying session precision. */
   private def formatResult(result: Either[_Expression, _Value]): String =
     formatExpression(result.toExpression, prettyMatrix)
+
+  /** Records `e`'s LaTeX on the side channel and answers `text` unchanged.
+   *
+   *  Written as a wrapper around the text rather than as a separate statement so the two
+   *  cannot drift: wherever a result is *shown*, that same result is what gets rendered.
+   *  A renderer failure is swallowed — the LaTeX is a decoration, and losing it must never
+   *  cost the answer the user asked for.
+   *
+   *  @param e    the expression the answer is about
+   *  @param text the answer as it is printed
+   *  @return `text`
+   */
+  private def withLatex(e: _Expression)(text: String): String =
+    if latexMode then latexOut = scala.util.Try(ToLatex(e)).toOption
+    text
 
   /** The symmetric-ternary spelling of a truth value: `-1` / `0` / `1`.
    *
@@ -443,7 +493,7 @@ final class Session:
         val shown  =
           if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
           else formatResult(result)
-        shown + domainNote(result)
+        withLatex(result.toExpression)(shown + domainNote(result))
 
   /** Explains a symbolic `limit` / definite integral when a domain violation is the reason.
    *
@@ -793,6 +843,12 @@ final class Session:
     case "off" | "false" => prettyMatrix = false; "pretty = off"
     case _               => s"pretty expects 'on' or 'off', got: $text"
 
+  /** Sets the LaTeX flag from `"on"`/`"off"` (case-insensitive). */
+  private def setLatex(text: String): String = text.toLowerCase match
+    case "on"  | "true"  => latexMode = true;  "latex = on"
+    case "off" | "false" => latexMode = false; "latex = off"
+    case _               => s"latex expects 'on' or 'off', got: $text"
+
   /** Removes a binding or definition by name, reporting whether it existed. */
   private def unset(name: String): String =
     if bindings.contains(name) || definitions.contains(name) then
@@ -937,6 +993,20 @@ object Session:
          |  pretty on           stack rows on separate lines, right-align columns
          |  pretty off          single-line [[...], [...]] form (default)
          |  pretty              show the current setting""".stripMargin,
+    "latex" ->
+      """|Also render each result as LaTeX source.  Off by default; persisted by :save.
+         |  latex on            emit LaTeX beside every expression result
+         |  latex off           do not (default)
+         |  latex               show the current setting
+         |THE PRINTED ANSWER DOES NOT CHANGE.  The LaTeX is a SECOND channel, not a second
+         |format, because a terminal cannot typeset and would be left showing markup where
+         |an answer should be.  A front end that CAN typeset -- the browser REPL at
+         |/app is the one that does -- reads that channel and shows the formula instead.
+         |WHAT IT EMITS: math-mode source with no surrounding delimiters, so the caller
+         |chooses between $...$, \\[...\\] and a renderer's own API.  Fractions, radicals,
+         |integrals, derivatives, limits, the transforms, matrices, Greek names and the
+         |operator macros (\\sin, not \\mathrm{sin}) all have rules; anything without one
+         |degrades to \\mathrm{...} of its ordinary spelling, which is plain but correct.""".stripMargin,
     "truth" ->
       """|Print the truth table of a boolean expression over its free variables.
          |Variables are enumerated as true/false (the first variable varies slowest);
@@ -1179,6 +1249,9 @@ object Session:
       |exact on | off       exact rational arithmetic; see "help exact" (default: off)
       |exact precision <n>  digits an irrational is approximated to (default: 30)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)
+      |latex on | off       also emit each result as LaTeX (default: off); the text
+      |                     answer is unchanged, so only a front end that typesets
+      |                     is affected -- see "help latex"
       |logic symmetric on|off  spell truth values as -1 / 0 / 1 instead of
       |                     false / unknown / true (symmetric ternary; default: off)
       |logic <semantics>    fuzzy t-norm: minmax | product | lukasiewicz (default: minmax)

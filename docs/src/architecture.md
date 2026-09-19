@@ -14,8 +14,8 @@ every domain package imports `core` (and usually `scalar`); nothing imports `cli
 
 ```
                             cli
-                             │
-                           parser
+                          ┌──┴──┐
+                       parser  latex
    ┌────────┬─────────┬──────┼──────┬─────────┬─────────┬────────┐
  matrix  equation  transform ode  logic  probability  domain  vector … control
    └────────┴─────────┴──────┴──────┴─────────┴─────────┴────────┘
@@ -28,6 +28,12 @@ The picture is a simplification — some domains also import each other in one d
 (`equation` imports `logic`, `statistics` imports `probability` and `matrix`, `control`
 imports `transform` and `matrix`) — but the invariants hold everywhere: `core` imports no
 domain, every arrow is one-way, and `parser` and `cli` sit above all of them.
+
+`latex` sits in that top band too, and for a reason worth stating: **a renderer that must
+match on `scalar.Sin` and `matrix._Matrix` cannot live in `core`**, which imports no domain.
+So a domain-aware renderer sits *above* everything, as `parser` does, or is *distributed
+across* the nodes, as `toString` is — there is no third place, which is why a `toLatex`
+extension beside `toExpression` sounds obvious and is impossible.
 
 ## Modules
 
@@ -46,7 +52,7 @@ free of any terminal dependency — the one thing that would have blocked a Scal
 ## Running off the JVM
 
 Both modules **cross-build for Scala.js**, and the whole suite runs on Node as well as the JVM:
-1781 library cases on each, plus the REPL's. The port needed two platform-specific pieces in
+1828 library cases on each, plus the REPL's. The port needed two platform-specific pieces in
 the library and four in the REPL; everything else is the same source.
 
 | Platform-specific | Why |
@@ -80,9 +86,18 @@ cannot honour, and the shareable link.
 |---|---|
 | Leonardo, the whole CAS | 3.46 MB raw, **475 KB gzipped** |
 | Plotly (`cartesian` distribution, vendored) | 1.3 MB raw, **436 KB gzipped** |
+| MathLive (SSR — render-only — build, vendored) | 397 KB raw, **111 KB gzipped** |
+| The KaTeX maths fonts | 254 KB, fetched **only when a formula needs them** |
 
-Under a megabyte for a computer algebra system with interactive plotting, which is what
-removed the one real risk in the plan: no module splitting and no lazy loading is needed.
+About a megabyte for a computer algebra system with interactive plotting and typeset output,
+which is what removed the one real risk in the plan: no module splitting and no lazy loading
+is needed.
+
+**Only MathLive's SSR build is vendored**, which is "rendering engine only" taken literally:
+it exports the conversion functions and nothing else, so no mathfield element, no virtual
+keyboard and none of the package's 232 KB of keyboard sounds ship — at half the weight of the
+full build. Neither build bundles a second CAS: `@cortex-js/compute-engine` is looked up on
+`globalThis` and its conversions simply decline when it is absent.
 
 **Plotting adopts no Scala dependency.** Plotly's input is plain JSON, so the facade is a
 string builder — pure, and therefore unit-tested without a browser. The one line of it that
@@ -159,6 +174,7 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 | **`domain`** | Renders the neutral domain analysis (`domain`, `differentiable`, `singularities`) into relation nodes | [Features](features.md) |
 | **`vector`** | `grad`/`div`/`curl`/`laplacian`/`jacobian`/`hessian` over an ordered coordinate tuple, in three coordinate systems | [Calculus](calculus.md) |
 | **`control`** | Transfer-function algebra, stability, time and frequency response, state space, discretisation | [Control Systems](control.md) |
+| **`latex`** | `ToLatex(e)` — an expression as math-mode LaTeX source, display only; nothing reads it back | [Interactive REPL](repl.md#latex) |
 | **`parser`** | Recursive-descent `Parser` (extends `JavaTokenParsers`); produces all AST node types; `ReservedWords` guard | [Getting Started](getting-started.md) |
 | **`cli`** | Interactive `Session` (pure, IO-free core) + `repl` read loop; session scripts (`:save`/`:load`). **Ships as the separate `leonardo-repl` artifact** | [Interactive REPL](repl.md) |
 

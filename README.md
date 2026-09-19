@@ -61,6 +61,8 @@ Full detail for every entry below is in the [feature reference](https://lycogryp
 
 - **Declines rather than guesses** — an operation outside what the library can actually compute returns unevaluated instead of approximating. A confidently wrong answer is treated as the worst possible outcome, worse than no answer at all.
 
+- **LaTeX output** (`latex on`) — any expression as typeset-ready LaTeX. The work is a precedence pass rather than a transcription: `(a+b)/(c+d)` comes out as `\frac{a + b}{c + d}` with both pairs of parentheses *gone*, and every node without a rule degrades to `\mathrm{…}`, so the emitter is plain where it is incomplete and never wrong. The printed answer is unchanged — the LaTeX travels on a second channel, which the browser REPL typesets.
+
 - **Clean API** — no global state. `Environment` is immutable and `withBinding` returns a copy, so evaluation is safe to share across threads.
 
 - **Performance** — rounding happens only at display time, so no precision is lost mid-computation; free-variable sets are cached per node, and `derive`/`simplify` are memoised behind bounded thread-safe caches. Definite integrals compile the integrand to a `Double => Double` closure where they can.

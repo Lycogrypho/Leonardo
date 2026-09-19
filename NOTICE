@@ -68,6 +68,91 @@ MIT licence, reproduced as its terms require:
 
 --------------------------------------------------------------------------------
 
+VENDORED: MathLive v0.110.0, render-only build (web/vendor/mathlive/)
+
+Used only by the browser front end (issue F_0016) to typeset the LaTeX the
+`latex` package emits; it is not part of the published library artifacts, and no
+Scala code binds to it -- the facade passes a LaTeX string and receives markup.
+
+This is the SSR (server-side rendering) distribution, which exports the
+conversion functions and NOTHING ELSE: no mathfield element, no virtual keyboard
+and therefore none of the package's 232 KB of keyboard sounds, which are
+deliberately not vendored. Neither this build nor the full one bundles any part
+of `@cortex-js/compute-engine`: MathLive looks that up on
+`globalThis[Symbol.for("io.cortexjs.compute-engine")]` and merely declines the
+MathJSON conversions when it is absent -- verified before vendoring, because
+shipping a second CAS inside a page whose purpose is the first one would be
+absurd.
+
+The script is vendored under a `.js` extension although upstream names it
+`.mjs`; the bytes are identical and the extension is invisible to a
+`<script type="module">`, but `.js` has an unambiguous JavaScript MIME type on
+every static host, and a module served as `application/octet-stream` does not
+load at all.
+
+  SHA-256 (mathlive-ssr.min.js, upstream mathlive-ssr.min.mjs):
+           DC4B57D226EA371CDBA11727257424879DB7179CCBA851C171AFA782DE90BD10
+  SHA-256 (mathlive-static.css):
+           0D0D6D95AE4F252F6B9FFE64933E499FA5625D66E6998BDCD63980847EA4A72F
+  SHA-256 (mathlive-fonts.css):
+           BE6061A80FE44965402FB5FCFC9F33D07A28F3529B770C4540AAD3CB2AC39F5C
+  SHA-256 (source package mathlive-0.110.0.tgz, which contains fonts/ verbatim):
+           3D8CE458805388D65B2A6743EAFBB712AFBDD77793255F0A010B20D27513217D
+  Source:  https://registry.npmjs.org/mathlive/-/mathlive-0.110.0.tgz
+
+MIT licence, reproduced as its terms require:
+
+  Copyright (c) 2017 - present Arno Gourdol. All rights reserved.
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the "Software"),
+  to deal in the Software without restriction, including without limitation
+  the rights to use, copy, modify, merge, publish, distribute, sublicense,
+  and/or sell copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+VENDORED: the KaTeX font set (web/vendor/mathlive/fonts/*.woff2)
+
+The twenty woff2 files MathLive ships and references from `mathlive-fonts.css`.
+They are KaTeX's fonts, not MathLive's own, which is why they carry a separate
+notice -- and why the font payload is not a differentiator between the two
+renderers. MIT licence, reproduced as its terms require:
+
+  Copyright (c) 2018 Khan Academy
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+--------------------------------------------------------------------------------
+
 VENDORED: svg-pan-zoom v3.6.1 (docs/src/js/svg-pan-zoom.min.js)
 
 Used only by the documentation site to make the architecture diagram zoomable;

@@ -23,6 +23,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `precision <n>` | Set display/comparison precision (default 5) |
 | `colors dark\|light\|none` | Syntax-highlight scheme (default `dark`) |
 | `pretty on\|off` | Multi-line matrix display (default `off`) |
+| `latex on\|off` | Also render each result as LaTeX (default `off`); the printed text is unchanged, and the browser REPL typesets it |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30) |
 | `simplify <expr>` | Structural simplification |

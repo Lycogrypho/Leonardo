@@ -178,6 +178,48 @@ s.execute("[[1, 200], [30, 4]]")
 s.execute("pretty off")
 ```
 
+## LaTeX
+
+`latex on` renders every result as LaTeX source as well.  **It does not change what is
+printed**, and that is the whole design: a terminal cannot typeset, so rerouting the answer
+would leave it showing markup where a result belongs.  The LaTeX goes on a *second* channel,
+`Session.lastLatex`, which a front end that can typeset reads instead — the
+[browser REPL](https://lycogrypho.github.io/Leonardo/app/) is the one that does.
+
+```scala mdoc:silent
+val sl = Session()
+sl.execute("latex on")
+sl.execute("simplify (a + b) / (c + d)")
+```
+
+```scala mdoc
+sl.lastLatex
+```
+
+Both pairs of parentheses are **gone**: `\frac` carries its own grouping, so transcribing them
+would be correct and unreadable.  That pass — every node reporting the precedence it renders
+at, every slot asking for the minimum that needs no brackets — is the substance of the
+emitter, and it is also why a power under a power *is* re-bracketed: `x^{2}^{3}` is not ugly,
+it is a LaTeX double-superscript error.
+
+```scala mdoc:silent
+sl.execute("derive(sin(theta)^2, theta)")
+```
+
+```scala mdoc
+sl.lastLatex
+```
+
+The source carries no `$` or `\[ \]` delimiters, so the caller chooses its own.  The channel
+holds the last *expression* and nothing else: after `help`, a setting or an error it is empty,
+so a formula can never be shown beside a different command's answer.
+
+Fractions, radicals, exact rationals, matrices, the integral / derivative / limit / transform
+notations, Greek names and the operator macros (`\sin`, not `\mathrm{sin}` — the macro carries
+the spacing that tells a reader a function from a product of three letters) all have rules.
+Anything without one degrades to `\mathrm{…}` of its ordinary spelling, which is plain but
+never wrong.
+
 ## Range sampling
 
 ```scala mdoc
@@ -213,6 +255,11 @@ be unwrapped.
 Use `points` whenever the picture is *geometry* rather than a function of one variable — a
 vector drawn as a coordinate, or anything in the complex plane. On unequal axes a circle looks
 like an ellipse, so the lock is a correctness matter rather than a preference.
+
+`latex on` is browser-visible in a way it cannot be in a terminal: with it set, each result is
+**typeset** in the transcript instead of printed, by a vendored render-only build of MathLive.
+The maths fonts are fetched only when a formula needs them, so leaving the toggle off costs
+nothing.
 
 The **Copy shareable link** button puts the whole session in the URL fragment. Opening that
 link restores the bindings and definitions; because it is a fragment, it is never sent to any
@@ -288,6 +335,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to |
 | `pretty on` / `off` | Multi-line, column-aligned matrix display |
+| `latex on\|off` | Also render each result as LaTeX (the printed text is unchanged) |
 | `colors dark\|light\|none` | Syntax-highlight scheme |
 | `env` / `vars` | Show session state |
 | `unset <name>` | Remove binding or definition |

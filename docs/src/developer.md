@@ -74,9 +74,16 @@ vector         grad/div/curl/laplacian/jacobian/hessian        (also imports mat
 control        transfer functions, stability, discretisation   (also imports matrix, transform)
   ↑
 parser         Parser — string → AST; imports every domain
+latex          ToLatex — AST → LaTeX source; display only, nothing reads it back
   ↑
 cli            Repl, Session; leaf, nothing imports it
 ```
+
+**`latex` sits beside `parser` for the same reason `parser` is there.**  A renderer that has
+to match on `scalar.Sin` and `matrix._Matrix` cannot live in `core`, which imports no domain.
+So a domain-aware renderer is *above* every package, as `parser` is, or *distributed across*
+the nodes, as `toString` is — there is no third place, and a `toLatex` extension in `core`
+beside `toExpression` is therefore impossible however obvious it sounds.
 
 This graph is a strict DAG: every cross-domain arrow is one-way (`equation` imports
 `logic`, never the reverse; `statistics` imports `probability`, never the reverse).  Adding
@@ -488,6 +495,15 @@ can change.
 operands into `MatSum`/`MatProduct`/`MatScale` before simplify/expand.  This is necessary
 because the parser cannot always determine at parse time whether a variable will be bound
 to a matrix.
+
+**`latex on` is a second output channel, not a second format.**  `execute` returns exactly the
+same text either way; `Session.lastLatex` carries `latex.ToLatex` of the same result.  The
+asymmetry is forced: a terminal cannot typeset, so rerouting the answer would leave it showing
+markup.  Three commands fill the channel — bare evaluation, `simplify`, `expand` — all through
+one `withLatex(e)(text)` wrapper, so what is shown and what is rendered cannot drift; and
+`execute` clears it first, so it describes the current command or nothing at all.  **Adding a
+command that produces an expression means wrapping its result in `withLatex`**, which is the
+only thing to remember here.
 
 ---
 
@@ -1325,7 +1341,7 @@ Key build file sections:
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
 | `sbt unidoc` | One combined API across both modules → `target/scala-3.3.6/api`; this is what the site publishes, and what keeps `cli` in the reference |
-| `sbt mimaReportBinaryIssues` | Checks both published modules against `mimaBaseline` (currently `3.7.1`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in the release commit; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
+| `sbt mimaReportBinaryIssues` | Checks both published modules against `mimaBaseline` (currently `3.7.2`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in the release commit; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
 
 The `-Wconf:src=.*package\\.scala:silent` option suppresses the "No class, trait or object
 defined" structural warning for pure package-doc stub files.
@@ -1342,6 +1358,27 @@ knowing: bundler refuses a lockfile that does not list the running platform, so 
 generated on a Windows or macOS machine fails *every* Pages deploy on the Ubuntu runner.
 Generating it on the runner removes that failure mode instead of relying on anyone
 remembering `--add-platform x86_64-linux`.
+
+### Vendoring a browser asset
+
+The page's third-party JavaScript is **vendored, never loaded from a CDN**: the page then has
+no third-party origin, works offline, and cannot break when someone else's CDN does — which
+for a page whose selling point is that no user data leaves the browser is a promise worth
+keeping literal.  Three things go with each one, and a missing one is the failure mode:
+
+1. the files under `web/vendor/`, with **only the parts that are used** — MathLive is
+   vendored as its render-only SSR build, which drops the editor, the virtual keyboard and
+   232 KB of keyboard sounds and halves the weight;
+2. a `NOTICE` entry reproducing the licence and recording the **SHA-256** and the source URL,
+   so the bytes can be checked against upstream later;
+3. a line in `pages.yml`'s *Verify the deployed app is complete* step, because the failure
+   mode here is a page that loads, renders its chrome and silently does nothing.
+
+**Check what a distribution drags in before vendoring it.**  MathLive declares
+`@cortex-js/compute-engine` as a dependency; its distribution builds do not bundle it — they
+look it up on `globalThis` and decline the MathJSON conversions when absent — but that had to
+be *read out of the bundle*, not assumed from the manifest, because shipping a second computer
+algebra system inside a page whose purpose is the first one would be absurd.
 
 ### One-time repairs need standing guards
 
