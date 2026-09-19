@@ -82,6 +82,12 @@ every command on both platforms, so the page is a text box, a transcript and a h
 Only two things are genuinely browser-only: the `plot` / `points` commands, which a terminal
 cannot honour, and the shareable link.
 
+The settings panel is the same argument again. It is generated from `Session.settings` — the
+`(command, argument)` pairs `:save` already writes — and a changed control issues the command
+a user would have typed, so the panel holds no state and there is nothing for it to disagree
+with. Typing `latex on` at the prompt moves the checkbox, because the fields are refreshed
+from the session after every line rather than tracked alongside it.
+
 | Weight over the wire | |
 |---|---|
 | Leonardo, the whole CAS | 3.46 MB raw, **475 KB gzipped** |

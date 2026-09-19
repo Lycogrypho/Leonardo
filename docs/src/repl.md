@@ -261,6 +261,14 @@ like an ellipse, so the lock is a correctness matter rather than a preference.
 The maths fonts are fetched only when a formula needs them, so leaving the toggle off costs
 nothing.
 
+A row of controls above the buttons edits the session settings without typing — precision,
+`pretty`, `latex`, the t-norm family, symmetric ternary and the exact tier. **It holds no
+state of its own**: it is built from the session's settings and a changed control issues the
+same command you would have typed, so the two can never disagree. Type `latex on` at the
+prompt and the checkbox moves; give a control a value the session refuses and the field snaps
+back with the refusal in the transcript. `colors` is deliberately absent, since the page does
+not syntax-highlight and a control that changes nothing visible is worse than none.
+
 The **Copy shareable link** button puts the whole session in the URL fragment. Opening that
 link restores the bindings and definitions; because it is a fragment, it is never sent to any
 server.

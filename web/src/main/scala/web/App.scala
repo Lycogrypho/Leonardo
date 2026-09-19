@@ -49,6 +49,12 @@ object App:
   private var history: Vector[String] = Vector.empty
   private var cursor: Int             = 0
 
+  /** The settings panel's fields, paired with what they edit.  Built once and then only
+   *  *written to* — rebuilding the row on every line would take the caret out of a number
+   *  box while it was being typed in.
+   */
+  private var controls: Vector[(Settings.Control, js.Dynamic)] = Vector.empty
+
   private def document = global.document
   private def byId(id: String): js.Dynamic = document.getElementById(id)
 
@@ -64,6 +70,7 @@ object App:
     input.addEventListener("keydown", (e: js.Dynamic) => onKey(input, e))
     byId("share").addEventListener("click", (_: js.Dynamic) => share())
     byId("clear").addEventListener("click", (_: js.Dynamic) => clearTranscript())
+    buildSettings()
 
     restoreFromLink()
     note("Type an expression, or `help`. Nothing you type leaves this tab.")
@@ -121,6 +128,10 @@ object App:
         // and nowhere else: if the renderer did not load, or the answer was not an
         // expression, the plain text goes up exactly as it always did.
         if !session.lastLatex.exists(writeMath) then write(out, "out")
+      // Every line can change a setting -- `latex on` typed at the prompt must move the
+      // checkbox, or the panel becomes a second, stale source of truth for state the command
+      // language already owns. Refreshing unconditionally costs one pass over seven fields.
+      refreshSettings()
 
   /** Draws a figure, and answers with the message the transcript should carry.
    *
@@ -226,3 +237,82 @@ object App:
   private def clearTranscript(): Unit =
     byId("transcript").innerHTML = ""
     Plot.clear(byId("figure"))
+
+  // ── the settings panel (F_0016 step 6) ───────────────────────────────────────
+  //
+  // Which settings exist, in what order, and with what values is the SESSION's to say -- see
+  // Settings, where everything decidable without a DOM lives. What is left here is element
+  // creation, and a changed control goes straight back through `submit`: the panel issues the
+  // command a user would have typed rather than a second way of setting the same thing.
+
+  /** Builds the panel once from the session's settings. */
+  private def buildSettings(): Unit =
+    val bar = byId("settings")
+    controls = Settings.panel(session.settings).map { (control, value) =>
+      val field = fieldFor(control, value)
+      field.id = Settings.id(control.setting)
+      field.addEventListener("change", (_: js.Dynamic) => changed(control, field))
+      bar.appendChild(labelled(control.label, field))
+      control -> field
+    }.toVector
+
+  /** One `<label>` carrying the setting's name and its field. */
+  private def labelled(text: String, field: js.Dynamic): js.Dynamic =
+    val label = document.createElement("label")
+    label.className = "setting"
+    val caption = document.createElement("span")
+    caption.textContent = text
+    label.appendChild(caption)
+    label.appendChild(field)
+    label
+
+  /** The input element a control's widget calls for, already showing `value`. */
+  private def fieldFor(control: Settings.Control, value: String): js.Dynamic =
+    control.widget match
+      case Settings.Widget.Toggle =>
+        val box = document.createElement("input")
+        box.`type` = "checkbox"
+        box.checked = Settings.isOn(value)
+        box
+      case Settings.Widget.Number(min) =>
+        val box = document.createElement("input")
+        box.`type` = "number"
+        box.min    = min.toString
+        box.value  = value
+        box
+      case Settings.Widget.Choice(options) =>
+        val select = document.createElement("select")
+        options.foreach { name =>
+          val option = document.createElement("option")
+          option.value       = name
+          option.textContent = name
+          select.appendChild(option)
+        }
+        select.value = value
+        select
+
+  /** What a field currently stands for, as the setting's argument. */
+  private def valueOf(control: Settings.Control, field: js.Dynamic): String =
+    control.widget match
+      case Settings.Widget.Toggle => Settings.toggleValue(field.checked.asInstanceOf[Boolean])
+      case _                      => field.value.asInstanceOf[String]
+
+  /** Runs the command a changed control stands for.
+   *
+   *  It goes through [[submit]], the prompt's own path, so the transcript records it and the
+   *  refusal of a bad value reads exactly as it would if it had been typed — and `submit`
+   *  refreshes the panel afterwards, which is what snaps a refused value back.
+   */
+  private def changed(control: Settings.Control, field: js.Dynamic): Unit =
+    submit(Settings.command(control.setting, valueOf(control, field)))
+
+  /** Writes the session's current settings into the fields. */
+  private def refreshSettings(): Unit =
+    val current = session.settings.toMap
+    controls.foreach { (control, field) =>
+      current.get(control.setting).foreach { value =>
+        control.widget match
+          case Settings.Widget.Toggle => field.checked = Settings.isOn(value)
+          case _                      => field.value = value
+      }
+    }

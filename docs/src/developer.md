@@ -496,6 +496,14 @@ operands into `MatSum`/`MatProduct`/`MatScale` before simplify/expand.  This is 
 because the parser cannot always determine at parse time whether a variable will be bound
 to a matrix.
 
+**`Session.settings` is `script`'s header as data.**  Both read one `settingPairs` list of
+`(command, argument)` pairs, so a `:save` script and the browser's settings panel cannot
+disagree about what the session is set to — and because each pair *is* the command that
+restores it, a panel can write a new value back as `execute(s"$k $v")` with no per-setting
+knowledge.  **Adding a setting means adding a pair**, which gets it saved, listed and
+offered as a control at once; the order in that list is the order a script replays, so
+`exact precision` must stay before `exact` and both before the bindings.
+
 **`latex on` is a second output channel, not a second format.**  `execute` returns exactly the
 same text either way; `Session.lastLatex` carries `latex.ToLatex` of the same result.  The
 asymmetry is forced: a terminal cannot typeset, so rerouting the answer would leave it showing

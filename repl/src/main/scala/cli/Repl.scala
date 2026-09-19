@@ -222,19 +222,45 @@ final class Session:
      definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
     ).mkString("\n")
 
+  /** Every session setting as a `(command, argument)` pair, in the order a script must
+   *  replay them.
+   *
+   *  **One definition, read two ways.**  [[script]] joins these into command lines for
+   *  `:save`, and [[settings]] hands them out as data to a front end that shows the settings
+   *  as controls rather than as text — so a toolbar and a saved script can never disagree
+   *  about what the session is set to.  The pairing is what makes such a control generic:
+   *  `k -> v` *is* the command that restores it, so writing a new value back is
+   *  `execute(s"$k $newValue")` with no per-setting knowledge.
+   *
+   *  Order is load-bearing: `exact` must come after `exact precision` and before the
+   *  bindings, or a `:load` parses exact literals at the wrong precision, or not exactly.
+   */
+  private def settingPairs: List[(String, String)] =
+    def onOff(b: Boolean) = if b then "on" else "off"
+    List(
+      "precision"       -> precision.toString,
+      "colors"          -> colorSchemeName,
+      "pretty"          -> onOff(prettyMatrix),
+      "latex"           -> onOff(latexMode),
+      "logic"           -> semanticsName(semantics),
+      "logic symmetric" -> onOff(symmetricLogic),
+      "exact precision" -> workingPrecision.toString,
+      "exact"           -> onOff(exactMode))
+
+  /** The session's settings as `(command, argument)` pairs — see [[settingPairs]].
+   *
+   *  A `List`, not a `Map`: the order is the one a script replays in, and a control panel
+   *  that lays the settings out in the session's own order needs no order of its own.
+   */
+  def settings: List[(String, String)] = settingPairs
+
   /** Current session state serialized as a replayable script — one command per line,
    *  precision first, then bindings and definitions in name order. Feeding this back
    *  through `load` (or line by line through `execute`) reconstructs the session.
    *  Pure: this is what the REPL writes to a `:save` file.
    */
-  def script: String = buildLines(
-    List(s"precision $precision", s"colors $colorSchemeName", s"pretty ${if prettyMatrix then "on" else "off"}",
-         s"latex ${if latexMode then "on" else "off"}",
-         s"logic ${semanticsName(semantics)}",
-         s"logic symmetric ${if symmetricLogic then "on" else "off"}",
-         s"exact precision $workingPrecision",
-         s"exact ${if exactMode then "on" else "off"}"),
-    serializeValue)
+  def script: String =
+    buildLines(settingPairs.map((k, v) => s"$k $v"), serializeValue)
 
   /** Execute a whole script body (e.g. the contents of a `:load` file), returning the
    *  newline-joined non-empty outputs of its commands. Blank lines and `#` comments are

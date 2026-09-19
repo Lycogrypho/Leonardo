@@ -10,12 +10,14 @@ const vm = require('vm');
 
 // --- the fake DOM -------------------------------------------------------------------------
 // These ids MUST be exactly the ones index.html defines; that agreement is what is under test.
-const ids = ['input', 'transcript', 'figure', 'share', 'clear'];
+const ids = ['input', 'transcript', 'figure', 'share', 'clear', 'settings'];
 const elements = {};
 
+// `checked` and `type` are plain properties here, which is all the settings panel needs: it
+// creates inputs and a select and then only reads and writes those two and `value`.
 function makeElement(id) {
   return {
-    id, value: '', className: '', textContent: '', innerHTML: '',
+    id, value: '', className: '', textContent: '', innerHTML: '', type: '', checked: false,
     scrollTop: 0, scrollHeight: 0, children: [], listeners: {},
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
     appendChild(c) { this.children.push(c); },
@@ -67,6 +69,16 @@ function lastOutput() {
 function lastMath() {
   const m = transcript.children.filter(c => c.className === 'math');
   return m.length ? m[m.length - 1].innerHTML : '(nothing)';
+}
+// The panel's fields are inside their labels, one label per setting.
+function field(id) {
+  for (const label of elements.settings.children)
+    for (const child of label.children)
+      if (child.id === id) return child;
+  throw new Error('no settings control with id #' + id);
+}
+function change(el) {
+  for (const fn of el.listeners.change) fn({});
 }
 
 let failures = 0;
@@ -133,6 +145,35 @@ check('math block in transcript', lastMath(), /\\frac/);
 check('text not duplicated', lastOutput(), 'latex = on');
 type('latex off');
 type('1/x + 1');               check('text again once off', lastOutput(), '((1.0 / x) + 1.0)');
+
+// The settings panel (F_0016 step 6). Two directions, and the second is the design point:
+// a control issues the command a user would have typed, and a command typed at the prompt
+// moves the control -- otherwise the panel becomes a stale second copy of the session state.
+check('panel built from session', elements.settings.children.length > 0, true);
+check('no control for colors', (() => { try { field('set-colors'); return true; } catch { return false; } })(), false);
+
+const latexBox = field('set-latex');
+check('control reflects the typed command', latexBox.checked, false);
+latexBox.checked = true; change(latexBox);
+check('control issues the command', lastOutput(), 'latex = on');
+type('latex off');
+check('typed command moves the control', latexBox.checked, false);
+
+const digits = field('set-precision');
+digits.value = '9'; change(digits);
+check('number control', lastOutput(), 'precision = 9');
+type('precision 5');
+check('number control follows back', digits.value, '5');
+
+const tnorm = field('set-logic');
+tnorm.value = 'lukasiewicz'; change(tnorm);
+check('choice control', lastOutput(), /lukasiewicz/);
+
+// A refused value must snap back rather than leaving the field showing a state the session
+// is not in.
+digits.value = '99'; change(digits);
+check('refusal is reported', lastOutput(), /precision expects/);
+check('refused value snaps back', digits.value, '5');
 
 // Failures must read as messages, not as a dead page.
 type('plot');                  check('plot with no args', lastOutput(), /usage: plot/);

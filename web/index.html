@@ -96,6 +96,17 @@
       #input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
       .bar { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+
+      /* The settings panel. It is built from the session's own settings, so nothing here
+         names one: adding a control is a change to Settings.scala, not to this file. */
+      #settings { align-items: center; gap: .1rem 1rem; font-size: 12.5px; color: var(--dim); }
+      .setting { display: inline-flex; align-items: center; gap: .35rem; }
+      .setting input[type="number"] { width: 3.4rem; }
+      .setting input, .setting select {
+        padding: .15rem .3rem; border: 1px solid var(--edge); border-radius: 4px;
+        background: var(--panel); color: var(--fg); font-size: 12.5px;
+      }
+      .setting input[type="checkbox"] { accent-color: var(--accent); }
       button {
         padding: .4rem .75rem; border: 1px solid var(--edge); border-radius: 6px;
         background: var(--panel); color: var(--fg); font-size: 13px; cursor: pointer;
@@ -133,6 +144,13 @@
         <input id="input" class="mono" type="text" autocomplete="off" autocapitalize="off"
                autocorrect="off" spellcheck="false" placeholder="try:  derive(sin(x)^2, x)">
       </div>
+
+      <!--
+        Filled by App from `Session.settings`, so this element deliberately names no setting:
+        the session says which exist, in what order and with what values, and a control writes
+        back the command a user would have typed. See web/src/main/scala/web/Settings.scala.
+      -->
+      <div id="settings" class="bar" role="group" aria-label="Session settings"></div>
 
       <div class="bar">
         <button id="share" type="button">Copy shareable link</button>

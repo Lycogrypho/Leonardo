@@ -1572,6 +1572,7 @@ package "cli" <<Rectangle>> {
         + execute(line: String): String
         + lastLatex: Option[String]
         + currentColorScheme: String
+        + settings: List[(String, String)]
         + script: String
         + load(text: String): String
         __ companion __
