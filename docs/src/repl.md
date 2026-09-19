@@ -221,8 +221,9 @@ script's transcript rather than one result; and an answer carrying a domain note
 value of the answer, so nothing may replace it.
 
 Fractions, radicals, exact rationals, matrices, the integral / derivative / limit / transform
-notations, Greek names and the operator macros (`\sin`, not `\mathrm{sin}` — the macro carries
-the spacing that tells a reader a function from a product of three letters) all have rules.
+notations, Greek names — in binder positions too, so `\int … \,d\theta` — a logarithm's base
+as a subscript, and the operator macros (`\sin`, not `\mathrm{sin}` — the macro carries the
+spacing that tells a reader a function from a product of three letters) all have rules.
 Anything without one degrades to `\mathrm{…}` of its ordinary spelling, which is plain but
 never wrong.
 

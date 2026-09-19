@@ -82,12 +82,44 @@ class ToLatexTest extends AnyFlatSpec:
     assert(tex("x*y") == "x \\cdot y")
   }
 
+  it should "spell out a coefficient whose neighbour would fuse into it (F_0021)" in
+  {
+    // Juxtaposition is only safe while the right side cannot be read as part of the numeral.
+    // These shapes are unreachable through the REPL -- eval folds constants -- and one call
+    // away through the public API, which is where a renderer is used.
+    def p(a: _Expression, b: _Expression) = ToLatex(scalar.Product(a, b))
+    val third = _Rational.fromDecimalString("0.5").get   // any exact fraction will do
+
+    assert(p(_Number(2), _Number(3)) == "2.0 \\cdot 3.0",
+           "juxtaposed, the two numerals set as the single number 2.03.0")
+    assert(p(_Number(2), scalar.Product(_Number(3), _Variable("k"))) == "2.0 \\cdot 3.0 k",
+           "the right side need not BE a number, only begin with one")
+    assert(p(_Number(2), third) == "2.0 \\cdot \\frac{1}{2}",
+           "juxtaposed, a numeric fraction reads as the mixed number 2½")
+  }
+
+  it should "still juxtapose a fraction that cannot be read as a mixed number" in
+  {
+    // The refusal above is about NUMERALS fusing, not about fractions: 2\frac{x}{y} is the
+    // product it looks like, so taxing it with a \cdot would be a worse rendering.
+    assert(tex("2*(x/y)") == "2.0 \\frac{x}{y}")
+  }
+
   "a named function" should "render as an upright name over grouped arguments" in
   {
     assert(tex("sin(x)")      == "\\sin\\left(x\\right)")
-    assert(tex("log(x, 2)")   == "\\log\\left(x, 2.0\\right)")
     assert(tex("sin(a + b)")  == "\\sin\\left(a + b\\right)",
            "a function's own delimiters are a Grouped slot")
+  }
+
+  "a logarithm" should "carry its base as a subscript, not as a second argument (F_0021)" in
+  {
+    // `\log\left(x, 2\right)` is the GRAMMAR's spelling; the notation is a subscript, and a
+    // renderer that reproduced the argument list would be transcribing rather than rendering.
+    assert(tex("log(x, 2)") == "\\log_{2.0}\\left(x\\right)")
+    // `log(x)` is parser sugar for LogBase(x, 10), and base 10 is what bare \log means here.
+    assert(tex("log(x)")    == "\\log\\left(x\\right)")
+    assert(tex("ln(x)")     == "\\ln\\left(x\\right)", "ln is its own node and is unaffected")
   }
 
   // ── step 2: the compound rules ────────────────────────────────────────────
@@ -278,6 +310,18 @@ class ToLatexTest extends AnyFlatSpec:
     assert(tex("theta")        == "\\theta")
     assert(tex("Omega")        == "\\Omega")
     assert(tex("lambda*x")     == "\\lambda \\cdot x")
+  }
+
+  it should "render in a binder position too, not only where a _Variable node stands (F_0021)" in
+  {
+    // These five sites print a variable's NAME rather than rendering a _Variable, so each had
+    // to be routed through the table by hand -- and until it was, `theta` was a Greek letter
+    // everywhere except under the operator that binds it.
+    assert(tex("integral(theta, theta)")     == "\\int \\theta \\,d\\theta")
+    assert(tex("integral(x, theta, 0, 1)")   == "\\int_{0.0}^{1.0} x \\,d\\theta")
+    assert(tex("derive(x, theta)")           == "\\frac{d}{d\\theta}\\left(x\\right)")
+    assert(tex("limit(x, theta, 0)")         == "\\lim_{\\theta \\to 0.0} x")
+    assert(tex("laplace(q, u, omega)")       == "\\mathcal{L}\\left\\{q\\right\\}(\\omega)")
   }
 
   it should "leave an ordinary name alone, including one that merely starts with a letter name" in

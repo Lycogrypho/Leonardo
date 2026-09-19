@@ -52,7 +52,7 @@ free of any terminal dependency — the one thing that would have blocked a Scal
 ## Running off the JVM
 
 Both modules **cross-build for Scala.js**, and the whole suite runs on Node as well as the JVM:
-1828 library cases on each, plus the REPL's. The port needed two platform-specific pieces in
+1832 library cases on each, plus the REPL's. The port needed two platform-specific pieces in
 the library and four in the REPL; everything else is the same source.
 
 | Platform-specific | Why |

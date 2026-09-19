@@ -46,6 +46,26 @@ object ToLatex:
     val (text, prec) = render(e)
     if prec < min then s"\\left($text\\right)" else text
 
+  /** Whether `text` would be read as *part of* a numeral set immediately before it.
+   *
+   *  Juxtaposition is what makes `2 x` rather than `2 \cdot x`, and it is safe only while
+   *  nothing on the right can join the coefficient.  **Two shapes can, and both fail
+   *  silently**: a leading digit, where the inter-word space vanishes in math mode and `2`
+   *  before `3 k` sets as `23k`; and a **numeric** fraction, where `2` before `\frac{1}{3}`
+   *  is the mixed number 2⅓ to every reader schooled on them.
+   *
+   *  The second test looks *inside* the brace rather than refusing every fraction, because
+   *  only a numeral fuses: `2\frac{x}{y}` is the product it appears to be, and spelling that
+   *  one out would be a worse rendering bought for nothing.
+   *
+   *  @param text an already-rendered right-hand operand
+   *  @return whether a coefficient must be separated from it by an explicit `\cdot`
+   */
+  private def fusesWithNumeral(text: String): Boolean =
+    val Frac = "\\frac{"
+    def digitAt(i: Int) = text.length > i && text.charAt(i).isDigit
+    digitAt(0) || (text.startsWith(Frac) && digitAt(Frac.length))
+
   /** Renders an expression as LaTeX.
    *
    *  @param e the expression
@@ -75,7 +95,12 @@ object ToLatex:
     // A numeric coefficient juxtaposes (`2 x`); everything else takes an explicit \cdot.
     // Bare juxtaposition of two variables is rejected on purpose: in THIS grammar `xy` is a
     // single identifier, so `x y` in output would suggest an input that means something else.
-    case Product(n: _Number, b) => (s"${at(n, Atomic)} ${at(b, AtProduct)}", AtProduct)
+    // The coefficient also gives up its juxtaposition when the right side would FUSE with it
+    // into one numeral -- see `fusesWithNumeral`.
+    case Product(n: _Number, b) =>
+      val right = at(b, AtProduct)
+      val sep   = if fusesWithNumeral(right) then " \\cdot " else " "
+      (s"${at(n, Atomic)}$sep$right", AtProduct)
     case Product(a, b)          => (s"${at(a, AtProduct)} \\cdot ${at(b, AtProduct)}", AtProduct)
 
     // A root is a power written the other way round.  The radicand is Grouped because \sqrt
@@ -98,15 +123,18 @@ object ToLatex:
 
     // The measure terminates the integrand, but only against a product -- `\int a + b \,dx`
     // genuinely reads as `(\int a) + b\,dx`, so a sum must be bracketed and nothing else need be.
-    case _Integral(e, v) => (s"\\int ${at(e, AtProduct)} \\,d${v.variable}", AtSum)
+    // Every binder rule prints its variable's NAME rather than rendering a `_Variable` node,
+    // so each has to reach the Greek table itself (F_0021) -- without which `theta` is a
+    // letter everywhere except under the operator that binds it.
+    case _Integral(e, v) => (s"\\int ${at(e, AtProduct)} \\,d${greek(v.variable)}", AtSum)
     case _DefIntegral(e, v, lo, hi) =>
-      (s"\\int_{${at(lo, Grouped)}}^{${at(hi, Grouped)}} ${at(e, AtProduct)} \\,d${v.variable}",
+      (s"\\int_{${at(lo, Grouped)}}^{${at(hi, Grouped)}} ${at(e, AtProduct)} \\,d${greek(v.variable)}",
        AtSum)
 
     // The operator form `\frac{d}{dx}(…)` rather than `\frac{de}{dx}`: the operand is an
     // arbitrary expression, and brackets around it are conventional and never ambiguous.
     case _Derivative(e, v) =>
-      (s"\\frac{d}{d${v.variable}}\\left(${at(e, Grouped)}\\right)", Atomic)
+      (s"\\frac{d}{d${greek(v.variable)}}\\left(${at(e, Grouped)}\\right)", Atomic)
 
     // The direction rides the POINT, not the operator: `x \to 0^{+}` is where a reader looks
     // for it, and it is the only place it can go without inventing notation.
@@ -115,7 +143,7 @@ object ToLatex:
         case LimitDir.Both      => at(point, Grouped)
         case LimitDir.FromRight => s"${at(point, Atomic)}^{+}"
         case LimitDir.FromLeft  => s"${at(point, Atomic)}^{-}"
-      (s"\\lim_{${v.variable} \\to $approach} ${at(e, AtProduct)}", AtSum)
+      (s"\\lim_{${greek(v.variable)} \\to $approach} ${at(e, AtProduct)}", AtSum)
 
     case Transformed(t) => (t.latex, Atomic)
 
@@ -125,6 +153,14 @@ object ToLatex:
     // The operand is Atomic because `a + b!` would otherwise claim only the b.
     case Factorial(e)  => (s"${at(e, Atomic)}!", Atomic)
     case Binom(n, k)   => (s"\\binom{${at(n, Grouped)}}{${at(k, Grouped)}}", Atomic)
+
+    // The base is a SUBSCRIPT, not a second argument: `\log\left(x, 2\right)` would be the
+    // grammar's spelling transcribed rather than the notation rendered.  Base 10 is what a
+    // bare \log means here, and it is also `log(x)`'s own desugaring -- matched through the
+    // widening extractor, so exact mode's _Rational(10) lands on the same arm.
+    case LogBase(e, _Number(10.0)) => (s"\\log\\left(${at(e, Grouped)}\\right)", Atomic)
+    case LogBase(e, b) =>
+      (s"\\log_{${at(b, Grouped)}}\\left(${at(e, Grouped)}\\right)", Atomic)
 
     case v: _Variable => (greek(v.variable), Atomic)
 
@@ -274,7 +310,7 @@ object ToLatex:
     /** `\mathcal{L}\{f\}(s)` — the braces are escaped, since bare ones would group silently. */
     def latex: String =
       val op = if inverse then s"\\mathcal{$symbol}^{-1}" else s"\\mathcal{$symbol}"
-      s"$op\\left\\{${at(operand, Grouped)}\\right\\}(${result.variable})"
+      s"$op\\left\\{${at(operand, Grouped)}\\right\\}(${greek(result.variable)})"
 
   /** Matches an exponent that denotes an `n`-th root, answering `n`.
    *
