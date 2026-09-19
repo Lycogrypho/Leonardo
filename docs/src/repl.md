@@ -214,6 +214,12 @@ The source carries no `$` or `\[ \]` delimiters, so the caller chooses its own. 
 holds the last *expression* and nothing else: after `help`, a setting or an error it is empty,
 so a formula can never be shown beside a different command's answer.
 
+It is also empty whenever **the text carries more than the formula**, because a front end
+shows the formula *instead of* the text.  Two cases: a `:load`, whose output is the whole
+script's transcript rather than one result; and an answer carrying a domain note —
+`limit(ln(x), x, -1)` explains that `-1` is outside `ln`'s domain, and that sentence is the
+value of the answer, so nothing may replace it.
+
 Fractions, radicals, exact rationals, matrices, the integral / derivative / limit / transform
 notations, Greek names and the operator macros (`\sin`, not `\mathrm{sin}` — the macro carries
 the spacing that tells a reader a function from a product of three letters) all have rules.

@@ -155,12 +155,12 @@ final class Session:
     case "exact"                => exactState
     case s"exact precision $n"  => setWorkingPrecision(n.trim)
     case s"exact $mode"         => setExact(mode.trim)
-    case "pretty"               => s"pretty = ${if prettyMatrix then "on" else "off"}"
+    case "pretty"               => s"pretty = ${onOff(prettyMatrix)}"
     case s"pretty $mode"        => setPretty(mode.trim)
-    case "latex"                => s"latex = ${if latexMode then "on" else "off"}"
+    case "latex"                => s"latex = ${onOff(latexMode)}"
     case s"latex $mode"         => setLatex(mode.trim)
     case "logic"                => logicState
-    case "logic symmetric"      => s"logic symmetric = ${if symmetricLogic then "on" else "off"}"
+    case "logic symmetric"      => s"logic symmetric = ${onOff(symmetricLogic)}"
     case s"logic symmetric $mode" => setSymmetricLogic(mode.trim)
     case s"logic $rest"         => setSemantics(rest.trim)
     // simplify renders through toString (it deliberately ignores session precision);
@@ -236,7 +236,6 @@ final class Session:
    *  bindings, or a `:load` parses exact literals at the wrong precision, or not exactly.
    */
   private def settingPairs: List[(String, String)] =
-    def onOff(b: Boolean) = if b then "on" else "off"
     List(
       "precision"       -> precision.toString,
       "colors"          -> colorSchemeName,
@@ -267,16 +266,23 @@ final class Session:
    *  skipped. IO-free — the caller supplies the text, so this is unit-testable; the REPL
    *  loop is the only place that actually reads the file.
    *
+   *  **The LaTeX channel is cleared afterwards** (issue F_0020): every line runs through
+   *  `execute`, so the channel would be left holding the *last* line's formula — and a front
+   *  end that shows a formula in place of the text would then typeset that one line and drop
+   *  everything else the script produced.  A script's output is a transcript, not a result.
+   *
    *  @param text the script body (newline-separated commands)
    *  @return the concatenated non-empty output lines
    */
   def load(text: String): String =
-    text.linesIterator
+    val out = text.linesIterator
       .map(_.trim)
       .filter(l => l.nonEmpty && !l.startsWith("#"))
       .map(execute)
       .filter(_.nonEmpty)
       .mkString("\n")
+    latexOut = None
+    out
 
   /** Parses `input`, then calls `f` on the resulting expression inside a `NonFatal` guard.
    *
@@ -337,6 +343,11 @@ final class Session:
   private def withLatex(e: _Expression)(text: String): String =
     if latexMode then latexOut = scala.util.Try(ToLatex(e)).toOption
     text
+
+  /** The `on` / `off` spelling of a flag — one definition, since every setting reports,
+   *  serialises and acknowledges itself in it.
+   */
+  private def onOff(b: Boolean): String = if b then "on" else "off"
 
   /** The symmetric-ternary spelling of a truth value: `-1` / `0` / `1`.
    *
@@ -519,7 +530,12 @@ final class Session:
         val shown  =
           if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
           else formatResult(result)
-        withLatex(result.toExpression)(shown + domainNote(result))
+        val note = domainNote(result)
+        // The LaTeX is offered only when the text says nothing the formula does not (issue
+        // F_0020). A domain note is exactly such a thing -- it is prose, it is not in the
+        // rendering, and it is the whole value of an answer that otherwise echoes itself
+        // back -- so a front end substituting the formula for the text would undo 3.3 slice F.
+        if note.isEmpty then withLatex(result.toExpression)(shown) else shown + note
 
   /** Explains a symbolic `limit` / definite integral when a domain violation is the reason.
    *
@@ -813,7 +829,7 @@ final class Session:
 
   /** Both logic settings in one listing, for the bare `logic` command. */
   private def logicState: String =
-    s"logic ${semanticsName(semantics)}\nlogic symmetric = ${if symmetricLogic then "on" else "off"}"
+    s"logic ${semanticsName(semantics)}\nlogic symmetric = ${onOff(symmetricLogic)}"
 
   /** The REPL spelling of a semantics: the enum case name in lower case. */
   private def semanticsName(s: LogicSemantics): String = s.toString.toLowerCase
@@ -842,7 +858,7 @@ final class Session:
 
   /** Both exact-arithmetic settings, for the bare `exact` command. */
   private def exactState: String =
-    s"exact = ${if exactMode then "on" else "off"}, working precision = $workingPrecision"
+    s"exact = ${onOff(exactMode)}, working precision = $workingPrecision"
 
   /** Sets the exact-arithmetic flag from `"on"`/`"off"` (case-insensitive). */
   private def setExact(text: String): String = text.toLowerCase match

@@ -513,6 +513,13 @@ one `withLatex(e)(text)` wrapper, so what is shown and what is rendered cannot d
 command that produces an expression means wrapping its result in `withLatex`**, which is the
 only thing to remember here.
 
+**The condition is not "an expression was produced" but "the text says nothing the formula
+does not"**, because a consumer shows the formula *instead of* the text.  So `load` clears the
+channel after a script — its output is a transcript, and typesetting the last line would drop
+every other one — and `evaluate` skips it when a domain note is appended, since the note is
+prose absent from the rendering.  A new command whose text carries anything the rendering
+omits belongs in that list.
+
 ---
 
 ## Algorithm references

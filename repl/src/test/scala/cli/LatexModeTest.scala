@@ -88,6 +88,31 @@ class LatexModeTest extends AnyFlatSpec:
     assert(s.lastLatex.isEmpty, "a help listing must not inherit the previous result's LaTeX")
   }
 
+  it should "be cleared by a script, whose output is a transcript and not a result" in
+  {
+    // A front end that substitutes the formula for the text would otherwise typeset the
+    // LAST line of the script and drop every other line the load produced.
+    val s = session
+    s.execute("latex on")
+    val out = s.load(
+      """a := 2
+        |a + 1
+        |a * 10""".stripMargin)
+    assert(out.linesIterator.size == 3, s"a script's whole output is its answer: $out")
+    assert(s.lastLatex.isEmpty, "a :load must not be reduced to its last line's formula")
+  }
+
+  it should "be cleared when the answer carries a domain note the formula would drop" in
+  {
+    // 3.3 slice F: the note is the whole value of the answer here, and it is not in the
+    // rendering -- so there is nothing for a formula to replace without losing it.
+    val s = session
+    s.execute("latex on")
+    val out = s.execute("limit(ln(x), x, -1)")
+    assert(out.contains("note:"), s"expected a domain note, got: $out")
+    assert(s.lastLatex.isEmpty, "a formula must not replace text carrying a domain note")
+  }
+
   it should "be cleared by a parse error" in
   {
     val s = session
