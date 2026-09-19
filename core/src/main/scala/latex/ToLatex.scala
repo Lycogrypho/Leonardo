@@ -3,6 +3,7 @@ package latex
 
 import core.*
 import scalar.*
+import transform.*
 
 /** Renders an expression as LaTeX source (issue F_0016).
  *
@@ -89,6 +90,35 @@ object ToLatex:
     // because `x^{2}^{3}` is not a smaller rendering but a LaTeX double-superscript ERROR.
     case Power(a, b) => (s"${at(a, Atomic)}^{${at(b, Grouped)}}", AtPower)
 
+    // ── the binders ──────────────────────────────────────────────────────────
+    //
+    // The nine nodes `NamedFunction` excludes.  Each prints a variable its `children` omit,
+    // which is exactly why a shared `name(children)` rendering cannot serve them: it would
+    // emit the integrand and lose the `dx`.  Each also has notation no generic rule reaches.
+
+    // The measure terminates the integrand, but only against a product -- `\int a + b \,dx`
+    // genuinely reads as `(\int a) + b\,dx`, so a sum must be bracketed and nothing else need be.
+    case _Integral(e, v) => (s"\\int ${at(e, AtProduct)} \\,d${v.variable}", AtSum)
+    case _DefIntegral(e, v, lo, hi) =>
+      (s"\\int_{${at(lo, Grouped)}}^{${at(hi, Grouped)}} ${at(e, AtProduct)} \\,d${v.variable}",
+       AtSum)
+
+    // The operator form `\frac{d}{dx}(…)` rather than `\frac{de}{dx}`: the operand is an
+    // arbitrary expression, and brackets around it are conventional and never ambiguous.
+    case _Derivative(e, v) =>
+      (s"\\frac{d}{d${v.variable}}\\left(${at(e, Grouped)}\\right)", Atomic)
+
+    // The direction rides the POINT, not the operator: `x \to 0^{+}` is where a reader looks
+    // for it, and it is the only place it can go without inventing notation.
+    case _Limit(e, v, point, dir) =>
+      val approach = dir match
+        case LimitDir.Both      => at(point, Grouped)
+        case LimitDir.FromRight => s"${at(point, Atomic)}^{+}"
+        case LimitDir.FromLeft  => s"${at(point, Atomic)}^{-}"
+      (s"\\lim_{${v.variable} \\to $approach} ${at(e, AtProduct)}", AtSum)
+
+    case Transformed(t) => (t.latex, Atomic)
+
     case v: _Variable => (v.variable, Atomic)
 
     // An exact rational stays a FRACTION.  Showing 1/3 as 0.33333 would discard precisely
@@ -164,6 +194,36 @@ object ToLatex:
       case c                          => sb += c
     }
     sb.toString
+
+  /** Matches the five integral transforms, rendering each in its own calligraphic operator.
+   *
+   *  One extractor rather than five cases because they differ only in a symbol and whether
+   *  the operator is inverted — the *shape* `\mathcal{X}\{f\}(result)` is identical, and
+   *  writing it five times would be five chances for the spacing to drift.
+   *
+   *  **Which variable appears is the subtle part.**  Each node carries two: a binder the
+   *  transform consumes and a variable the answer is a function of.  `children` holds only
+   *  the operand, so both names would be lost by any generic rendering — and it is the
+   *  *second* that belongs in the output, since `\mathcal{L}\{t\}(s)` is a function of `s`.
+   */
+  private object Transformed:
+    def unapply(e: _Expression): Option[Transformed] = e match
+      case _Laplace(f, _, s)           => Some(Transformed("L", inverse = false, f, s))
+      case _InverseLaplace(f, _, t)    => Some(Transformed("L", inverse = true,  f, t))
+      case _Fourier(f, _, w)           => Some(Transformed("F", inverse = false, f, w))
+      case _ZTransform(f, _, z)        => Some(Transformed("Z", inverse = false, f, z))
+      case _InverseZTransform(f, _, n) => Some(Transformed("Z", inverse = true,  f, n))
+      case _                           => None
+
+  /** One transform's rendering data: the operator letter, whether it is inverted, the operand
+   *  and the variable the result is a function of.
+   */
+  private case class Transformed(symbol: String, inverse: Boolean,
+                                 operand: _Expression, result: _Variable):
+    /** `\mathcal{L}\{f\}(s)` — the braces are escaped, since bare ones would group silently. */
+    def latex: String =
+      val op = if inverse then s"\\mathcal{$symbol}^{-1}" else s"\\mathcal{$symbol}"
+      s"$op\\left\\{${at(operand, Grouped)}\\right\\}(${result.variable})"
 
   /** Matches an exponent that denotes an `n`-th root, answering `n`.
    *

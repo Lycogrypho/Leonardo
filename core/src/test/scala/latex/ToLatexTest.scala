@@ -167,9 +167,78 @@ class ToLatexTest extends AnyFlatSpec:
     assert(out.startsWith("\\mathrm{"), s"expected the fallback for MatScale, got: $out")
   }
 
+  // ── step 3: the binder rules ──────────────────────────────────────────────────
+  //
+  // These are the nine nodes NamedFunction deliberately excludes: each prints a binder its
+  // `children` omit, and each has established notation that a generic `name(args)` could
+  // never produce.  The binder is what makes them a separate problem and a separate step.
+
+  "an integral" should "carry its measure, and its limits when it has them" in
+  {
+    assert(tex("integral(x^2, x)")       == "\\int x^{2.0} \\,dx")
+    assert(tex("integral(x^2, x, 0, 1)") == "\\int_{0.0}^{1.0} x^{2.0} \\,dx")
+  }
+
+  it should "bracket a sum, because the measure alone does not delimit one" in
+  {
+    // `\int a + b \,dx` genuinely reads as (\int a) + b\,dx. A product needs no help, since
+    // nothing can detach from it.
+    assert(tex("integral(a + b, x)") == "\\int \\left(a + b\\right) \\,dx")
+    assert(tex("integral(a*b, x)")   == "\\int a \\cdot b \\,dx")
+  }
+
+  "a derivative" should "render as the operator applied to a bracketed operand" in
+  {
+    assert(tex("derive(x^2, x)")      == "\\frac{d}{dx}\\left(x^{2.0}\\right)")
+    assert(tex("derive(sin(y), y)")   == "\\frac{d}{dy}\\left(\\mathrm{sin}\\left(y\\right)\\right)")
+  }
+
+  "a limit" should "put the approach under the operator, and its direction on the point" in
+  {
+    assert(tex("limit(sin(x)/x, x, 0)")    ==
+           "\\lim_{x \\to 0.0} \\frac{\\mathrm{sin}\\left(x\\right)}{x}")
+    assert(tex("limit(1/x, x, 0, +)")      == "\\lim_{x \\to 0.0^{+}} \\frac{1.0}{x}")
+    assert(tex("limit(1/x, x, 0, -)")      == "\\lim_{x \\to 0.0^{-}} \\frac{1.0}{x}")
+  }
+
+  "a transform" should "render in its own calligraphic operator with the result variable" in
+  {
+    // The binder is consumed by the transform and the OTHER variable is what the answer is a
+    // function of -- which is precisely the distinction `children` drops and toString keeps.
+    assert(tex("laplace(t, t, s)")        == "\\mathcal{L}\\left\\{t\\right\\}(s)")
+    assert(tex("fourier(t, t, w)")        == "\\mathcal{F}\\left\\{t\\right\\}(w)")
+    assert(tex("invlaplace(1/s, s, t)")   ==
+           "\\mathcal{L}^{-1}\\left\\{\\frac{1.0}{s}\\right\\}(t)")
+    assert(tex("ztrans(n, n, z)")         == "\\mathcal{Z}\\left\\{n\\right\\}(z)")
+    assert(tex("invztrans(z, z, n)")      == "\\mathcal{Z}^{-1}\\left\\{z\\right\\}(n)")
+  }
+
+  "a calculus binder" should "never lose the variable its children omit" in
+  {
+    // The whole reason these nodes are excluded from NamedFunction: rendering from `children`
+    // alone would emit the integrand and silently drop the `dx`. Asserted structurally so it
+    // holds however the surrounding notation is later polished.
+    for (src, binder) <- List("integral(q, u)" -> "u", "derive(q, u)" -> "u",
+                              "limit(q, u, 0)" -> "u") do
+      assert(tex(src).contains(binder), s"binder '$binder' lost from $src: ${tex(src)}")
+  }
+
+  "a transform" should "consume its binder and name the result variable instead" in
+  {
+    // The opposite of the rule above, and not an exception to it: a transform INTEGRATES its
+    // binder away, so `t` is genuinely absent from L{q}(s) -- the answer is a function of s.
+    // Writing the binder into the output would be wrong, not merely redundant.
+    val out = tex("laplace(q, u, s)")
+    assert(out == "\\mathcal{L}\\left\\{q\\right\\}(s)")
+    assert(!out.contains("u"), s"a consumed binder must not appear: $out")
+  }
+
   "a node with no rule yet" should "fall back to escaped source rather than to broken LaTeX" in
   {
-    val out = tex("derive(x^2, x)")
+    // A solver node, chosen because it is squarely outside the emitter's scope and carries a
+    // `^` to exercise the escaping. (Was `derive(x^2, x)` until step 3 gave derivatives a
+    // rule -- a fallback example has to be a node nothing has claimed yet.)
+    val out = tex("solve(x^2 = 4, x)")
     assert(out.startsWith("\\mathrm{"), s"fallback must be upright source text, got: $out")
     assert(!out.contains("^") || out.contains("\\textasciicircum"),
            s"a raw ^ in a fallback is a LaTeX error, got: $out")
@@ -241,6 +310,11 @@ class ToLatexTest extends AnyFlatSpec:
       for i <- out.indices if out(i) == '^' do
         assert(i + 1 < out.length && out(i + 1) == '{',
                s"raw ^ without braces for $src: $out")
+      // A `_` is legitimate when it opens a structural subscript -- `\lim_{…}`, `\int_{…}` --
+      // so the test is the same as the one above: braces must follow. Anything else is an
+      // escaping failure. (Tightened at step 3: until the binders landed, nothing emitted a
+      // subscript at all, and the rule could afford to forbid `_` outright.)
       for i <- out.indices if out(i) == '_' do
-        assert(i > 0 && out(i - 1) == '\\', s"raw _ for $src: $out")
+        assert((i > 0 && out(i - 1) == '\\') || (i + 1 < out.length && out(i + 1) == '{'),
+               s"raw _ for $src: $out")
   }
