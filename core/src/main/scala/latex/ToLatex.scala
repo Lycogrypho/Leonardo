@@ -119,7 +119,14 @@ object ToLatex:
 
     case Transformed(t) => (t.latex, Atomic)
 
-    case v: _Variable => (v.variable, Atomic)
+    // ── the named functions with notation of their own ──────────────────────────────
+    //
+    // These three are not `name(args)` at all, so they precede the generic NamedFunction arm.
+    // The operand is Atomic because `a + b!` would otherwise claim only the b.
+    case Factorial(e)  => (s"${at(e, Atomic)}!", Atomic)
+    case Binom(n, k)   => (s"\\binom{${at(n, Grouped)}}{${at(k, Grouped)}}", Atomic)
+
+    case v: _Variable => (greek(v.variable), Atomic)
 
     // An exact rational stays a FRACTION.  Showing 1/3 as 0.33333 would discard precisely
     // what the exact tier exists to preserve, and `display` is allowed to fall back to a
@@ -146,13 +153,57 @@ object ToLatex:
       val text = escape(v.toString)
       (text, if text.startsWith("-") then AtSum else Atomic)
 
-    // A named function: `\mathrm{name}` for now; step 4 maps the operators LaTeX knows
-    // (`\sin`, `\ln`, `\exp`, ...) onto their proper macros.
+    // Every other named function: LaTeX's own operator where one exists, upright otherwise.
     case f: NamedFunction =>
       val args = f.children.map(at(_, Grouped)).mkString(", ")
-      (s"\\mathrm{${escape(f.name)}}\\left($args\\right)", Atomic)
+      (s"${operator(f.name)}\\left($args\\right)", Atomic)
 
     case other => (fallback(other), Atomic)
+
+  /** The LaTeX operator for a function name, upright otherwise.
+   *
+   *  **Not cosmetic.**  `\sin` carries operator spacing that `\mathrm{sin}` does not, which is
+   *  how a reader tells a function from a product of three variables.  Three groups:
+   *
+   *   -  names LaTeX spells identically (`sin`, `ln`, `cosh`, …) — the macro is the name;
+   *   -  names where **the grammar and mathematics disagree**: this library says `asin`,
+   *      mathematics says `arcsin`, and LaTeX provides `\arcsin`.  Rendering `\mathrm{asin}`
+   *      would be faithful to the input and wrong as notation;
+   *   -  `Gamma`, which is the Greek letter itself.
+   *
+   *  Everything else stays `\mathrm{…}` **deliberately**: `sech` and the inverse hyperbolics
+   *  have no built-in macro and no single agreed spelling (`arsinh`? `arcsinh`? `sinh^{-1}`?),
+   *  so upright is correct and neutral while inventing a macro would not be.
+   */
+  private def operator(name: String): String = Operators.getOrElse(name, s"\\mathrm{${escape(name)}}")
+
+  private val Operators: Map[String, String] =
+    val identical = List("sin", "cos", "tan", "sec", "csc", "cot",
+                         "sinh", "cosh", "tanh", "coth", "exp", "ln", "log")
+    identical.map(n => n -> s"\\$n").toMap ++ Map(
+      "asin"  -> "\\arcsin", "acos" -> "\\arccos", "atan" -> "\\arctan",
+      "Gamma" -> "\\Gamma"
+    )
+
+  /** A variable's name as a Greek letter when it *is* one, unchanged otherwise.
+   *
+   *  **Whole-name match only.**  A prefix match would rename `alphabet` to `\alpha bet`, and
+   *  silently renaming a user's variable is worse than leaving it plain.  `omicron` is absent
+   *  because LaTeX has no macro for it — it is an ordinary `o`.
+   *
+   *  Note `pi` and `e` cannot reach here: the parser folds both to numbers at parse time, so
+   *  `\pi` is not producible from a parsed expression.  That is a property of the grammar,
+   *  not a gap in this table.
+   */
+  private def greek(name: String): String = Greek.getOrElse(name, name)
+
+  private val Greek: Map[String, String] =
+    val lower = List("alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+                     "iota", "kappa", "lambda", "mu", "nu", "xi", "rho", "sigma", "tau",
+                     "upsilon", "phi", "chi", "psi", "omega")
+    val upper = List("Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma", "Upsilon",
+                     "Phi", "Psi", "Omega")
+    (lower ++ upper).map(n => n -> s"\\$n").toMap
 
   /** Lays out `rows × cols` cells as a `pmatrix`, reading each by its row-major index.
    *

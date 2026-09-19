@@ -84,9 +84,9 @@ class ToLatexTest extends AnyFlatSpec:
 
   "a named function" should "render as an upright name over grouped arguments" in
   {
-    assert(tex("sin(x)")      == "\\mathrm{sin}\\left(x\\right)")
-    assert(tex("log(x, 2)")   == "\\mathrm{log}\\left(x, 2.0\\right)")
-    assert(tex("sin(a + b)")  == "\\mathrm{sin}\\left(a + b\\right)",
+    assert(tex("sin(x)")      == "\\sin\\left(x\\right)")
+    assert(tex("log(x, 2)")   == "\\log\\left(x, 2.0\\right)")
+    assert(tex("sin(a + b)")  == "\\sin\\left(a + b\\right)",
            "a function's own delimiters are a Grouped slot")
   }
 
@@ -190,13 +190,13 @@ class ToLatexTest extends AnyFlatSpec:
   "a derivative" should "render as the operator applied to a bracketed operand" in
   {
     assert(tex("derive(x^2, x)")      == "\\frac{d}{dx}\\left(x^{2.0}\\right)")
-    assert(tex("derive(sin(y), y)")   == "\\frac{d}{dy}\\left(\\mathrm{sin}\\left(y\\right)\\right)")
+    assert(tex("derive(sin(y), y)")   == "\\frac{d}{dy}\\left(\\sin\\left(y\\right)\\right)")
   }
 
   "a limit" should "put the approach under the operator, and its direction on the point" in
   {
     assert(tex("limit(sin(x)/x, x, 0)")    ==
-           "\\lim_{x \\to 0.0} \\frac{\\mathrm{sin}\\left(x\\right)}{x}")
+           "\\lim_{x \\to 0.0} \\frac{\\sin\\left(x\\right)}{x}")
     assert(tex("limit(1/x, x, 0, +)")      == "\\lim_{x \\to 0.0^{+}} \\frac{1.0}{x}")
     assert(tex("limit(1/x, x, 0, -)")      == "\\lim_{x \\to 0.0^{-}} \\frac{1.0}{x}")
   }
@@ -231,6 +231,68 @@ class ToLatexTest extends AnyFlatSpec:
     val out = tex("laplace(q, u, s)")
     assert(out == "\\mathcal{L}\\left\\{q\\right\\}(s)")
     assert(!out.contains("u"), s"a consumed binder must not appear: $out")
+  }
+
+  // ── step 4: Greek and the named functions ─────────────────────────────────────
+
+  "a function LaTeX knows" should "use its operator macro, not an upright name" in
+  {
+    // \sin is not cosmetic over \mathrm{sin}: the macro carries the operator spacing, and a
+    // reader sees the difference between a function and a product of three variables.
+    assert(tex("sin(x)")  == "\\sin\\left(x\\right)")
+    assert(tex("ln(x)")   == "\\ln\\left(x\\right)")
+    assert(tex("exp(x)")  == "\\exp\\left(x\\right)")
+    assert(tex("cosh(x)") == "\\cosh\\left(x\\right)")
+    assert(tex("sec(x)")  == "\\sec\\left(x\\right)")
+  }
+
+  it should "use the conventional name where LaTeX and this grammar disagree" in
+  {
+    // The grammar says asin; mathematics says arcsin, and LaTeX provides \arcsin. Rendering
+    // \mathrm{asin} would be neither.
+    assert(tex("asin(x)") == "\\arcsin\\left(x\\right)")
+    assert(tex("acos(x)") == "\\arccos\\left(x\\right)")
+    assert(tex("atan(x)") == "\\arctan\\left(x\\right)")
+  }
+
+  it should "stay upright where LaTeX has no macro, rather than invent one" in
+  {
+    // sech and the inverse hyperbolics have no built-in macro and no single agreed spelling
+    // (arsinh? arcsinh? sinh^-1?). Upright is correct and neutral; inventing would not be.
+    assert(tex("sech(x)")  == "\\mathrm{sech}\\left(x\\right)")
+    assert(tex("asinh(x)") == "\\mathrm{asinh}\\left(x\\right)")
+    assert(tex("fresnelS(x)") == "\\mathrm{fresnelS}\\left(x\\right)")
+  }
+
+  "the functions with their own notation" should "use it" in
+  {
+    assert(tex("fact(n)")     == "n!")
+    assert(tex("fact(n + 1)") == "\\left(n + 1.0\\right)!", "a compound operand keeps its group")
+    assert(tex("binom(n, k)") == "\\binom{n}{k}")
+    assert(tex("Gamma(z)")    == "\\Gamma\\left(z\\right)")
+  }
+
+  "a variable named after a Greek letter" should "render as that letter" in
+  {
+    assert(tex("alpha + beta") == "\\alpha + \\beta")
+    assert(tex("theta")        == "\\theta")
+    assert(tex("Omega")        == "\\Omega")
+    assert(tex("lambda*x")     == "\\lambda \\cdot x")
+  }
+
+  it should "leave an ordinary name alone, including one that merely starts with a letter name" in
+  {
+    // `alphabet` is not alpha, and a prefix match would silently rename a user's variable.
+    assert(tex("alphabet") == "alphabet")
+    assert(tex("x")        == "x")
+    assert(tex("pix")      == "pix")
+  }
+
+  "the constant pi" should "be unrecoverable, and that is a parser fact not a renderer gap" in
+  {
+    // `pi` is folded to a Double at PARSE time -- it never reaches the renderer as a symbol,
+    // so \pi cannot be produced. Pinned so the absence reads as known rather than as a bug.
+    assert(tex("pi").startsWith("3.14"), s"expected a folded number, got: ${tex("pi")}")
   }
 
   "a node with no rule yet" should "fall back to escaped source rather than to broken LaTeX" in
