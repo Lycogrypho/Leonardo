@@ -238,6 +238,11 @@ same numbers — `Session.samplePoints` returns the points and `samples` prints 
 the printed table is rounded to the session precision while the data is not, which is why a
 plot is never built from this text.
 
+The count defaults to 200 and is capped at 100 000 — generous for any figure, and refused
+rather than attempted beyond that, because the whole grid is built before anything is drawn.
+The same bounds apply to the browser's `plot`, `points`, `bode` and `nyquist`, which read
+their arguments through the same code.
+
 ## In the browser
 
 The [browser REPL](https://lycogrypho.github.io/Leonardo/app/) runs this same `Session`

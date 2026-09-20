@@ -796,7 +796,15 @@ final class Session:
             Left(s"$command: lo must be strictly less than hi")
           case (Some(lo), Some(hi)) =>
             val n = Option(nStr).flatMap(_.toIntOption).getOrElse(Session.DefaultSampleCount)
-            parsed(exprStr.trim) { e =>
+            // The grid is materialised before anything is drawn, so an absurd count is an
+            // OutOfMemoryError -- which the REPL deliberately does not catch, so a typo would
+            // kill the read loop or the browser tab instead of reporting. Refusing here is the
+            // `MaxTabulateTerms` rule: computable in principle is not should be attempted.
+            // A count below one samples nothing, and saying so beats "(no finite values)" --
+            // a true statement about the wrong thing.
+            if n < 1 || n > Session.MaxSampleCount then
+              Left(s"$command: <n> must be between 1 and ${Session.MaxSampleCount}, got: $n")
+            else parsed(exprStr.trim) { e =>
               Right(Session.SweepArgs(substitute(e, definitions), exprStr.trim, varStr, lo, hi, n))
             }
           case _ => Left(s"$command: <lo> and <hi> must be numbers")
@@ -914,6 +922,17 @@ object Session:
    *  from the table beside it would be quietly confusing.
    */
   val DefaultSampleCount: Int = 200
+
+  /** The most points any of the sweeping commands will sample.
+   *
+   *  **Generous for a figure and far below what hurts**: no screen resolves 100 000 points,
+   *  while the grid is materialised in full before anything is drawn — so an uncapped count
+   *  is an `OutOfMemoryError`, and that is one of the two throwables the REPL deliberately
+   *  lets propagate.  A mistyped digit would therefore end the session rather than be
+   *  reported (issue F_0022).  The `MaxTabulateTerms` precedent: computable in principle is
+   *  not should be attempted.
+   */
+  val MaxSampleCount: Int = 100000
 
   /** A completed sampling: the points, and the text they came from.
    *

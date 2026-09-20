@@ -31,12 +31,13 @@ object PlotSpec:
    *  @return a Plotly `{data, layout}` document
    */
   def line(points: Seq[(Double, Double)], label: String, xLabel: String): String =
+    val drawn = finitePairs(points)
     val trace = obj(
       "type" -> str("scatter"),
       "mode" -> str("lines"),
       "name" -> str(label),
-      "x"    -> arr(points.map(_._1)),
-      "y"    -> arr(points.map(_._2))
+      "x"    -> arr(drawn.map(_._1)),
+      "y"    -> arr(drawn.map(_._2))
     )
     document(trace, title = label, xTitle = xLabel, yTitle = label, equalAxes = false)
 
@@ -51,13 +52,14 @@ object PlotSpec:
    *  @return a Plotly `{data, layout}` document carrying `yaxis.scaleanchor`
    */
   def coordinates(points: Seq[(Double, Double)], label: String): String =
+    val drawn = finitePairs(points)
     val trace = obj(
       "type"   -> str("scatter"),
       "mode"   -> str("markers"),
       "name"   -> str(label),
       "marker" -> obj("size" -> "9"),
-      "x"      -> arr(points.map(_._1)),
-      "y"      -> arr(points.map(_._2))
+      "x"      -> arr(drawn.map(_._1)),
+      "y"      -> arr(drawn.map(_._2))
     )
     document(trace, title = label, xTitle = "Re", yTitle = "Im", equalAxes = true)
 
@@ -80,14 +82,15 @@ object PlotSpec:
    *  @return a Plotly `{data, layout}` document with two stacked subplots
    */
   def bode(points: Seq[(Double, Double, Double)], label: String): String =
-    val omega = arr(points.map(_._1))
+    val drawn = finiteTriples(points)
+    val omega = arr(drawn.map(_._1))
     val gain = obj(
       "type" -> str("scatter"), "mode" -> str("lines"), "name" -> str("gain"),
-      "x"    -> omega,          "y"    -> arr(points.map(_._2))
+      "x"    -> omega,          "y"    -> arr(drawn.map(_._2))
     )
     val phase = obj(
       "type" -> str("scatter"), "mode"  -> str("lines"), "name" -> str("phase"),
-      "x"    -> omega,          "y"     -> arr(points.map(_._3)),
+      "x"    -> omega,          "y"     -> arr(drawn.map(_._3)),
       "xaxis" -> str("x2"),     "yaxis" -> str("y2")
     )
     val layout = obj(
@@ -127,15 +130,39 @@ object PlotSpec:
     )
     obj("data" -> s"[$trace]", "layout" -> layout)
 
-  /** Renders a numeric array, dropping any non-finite value.
+  /** Whether a coordinate can be written to JSON at all. */
+  private def finite(d: Double): Boolean = !d.isNaN && !d.isInfinite
+
+  /** Keeps the points whose coordinates are *all* finite.
    *
-   *  `sample` already drops non-finite results, so this is belt and braces — but it is cheap
-   *  insurance against a failure that is near-impossible to diagnose from the page: **NaN and
-   *  Infinity are not JSON**, so one of them anywhere in the data makes the whole document
-   *  unparseable and the figure simply never appears, with nothing saying why.
+   *  **The filter belongs to the point, never to the axis** (issue F_0022), and that is a
+   *  correctness matter rather than tidiness: filtering each array as it is rendered leaves
+   *  `x` longer than `y`, so every later point pairs with the wrong partner and the figure is
+   *  **sheared** — a confidently wrong picture, which is the failure the aspect lock exists to
+   *  prevent in the first place.  For a Bode diagram it is worse still: the two panels are
+   *  pinned to one frequency axis, so dropping a sample from one and not the other registers a
+   *  gain against another frequency's phase.
+   *
+   *  It is reached at all because **NaN and Infinity are not JSON**: one of either anywhere in
+   *  the data makes the whole document unparseable, so the figure simply never appears with
+   *  nothing saying why.  `sample` and the sweeps already drop non-finite points upstream, so
+   *  this is belt and braces — but a guard that is safe only because a *neighbouring* tier
+   *  currently behaves is the issue-1.4 shape, and this one costs one pass.
    */
-  private def arr(values: Seq[Double]): String =
-    values.filter(d => !d.isNaN && !d.isInfinite).mkString("[", ",", "]")
+  private def finitePairs(points: Seq[(Double, Double)]): Seq[(Double, Double)] =
+    points.filter((x, y) => finite(x) && finite(y))
+
+  /** [[finitePairs]] for a swept response, where a sample is three numbers. */
+  private def finiteTriples(points: Seq[(Double, Double, Double)]): Seq[(Double, Double, Double)] =
+    points.filter((w, gain, phase) => finite(w) && finite(gain) && finite(phase))
+
+  /** Renders a numeric array.
+   *
+   *  It does **no** filtering of its own: every caller has already dropped whole points
+   *  through [[finitePairs]] or [[finiteTriples]], and a second, weaker filter here would only
+   *  be a way for the two to disagree about which points a figure contains.
+   */
+  private def arr(values: Seq[Double]): String = values.mkString("[", ",", "]")
 
   /** Renders an object from already-rendered values. */
   private def obj(fields: (String, String)*): String =

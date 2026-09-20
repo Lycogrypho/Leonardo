@@ -1080,6 +1080,36 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(out.linesIterator.size == 3, s"expected 3 sample rows, got: $out")
   }
 
+  "samples with an absurd count" should "refuse rather than allocate it (F_0022)" in
+  {
+    // A two-billion-point grid is an OutOfMemoryError, and the REPL deliberately does not
+    // catch those -- so a typo would kill the loop (or the browser tab) rather than report.
+    // The MaxTabulateTerms rule: computable in principle is not should be attempted.
+    val s   = session
+    val out = s.execute("samples x x 0 1 2000000000")
+    assert(out.startsWith("samples:"), s"expected a refusal, got: $out")
+    assert(out.contains(Session.MaxSampleCount.toString), s"the message must name the cap: $out")
+    assert(s.execute("2 * 3") == "6.0", "the session survives")
+  }
+
+  it should "refuse a count below one, which samples nothing" in
+  {
+    // Left alone this reports "(no finite values in range)" -- a true statement about the
+    // wrong thing, and a worse diagnosis than naming the argument that is out of range.
+    val out = session.execute("samples x x 0 1 0")
+    assert(out.startsWith("samples:"), s"expected a refusal, got: $out")
+  }
+
+  it should "name the command that was actually typed" in
+  {
+    // sweepArgs is shared, so the cap reaches the sweeps too -- and they are browser-only, so
+    // they are reached through their data entry points rather than through `execute`, where
+    // `bode` is just a free variable.
+    val s = session
+    assert(s.bodePoints("1/s s 0.1 10 2000000000").left.exists(_.startsWith("bode:")))
+    assert(s.nyquistPoints("1/s s 0.1 10 2000000000").left.exists(_.startsWith("nyquist:")))
+  }
+
   // --- F_0003 phase 3: samplePoints, the data behind the `samples` command ---
   // The browser front end plots these points; the terminal prints them. Both must come from
   // ONE sampling, so these cases pin that the data agrees with the printed table, that it is

@@ -113,6 +113,44 @@ class PlotSpecTest extends AnyFlatSpec:
     assert(trace.y.asInstanceOf[js.Array[Double]].toVector == Vector(0.0))
   }
 
+  it should "take its whole POINT with it, or the figure is sheared (F_0022)" in
+  {
+    // Filtering each axis separately leaves x longer than y, so every later point pairs with
+    // the wrong partner: not a missing point but a WRONG picture, which is the failure the
+    // aspect lock exists to prevent in the first place. Asserting on y alone -- as this suite
+    // did -- passes while that bug is present, which is how it survived.
+    val doc   = parsed(PlotSpec.line(Vector((0.0, 0.0), (1.0, Double.NaN), (2.0, 4.0)), "f", "x"))
+    val trace = doc.data.asInstanceOf[js.Array[js.Dynamic]](0)
+    val xs    = trace.x.asInstanceOf[js.Array[Double]].toVector
+    val ys    = trace.y.asInstanceOf[js.Array[Double]].toVector
+    assert(xs == Vector(0.0, 2.0), s"the x of a dropped point must go too, got: $xs")
+    assert(ys == Vector(0.0, 4.0), s"unexpected values: $ys")
+  }
+
+  it should "drop the point on either coordinate, not only on y" in
+  {
+    val doc   = parsed(PlotSpec.coordinates(Vector((Double.NaN, 1.0), (2.0, 3.0)), "v"))
+    val trace = doc.data.asInstanceOf[js.Array[js.Dynamic]](0)
+    assert(trace.x.asInstanceOf[js.Array[Double]].toVector == Vector(2.0))
+    assert(trace.y.asInstanceOf[js.Array[Double]].toVector == Vector(3.0))
+  }
+
+  it should "drop a Bode sample from BOTH panels, which share one frequency axis" in
+  {
+    // The panels are pinned to the same x-axis, so dropping a sample from one and not the
+    // other would register a gain against another frequency's phase -- the diagram's whole
+    // reason for linking the axes, defeated.
+    val doc    = parsed(PlotSpec.bode(
+      Vector((0.1, 20.0, -90.0), (1.0, Double.NaN, -135.0), (10.0, -20.0, -180.0)), "g"))
+    val traces = doc.data.asInstanceOf[js.Array[js.Dynamic]]
+    val gainX  = traces(0).x.asInstanceOf[js.Array[Double]].toVector
+    val phaseX = traces(1).x.asInstanceOf[js.Array[Double]].toVector
+    assert(gainX == Vector(0.1, 10.0), s"the bad sample must leave the grid: $gainX")
+    assert(phaseX == gainX, "both panels must read the same grid after filtering")
+    assert(traces(1).y.asInstanceOf[js.Array[Double]].toVector == Vector(-90.0, -180.0),
+           "the phase of a dropped sample goes with it, however finite it was")
+  }
+
   "an empty point set" should "still produce a readable document" in
   {
     val doc   = parsed(PlotSpec.line(Vector.empty, "f", "x"))

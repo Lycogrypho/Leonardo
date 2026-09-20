@@ -29,7 +29,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `simplify <expr>` | Structural simplification |
 | `expand <expr>` | Distribute products over sums |
 | `eval <expr>` | Evaluate substituting current bindings |
-| `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts) |
+| `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts, max 100 000) |
 | `truth <expr>` | Truth table over the expression's free variables |
 | `truth3 <expr>` | Three-valued (Kleene) truth table: false / unknown / true |
 | `logic symmetric on\|off` | Spell truth values as -1 / 0 / 1 (default: off) |
