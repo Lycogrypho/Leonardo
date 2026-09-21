@@ -294,7 +294,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     name             := "Leonardo",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
 
-    libraryDependencies += "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.4.0",
+    libraryDependencies += "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.5.0",
     libraryDependencies += "org.typelevel"          %%% "spire"                    % "0.18.0",
     libraryDependencies += "org.scalatest"          %%% "scalatest"                % "3.2.19" % Test
   )
