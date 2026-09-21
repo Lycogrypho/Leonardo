@@ -296,7 +296,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
 
     libraryDependencies += "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.4.0",
     libraryDependencies += "org.typelevel"          %%% "spire"                    % "0.18.0",
-    libraryDependencies += "org.scalatest"          %%% "scalatest"                % "3.2.19" % Test
+    libraryDependencies += "org.scalatest"          %%% "scalatest"                % "3.2.20" % Test
   )
   .jvmSettings(
     // Platform sources live beside the shared tree rather than under it, because CrossType.Pure
@@ -417,7 +417,7 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     name             := "leonardo-repl",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
 
-    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % Test
+    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.20" % Test
   )
   .jvmSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "main" / "scala",
@@ -484,7 +484,7 @@ lazy val web = (project in file("web"))
     // %%% and not %%: this project is Scala.js only, and the JVM `scalatest_3` artifact landing
     // on a Scala.js classpath beside `scalatest_sjs1_3` is a LINKER error rather than a
     // resolution one, so it fails late and confusingly (see the ThisBuild note below).
-    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % Test,
+    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.20" % Test,
 
     // Publishes nothing, so there is no baseline to compare against (see root).
     mimaPreviousArtifacts := Set.empty,
@@ -514,7 +514,7 @@ lazy val tools = (project in file("tools"))
     name           := "leonardo-tools",
     publish / skip := true,
 
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
 
     // Publishes nothing, so there is no baseline to compare against (see root).
     mimaPreviousArtifacts := Set.empty,
