@@ -496,6 +496,43 @@ lazy val web = (project in file("web"))
     scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.NoModule) }
   )
 
+// ── The repository's own guards, in the repository's own language (issue F_0027) ────────
+// The standing rule: **no program in another language lives in this repository unless it
+// strictly must**.  Four Python checks did, and the alternative to porting them was a
+// `scala-cli` toolchain CI does not have — a third-party setup action, or a coursier
+// bootstrap.  The JDK and sbt are installed in every job already, so an ordinary project
+// costs no new tooling and buys what a loose script cannot have: the checks are compiled,
+// and they are TESTED.  `fix-mojibake` in particular had none, and it is the subtlest tool
+// here.  `docs` is the precedent for a project that publishes nothing and exists to run one.
+//
+// Depends on nothing: these read files, not expressions.  NOT aggregated by root, following
+// `web` rather than `docs` — its tests are repository hygiene, not library behaviour, and
+// folding them into `sbt test` would quietly change what that number means.  ci.yml names
+// `tools/test` explicitly, as it already does for `web/test`.
+lazy val tools = (project in file("tools"))
+  .settings(
+    name           := "leonardo-tools",
+    publish / skip := true,
+
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+
+    // Publishes nothing, so there is no baseline to compare against (see root).
+    mimaPreviousArtifacts := Set.empty,
+    mimaFailOnNoPrevious  := false,
+
+    // FORKED, and that is a correctness matter rather than a preference: a guard's answer IS
+    // its exit code, and `sys.exit` in sbt's own JVM terminates the SESSION -- so the first
+    // check of the `checks` alias would end the run and the other three would silently never
+    // happen, reported as success. Forked, the exit code is a real one and sbt fails the task
+    // on anything non-zero.
+    Compile / run / fork := true,
+
+    // A forked run starts in the PROJECT's directory, so `core/src` would resolve under
+    // `tools/`. Every guard is given paths relative to the repository root, which is also
+    // where ci.yml and a contributor stand when they run them.
+    Compile / run / baseDirectory := (ThisBuild / baseDirectory).value
+  )
+
 // ScalaTest is declared PER PROJECT rather than on ThisBuild since the cross-build (F_0003).
 // A `ThisBuild / libraryDependencies += ... %% "scalatest"` reaches core.js too, and the JVM
 // artifact `scalatest_3` would land on the Scala.js classpath beside `scalatest_sjs1_3` --
@@ -517,3 +554,12 @@ addCommandAlias("site", ";puml;docs/mdoc;unidoc;injectApiStyles")
 // The gcd-policy sweep of issue 4.M. Test-scoped and on demand: it takes minutes, so it
 // must not run under `sbt test` — only its cross-policy equality check does, in RationalTest.
 addCommandAlias("bench", "core/Test/runMain it.grypho.scala.leonardo.core.RationalBenchmark")
+// Every repository guard, in ONE sbt boot (issue F_0027): four separate `sbt` invocations
+// would be four JVM starts, which is the only cost the Python originals did not have. A
+// contributor runs exactly what ci.yml runs, which is the point of an alias over a list of
+// commands copied into a workflow.
+addCommandAlias("checks",
+  ";tools/runMain it.grypho.scala.leonardo.tools.mojibake --check core/src repl/src web/src tools/src docs" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.charset core/src repl/src web/src tools/src docs" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.actionPins" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.scalaVersion")
