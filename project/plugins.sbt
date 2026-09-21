@@ -22,7 +22,7 @@ addSbtPlugin("com.github.sbt"     % "sbt-unidoc"       % "0.6.1")
 // Check https://mvnrepository.com/artifact/com.typesafe/sbt-mima-plugin for the latest.
 addSbtPlugin("com.typesafe"       % "sbt-mima-plugin"  % "1.2.1")
 // Check https://mvnrepository.com/artifact/org.scalameta/sbt-mdoc for the latest version.
-addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.6.1")
+addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.6.5")
 
 // Scala.js cross-build (issue F_0003 phase 1). Two plugins because they do different jobs:
 // sbt-scalajs compiles Scala to JavaScript, sbt-scalajs-crossproject supplies the
