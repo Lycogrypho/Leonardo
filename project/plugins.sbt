@@ -1,5 +1,5 @@
 addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.1")
-addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.1.0")
+addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.1.1")
 // Publishing to Maven Central (issue 5.2 phase 2). One plugin rather than four: it bundles
 // sbt-dynver, sbt-pgp, sbt-sonatype and sbt-git, and reads its whole configuration from four
 // environment variables -- so no credential is ever written into this repository.
