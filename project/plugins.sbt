@@ -20,7 +20,7 @@ addSbtPlugin("com.github.sbt"     % "sbt-unidoc"       % "0.6.1")
 // until 3.7.1 published there was no baseline to check it against, so the promise was
 // unverifiable. MiMa makes it enforced rather than declared.
 // Check https://mvnrepository.com/artifact/com.typesafe/sbt-mima-plugin for the latest.
-addSbtPlugin("com.typesafe"       % "sbt-mima-plugin"  % "1.2.0")
+addSbtPlugin("com.typesafe"       % "sbt-mima-plugin"  % "1.2.1")
 // Check https://mvnrepository.com/artifact/org.scalameta/sbt-mdoc for the latest version.
 addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.6.1")
 
