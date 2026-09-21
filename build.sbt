@@ -426,7 +426,7 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     // JLine is confined to the JVM side, which is the point of the split: it is the one
     // dependency a browser cannot have, and the module boundary that made the 5.2 artifact
     // split worthwhile is the same one that makes this work.
-    libraryDependencies += "org.jline" % "jline" % "3.30.15",
+    libraryDependencies += "org.jline" % "jline" % "3.30.17",
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline),
