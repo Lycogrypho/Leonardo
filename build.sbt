@@ -4,7 +4,7 @@
 // intentional break needs it, and that error message does not point at a missing import.
 import com.typesafe.tools.mima.core.{MissingClassProblem, Problem, ProblemFilters}
 
-ThisBuild / scalaVersion := "3.3.6"
+ThisBuild / scalaVersion := "3.3.8"
 
 // The release tags in this repository are bare (`3.6.3`), not `v`-prefixed. sbt-dynver
 // defaults to matching only `v*`, so without this it silently ignored every bare tag and
@@ -219,7 +219,7 @@ lazy val root = (project in file("."))
     // ── Scaladoc 3 static site ────────────────────────────────────────────────
     // After `sbt docs/mdoc`, the verified markdown in target/mdoc/ is used as the site root:
     // Scaladoc 3 renders those pages alongside the API reference. Run `sbt site` to produce
-    // the full site in target/scala-3.3.6/api/.
+    // the full site in target/scala-3.3.8/api/.
     //
     // These options hang off UNIDOC, not `Compile / doc`, and the distinction is deliberate:
     // `Compile / doc` still produces each module's own plain API, which is what `packageDoc`
@@ -237,7 +237,7 @@ lazy val root = (project in file("."))
       "-project-logo",    (baseDirectory.value / "docs" / "src" / "Banner.svg").getAbsolutePath
     ),
 
-    // unidoc defaults to target/scala-3.3.6/unidoc. Redirect it to the `api` directory the
+    // unidoc defaults to target/scala-3.3.8/unidoc. Redirect it to the `api` directory the
     // Pages workflow copies and `injectApiStyles` patches, so the split changes no path
     // outside this file.
     ScalaUnidoc / unidoc / target := target.value / s"scala-${scalaVersion.value}" / "api",
