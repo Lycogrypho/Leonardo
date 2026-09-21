@@ -1352,7 +1352,9 @@ Key build file sections:
 | `lazy val core` | The library — everything but `cli`.  Publishes as `it.grypho:leonardo`.  Depends on `scala-parser-combinators` 2.4.0 and `spire` 0.18.0 |
 | `lazy val replModule` | The REPL — the `cli` package and `Main.scala`.  Publishes as `it.grypho:leonardo-repl`.  The only module that depends on `jline` |
 | `lazy val docs` | Runs mdoc; `publish / skip := true`.  Separate because `MdocPlugin` adds `org.scalameta:mdoc` to the enabled project's `libraryDependencies`, from where it reaches the published POM |
+| `lazy val tools` | The repository's own guards (F_0027); `publish / skip := true`, not aggregated, and **forked** — a guard's answer is its exit code, and `sys.exit` in sbt's own JVM would end the session mid-`checks` |
 | `lazy val root` | Pure aggregate over the three; publishes nothing |
+| `sbt checks` | Every repository guard in one sbt boot; what `ci.yml` runs |
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
 | `sbt unidoc` | One combined API across both modules → `target/scala-3.3.6/api`; this is what the site publishes, and what keeps `cli` in the reference |
@@ -1397,13 +1399,34 @@ algebra system inside a page whose purpose is the first one would be absurd.
 
 ### One-time repairs need standing guards
 
-Three CI checks exist because a one-time sweep of a decaying condition does not stay swept:
+Four CI checks exist because a one-time sweep of a decaying condition does not stay swept.
+They live in the `tools` project and run as `sbt checks` — one sbt boot for all four, and the
+same command CI runs:
 
 | Guard | Protects |
 |---|---|
-| `fix-mojibake.py --check` | the UTF-8 sources against reintroduced cp1252 mojibake |
-| `check-charset.py` | against bad repairs landing in an unrelated script |
-| `check-action-pins.py` | every workflow `uses:` naming a commit SHA, not a tag or branch |
+| `FixMojibake --check` | the UTF-8 sources against reintroduced cp1252 mojibake |
+| `CheckCharset` | against bad repairs landing in an unrelated script |
+| `CheckActionPins` | every workflow `uses:` naming a commit SHA, not a tag or branch |
+| `CheckScalaVersion` | no file under `.github/` spelling the Scala version |
+
+**A program committed to this repository is written in Scala unless it strictly cannot be**
+(the rule, set 2026-09-20).  A temporary script in any language is fine and belongs in the
+gitignored `.claudetools`.  These four were Python; porting them cost no new toolchain, since
+the JDK and sbt are installed in every CI job, and it bought what a loose script could not
+have: they are compiled, and they are tested — `FixMojibake`, the subtlest of them, previously
+had every invariant asserted only by prose in its own docstring.  The one exception is
+`.github/scripts/check-web-app.js`, reduced to proving that the *linked* bundle starts, which
+is the single property a Scala suite cannot reach.
+
+The fourth is the one with evidence rather than foresight behind it.  The build output
+directory carries the Scala version, so a path such as `web/target/scala-3.3.6/…` spells it —
+and Scala Steward's bump branch must then edit that file, which for a workflow means the push
+is refused for want of the `workflow` PAT scope and the whole run fails.  `pages.yml` removed
+its literal and wrote the incident above the glob that replaced it; `ci.yml` kept the same
+literal regardless.  The condition had already decayed while the explanation sat three files
+away, which is precisely what a comment cannot prevent and a check can.  Use a glob
+(`web/target/scala-*/…`) or a directory scan; a build produces exactly one such directory.
 
 The pattern generalises past these three.  When a fix consists of bringing many sites into
 line — an encoding, a pinning convention, an import rule — the fix itself is the easy half;

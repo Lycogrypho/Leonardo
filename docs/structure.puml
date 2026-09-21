@@ -1527,6 +1527,53 @@ package "parser" {
 "Parser" ..> "FresnelS / FresnelC" : fresnelS / fresnelC
 
 ' ===================================================
+' PACKAGE: tools - the repository's own guards (F_0027)
+' ===================================================
+' ── Not part of the library and not published: the `tools` sbt project exists so the CI
+' guards are Scala like everything else committed here, compiled and tested rather than
+' merely present.  Shown because a reader looking for "where do the checks live" should
+' find them on the map.
+package "tools" <<Rectangle>> {
+    class "FixMojibake" <<object>> [[developer.html]] {
+        + repair(text): String
+        + scan(roots): Vector
+        __ __
+        a cp1252 round trip INVERTED
+        CharToByte built with REPORT, so the five
+        slots cp1252 leaves undefined are found
+        and passed through (⁻¹ depends on 0x81)
+        Lossy: damage that lost a byte outright
+        fixpoint: some text was damaged twice
+        plausible(): the repair is NOT injective
+    }
+    class "CheckCharset" <<object>> [[developer.html]] {
+        + Forbidden: Vector
+        + offences(roots): Vector
+        __ __
+        a BLACKLIST: enumerating what mathematics
+        may look like is a losing game
+    }
+    class "CheckActionPins" <<object>> [[developer.html]] {
+        + offences(roots): (Vector, Int)
+        every `uses:` must name a commit SHA
+    }
+    class "CheckScalaVersion" <<object>> [[developer.html]] {
+        + offences(roots): Vector
+        no .github file may spell scala-<version>
+    }
+    class "Files" <<utility>> [[developer.html]] {
+        walk / read / write / report
+        one definition of which files a guard covers
+    }
+
+    "FixMojibake"       ..> "Files"
+    "CheckCharset"      ..> "Files"
+    "CheckActionPins"   ..> "Files"
+    "CheckScalaVersion" ..> "Files"
+    "FixMojibake"       ..> "CheckCharset" : reads Forbidden,\nso the two cannot drift
+}
+
+' ===================================================
 ' PACKAGE: latex - AST -> LaTeX source (F_0016)
 ' ===================================================
 ' ── Display only: nothing ever reads this back, which is what lets it differ from `toString`

@@ -43,8 +43,13 @@ jobs:
 
       - name: Test
         # Aggregated from the root project, which since the Scala.js cross-build (F_0003)
-        # covers THREE suites: 1781 library on the JVM, the same 1781 on Node, and 284 REPL.
+        # covers FOUR suites -- the library on the JVM and the same suites on Node, then the
+        # REPL on each (the Node REPL is shorter: the JLine and file-IO cases are JVM-only).
         # `core.js` is aggregated precisely so that a bare `sbt test` cannot forget it.
+        #
+        # The counts live in CLAUDE.md rather than here: a figure in a comment is wrong from
+        # the next test onwards, and this one was (it said THREE suites long after phase 2
+        # added the fourth).
         #
         # Node is required for the Scala.js run and the runner image already provides it, so
         # there is no setup step -- if that ever changes, this is the job that goes red first.
@@ -66,37 +71,51 @@ jobs:
         # The sizes are PRINTED, not asserted: a threshold would be either so loose it never
         # fires or so tight it fails on an unrelated Scala.js release. A figure in the log lets
         # a regression be seen by comparing two runs, which is what anyone would actually do.
+        #
+        # The bundle path is a GLOB and must stay one (issue F_0023): a hardcoded
+        # scala-<version> makes Scala Steward's bump branch edit this workflow, and pushing a
+        # workflow change is refused for a PAT without the `workflow` scope -- failing the
+        # whole run. pages.yml records that incident; this file kept the literal anyway,
+        # which is why check-scala-version.py now enforces the rule instead of a comment.
+        # A fresh checkout links exactly one scala-* directory, and `ls` fails loudly if none.
         run: |
           sbt web/test web/fullLinkJS
           node .github/scripts/check-web-app.js
-          bundle=web/target/scala-3.3.6/leonardo-web-opt/main.js
-          echo "leonardo: $(stat -c%s $bundle) raw / $(gzip -c $bundle | wc -c) gzipped"
+          bundle=$(ls web/target/scala-*/leonardo-web-opt/main.js)
+          echo "leonardo: $(stat -c%s "$bundle") raw / $(gzip -c "$bundle" | wc -c) gzipped"
           echo "plotly:   $(stat -c%s web/vendor/plotly.min.js) raw / $(gzip -c web/vendor/plotly.min.js | wc -c) gzipped"
+          echo "mathlive: $(stat -c%s web/vendor/mathlive/mathlive-ssr.min.js) raw / $(gzip -c web/vendor/mathlive/mathlive-ssr.min.js | wc -c) gzipped"
 
-      - name: Encoding hygiene
-        # Guards the issue-2.8 repair. 27 test files had accumulated UTF-8-read-as-cp1252
-        # mojibake, largely by copy-paste from an already-damaged neighbour, so a one-time
-        # sweep would decay the same way. Neither script needs anything beyond the python3
-        # the runner already has.
+      - name: Repository guards
+        # Four standing checks, each guarding a one-time repair of a condition that decays
+        # silently -- which is the whole argument for a check rather than a note:
         #
-        # Two checks, because the repair itself can err: reversing the round-trip on text
-        # that was never damaged occasionally yields valid UTF-8 by coincidence (`×–` becomes
-        # Hebrew ZAYIN). check-charset catches that class by flagging any script this
-        # codebase cannot legitimately contain.
-        run: |
-          python3 .github/scripts/fix-mojibake.py --check core/src repl/src web/src docs
-          python3 .github/scripts/check-charset.py core/src repl/src web/src docs
+        #   mojibake     issue 2.8. 27 test files had accumulated UTF-8-read-as-cp1252
+        #                damage, largely by copy-paste from an already-damaged neighbour.
+        #   charset      the safety net for that repair, because the repair itself can err:
+        #                reversing the round trip on text that was never damaged occasionally
+        #                yields valid UTF-8 by coincidence (`×–` becomes a Hebrew letter), so
+        #                a result in a script this codebase never uses is the evidence.
+        #   actionPins   issue 2.10. Every `uses:` must name a commit SHA: a tag is mutable
+        #                and `ruby/setup-ruby@v1` is a *branch*, so an unpinned action lets
+        #                its owner change what runs in release.yml, which holds the GPG key,
+        #                and scala-steward.yml, which holds a repository-writing PAT.
+        #   scalaVersion issue F_0023, and the one with the best evidence of the four:
+        #                pages.yml removed its `scala-<version>` literal AND wrote the
+        #                incident above the glob that replaced it, and ci.yml carried the
+        #                same literal regardless.
+        #
+        # They are Scala since F_0027, run through the `checks` alias -- ONE sbt boot for all
+        # four, and the same command a contributor runs locally. No toolchain beyond the JDK
+        # and sbt this job already installs.
+        run: sbt checks
 
-      - name: Action pinning
-        # Guards the issue-2.10 sweep the way "Encoding hygiene" guards 2.8's: both were
-        # one-time repairs of a condition that decays silently. Every `uses:` must name a
-        # commit SHA, because a tag is mutable and `ruby/setup-ruby@v1` is a *branch* -- so
-        # an unpinned action lets its owner change what runs in release.yml, which holds the
-        # GPG key, and scala-steward.yml, which holds a repository-writing PAT.
-        #
-        # Added with the fifth workflow (issue 2.14), the first addition since 2.10 where
-        # keeping the invariant rested purely on remembering it.
-        run: python3 .github/scripts/check-action-pins.py
+      - name: Guard tests
+        # The guards' own suite, which the Python originals never had. `tools` is outside the
+        # root aggregate (the `web` precedent), so it is named here or it never runs: repository
+        # hygiene is not library behaviour and folding it into `sbt test` would quietly change
+        # what that number means.
+        run: sbt tools/test
 
       - name: Binary compatibility
         # Checks both published modules against the `mimaBaseline` in build.sbt (issue 2.9).
