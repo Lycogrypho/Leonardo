@@ -112,6 +112,16 @@ final class Session:
 
   private val emptyEnv = new Environment()
 
+  /** The session's settings with **no variable bindings** (issue F_0034).
+   *
+   *  Distinct from [[emptyEnv]], which is fixed at the default precision: a functional reduced
+   *  under `simplify` should still honour `precision` and `exact precision`, since those
+   *  decide what it computes, while the bindings must stay out because `simplify` does not
+   *  fold them.
+   */
+  private def unboundEnv: Environment =
+    new Environment(precision, Map.empty, symmetricLogic, semantics, workingPrecision)
+
   private val assignment      = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=(.+)""".r
   private val multiAssignment = """([a-zA-Z][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]*)+)\s*:=(.+)""".r
   // "name := consolidate(expr)" — freeze the simplified + evaluated result into `name`
@@ -280,7 +290,7 @@ final class Session:
       withLatex(r)(symmetricSpelling(r).getOrElse(r.toString))
     }
     case s"expand $rest"        => withParsed(rest) { e =>
-      val r = expand(resolveMatrixOps(substitute(e, definitions)))
+      val r = expand(prepared(e))
       withLatex(r)(r.toString)
     }
     case s"eval $rest"          => withParsed(rest)(evaluate)
@@ -623,16 +633,50 @@ final class Session:
     case _: _Connective => true
     case _              => e.children.exists(containsConnective)
 
-  /** The `simplify` command pipeline: matrix algebra first, then the scalar structural
+  /** What `simplify` and `expand` both do to an expression before their own pass runs:
+   *  expand the definitions, execute the matrix algebra, and reduce the functionals.
+   *
+   *  Shared rather than written twice, which is what let `expand` inherit F_0034's defect
+   *  from `simplify` in the first place.
+   */
+  private def prepared(e: _Expression): _Expression =
+    evaluateFunctionals(resolveMatrixOps(substitute(e, definitions)))
+
+  /** Reduces every `_Functional` node bottom-up, keeping whatever came back (issue F_0034).
+   *
+   *  `simplifyFully` is **structural**: it folds constants and identities but never calls
+   *  `eval`, and `eval` is where a functional computes itself -- so `derive(sin(x), x)`
+   *  answered `cos(x)` while `simplify derive(sin(x), x)` answered itself.  The same question
+   *  gave two answers depending on whether a command word preceded it.
+   *
+   *  **This is not `simplify` learning to evaluate; it already had.**  `resolveMatrixOps` runs
+   *  in the same pipeline and executes matrix operations, precisely so `simplify C` can carry
+   *  out a product.  The open question was only why one kind of node reduced and another did
+   *  not, and no reason for the split was ever recorded.
+   *
+   *  **The environment carries the session's precision but NO bindings** ([[unboundEnv]]).
+   *  That is what keeps the documented difference between `simplify` and evaluation intact:
+   *  `simplify` never folds a binding, and it would be worse than either rule for it to fold
+   *  one inside a functional and not outside it.
+   *
+   *  A node that cannot reduce returns `Left(this)`, so it comes back unchanged and the pass
+   *  is idempotent -- the fixpoint convention every `_Functional` already follows.
+   */
+  private def evaluateFunctionals(e: _Expression): _Expression =
+    e.rebuild(e.children.map(evaluateFunctionals)) match
+      case f: _Functional => f.eval(unboundEnv).toExpression
+      case other          => other
+
+  /** The `simplify` command pipeline: the shared preparation, then the scalar structural
    *  pass, then -- only when connectives are present -- the logic pass, with
    *  `scalar.simplifyFully` injected as its leaf pass so scalar bodies nested inside
    *  connectives are simplified too.  The connective gate keeps purely scalar input
    *  byte-identical to the scalar-only pipeline.
    */
   private def simplifyPipeline(e: _Expression): _Expression =
-    val prepared = simplify(resolveMatrixOps(substitute(e, definitions)))
-    if containsConnective(prepared) then simplifyLogicFully(prepared, simplifyFully, symmetricLogic, semantics)
-    else prepared
+    val out = simplify(prepared(e))
+    if containsConnective(out) then simplifyLogicFully(out, simplifyFully, symmetricLogic, semantics)
+    else out
 
   /** Handles the `truth <expr>` command: tabulates the expression over its free
    *  variables (definitions substituted first; session numeric bindings are ignored --

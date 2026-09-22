@@ -79,6 +79,17 @@ s.execute("simplify x + 0 + 1*x")
 s.execute("expand (x + 1)^3")
 ```
 
+Both reduce a **functional** — a derivative, integral, limit or transform — wherever it appears,
+so `simplify` never returns something less reduced than what you gave it:
+
+```scala mdoc
+s.execute("simplify 1 + derive(sin(x), x)")
+```
+
+Neither folds a **binding**, though, and that is the difference from plain evaluation: with
+`x := 2`, `simplify x + 0` is still `x`. Definitions *are* expanded first, so
+`g := sin(x)` makes `simplify derive(g, x)` give `cos(x)`.
+
 ## Environment inspection
 
 ```scala mdoc
