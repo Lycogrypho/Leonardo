@@ -100,6 +100,34 @@
         background: var(--panel); color: var(--fg); font-size: 14px;
       }
       #input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+      /*
+        The math field collapses to a few pixels when empty -- it sizes to its content, and its
+        content is nothing -- so it needs a floor to look like the input it sits beside and to
+        be visibly clickable at all. `flex: 1` alone is not enough: an empty custom element has
+        no intrinsic height either.
+      */
+      #mathfield {
+        flex: 1; min-height: 2.4rem; padding: .35rem .7rem;
+        border: 1px solid var(--edge); border-radius: 6px;
+        background: var(--panel); color: var(--fg); font-size: 15px;
+      }
+      #mathfield:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
+      #mathsubmit { padding: .5rem .9rem; }
+      /*
+        The LaTeX wordmark. Kerning is what makes it readable at this size, so the two inset
+        letters carry negative margins rather than relying on the superscript/subscript
+        defaults. Strip the rules and the markup still says "LaTeX".
+      */
+      .promptlabel {
+        color: var(--dim); min-width: 3.2rem; font-size: 13px; cursor: pointer;
+        font-family: "Latin Modern Roman", "Computer Modern", Georgia, "Times New Roman", serif;
+      }
+      .promptlabel .tex-a {
+        font-size: .78em; vertical-align: .28em; margin-left: -.32em; margin-right: -.12em;
+      }
+      .promptlabel .tex-e { vertical-align: -.22em; margin-left: -.10em; margin-right: -.06em; }
+      #matherror { color: #b3261e; font-size: 13px; min-height: 1.1rem; padding-left: 1.2rem; }
+      @media (prefers-color-scheme: dark) { #matherror { color: #ff8a80; } }
 
       .bar { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
 
@@ -162,9 +190,16 @@
         grammar would silently read an unknown name as a variable.
       -->
       <div class="prompt">
-        <span class="mono" aria-hidden="true">∫</span>
-        <label for="mathfield" class="visually-hidden" hidden>Expression, typeset</label>
-        <math-field id="mathfield"></math-field>
+        <!--
+          The LaTeX wordmark, set from text rather than fetched as an image: it is three spans
+          with the classic raised A and dropped E, so with the stylesheet it reads as the logo
+          and WITHOUT it still reads as the word "LaTeX" - which an <img> or an inline SVG
+          would not. It replaced an integral sign that read as "type an integral here", the one
+          notation the reader declines. The placeholder shows the box is empty, not broken.
+        -->
+        <label for="mathfield" class="promptlabel" title="Type a formula as it looks">L<span
+          class="tex-a">a</span>T<span class="tex-e">e</span>X</label>
+        <math-field id="mathfield" placeholder="type a formula"></math-field>
         <button id="mathsubmit" type="button">Enter</button>
       </div>
       <div id="matherror" class="mono" role="alert"></div>

@@ -210,7 +210,7 @@ final class Session:
     Session.CallSyntax.findAllMatchIn(line)
       // The "not part of a longer name" half of the rule, done here rather than as a
       // lookbehind: see `Session.CallSyntax` for why the regex cannot express it.
-      .filterNot(m => m.start > 0 && line.charAt(m.start - 1).isLetterOrDigit)
+      .filterNot(m => m.start > 0 && Session.isNameChar(line.charAt(m.start - 1)))
       .map(_.group(1))
       .filterNot(Parser.ReservedWords.contains)
       .filterNot(announced.contains)
@@ -1058,7 +1058,16 @@ object Session:
    *  `sqrt(foo(x))` would be eaten and the inner `foo(` missed.  The caller checks the
    *  character before `start` itself, which is exact on both platforms.
    */
-  val CallSyntax: scala.util.matching.Regex = """([a-zA-Z][a-zA-Z0-9]*)\(""".r
+  val CallSyntax: scala.util.matching.Regex = """([a-zA-Z][a-zA-Z0-9_]*)\(""".r
+
+  /** Whether `ch` can appear inside an identifier — the grammar's own shape, underscore
+   *  included.
+   *
+   *  Written out because `isLetterOrDigit` alone is **not** that test: `my_func(2)` was
+   *  reported as `'func'`, since the regex stopped at the underscore and the guard then saw a
+   *  non-alphanumeric before `f` and let it through.
+   */
+  def isNameChar(ch: Char): Boolean = ch.isLetterOrDigit || ch == '_'
 
   /** Points taken by `samples` / [[Session.samplePoints]] when the count is omitted.
    *

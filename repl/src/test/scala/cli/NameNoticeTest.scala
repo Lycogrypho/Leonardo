@@ -68,6 +68,17 @@ class NameNoticeTest extends AnyFlatSpec:
     assert(!out.contains("'ina'"), out)
   }
 
+  it should "name the whole identifier when it carries an underscore" in
+  {
+    // The grammar's identifier is `[a-zA-Z][a-zA-Z0-9_]*`, underscore INCLUDED -- which
+    // `CLAUDE.md`'s grammar summary omitted and this check first copied. The regex then
+    // stopped at the underscore and the guard, testing `isLetterOrDigit`, did not recognise
+    // `_` as part of a name, so `my_func(2)` was reported as `'func'`.
+    val out = session.execute("my_func(2)")
+    assert(out.contains("'my_func'"), out)
+    assert(!out.contains("'func'"), out)
+  }
+
   it should "not fire on a parenthesised product, which needs no identifier" in
   {
     for fine <- List("2(x + 1)", "(a + b)(c + d)", "x * (y + 1)") do
