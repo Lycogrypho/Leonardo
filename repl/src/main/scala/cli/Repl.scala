@@ -512,30 +512,86 @@ final class Session:
    */
   private def echoCell(v: _Value): String = formatExpression(v, prettyMatrix)
 
-  /** Formats `e` for display, applying session precision recursively.
+  /** Formats `e` for display, applying the session precision and `pretty` **recursively**
+   *  (issue F_0035).
+   *
+   *  **It rebuilds the tree rather than re-printing it**, which is the whole design.  Only
+   *  the *leaves* have a printed form that depends on session state, so each is replaced by a
+   *  [[Session.Rendered]] carrying its text and the rebuilt tree is handed to `toString`:
+   *  every composite's own printed form -- precedence, parentheses, operator spelling, binder
+   *  notation, across ~125 node types -- is then **reused rather than restated**.  Printing a
+   *  composite directly is what could not be done, and is why this looked like a large issue;
+   *  `children`/`rebuild` already provided the traversal.
+   *
+   *  Before F_0035 the fallthrough was `other.toString`, fixed at `DefaultPrecision` and blind
+   *  to `pretty`, so `1/3` honoured the session precision and `1/3 + cos(x)` did not.
    *
    *  The `pretty` flag is forced off when recursing into a matrix's cells, so a
    *  matrix-of-matrices (a decomposition result) keeps its inner matrices single-line
-   *  and only the outermost matrix is stacked.
+   *  and only the outermost matrix is stacked.  It is *not* forced off when recursing into an
+   *  ordinary composite: a matrix nested in a larger expression stacks too, and [[align]] is
+   *  what puts it in the right column.
    */
   private def formatExpression(e: _Expression, pretty: Boolean): String =
-    symmetricSpelling(e).getOrElse(formatDefault(e, pretty))
+    align(substituted(e, pretty).toString)
 
-  /** [[formatExpression]] in the default truth alphabet. */
-  private def formatDefault(e: _Expression, pretty: Boolean): String = e match
-    // Before the _Number arm, for the same reason serializeValue is: the widening extractor
-    // would round an exact value away before `display` ever chose a form for it.
-    case r: _Rational    => r.display(precision)
-    case b: _Based       => b.display(precision)
-    case d: probability._Distribution => d.display(precision)
-    case n: _Number      => n.display(precision)
-    case c: _Complex     => c.display(precision)
-    case t: _Truth       => t.display(precision)
-    case m: _MatrixValue =>
-      renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => _Number(m(i, j)).display(precision)), pretty)
-    case m: _Matrix      =>
-      renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => formatExpression(m(i, j), pretty = false)), pretty)
-    case other           => other.toString
+  /** Replaces every state-dependent leaf of `e` with its rendered text, keeping the shape. */
+  private def substituted(e: _Expression, pretty: Boolean): _Expression =
+    formatLeaf(e, pretty) match
+      case Some(text) => Session.Rendered(text)
+      // Total: every `rebuild` in the codebase constructs from `List[_Expression]` directly,
+      // with no cast and no index beyond the list it is handed (checked across all ~125).
+      case None       => e.rebuild(e.children.map(substituted(_, pretty)))
+
+  /** The rendered text of `e` when its printed form depends on the session, else `None`.
+   *
+   *  This is the former `formatDefault` match with its fallthrough removed: what used to be
+   *  "give up and call `toString`" is now "not a leaf", which is the signal to recurse.
+   */
+  private def formatLeaf(e: _Expression, pretty: Boolean): Option[String] =
+    symmetricSpelling(e).orElse(e match
+      // Before the _Number arm, for the same reason serializeValue is: the widening extractor
+      // would round an exact value away before `display` ever chose a form for it.
+      case r: _Rational    => Some(r.display(precision))
+      case b: _Based       => Some(b.display(precision))
+      case d: probability._Distribution => Some(d.display(precision))
+      case n: _Number      => Some(n.display(precision))
+      case c: _Complex     => Some(c.display(precision))
+      case t: _Truth       => Some(t.display(precision))
+      case m: _MatrixValue =>
+        Some(marked(renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => _Number(m(i, j)).display(precision)), pretty)))
+      case m: _Matrix      =>
+        Some(marked(renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => formatExpression(m(i, j), pretty = false)), pretty)))
+      case _               => None)
+
+  /** Brackets a stacked matrix so [[align]] can find the column it landed in.
+   *
+   *  A single-line matrix is returned untouched: there is nothing to align, and marking it
+   *  would only give the pass work to undo.
+   */
+  private def marked(rendered: String): String =
+    if rendered.contains('\n') then s"${Session.BlockOpen}$rendered${Session.BlockClose}" else rendered
+
+  /** Indents each marked block to the column it actually occupies, and drops the markers.
+   *
+   *  A stacked matrix is built assuming column 0 -- its continuation rows carry exactly one
+   *  leading space, to sit under the opening bracket -- so nested inside a larger expression
+   *  it would come out short by whatever precedes it (`([[1, 2]` puts the block at column 1).
+   *  The column cannot be known while rendering bottom-up, so it is read off the finished
+   *  string instead.
+   *
+   *  Blocks never nest -- a matrix inside a matrix is rendered with `pretty` off -- so one
+   *  pass per block terminates, and the markers are control characters, which no identifier,
+   *  number or operator the grammar accepts can contain.
+   */
+  private def align(text: String): String =
+    val open = text.indexOf(Session.BlockOpen)
+    val close = if open < 0 then -1 else text.indexOf(Session.BlockClose, open)
+    if close < 0 then text.filterNot(c => c == Session.BlockOpen || c == Session.BlockClose)
+    else
+      val column = open - (text.lastIndexOf('\n', open) + 1)
+      val block  = text.substring(open + 1, close).linesIterator.mkString("\n" + " " * column)
+      align(text.substring(0, open) + block + text.substring(close + 1))
 
   /** Renders a grid of already-formatted cell strings.
    *
@@ -1085,6 +1141,36 @@ final class Session:
 object Session:
   /** Names the parser always resolves as constants; assignment to them is rejected. */
   val ReservedConstants: Set[String] = Set("pi", "e")
+
+  /** A display-only stand-in whose printed form is the text it carries (issue F_0035).
+   *
+   *  This is what lets `formatExpression` apply the session precision and `pretty` to a
+   *  **composite** without re-implementing how that composite prints.  The tree is rebuilt
+   *  with each state-dependent leaf replaced by one of these, and `toString` on the result
+   *  then reuses every existing printed form rather than defining any of them twice — the
+   *  drift `ColorSchemeNamesTest` exists to prevent, avoided here by construction.
+   *
+   *  **It costs no published surface**: `_Expression` is not sealed (nodes live in twelve
+   *  packages), so this is `private` to `cli` and adds nothing to the library's API. It never
+   *  escapes the formatter — built, printed, dropped — so `eval` is the identity a symbolic
+   *  node returns and is there only to satisfy the trait.
+   */
+  private case class Rendered(text: String) extends _Expression:
+    def eval(env: Environment): Either[_Expression, _Value] = Left(this)
+    def children: List[_Expression]                        = Nil
+    def rebuild(newChildren: List[_Expression]): _Expression = this
+    override def toString: String                          = text
+
+  /** Markers bracketing a stacked matrix until its column is known (issue F_0035).
+   *
+   *  **Control characters on purpose**: the grammar admits no identifier, number, operator or
+   *  string literal that can contain one, so a marker can never collide with real output, and
+   *  a test asserts none survives into an answer.
+   */
+  //  Written as `n.toChar`, NOT as a character literal: a literal would put the control byte
+  //  itself into this file, which `CheckCharset` scans and which no editor renders honestly.
+  private val BlockOpen:  Char = 1.toChar
+  private val BlockClose: Char = 2.toChar
 
   /** An identifier written immediately before `(` (issue F_0030).
    *

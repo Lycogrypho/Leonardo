@@ -172,6 +172,37 @@ in `_Integral`, etc.) are intentionally **excluded** from `children` so `Substit
 `Analysis.dependsOn` do not recurse into them.  `rebuild` carries binder positions through
 unchanged, as the extra first argument by convention.
 
+### Rebuilding to RENDER (issue F_0035)
+
+The pair also solves a problem that looks like it needs a printer. `toString` is an override on
+~125 node types, so a node **cannot be printed** with its children replaced by strings — which
+is why the REPL's display settings (session precision, `pretty`) once reached only results that
+were a single value or a bare matrix, and any composite silently fell back to `toString` and
+its fixed `DefaultPrecision`.
+
+The answer is not to print differently but to **rebuild first**: replace each leaf whose printed
+form depends on the setting with a display-only node carrying the wanted text, then `toString`
+the rebuilt tree. Every composite's own printed form is reused, so none is defined twice.
+
+```scala
+// cli.Session, simplified
+private case class Rendered(text: String) extends _Expression:
+  def eval(env: Environment)                               = Left(this)
+  def children: List[_Expression]                          = Nil
+  def rebuild(newChildren: List[_Expression]): _Expression = this
+  override def toString: String                            = text
+
+def substituted(e: _Expression): _Expression = leafText(e) match
+  case Some(text) => Rendered(text)
+  case None       => e.rebuild(e.children.map(substituted))
+```
+
+Two properties make this cheap, and both are worth knowing before reaching for the pattern
+again. `_Expression` is **not sealed**, so such a node is private to the package that needs it
+and adds nothing to the published API. And `rebuild` is total — every implementation in the
+codebase constructs from `List[_Expression]` directly, with no cast and no index beyond the
+list it is handed — so substituting a foreign node type is safe.
+
 ---
 
 ## Marker traits

@@ -95,6 +95,11 @@ s.execute("precision 8")
 s.execute("sin(x)")     // now at 8-digit precision
 ```
 
+It applies **wherever a number appears in the answer**, not only when the answer is itself a
+number — inside a sum, a function argument, an integral, a relation or a matrix operation
+alike. It is a display setting only: the computation always carries full `Double` precision,
+and `:save` writes the unrounded value, so a result shown as `0.33` still round-trips.
+
 Reset to default:
 
 ```scala mdoc
@@ -170,6 +175,11 @@ and the assignment echo honours it, so `A := [[1, 2], [3, 4]]` stacks like any o
 `pretty` and [`latex`](#latex) are **mutually exclusive**: turning either on turns the
 other off and says so. A typeset matrix already carries the layout, so a stacked text beside it
 would be the same thing twice.
+
+A matrix **nested inside a larger expression** stacks as well, indented to the column it sits
+in, so `[[12, sin(x)], [exp(x), exp(-x)]] * cos(x)` is laid out rather than run onto one line.
+Only the outermost matrix stacks: a decomposition result, whose cells are themselves matrices,
+stays on one line so the grid survives.
 
 ```scala mdoc
 s.execute("pretty on")
