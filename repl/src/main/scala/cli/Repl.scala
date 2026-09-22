@@ -89,6 +89,20 @@ final class Session:
   private var workingPrecision: Int = Environment.DefaultWorkingPrecision
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
+  // Announce every newly-seen free variable (issue F_0030). Off by default, because a free
+  // variable is the NORMAL case in a CAS -- `derive(x^2, x)` is supposed to have one -- so
+  // narrating them all is chatty. The companion diagnostic, a name used as a function, is
+  // unconditional instead: that one has no legitimate reading to be noisy about.
+  private var announceNames: Boolean = false
+  // Names already announced, so each is mentioned once rather than on every line that uses it.
+  private var announced: Set[String] = Set.empty
+  // Free variables the CURRENT line introduced, collected by `parsed` and by the assignment
+  // handlers, then reported and cleared by `execute`.
+  private var introduced: List[String] = Nil
+  // Set while `load` replays a script: a `:load` is a transcript, not a conversation, and
+  // narrating each of its lines would bury the output the script actually produced. The same
+  // reasoning that makes `load` clear the LaTeX channel.
+  private var replaying: Boolean = false
 
   /** Returns the name of the active colour scheme (`"dark"`, `"light"`, or `"none"`). */
   def currentColorScheme: String = colorSchemeName
@@ -119,8 +133,18 @@ final class Session:
   def execute(line: String): String =
     // Cleared FIRST, so the channel describes this command or nothing at all. Every arm that
     // produces an expression fills it again through `withLatex`.
-    latexOut = None
-    dispatch(line.trim)
+    latexOut   = None
+    introduced = Nil
+    val trimmed = line.trim
+    val out     = dispatch(trimmed)
+    nameNotes(trimmed) match
+      case Nil   => out
+      case notes =>
+        // The text now carries something the formula does not, so the channel must go (issue
+        // F_0020): a consumer shows the formula INSTEAD of the text, and would drop the note
+        // that is the entire point of this diagnostic.
+        latexOut = None
+        (if out.isEmpty then notes else out :: notes).mkString("\n")
 
   /** The LaTeX of the last expression [[execute]] produced, or `None`.
    *
@@ -130,6 +154,87 @@ final class Session:
    *  end that cannot typeset is unaffected and one that can chooses per result.
    */
   def lastLatex: Option[String] = latexOut
+
+  /** The diagnostics for the line just executed (issue F_0030).
+   *
+   *  **Two notes with separate rules.**  The call-syntax one is unconditional and is read off
+   *  the *input text*, because the parser destroys the evidence: `term`'s implicit and
+   *  explicit arms both call `mkMul`, so `sqrt(x)`, `sqrt * x` and `sqrt x` are the identical
+   *  AST and no inspection of the result could tell which was written.  The new-name one is
+   *  behind the `names` setting and is read off each parsed expression's `freeVars`.
+   *
+   *  Both are **appended to the answer, never folded into evaluation** - the 3.3 slice F
+   *  domain-note discipline, so every existing result stays byte-identical and nothing that
+   *  already worked can begin to fail.
+   *
+   *  @param line the trimmed input
+   *  @return zero, one or two note lines
+   */
+  private def nameNotes(line: String): List[String] =
+    if replaying then Nil
+    else
+      val calls = callSyntaxNames(line)
+      val fresh = introduced.distinct.filter(isNewName)
+      announced ++= calls ++ fresh
+      List(
+        Option.when(calls.nonEmpty)(callNote(calls)),
+        Option.when(fresh.nonEmpty)(s"  note: new ${nameWord(fresh)}: ${fresh.mkString(", ")}")
+      ).flatten
+
+  /** Singular or plural, so a one-name note does not read as a list. */
+  private def nameWord(names: List[String]): String =
+    if names.sizeIs == 1 then "name" else "names"
+
+  /** Phrases the call-syntax finding, naming the product the user actually got. */
+  private def callNote(names: List[String]): String =
+    val subject = names.map(n => s"'$n'").mkString(", ")
+    val verb    = if names.sizeIs == 1 then "is not a function" else "are not functions"
+    s"  note: $subject $verb here; '${names.head}(...)' parses as a product with '${names.head}'"
+
+  /** Identifiers written immediately before `(` that the grammar does not claim.
+   *
+   *  **No space is allowed between the name and the bracket**, and that is the precision of
+   *  this check: `f(2)` is someone attempting application, while `a (b)` is an ordinary
+   *  product a user would be annoyed to be lectured about.
+   *
+   *  The whitelist is `Parser.ReservedWords` rather than a second list of function names.  It
+   *  is a **superset** - it also carries the constants, the logic connectives and the REPL
+   *  command words - so this under-warns slightly, which is the safe direction: a reserved
+   *  word in call position that is not callable already fails to parse and says so.  A
+   *  hand-written list of the "real" functions could drift from the grammar, which is the
+   *  failure `ColorSchemeNamesTest` exists to prevent elsewhere.
+   *
+   *  A name already announced is not repeated, so a session does not nag.
+   */
+  private def callSyntaxNames(line: String): List[String] =
+    Session.CallSyntax.findAllMatchIn(line)
+      .map(_.group(1))
+      .filterNot(Parser.ReservedWords.contains)
+      .filterNot(announced.contains)
+      .distinct
+      .toList
+
+  /** Whether `name` is one this session has not seen bound, defined or announced before. */
+  private def isNewName(name: String): Boolean =
+    !announced(name) && !bindings.contains(name) && !definitions.contains(name)
+
+  /** Records names the current line introduced, for [[nameNotes]] to report.
+   *
+   *  Called from [[parsed]] with an expression's free variables - the one funnel every parsed
+   *  expression passes through, so no command has to remember to opt in - and from the
+   *  assignment handlers with the name being created, which no expression mentions.
+   *
+   *  Gated on the setting here rather than at the reporting end, so a session with `names off`
+   *  does no per-line work at all.
+   */
+  private def introduce(names: Iterable[String]): Unit =
+    if announceNames && !replaying then introduced ++= names.filter(isNewName)
+
+  /** `names on | off` - whether a newly-seen free variable is announced. */
+  private def setNames(text: String): String = text.toLowerCase match
+    case "on"  => announceNames = true;  s"names = ${onOff(announceNames)}"
+    case "off" => announceNames = false; s"names = ${onOff(announceNames)}"
+    case other => s"names expects 'on' or 'off', got '$other'"
 
   /** [[execute]] on already-trimmed input. */
   private def dispatch(line: String): String = line match
@@ -159,6 +264,8 @@ final class Session:
     case s"pretty $mode"        => setPretty(mode.trim)
     case "latex"                => s"latex = ${onOff(latexMode)}"
     case s"latex $mode"         => setLatex(mode.trim)
+    case "names"                => s"names = ${onOff(announceNames)}"
+    case s"names $mode"         => setNames(mode.trim)
     case "logic"                => logicState
     case "logic symmetric"      => s"logic symmetric = ${onOff(symmetricLogic)}"
     case s"logic symmetric $mode" => setSymmetricLogic(mode.trim)
@@ -241,6 +348,7 @@ final class Session:
       "colors"          -> colorSchemeName,
       "pretty"          -> onOff(prettyMatrix),
       "latex"           -> onOff(latexMode),
+      "names"           -> onOff(announceNames),
       "logic"           -> semanticsName(semantics),
       "logic symmetric" -> onOff(symmetricLogic),
       "exact precision" -> workingPrecision.toString,
@@ -275,12 +383,20 @@ final class Session:
    *  @return the concatenated non-empty output lines
    */
   def load(text: String): String =
-    val out = text.linesIterator
-      .map(_.trim)
-      .filter(l => l.nonEmpty && !l.startsWith("#"))
-      .map(execute)
-      .filter(_.nonEmpty)
-      .mkString("\n")
+    // `replaying` suppresses F_0030's name notes for the same reason the channel is cleared
+    // below: a script's output is a transcript, and narrating each of its lines would bury
+    // what the script actually produced.  Restored in a `finally` so a throwing line cannot
+    // leave the session permanently silent.
+    replaying = true
+    val out =
+      try
+        text.linesIterator
+          .map(_.trim)
+          .filter(l => l.nonEmpty && !l.startsWith("#"))
+          .map(execute)
+          .filter(_.nonEmpty)
+          .mkString("\n")
+      finally replaying = false
     latexOut = None
     out
 
@@ -314,6 +430,9 @@ final class Session:
       e => Left(s"parse error: ${e.getMessage}"),
       result =>
         if result.successful then
+          // The one funnel every parsed expression passes through, so F_0030's new-name note
+          // needs no per-command opt-in and cannot miss a path someone adds later.
+          introduce(result.get.freeVars)
           try f(result.get)
           catch case NonFatal(e) => Left(s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}")
         else
@@ -651,6 +770,9 @@ final class Session:
    *  @return the display string `"name := value"` or an error message
    */
   private def assign(name: String, rhs: _Expression): String =
+    // Before the binding lands, or `isNewName` would already see it (issue F_0030). The name
+    // an assignment creates appears in no expression, so `parsed` cannot have collected it.
+    introduce(List(name))
     resolveDerivativeBinders(rhs) match
       case Left(message) => message
       case Right(resolved) =>
@@ -679,6 +801,7 @@ final class Session:
    *  @return the display string `"name := value"` or an error message
    */
   private def consolidate(name: String, rhs: _Expression): String =
+    introduce(List(name))   // before the binding lands -- see `assign` (issue F_0030)
     resolveDerivativeBinders(rhs) match
       case Left(message) => message
       case Right(resolved) =>
@@ -914,6 +1037,16 @@ final class Session:
 object Session:
   /** Names the parser always resolves as constants; assignment to them is rejected. */
   val ReservedConstants: Set[String] = Set("pi", "e")
+
+  /** An identifier written immediately before `(` (issue F_0030).
+   *
+   *  The identifier shape is the grammar's own (`[a-zA-Z][a-zA-Z0-9]*`), and the lookbehind
+   *  stops `sina(x)` from also reporting `ina`.  **No whitespace is permitted before the
+   *  bracket**: that is what separates an attempted function call from an ordinary
+   *  parenthesised product, which the grammar spells the same way and which a user should not
+   *  be lectured about.
+   */
+  val CallSyntax: scala.util.matching.Regex = """(?<![a-zA-Z0-9])([a-zA-Z][a-zA-Z0-9]*)\(""".r
 
   /** Points taken by `samples` / [[Session.samplePoints]] when the count is omitted.
    *

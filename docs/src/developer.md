@@ -504,6 +504,24 @@ knowledge.  **Adding a setting means adding a pair**, which gets it saved, liste
 offered as a control at once; the order in that list is the order a script replays, so
 `exact precision` must stay before `exact` and both before the bindings.
 
+**A diagnostic is appended to the answer, never folded into evaluation.**  Three now follow
+this shape — 3.3 slice F's domain note, and F_0030's two name notes — and the discipline is what
+makes them safe to add: the library's results stay byte-identical, so nothing that already
+worked can begin to fail.  Two rules come with it.  **A note must clear `Session.lastLatex`**,
+because a consumer shows the formula *instead of* the text and would silently drop the note
+(F_0020).  And **a note must be suppressed while `load` replays a script**, whose output is a
+transcript rather than a result.
+
+**F_0030's call-syntax check reads the input text, not the parsed result**, and that is forced
+rather than chosen: `term`'s implicit and explicit arms both call `mkMul`, so `sqrt(x)`,
+`sqrt * x` and `sqrt x` are the *identical* AST.  Whether a name was written as a call is
+information the parser has already discarded.  Anything else that wants it — an importer, a
+linter, F_0017's reader — must look at the text too.  The whitelist is `Parser.ReservedWords`
+rather than a second list of function names: it is a superset, so the check under-warns
+slightly, which is the safe direction, and it cannot drift from the grammar.  Writing that
+check is what revealed `consolidate` had never been reserved, though every other REPL command
+word was.
+
 **`latex on` is a second output channel, not a second format.**  `execute` returns exactly the
 same text either way; `Session.lastLatex` carries `latex.ToLatex` of the same result.  The
 asymmetry is forced: a terminal cannot typeset, so rerouting the answer would leave it showing

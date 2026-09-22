@@ -178,6 +178,40 @@ s.execute("[[1, 200], [30, 4]]")
 s.execute("pretty off")
 ```
 
+## When a name is invented
+
+The grammar has **no unknown-identifier error**.  An unrecognised name is a perfectly good
+variable and juxtaposition is multiplication, so `sqrt(x)` is not an error — it is the *product*
+of a free variable named `sqrt` with `x`.  There is no `sqrt` function; a radical is written
+`x^0.5` or `x^(1/2)`.  The same is true of a miscapitalised built-in: `Sin(x)` is `Sin` times
+`x`.
+
+So the REPL says so:
+
+```
+> sqrt(4)
+(sqrt * 4.0)
+  note: 'sqrt' is not a function here; 'sqrt(...)' parses as a product with 'sqrt'
+```
+
+That note is **unconditional** — there is no legitimate reading it could be suppressing.  Each
+name is mentioned once per session, so a deliberate `f(2)` does not nag.
+
+`names on` adds the wider report: every newly-seen free variable, once each.
+
+```
+> names on
+names = on
+> a := sin(x)
+a := sin(x)
+  note: new names: a, x
+```
+
+It is **off by default**, because a free variable is the normal case in a CAS — `derive(x^2, x)`
+is supposed to have one — so announcing them all is chatty.  It catches what the first note
+cannot: a miscapitalised *constant* such as `PI`, which is a variable rather than a call.
+Neither note appears while a `:load` script is replaying, whose output is a transcript.
+
 ## LaTeX
 
 `latex on` renders every result as LaTeX source as well.  **It does not change what is
@@ -356,6 +390,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `exact precision <n>` | Digits an irrational is approximated to |
 | `pretty on` / `off` | Multi-line, column-aligned matrix display |
 | `latex on\|off` | Also render each result as LaTeX (the printed text is unchanged) |
+| `names on\|off` | Announce each newly-seen free variable (default `off`) |
 | `colors dark\|light\|none` | Syntax-highlight scheme |
 | `env` / `vars` | Show session state |
 | `unset <name>` | Remove binding or definition |

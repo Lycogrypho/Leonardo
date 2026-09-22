@@ -126,7 +126,13 @@ object Parser extends JavaTokenParsers:
                                                          // a further coordinate
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
     "simplify", "expand", "eval", "env", "vars", "precision",
-    "unset", "samples", "colors", "pretty", "latex", "exact", "truth3", "logic", "help", "quit", "exit" // REPL commands
+    "unset", "samples", "colors", "pretty", "latex", "names", "exact", "truth3", "logic", "help", "quit", "exit", // REPL commands
+    // `consolidate` is a REPL word like the rest of this line -- recognised by Session's
+    // `consolidation` regex on an assignment's right-hand side rather than by a grammar
+    // production, which is why it was missed here until F_0030's call-syntax check reported
+    // `consolidate(...)` as an unknown function. It belongs for the reason `latex` does: a
+    // binding would otherwise own a name the command language already uses.
+    "consolidate"
   )
 
   // 200, not 500, and the limit is deliberately UNIFORM across platforms (issue F_0003).

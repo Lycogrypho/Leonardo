@@ -57,6 +57,7 @@ object Settings:
     Control("precision",       "digits",     Widget.Number(0)),
     Control("pretty",          "pretty",     Widget.Toggle),
     Control("latex",           "LaTeX",      Widget.Toggle),
+    Control("names",           "new names",  Widget.Toggle),
     Control("logic",           "t-norm",     Widget.Choice(SemanticsNames)),
     Control("logic symmetric", "−1 / 0 / 1", Widget.Toggle),
     Control("exact precision", "exact digits", Widget.Number(1)),
