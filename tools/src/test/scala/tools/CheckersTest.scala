@@ -63,7 +63,7 @@ class CheckersTest extends AnyFlatSpec:
 
   "the Scala-version guard" should "flag a build path that spells the version" in
   {
-    val dir = fixture("w.yml" -> "    run: cat web/target/scala-3.3.6/leonardo-web-opt/main.js\n")
+    val dir = fixture("w.yml" -> "    run: cat web/target/scala-3.3.8/leonardo-web-opt/main.js\n")
     assert(CheckScalaVersion.offences(List(dir)).size == 1)
   }
 

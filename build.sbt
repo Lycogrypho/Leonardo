@@ -4,7 +4,7 @@
 // intentional break needs it, and that error message does not point at a missing import.
 import com.typesafe.tools.mima.core.{MissingClassProblem, Problem, ProblemFilters}
 
-ThisBuild / scalaVersion := "3.3.6"
+ThisBuild / scalaVersion := "3.3.8"
 
 // The release tags in this repository are bare (`3.6.3`), not `v`-prefixed. sbt-dynver
 // defaults to matching only `v*`, so without this it silently ignored every bare tag and
@@ -153,7 +153,7 @@ lazy val root = (project in file("."))
 
     // ── PlantUML dependency (resolved, never on project classpath) ─────────────
     ivyConfigurations += PlantUML,
-    libraryDependencies += "net.sourceforge.plantuml" % "plantuml" % "1.2026.0" % PlantUML,
+    libraryDependencies += "net.sourceforge.plantuml" % "plantuml" % "1.2026.8" % PlantUML,
 
     puml := {
       import scala.sys.process._
@@ -219,7 +219,7 @@ lazy val root = (project in file("."))
     // ── Scaladoc 3 static site ────────────────────────────────────────────────
     // After `sbt docs/mdoc`, the verified markdown in target/mdoc/ is used as the site root:
     // Scaladoc 3 renders those pages alongside the API reference. Run `sbt site` to produce
-    // the full site in target/scala-3.3.6/api/.
+    // the full site in target/scala-3.3.8/api/.
     //
     // These options hang off UNIDOC, not `Compile / doc`, and the distinction is deliberate:
     // `Compile / doc` still produces each module's own plain API, which is what `packageDoc`
@@ -237,7 +237,7 @@ lazy val root = (project in file("."))
       "-project-logo",    (baseDirectory.value / "docs" / "src" / "Banner.svg").getAbsolutePath
     ),
 
-    // unidoc defaults to target/scala-3.3.6/unidoc. Redirect it to the `api` directory the
+    // unidoc defaults to target/scala-3.3.8/unidoc. Redirect it to the `api` directory the
     // Pages workflow copies and `injectApiStyles` patches, so the split changes no path
     // outside this file.
     ScalaUnidoc / unidoc / target := target.value / s"scala-${scalaVersion.value}" / "api",
@@ -296,7 +296,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
 
     libraryDependencies += "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.4.0",
     libraryDependencies += "org.typelevel"          %%% "spire"                    % "0.18.0",
-    libraryDependencies += "org.scalatest"          %%% "scalatest"                % "3.2.19" % Test
+    libraryDependencies += "org.scalatest"          %%% "scalatest"                % "3.2.20" % Test
   )
   .jvmSettings(
     // Platform sources live beside the shared tree rather than under it, because CrossType.Pure
@@ -417,7 +417,7 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     name             := "leonardo-repl",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
 
-    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % Test
+    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.20" % Test
   )
   .jvmSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "main" / "scala",
@@ -426,7 +426,7 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     // JLine is confined to the JVM side, which is the point of the split: it is the one
     // dependency a browser cannot have, and the module boundary that made the 5.2 artifact
     // split worthwhile is the same one that makes this work.
-    libraryDependencies += "org.jline" % "jline" % "3.30.15",
+    libraryDependencies += "org.jline" % "jline" % "3.30.17",
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline),
@@ -484,7 +484,7 @@ lazy val web = (project in file("web"))
     // %%% and not %%: this project is Scala.js only, and the JVM `scalatest_3` artifact landing
     // on a Scala.js classpath beside `scalatest_sjs1_3` is a LINKER error rather than a
     // resolution one, so it fails late and confusingly (see the ThisBuild note below).
-    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.19" % Test,
+    libraryDependencies += "org.scalatest" %%% "scalatest" % "3.2.20" % Test,
 
     // Publishes nothing, so there is no baseline to compare against (see root).
     mimaPreviousArtifacts := Set.empty,
@@ -514,7 +514,7 @@ lazy val tools = (project in file("tools"))
     name           := "leonardo-tools",
     publish / skip := true,
 
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
 
     // Publishes nothing, so there is no baseline to compare against (see root).
     mimaPreviousArtifacts := Set.empty,
