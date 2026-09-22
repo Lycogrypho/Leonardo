@@ -127,16 +127,29 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     assert(drawn.layout.yaxis.scaleanchor.asInstanceOf[String] == "x")
   }
 
-  "latex on" should "typeset a result instead of printing it" in
+  "latex on" should "typeset a result BESIDE its text, not instead of it" in
   {
     typeLine("latex on")
     assert(lastOutput() == "latex = on", "the toggle itself must stay readable as text")
     typeLine("1/x + 1")
     assert(typeset.last == "\\frac{1.0}{x} + 1.0")
     assert(lastMath().contains("\\frac"))
-    // The formula REPLACED the text rather than joining it: the newest plain block is still
-    // the toggle's own answer.
-    assert(lastOutput() == "latex = on")
+    // F_0031: the formula used to REPLACE the text, which made `latex on` swallow whatever
+    // `pretty` did and left that setting looking broken. The text is the canonical grammar
+    // form -- what `:save` writes and what a reader has to retype -- so it stays.
+    assert(lastOutput() == "((1.0 / x) + 1.0)")
+  }
+
+  it should "move the pretty control, since the session turns that setting off" in
+  {
+    // The exclusion lives in `Session`, so the panel follows it like any other command the
+    // user could have typed -- which is what stops a control reporting a setting that is no
+    // longer in force.
+    val pretty = field("set-pretty").getOrElse(fail("no pretty control"))
+    typeLine("pretty on")
+    assert(pretty.checked.asInstanceOf[Boolean])
+    typeLine("latex on")
+    assert(!pretty.checked.asInstanceOf[Boolean], "latex on must clear the pretty control")
   }
 
   it should "restore the text when switched off" in

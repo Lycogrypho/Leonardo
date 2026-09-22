@@ -22,8 +22,8 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `env` / `vars` | Show all bindings and definitions |
 | `precision <n>` | Set display/comparison precision (default 5) |
 | `colors dark\|light\|none` | Syntax-highlight scheme (default `dark`) |
-| `pretty on\|off` | Multi-line matrix display (default `off`) |
-| `latex on\|off` | Also render each result as LaTeX (default `off`); the printed text is unchanged, and the browser REPL typesets it |
+| `pretty on\|off` | Multi-line matrix display, echo included (default `off`); turns `latex` off |
+| `latex on\|off` | Also render each result as LaTeX (default `off`); the printed text is unchanged, and the browser REPL typesets it *beside* the text. Turns `pretty` off — a typeset matrix already carries the layout |
 | `names on\|off` | Announce each newly-seen free variable (default `off`). A name used as a function it is not — `sqrt(x)` — is reported whatever this is set to |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30) |

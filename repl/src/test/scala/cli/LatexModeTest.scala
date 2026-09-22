@@ -50,6 +50,66 @@ class LatexModeTest extends AnyFlatSpec:
     assert(restored.execute("latex") == "latex = on")
   }
 
+  // --- mutual exclusion with `pretty` (F_0031) ------------------------------------------
+
+  "latex on" should "turn pretty off, and say so" in
+  {
+    // A consumer shows the formula BESIDE the text, so a stacked matrix would be the same
+    // layout twice.  The exclusion is performed on the session rather than hidden in the
+    // page precisely so `settings` and `:save` report what is really in force -- a control
+    // reading `pretty = on` while nothing stacked is the defect F_0031 was filed for.
+    val s = session
+    s.execute("pretty on")
+    val out = s.execute("latex on")
+    assert(out.contains("latex = on"), out)
+    assert(out.contains("pretty"), s"the exclusion must be visible: $out")
+    assert(s.execute("pretty") == "pretty = off")
+  }
+
+  it should "say nothing extra when pretty was already off" in
+  {
+    assert(session.execute("latex on") == "latex = on")
+  }
+
+  "pretty on" should "turn latex off, the same rule read the other way" in
+  {
+    val s = session
+    s.execute("latex on")
+    val out = s.execute("pretty on")
+    assert(out.contains("pretty = on"), out)
+    assert(out.contains("latex"), s"the exclusion must be visible: $out")
+    assert(s.execute("latex") == "latex = off")
+  }
+
+  it should "leave a stacked matrix stacked, since latex is now off" in
+  {
+    val s = session
+    s.execute("latex on")
+    s.execute("pretty on")
+    assert(s.execute("[[1, 2], [3, 4]]").contains("\n"))
+  }
+
+  "turning either off" should "not turn the other on" in
+  {
+    // The exclusion is one-directional per command: it only ever CLEARS the other flag.
+    // Restoring it would guess at a state the user never asked for.
+    val s = session
+    s.execute("latex on")
+    s.execute("latex off")
+    assert(s.execute("pretty") == "pretty = off")
+  }
+
+  "the exclusion" should "survive a save and load" in
+  {
+    val s = session
+    s.execute("pretty on")
+    s.execute("latex on")
+    val restored = new Session()
+    restored.load(s.script)
+    assert(restored.execute("latex") == "latex = on")
+    assert(restored.execute("pretty") == "pretty = off")
+  }
+
   // --- the side channel ---------------------------------------------------------------
 
   "the latex channel" should "stay empty while the toggle is off" in

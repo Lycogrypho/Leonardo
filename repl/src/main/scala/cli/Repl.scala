@@ -488,18 +488,29 @@ final class Session:
   private def symmetricDigit(s: Double): String =
     if s == s.round.toDouble then s.round.toString else _Number(s).display(precision)
 
-  /** Renders a value for a table cell or an assignment echo, honouring the symmetric
-   *  toggle and the session precision.
+  /** Renders a value for a **table cell**, honouring the symmetric toggle and the session
+   *  precision.
    *
-   *  A `_Number` goes through `display(precision)` rather than `toString`, which is fixed
-   *  at `Environment.DefaultPrecision`.  Without this a small result renders as `0.0`
-   *  however high the session precision is set -- which is exactly how the `solve`
-   *  quadratic defect looked like a 100% error when it was in fact 25%.  Everything else
-   *  keeps `toString`, so matrix echoes are unchanged.
+   *  A `_Number` goes through `display(precision)` rather than `toString`, which is fixed at
+   *  `Environment.DefaultPrecision`.  Without this a small result renders as `0.0` however
+   *  high the session precision is set -- which is exactly how the `solve` quadratic defect
+   *  looked like a 100% error when it was in fact 25%.
+   *
+   *  **A cell is never stacked**, which is why this is not [[echoCell]]: a truth table is a
+   *  grid, and a multi-line cell would break the very alignment the table is.
    */
   private def truthCell(v: _Value): String = symmetricSpelling(v).getOrElse(v match
     case n: _Number => n.display(precision)
     case other      => other.toString)
+
+  /** Renders a value for an **assignment or solve echo** (issue F_0031).
+   *
+   *  The same path a displayed result takes, so `name := value` and the next line that shows
+   *  `value` cannot disagree.  It used to be [[truthCell]], which keeps `toString` for
+   *  everything but a number -- so a matrix echo ignored both `pretty` and the session
+   *  precision, and `pretty on` appeared to do nothing on the first line a reader tries.
+   */
+  private def echoCell(v: _Value): String = formatExpression(v, prettyMatrix)
 
   /** Formats `e` for display, applying session precision recursively.
    *
@@ -783,7 +794,7 @@ final class Session:
           case Right(value) =>
             bindings = bindings + (name -> value)
             definitions = definitions - name
-            s"$name := ${truthCell(value)}"
+            s"$name := ${echoCell(value)}"
           case Left(_) =>
             definitions = definitions + (name -> rhs)
             bindings = bindings - name
@@ -813,7 +824,7 @@ final class Session:
           case Right(value) =>
             bindings = bindings + (name -> value)
             definitions = definitions - name
-            s"$name := ${truthCell(value)}"
+            s"$name := ${echoCell(value)}"
           case Left(expr) =>
             val frozen = simplify(expr)
             definitions = definitions + (name -> frozen)
@@ -1013,17 +1024,51 @@ final class Session:
       case Some(n)           => s"working precision must be at least 1, got: $n"
       case None              => s"working precision expects an integer, got: $text"
 
-  /** Sets the pretty-matrix flag from `"on"`/`"off"` (case-insensitive). */
-  private def setPretty(text: String): String = text.toLowerCase match
-    case "on"  | "true"  => prettyMatrix = true;  "pretty = on"
-    case "off" | "false" => prettyMatrix = false; "pretty = off"
-    case _               => s"pretty expects 'on' or 'off', got: $text"
+  /** Reads the `"on"`/`"off"` argument every toggle takes, or reports what was wrong.
+   *
+   *  One definition, so no two settings can come to disagree about their own spelling —
+   *  which is what [[onOff]] already does for the answer.
+   */
+  private def toggleArgument(name: String, text: String): Either[String, Boolean] =
+    text.toLowerCase match
+      case "on"  | "true"  => Right(true)
+      case "off" | "false" => Right(false)
+      case _               => Left(s"$name expects 'on' or 'off', got: $text")
 
-  /** Sets the LaTeX flag from `"on"`/`"off"` (case-insensitive). */
-  private def setLatex(text: String): String = text.toLowerCase match
-    case "on"  | "true"  => latexMode = true;  "latex = on"
-    case "off" | "false" => latexMode = false; "latex = off"
-    case _               => s"latex expects 'on' or 'off', got: $text"
+  /** Sets the pretty-matrix flag from `"on"`/`"off"` (case-insensitive).
+   *
+   *  Turning it on turns `latex` off — see [[setLatex]] for the reasoning, which is one rule
+   *  read from either end.
+   */
+  private def setPretty(text: String): String =
+    toggleArgument("pretty", text).fold(identity, on =>
+      prettyMatrix = on
+      val displaced = Option.when(on && latexMode) { latexMode = false; "latex off" }
+      exclusive(s"pretty = ${onOff(on)}", displaced))
+
+  /** Sets the LaTeX flag from `"on"`/`"off"` (case-insensitive).
+   *
+   *  **Turning it on turns `pretty` off** (F_0031).  A consumer that can typeset shows the
+   *  formula *beside* the text, and a `pmatrix` already lays a matrix out — so a stacked text
+   *  beside it is the same layout twice, which is why the two settings are mutually
+   *  exclusive rather than merely unrelated.
+   *
+   *  **The exclusion is performed here rather than in the page**, and that is the whole point:
+   *  `settings` and `script` read these fields, so a hidden override would leave the browser's
+   *  control reporting `pretty = on` while nothing stacked — a setting that appears to do
+   *  nothing, which is the defect F_0031 was filed for.  It only ever *clears* the other flag;
+   *  turning this one off again does not restore it, since that would be guessing at a state
+   *  the user never asked for.
+   */
+  private def setLatex(text: String): String =
+    toggleArgument("latex", text).fold(identity, on =>
+      latexMode = on
+      val displaced = Option.when(on && prettyMatrix) { prettyMatrix = false; "pretty off" }
+      exclusive(s"latex = ${onOff(on)}", displaced))
+
+  /** Appends the note naming the setting a toggle displaced, when it displaced one. */
+  private def exclusive(answer: String, displaced: Option[String]): String =
+    displaced.fold(answer)(other => s"$answer ($other: the two show the same layout twice)")
 
   /** Removes a binding or definition by name, reporting whether it existed. */
   private def unset(name: String): String =

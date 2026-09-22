@@ -162,8 +162,16 @@ object App:
         // `latex on` fills the session's side channel with the LaTeX of this result -- and
         // only of THIS one, since it is cleared per command. Typesetting is attempted here
         // and nowhere else: if the renderer did not load, or the answer was not an
-        // expression, the plain text goes up exactly as it always did.
-        if !session.lastLatex.exists(writeMath) then write(out, "out")
+        // expression, the text is all that goes up.
+        //
+        // BOTH are shown, text first (F_0031). The formula used to REPLACE the text, which
+        // made `latex on` silently swallow everything `pretty` did and left that setting
+        // looking broken; and the text is the canonical grammar form -- what `:save` writes
+        // and what a reader has to retype -- so it is the one thing that may not be hidden.
+        // `latex on` turns `pretty` off in the session, so the text sitting beside the
+        // formula is the compact form rather than the same layout twice.
+        write(out, "out")
+        session.lastLatex.foreach(writeMath)
       // Every line can change a setting -- `latex on` typed at the prompt must move the
       // checkbox, or the panel becomes a second, stale source of truth for state the command
       // language already owns. Refreshing unconditionally costs one pass over seven fields.

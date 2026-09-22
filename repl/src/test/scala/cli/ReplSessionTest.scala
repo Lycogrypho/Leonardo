@@ -1000,6 +1000,29 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("M") == "[[1.0, 2.0], [3.0, 4.0]]")
   }
 
+  "the assignment echo with pretty on" should "stack, like every other matrix" in
+  {
+    // F_0031: the echo used `_MatrixValue.toString` and so ignored the toggle, which is the
+    // FIRST thing a reader sees after setting it -- so `pretty` looked broken on the most
+    // obvious test there is. It now renders through `formatExpression`, one definition.
+    val s = session
+    s.execute("pretty on")
+    val out = s.execute("N := [[1, 2], [3, 4]]")
+    assert(out.startsWith("N := "), out)
+    assert(out.contains("\n"), s"the echo should stack under `pretty on`; got:\n$out")
+  }
+
+  it should "carry the session precision too, which toString cannot" in
+  {
+    // `_MatrixValue.toString` is fixed at Environment.DefaultPrecision, so the echo used to
+    // disagree with the very next line that displayed the same value.
+    val s = session
+    s.execute("precision 2")
+    val echoed = s.execute("P := [[1/3, 2], [3, 4]]")
+    assert(echoed.contains("0.33") && !echoed.contains("0.33333"), echoed)
+    assert(echoed == s"P := ${s.execute("P")}", "the echo and the value must render identically")
+  }
+
   "a decomposition result (matrix of matrices) with pretty on" should "stay single-line" in
   {
     val s = session

@@ -164,7 +164,12 @@ exact answer.
 
 Matrices with two or more rows can be shown multi-line with right-aligned columns
 (`pretty on`; `pretty off` restores the single-line form). Single-row matrices and
-decomposition results stay on one line. The setting is persisted by `:save` / `:load`.
+decomposition results stay on one line. The setting is persisted by `:save` / `:load`,
+and the assignment echo honours it, so `A := [[1, 2], [3, 4]]` stacks like any other matrix.
+
+`pretty` and [`latex`](#latex) are **mutually exclusive**: turning either on turns the
+other off and says so. A typeset matrix already carries the layout, so a stacked text beside it
+would be the same thing twice.
 
 ```scala mdoc
 s.execute("pretty on")
@@ -321,7 +326,9 @@ vector drawn as a coordinate, or anything in the complex plane. On unequal axes 
 like an ellipse, so the lock is a correctness matter rather than a preference.
 
 `latex on` is browser-visible in a way it cannot be in a terminal: with it set, each result is
-**typeset** in the transcript instead of printed, by a vendored render-only build of MathLive.
+**typeset** in the transcript *beside* its text, by the vendored MathLive build. Both are shown
+— the text is the canonical grammar form, the one you would retype or `:save`, so it is never
+hidden — and `latex on` turns `pretty` off, since a typeset matrix already carries the layout.
 The maths fonts are fetched only when a formula needs them, so leaving the toggle off costs
 nothing.
 
