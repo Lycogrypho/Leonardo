@@ -76,7 +76,7 @@ jobs:
         # scala-<version> makes Scala Steward's bump branch edit this workflow, and pushing a
         # workflow change is refused for a PAT without the `workflow` scope -- failing the
         # whole run. pages.yml records that incident; this file kept the literal anyway,
-        # which is why check-scala-version.py now enforces the rule instead of a comment.
+        # which is why the CheckScalaVersion guard now enforces the rule instead of a comment.
         # A fresh checkout links exactly one scala-* directory, and `ls` fails loudly if none.
         run: |
           sbt web/test web/fullLinkJS
@@ -108,14 +108,19 @@ jobs:
         # They are Scala since F_0027, run through the `checks` alias -- ONE sbt boot for all
         # four, and the same command a contributor runs locally. No toolchain beyond the JDK
         # and sbt this job already installs.
-        run: sbt checks
-
-      - name: Guard tests
-        # The guards' own suite, which the Python originals never had. `tools` is outside the
-        # root aggregate (the `web` precedent), so it is named here or it never runs: repository
-        # hygiene is not library behaviour and folding it into `sbt test` would quietly change
-        # what that number means.
-        run: sbt tools/test
+        #
+        # The alias names NO PATHS since F_0028: each guard defaults to `Files.GuardedRoots`,
+        # so what CI scans is decided in one Scala constant rather than in a workflow line
+        # nobody re-reads -- and that line had been wrong, missing the four CrossType.Pure
+        # platform trees, the build definition and the root documents.
+        #
+        # `tools/test` joins the same invocation for a second reason: the guards' own suite,
+        # which the Python originals never had, was a separate step and therefore a second sbt
+        # boot costing ~25 s for nothing. It must still be named explicitly -- `tools` is
+        # outside the root aggregate (the `web` precedent), so folding it into `sbt test`
+        # would quietly change what that number means. Each command labels its own output, so
+        # one step costs no log clarity.
+        run: sbt checks tools/test
 
       - name: Binary compatibility
         # Checks both published modules against the `mimaBaseline` in build.sbt (issue 2.9).

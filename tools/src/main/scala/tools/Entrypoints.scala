@@ -20,7 +20,12 @@ package tools
  *
  *  Each is a thin shell over its object's `run`, so a test exercises the logic without the
  *  process exiting underneath the suite.  Run them through the `checks` alias — one sbt boot
- *  for all four — or individually:
+ *  for all four — or individually.
+ *
+ *  **Given no paths, each scans [[Files.GuardedRoots]]** (issue F_0028), which is why the
+ *  alias names none: the set of guarded trees is one constant rather than a string repeated
+ *  in the build, the workflow and two suites.  A path argument narrows the scan to it, which
+ *  is what `--check` on a single file is for.
  *  {{{
  *  sbt checks
  *  sbt "tools/runMain it.grypho.scala.leonardo.tools.charset core/src"

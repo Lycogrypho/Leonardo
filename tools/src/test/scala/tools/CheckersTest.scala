@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package tools
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files as JFiles, Path}
+import java.nio.file.{Files as JFiles, Path, Paths}
 import org.scalatest.flatspec.AnyFlatSpec
 
 /** The three pattern guards, each against a fixture that must fail and one that must pass
@@ -54,7 +54,6 @@ class CheckersTest extends AnyFlatSpec:
 
   it should "agree with the workflows this repository actually ships" in
   {
-    import java.nio.file.Paths
     val (found, checked) = CheckActionPins.offences(List(Paths.get(".github", "workflows")))
     assert(checked >= 5, s"expected the five workflows, found $checked")
     assert(found.isEmpty, s"unpinned: $found")
@@ -79,7 +78,6 @@ class CheckersTest extends AnyFlatSpec:
 
   it should "find nothing under this repository's .github" in
   {
-    import java.nio.file.Paths
     assert(CheckScalaVersion.offences(List(Paths.get(".github"))).isEmpty)
   }
 
@@ -111,9 +109,52 @@ class CheckersTest extends AnyFlatSpec:
            s"false positive on legitimate notation: ${CheckCharset.offences(List(dir))}")
   }
 
-  it should "find nothing in this repository's own sources" in
+  it should "find nothing anywhere this repository guards" in
   {
-    import java.nio.file.Paths
-    val roots = List("core/src", "repl/src", "web/src", "tools/src", "docs").map(Paths.get(_))
-    assert(CheckCharset.offences(roots).isEmpty)
+    // Files.GuardedRoots, never a list spelled here: the coverage of a guard is one fact, and
+    // a second copy of it is how a tree stops being scanned without anyone noticing (F_0028).
+    assert(CheckCharset.offences(Files.GuardedRoots).isEmpty)
+  }
+
+  it should "default to the guarded roots when given no paths" in
+  {
+    // The default is what lets the `checks` alias, ci.yml and this suite name the same set
+    // without any of them repeating it.
+    assert(CheckCharset.run(Nil) == 0)
+  }
+
+  // --- what the guards cover ----------------------------------------------------------
+
+  "the guarded roots" should "include every platform source tree, not only the shared one" in
+  {
+    // THE gap F_0028 found: the root list was inherited from the Python originals and named
+    // `core/src repl/src` only, so the four CrossType.Pure platform trees -- real .scala,
+    // holding Terminal.scala and DoubleRender.scala -- were never scanned at all. The 2.8
+    // damage spread by copy-paste between files; an unscanned tree is where the next paste
+    // lands.
+    for tree <- List("core/jvm-src", "core/js-src", "repl/jvm-src", "repl/js-src") do
+      val path = Paths.get(tree)
+      assert(Files.GuardedRoots.contains(path), s"$tree is a source tree and must be guarded")
+      assert(Files.walk(path, Files.TextExtensions).nonEmpty, s"$tree should hold sources")
+  }
+
+  it should "include the build definition and the published root documents" in
+  {
+    // `NOTICE` has no extension, and is reached because `walk` returns a named FILE as itself
+    // rather than applying the extension filter -- which is what lets a root list mix trees
+    // and single files with no special case.
+    for name <- List("build.sbt", "project", "README.md", "CHANGELOG.md", "NOTICE") do
+      val path = Paths.get(name)
+      assert(Files.GuardedRoots.contains(path), s"$name must be guarded")
+      assert(Files.walk(path, Files.TextExtensions).nonEmpty, s"$name should be readable")
+  }
+
+  it should "tolerate a root that this checkout does not have" in
+  {
+    // ToDo.md, Done.md and DesignNotes.md are untracked and absent from every CI checkout, so
+    // the list is deliberately wider than any one working copy. `walk` answers an absent root
+    // with nothing, which is what makes listing them safe rather than a per-environment case.
+    assert(Files.walk(Paths.get("no-such-tree"), Files.TextExtensions).isEmpty)
+    for local <- List("ToDo.md", "Done.md", "DesignNotes.md") do
+      assert(Files.GuardedRoots.contains(Paths.get(local)), s"$local should be guarded when present")
   }

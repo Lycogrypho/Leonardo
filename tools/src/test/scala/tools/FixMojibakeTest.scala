@@ -87,8 +87,17 @@ class FixMojibakeTest extends AnyFlatSpec:
 
   "a scan of this repository" should "find nothing, which is the state the guard defends" in
   {
-    import java.nio.file.Paths
-    val roots = List("core/src", "repl/src", "web/src", "tools/src", "docs").map(Paths.get(_))
-    val found = FixMojibake.scan(roots)
+    // Files.GuardedRoots rather than a list repeated here (F_0028): the set of scanned trees
+    // is one fact, and the `checks` alias, ci.yml and this assertion must all mean the same
+    // one or the guard's coverage is whatever the least-updated copy says.
+    val found = FixMojibake.scan(Files.GuardedRoots)
     assert(found.isEmpty, s"damaged files: ${found.map(_._1).mkString(", ")}")
+  }
+
+  it should "be what `--check` scans when it is given no paths" in
+  {
+    // The mode is still required -- `mojibake` alone is a typo, not a request -- but an empty
+    // path list now means the repository rather than a refusal.
+    assert(FixMojibake.run(List("--check")) == 0)
+    assert(FixMojibake.run(Nil) == 2, "a missing mode must still refuse")
   }

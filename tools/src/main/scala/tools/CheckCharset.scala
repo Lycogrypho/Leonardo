@@ -1,7 +1,7 @@
 package it.grypho.scala.leonardo
 package tools
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.Path
 
 /** Detects characters from scripts this codebase cannot legitimately contain (issue 2.8).
  *
@@ -67,10 +67,10 @@ object CheckCharset:
       }
     }
 
-  /** The check, as an exit code.
+  /** The check, as an exit code, over the given paths or [[Files.GuardedRoots]].
    *
-   *  @param args the files or directories to scan
+   *  @param args the files or directories to scan; empty means the repository's own list
    *  @return 1 when anything is found, 0 otherwise
    */
   def run(args: Seq[String]): Int =
-    Files.report(offences(args.map(Paths.get(_))), n => s"$n suspect line(s)")
+    Files.report(offences(Files.rootsOrDefault(args)), n => s"$n suspect line(s)")

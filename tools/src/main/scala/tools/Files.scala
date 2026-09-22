@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package tools
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files as JFiles, Path}
+import java.nio.file.{Files as JFiles, Path, Paths}
 import scala.jdk.StreamConverters.*
 
 /** The file walking and reporting every guard shares (issue F_0027).
@@ -21,6 +21,51 @@ object Files:
    *  one thing it has.
    */
   val TextExtensions: Set[String] = Set(".scala", ".md", ".txt", ".puml", ".sbt")
+
+  /** Everything the encoding guards cover, written **once** (issue F_0028).
+   *
+   *  It used to be written three times — the `checks` alias, `FixMojibakeTest`'s repository
+   *  scan and `CheckersTest`'s — and all three said `core/src repl/src web/src tools/src
+   *  docs`, inherited from the Python originals and carried through the port verbatim. Two
+   *  things were wrong with that. **It missed four real source trees**: `CrossType.Pure` puts
+   *  the platform code in `core/jvm-src`, `core/js-src`, `repl/jvm-src` and `repl/js-src`, so
+   *  `Terminal.scala` and `DoubleRender.scala` were never scanned at all — and the 2.8 damage
+   *  spread by copy-paste, which makes an unscanned tree exactly where the next paste lands.
+   *  And **three hand-maintained copies of one set is the drift `ColorSchemeNamesTest` exists
+   *  to prevent elsewhere**; the remedy is the one [[CheckActionPins]] already uses — a
+   *  default the callers fall back to, rather than a list each of them repeats.
+   *
+   *  Trees and single files mix freely because [[walk]] returns a named file as itself, which
+   *  is how the extensionless `NOTICE` is reached at all, and answers an absent root with
+   *  nothing, which is how the untracked local trio can be listed although no CI checkout
+   *  has it.
+   */
+  val GuardedRoots: Vector[Path] = Vector(
+    // The library and the REPL: shared sources and BOTH platform trees (F_0003).
+    "core/src", "core/jvm-src", "core/js-src",
+    "repl/src", "repl/jvm-src", "repl/js-src",
+    // The browser front end, and the guards themselves — a guard must be clean of its own rules.
+    "web/src", "tools/src",
+    // The build definition. `project/` holds .sbt and .scala the compiler never sees as part
+    // of a module, so nothing else would ever reach them.
+    "build.sbt", "project",
+    // The documentation site's input, and the documents a visitor to the repository meets
+    // first. `LICENSE` is deliberately absent: it is a verbatim Apache-2.0 text nobody here may
+    // edit, so a finding in it could only ever be a stuck build.
+    "docs", "README.md", "CHANGELOG.md", "NOTICE",
+    // Gitignored, so absent from every CI checkout and scanned on a LOCAL run only. Listed
+    // anyway because this is where most of the project's prose is actually written, and a local
+    // run is therefore the only place damage in them could ever be caught.
+    "CLAUDE.md", "ToDo.md", "Done.md", "DesignNotes.md"
+  ).map(Paths.get(_))
+
+  /** The roots a guard was told to scan, or [[GuardedRoots]] when it was told none.
+   *
+   *  @param args the command line's path arguments
+   *  @return those paths, or the repository's own list
+   */
+  def rootsOrDefault(args: Seq[String]): Vector[Path] =
+    if args.isEmpty then GuardedRoots else args.toVector.map(Paths.get(_))
 
   /** Every file under `root` whose name ends in one of `extensions`, in a stable order.
    *

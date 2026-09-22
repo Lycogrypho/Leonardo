@@ -11,8 +11,8 @@ import org.scalatest.flatspec.AnyFlatSpec
  *  styles.  Two hand-maintained lists of the same set is how they drift apart — add a scheme
  *  to one and the REPL either accepts a name it cannot render, or refuses one it can.
  *
- *  This is the standing guard for that, in the spirit of `check-charset.py`: the split was a
- *  one-time repair, and nothing else would keep it true.
+ *  This is the standing guard for that, in the spirit of the `CheckCharset` guard: the split
+ *  was a one-time repair, and nothing else would keep it true.
  */
 class ColorSchemeNamesTest extends AnyFlatSpec:
 

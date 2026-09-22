@@ -3,7 +3,7 @@ package tools
 
 import java.nio.ByteBuffer
 import java.nio.charset.{CharsetDecoder, CodingErrorAction, StandardCharsets, Charset}
-import java.nio.file.{Path, Paths}
+import java.nio.file.Path
 import scala.util.Try
 
 /** Repairs UTF-8-read-as-cp1252 mojibake (issue 2.8).
@@ -161,26 +161,26 @@ object FixMojibake:
       Option.when(fixed != original)((path, original, fixed))
     }
 
-  /** The check or the repair, as an exit code.
+  /** The check or the repair, as an exit code, over the given paths or [[Files.GuardedRoots]].
    *
    *  `--check` reports and fails; `--write` repairs in place and succeeds, because a tool
    *  asked to fix something has not failed by fixing it.
    *
-   *  @param args `--check` or `--write`, then the paths
+   *  @param args `--check` or `--write`, then optionally the paths
    *  @return 1 only when `--check` found damage
    */
   def run(args: Seq[String]): Int =
-    val mode  = args.headOption.getOrElse("")
-    val paths = args.drop(1)
-    // Refusing beats a reassuring "0 file(s) affected" for a command that scanned nothing:
-    // the mode and at least one path are both required, and a typo in either is exactly how
-    // a guard reports success without having run.
-    if (mode != "--check" && mode != "--write") || paths.isEmpty then
-      println("usage: fixMojibake --check|--write <path ...>")
+    val mode = args.headOption.getOrElse("")
+    // The MODE stays required, because refusing beats a reassuring "0 file(s) affected" from a
+    // command that scanned nothing and a bare `mojibake` is a typo rather than a request.
+    // The paths do not: since F_0028 an empty list means the repository's own roots, which is
+    // a deliberate default and the only way the alias and the tests can share one list.
+    if mode != "--check" && mode != "--write" then
+      println("usage: mojibake --check|--write [path ...]   (no path means the whole repository)")
       return 2
 
     val write   = mode == "--write"
-    val changed = scan(paths.map(Paths.get(_)))
+    val changed = scan(Files.rootsOrDefault(args.drop(1)))
 
     changed.foreach { (path, original, fixed) =>
       val lines = original.split("\n", -1).zipAll(fixed.split("\n", -1), "", "").count(_ != _)

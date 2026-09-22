@@ -1562,8 +1562,16 @@ package "tools" <<Rectangle>> {
         no .github file may spell scala-<version>
     }
     class "Files" <<utility>> [[developer.html]] {
+        + GuardedRoots: Vector
+        + rootsOrDefault(args): Vector
         walk / read / write / report
-        one definition of which files a guard covers
+        __ __
+        ONE definition of which files a guard covers
+        (F_0028): the alias passes no paths, the
+        suites read the constant, so the list that
+        was written three times — and missed the
+        four CrossType.Pure platform trees — is
+        written once
     }
 
     "FixMojibake"       ..> "Files"

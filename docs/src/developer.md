@@ -1410,6 +1410,19 @@ same command CI runs:
 | `CheckActionPins` | every workflow `uses:` naming a commit SHA, not a tag or branch |
 | `CheckScalaVersion` | no file under `.github/` spelling the Scala version |
 
+**What the encoding guards scan is a constant, not an argument list.**  `Files.GuardedRoots`
+names every tree and file the two of them cover, and both default to it when given no paths —
+so `sbt checks` passes none, the suite reads the same constant, and there is one answer to
+"which files are guarded?".  It was three answers until F_0028, all of them saying
+`core/src repl/src web/src tools/src docs`, which missed the four `CrossType.Pure` platform
+trees (`core/jvm-src`, `core/js-src`, `repl/jvm-src`, `repl/js-src` — real sources, including
+`Terminal.scala` and `DoubleRender.scala`), the build definition and the root documents.  The
+list mixes trees with single files freely, because `walk` returns a named file as itself —
+which is how the extensionless `NOTICE` is reached — and answers a missing root with nothing,
+which is how the untracked `ToDo.md` / `Done.md` / `DesignNotes.md` can be listed although no
+CI checkout has them.  **Add a new source tree here when you add one**, or its files are
+guarded by nothing.
+
 **A program committed to this repository is written in Scala unless it strictly cannot be**
 (the rule, set 2026-09-20).  A temporary script in any language is fine and belongs in the
 gitignored `.claudetools`.  These four were Python; porting them cost no new toolchain, since
@@ -1427,6 +1440,15 @@ its literal and wrote the incident above the glob that replaced it; `ci.yml` kep
 literal regardless.  The condition had already decayed while the explanation sat three files
 away, which is precisely what a comment cannot prevent and a check can.  Use a glob
 (`web/target/scala-*/…`) or a directory scan; a build produces exactly one such directory.
+
+**A guard must be clean of its own rules — in prose as much as in code.**  `FixMojibake.Lossy`
+builds its damaged sequences from code points rather than writing them, because the table *is*
+mojibake and the file is a `.scala` the charset guard scans.  Widening the roots to the root
+documents found the same trap in prose: `Done.md`'s account of issue 2.8 quoted the damaged
+sequences and the Hebrew letter literally as examples, so the *documentation* of the repair
+failed the guard.  They are named there now (`‹a-circumflex›‹euro›‹quote›`), which reads no
+worse and scans clean.  Expect this whenever a guard's reach grows: the first thing a widened
+scanner finds is usually the description of what it is looking for.
 
 The pattern generalises past these three.  When a fix consists of bringing many sites into
 line — an encoding, a pinning convention, an import rule — the fix itself is the easy half;

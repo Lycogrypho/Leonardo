@@ -558,8 +558,13 @@ addCommandAlias("bench", "core/Test/runMain it.grypho.scala.leonardo.core.Ration
 // would be four JVM starts, which is the only cost the Python originals did not have. A
 // contributor runs exactly what ci.yml runs, which is the point of an alias over a list of
 // commands copied into a workflow.
+//
+// NO PATHS ARE SPELLED HERE (issue F_0028). Each guard defaults to `Files.GuardedRoots`, so
+// this alias, ci.yml and the guards' own suite cannot disagree about which trees are covered
+// -- which they had: the list said `core/src repl/src` and so never saw the four CrossType.Pure
+// platform trees, the build definition or the root documents.
 addCommandAlias("checks",
-  ";tools/runMain it.grypho.scala.leonardo.tools.mojibake --check core/src repl/src web/src tools/src docs" +
-  ";tools/runMain it.grypho.scala.leonardo.tools.charset core/src repl/src web/src tools/src docs" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.mojibake --check" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.charset" +
   ";tools/runMain it.grypho.scala.leonardo.tools.actionPins" +
   ";tools/runMain it.grypho.scala.leonardo.tools.scalaVersion")
