@@ -24,7 +24,12 @@ import scala.scalajs.js.Dynamic.{global, literal}
 object FakeDom:
 
   /** Every id `index.html` defines and `App` reaches for. */
-  val Ids: Vector[String] = Vector("input", "transcript", "figure", "share", "clear", "settings")
+  val Ids: Vector[String] =
+    Vector("input", "transcript", "figure", "share", "clear", "settings",
+           // The WYSIWYG editor (F_0017): the field itself, its submit button, and the line a
+           // refusal is written to -- shown rather than submitted, since the grammar would read
+           // an unconvertible name as a variable instead of complaining.
+           "mathfield", "mathsubmit", "matherror")
 
   /** The last document handed to Plotly, so a test can read what would have been drawn. */
   var drawn: js.Dynamic = null
@@ -106,10 +111,30 @@ object FakeDom:
       s"""<span class="ml">$latex</span>"""
     }: js.Function1[String, String]
 
+    // The editor's half of the vendored build (F_0017). A stub, not MathLive: what is under
+    // test is that the page hands the LaTeX to a converter and then to `cli.AsciiMath`, not
+    // that MathLive can convert -- which is upstream's problem. The mapping below is exactly
+    // what the real converter produced for these inputs, taken from the F_0017 probe.
+    g.leonardoLatexToAsciiMath = { (latex: String) =>
+      latex
+        .replace("\\sin", "sin ")
+        .replace("\\sqrt", "sqrt")
+        .replace("\\int", " int ")
+        .replace("{", "(").replace("}", ")")
+    }: js.Function1[String, String]
+
     App.start()
 
   /** The element behind an id, for a test that needs to poke at it. */
   def byId(id: String): js.Dynamic = elements(id)
+
+  /** Puts LaTeX in the math field and clicks its submit button (issue F_0017). */
+  def typeMath(latex: String): Unit =
+    byId("mathfield").value = latex
+    fire(byId("mathsubmit"), "click", literal())
+
+  /** Whatever refusal the math field last produced, or `""`. */
+  def mathError(): String = byId("matherror").textContent.asInstanceOf[String]
 
   private def fire(el: js.Dynamic, kind: String, event: js.Dynamic): Unit =
     val bucket = el.listeners.selectDynamic(kind)

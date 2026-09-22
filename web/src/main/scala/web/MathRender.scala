@@ -12,20 +12,23 @@ import scala.scalajs.js.Dynamic.global
  *  What is left here is the call, which cannot be tested without a DOM — the same split
  *  [[Plot]] makes, and for the same reason.
  *
- *  **Render-only.**  What is vendored is MathLive's SSR distribution: the conversion functions
- *  and nothing else, so no mathfield element, no virtual keyboard and none of its keyboard
- *  sounds are shipped.  The editor is a later entry (F_0017), and choosing MathLive now is
- *  what keeps that from being a migration.
+ *  **The vendored build is the full one since F_0017**, which carries the `<math-field>` editor
+ *  as well as these conversion functions — one file replacing the SSR build rather than joining
+ *  it.  Choosing MathLive at F_0016 is what made that a swap rather than a migration.  Its
+ *  keyboard sounds are still not shipped, but now by decision (`soundsDirectory = null` in
+ *  `index.html`) rather than by the SSR build's absence of a keyboard.
  */
 object MathRender:
 
   /** Whether the vendored renderer is present.
    *
    *  **`js.typeOf`, not a null check**, the rule phase 2 paid for: reading an undeclared name
-   *  raises `ReferenceError` before any comparison can run.  It is `undefined` for a second
-   *  reason here that `Plotly` does not have — the renderer is an ES module and so loads
-   *  *after* the classic `main.js`, so a very early render can legitimately find it missing.
-   *  Both cases degrade the same way: the transcript keeps its plain-text answer.
+   *  raises `ReferenceError` before any comparison can run.
+   *
+   *  The ordering caveat this used to carry is **gone since F_0017**: the full build is UMD and
+   *  loads as a classic script, so the global is defined before `main.js` runs and a render can
+   *  no longer arrive too early.  The check stays because a *missing* vendor directory is still
+   *  possible, and it degrades the same way — the transcript keeps its plain-text answer.
    */
   private def available: Boolean = js.typeOf(global.leonardoLatexToMarkup) != "undefined"
 

@@ -84,7 +84,7 @@ jobs:
           bundle=$(ls web/target/scala-*/leonardo-web-opt/main.js)
           echo "leonardo: $(stat -c%s "$bundle") raw / $(gzip -c "$bundle" | wc -c) gzipped"
           echo "plotly:   $(stat -c%s web/vendor/plotly.min.js) raw / $(gzip -c web/vendor/plotly.min.js | wc -c) gzipped"
-          echo "mathlive: $(stat -c%s web/vendor/mathlive/mathlive-ssr.min.js) raw / $(gzip -c web/vendor/mathlive/mathlive-ssr.min.js | wc -c) gzipped"
+          echo "mathlive: $(stat -c%s web/vendor/mathlive/mathlive.min.js) raw / $(gzip -c web/vendor/mathlive/mathlive.min.js | wc -c) gzipped"
 
       - name: Repository guards
         # Four standing checks, each guarding a one-time repair of a condition that decays

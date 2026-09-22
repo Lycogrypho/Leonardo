@@ -42,16 +42,22 @@
     <link rel="stylesheet" href="vendor/mathlive/mathlive-static.css">
     <link rel="stylesheet" href="vendor/mathlive/mathlive-fonts.css">
     <!--
-      An ES module, so it is DEFERRED and runs after main.js - which is why MathRender tests
-      for the global rather than assuming it, and why a `latex on` result typed in the first
-      instants would degrade to text rather than fail. The file keeps a .js extension although
-      upstream names it .mjs: the bytes are identical and the extension means nothing to
-      `type="module"`, but .js has an unambiguous JavaScript MIME type on every static host,
-      and a module served as application/octet-stream does not load at all.
+      The FULL build since F_0017: it carries the <math-field> editor as well as the conversion
+      functions the SSR build had, so one file replaces the other rather than joining it.
+
+      It is UMD, not an ES module, and that simplifies three things at once: a plain <script
+      src> rather than an import, no .js-for-.mjs MIME workaround, and no deferral - the global
+      is defined BEFORE main.js runs, so nothing has to cope with it arriving late.
+
+      soundsDirectory is set to null deliberately. The virtual keyboard plays sounds and the
+      package ships 232 KB of .wav for them; the SSR build had no keyboard, so F_0016 excluded
+      those by ACCIDENT. With a keyboard present the exclusion has to be a decision.
     -->
-    <script type="module">
-      import { convertLatexToMarkup } from './vendor/mathlive/mathlive-ssr.min.js';
-      globalThis.leonardoLatexToMarkup = convertLatexToMarkup;
+    <script src="vendor/mathlive/mathlive.min.js"></script>
+    <script>
+      globalThis.leonardoLatexToMarkup = globalThis.MathLive.convertLatexToMarkup;
+      globalThis.leonardoLatexToAsciiMath = globalThis.MathLive.convertLatexToAsciiMath;
+      globalThis.MathLive.MathfieldElement.soundsDirectory = null;
     </script>
 
     <style>
@@ -144,6 +150,24 @@
         <input id="input" class="mono" type="text" autocomplete="off" autocapitalize="off"
                autocorrect="off" spellcheck="false" placeholder="try:  derive(sin(x)^2, x)">
       </div>
+
+      <!--
+        The WYSIWYG editor (F_0017), a SECOND and optional input rather than a replacement.
+        The text line above keeps every command - `:save`, `latex off`, `samples x 0 10`, an
+        assignment - none of which a math field can express; this one is for expressions only
+        and submits through exactly the same path.
+
+        What it produces is LaTeX; `cli.AsciiMath` turns MathLive's AsciiMath form of that into
+        grammar text or REFUSES, and a refusal is shown here rather than submitted, because the
+        grammar would silently read an unknown name as a variable.
+      -->
+      <div class="prompt">
+        <span class="mono" aria-hidden="true">∫</span>
+        <label for="mathfield" class="visually-hidden" hidden>Expression, typeset</label>
+        <math-field id="mathfield"></math-field>
+        <button id="mathsubmit" type="button">Enter</button>
+      </div>
+      <div id="matherror" class="mono" role="alert"></div>
 
       <!--
         Filled by App from `Session.settings`, so this element deliberately names no setting:

@@ -208,6 +208,9 @@ final class Session:
    */
   private def callSyntaxNames(line: String): List[String] =
     Session.CallSyntax.findAllMatchIn(line)
+      // The "not part of a longer name" half of the rule, done here rather than as a
+      // lookbehind: see `Session.CallSyntax` for why the regex cannot express it.
+      .filterNot(m => m.start > 0 && line.charAt(m.start - 1).isLetterOrDigit)
       .map(_.group(1))
       .filterNot(Parser.ReservedWords.contains)
       .filterNot(announced.contains)
@@ -1040,13 +1043,22 @@ object Session:
 
   /** An identifier written immediately before `(` (issue F_0030).
    *
-   *  The identifier shape is the grammar's own (`[a-zA-Z][a-zA-Z0-9]*`), and the lookbehind
-   *  stops `sina(x)` from also reporting `ina`.  **No whitespace is permitted before the
-   *  bracket**: that is what separates an attempted function call from an ordinary
-   *  parenthesised product, which the grammar spells the same way and which a user should not
-   *  be lectured about.
+   *  The identifier shape is the grammar's own (`[a-zA-Z][a-zA-Z0-9]*`).  **No whitespace is
+   *  permitted before the bracket**: that is what separates an attempted function call from an
+   *  ordinary parenthesised product, which the grammar spells the same way and which a user
+   *  should not be lectured about.
+   *
+   *  **There is deliberately NO lookbehind here**, although `(?<![a-zA-Z0-9])` expresses the
+   *  "not part of a longer name" rule directly and was how this was first written.  Scala.js's
+   *  `java.util.regex` emulation refuses a lookbehind at the ES version this project targets —
+   *  `PatternCompiler.parseErrorRequireESVersion` — and the failure is at *runtime*, when the
+   *  pattern is first compiled, so it takes out every browser test that touches `Session`
+   *  rather than failing to compile.  Consuming the preceding character instead would be
+   *  portable but wrong: `findAllMatchIn` resumes after the previous match, so the `(` of
+   *  `sqrt(foo(x))` would be eaten and the inner `foo(` missed.  The caller checks the
+   *  character before `start` itself, which is exact on both platforms.
    */
-  val CallSyntax: scala.util.matching.Regex = """(?<![a-zA-Z0-9])([a-zA-Z][a-zA-Z0-9]*)\(""".r
+  val CallSyntax: scala.util.matching.Regex = """([a-zA-Z][a-zA-Z0-9]*)\(""".r
 
   /** Points taken by `samples` / [[Session.samplePoints]] when the count is omitted.
    *

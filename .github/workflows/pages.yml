@@ -145,14 +145,14 @@ jobs:
           test -s _site/app/index.html
           test -s _site/app/main.js
           test -s _site/app/vendor/plotly.min.js
-          test -s _site/app/vendor/mathlive/mathlive-ssr.min.js
+          test -s _site/app/vendor/mathlive/mathlive.min.js
           test -s _site/app/vendor/mathlive/mathlive-static.css
           # The fonts are the half most easily lost: the CSS references them by relative path,
           # so a missing fonts/ directory leaves a page that typesets into invisible glyphs
           # rather than one that fails.
           test "$(ls _site/app/vendor/mathlive/fonts/*.woff2 | wc -l)" -eq 20
           grep -q 'leonardoStart' _site/app/main.js
-          echo "app: $(stat -c%s _site/app/main.js) bytes of Leonardo, $(stat -c%s _site/app/vendor/plotly.min.js) of Plotly, $(stat -c%s _site/app/vendor/mathlive/mathlive-ssr.min.js) of MathLive"
+          echo "app: $(stat -c%s _site/app/main.js) bytes of Leonardo, $(stat -c%s _site/app/vendor/plotly.min.js) of Plotly, $(stat -c%s _site/app/vendor/mathlive/mathlive.min.js) of MathLive"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

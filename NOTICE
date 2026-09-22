@@ -68,29 +68,37 @@ MIT licence, reproduced as its terms require:
 
 --------------------------------------------------------------------------------
 
-VENDORED: MathLive v0.110.0, render-only build (web/vendor/mathlive/)
+VENDORED: MathLive v0.110.0, full build (web/vendor/mathlive/)
 
-Used only by the browser front end (issue F_0016) to typeset the LaTeX the
-`latex` package emits; it is not part of the published library artifacts, and no
-Scala code binds to it -- the facade passes a LaTeX string and receives markup.
+Used only by the browser front end to typeset the LaTeX the `latex` package
+emits (issue F_0016) and, since F_0017, to provide the `<math-field>` editor and
+the LaTeX-to-AsciiMath conversion the input reader consumes. It is not part of
+the published library artifacts, and no Scala code binds to it -- the facades
+pass and receive strings.
 
-This is the SSR (server-side rendering) distribution, which exports the
-conversion functions and NOTHING ELSE: no mathfield element, no virtual keyboard
-and therefore none of the package's 232 KB of keyboard sounds, which are
-deliberately not vendored. Neither this build nor the full one bundles any part
-of `@cortex-js/compute-engine`: MathLive looks that up on
-`globalThis[Symbol.for("io.cortexjs.compute-engine")]` and merely declines the
-MathJSON conversions when it is absent -- verified before vendoring, because
-shipping a second CAS inside a page whose purpose is the first one would be
-absurd.
+This is the FULL distribution, which replaced the render-only SSR one at F_0017;
+it carries the same conversion functions, so one file supersedes the other
+rather than joining it. It is UMD, so it loads as a plain `<script src>` and
+defines `globalThis.MathLive` before `main.js` runs.
 
-The script is vendored under a `.js` extension although upstream names it
-`.mjs`; the bytes are identical and the extension is invisible to a
-`<script type="module">`, but `.js` has an unambiguous JavaScript MIME type on
-every static host, and a module served as `application/octet-stream` does not
-load at all.
+The package's 232 KB of keyboard sounds are NOT vendored, and since this build
+does have a virtual keyboard that is now a decision rather than an absence:
+`MathfieldElement.soundsDirectory` is set to null in `index.html`. This build
+does not bundle any part of `@cortex-js/compute-engine` either: MathLive looks
+that up on `globalThis[Symbol.for("io.cortexjs.compute-engine")]` and merely
+declines the MathJSON conversions when it is absent -- verified before
+vendoring, because shipping a second CAS inside a page whose purpose is the
+first one would be absurd.
 
-  SHA-256 (mathlive-ssr.min.js, upstream mathlive-ssr.min.mjs):
+The bytes were taken from the jsDelivr mirror rather than the registry, which
+was unreachable; the mirror was checked by re-fetching the previously vendored
+SSR file and confirming it hashes to the value recorded below, so the same
+source is known to serve the tarball's own bytes.
+
+  SHA-256 (mathlive.min.js, 843724 bytes, upstream mathlive.min.js):
+           E99E6D2FA19137E9ABF13B58F34CC5D2455CEA5067B8CD4018C270825CAF1C27
+  SHA-256 (mathlive-ssr.min.js, upstream mathlive-ssr.min.mjs -- REMOVED at
+           F_0017, recorded because the hash is what verified the mirror):
            DC4B57D226EA371CDBA11727257424879DB7179CCBA851C171AFA782DE90BD10
   SHA-256 (mathlive-static.css):
            0D0D6D95AE4F252F6B9FFE64933E499FA5625D66E6998BDCD63980847EA4A72F

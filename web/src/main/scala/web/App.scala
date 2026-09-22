@@ -70,6 +70,8 @@ object App:
     input.addEventListener("keydown", (e: js.Dynamic) => onKey(input, e))
     byId("share").addEventListener("click", (_: js.Dynamic) => share())
     byId("clear").addEventListener("click", (_: js.Dynamic) => clearTranscript())
+    val mathfield = byId("mathfield")
+    byId("mathsubmit").addEventListener("click", (_: js.Dynamic) => submitMath(mathfield))
     buildSettings()
 
     restoreFromLink()
@@ -86,6 +88,40 @@ object App:
       case "ArrowUp"   => e.preventDefault(); recall(input, -1)
       case "ArrowDown" => e.preventDefault(); recall(input, +1)
       case _           => ()
+
+  /** Submits what the math field holds, or shows why it could not be read (issue F_0017).
+   *
+   *  **The conversion is two steps and only the first is MathLive's**: the field holds LaTeX,
+   *  `convertLatexToAsciiMath` turns that into AsciiMath, and `cli.AsciiMath` turns *that* into
+   *  grammar text — the half that can refuse, and the half that is unit-tested on the JVM.
+   *
+   *  **A refusal is shown, never submitted.**  The grammar has no unknown-identifier error, so
+   *  handing it something unconvertible would print a confident product rather than a
+   *  complaint; that is the whole reason the reader refuses on its own authority.  The field is
+   *  left as the user wrote it so the mistake can be corrected rather than retyped.
+   */
+  private def submitMath(field: js.Dynamic): Unit =
+    val error = byId("matherror")
+    error.textContent = ""
+    val latex = Option(field.value).map(_.asInstanceOf[String]).getOrElse("")
+    if latex.trim.nonEmpty then
+      toAsciiMath(latex) match
+        case None => error.textContent = "the editor is unavailable; type the expression instead"
+        case Some(asciiMath) =>
+          cli.AsciiMath.toGrammar(asciiMath) match
+            case Left(message) => error.textContent = message.trim
+            case Right(text)   =>
+              field.value = ""
+              submit(text)
+
+  /** MathLive's LaTeX-to-AsciiMath conversion, or `None` when the vendored build is missing.
+   *
+   *  `js.typeOf` rather than a null check, for the reason [[MathRender.available]] gives:
+   *  reading an undeclared name raises `ReferenceError` before any comparison could run.
+   */
+  private def toAsciiMath(latex: String): Option[String] =
+    Option.when(js.typeOf(global.leonardoLatexToAsciiMath) != "undefined")(
+      global.leonardoLatexToAsciiMath(latex).asInstanceOf[String])
 
   /** Moves through the history ring and puts the result in the input box. */
   private def recall(input: js.Dynamic, delta: Int): Unit =

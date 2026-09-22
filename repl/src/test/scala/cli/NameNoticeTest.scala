@@ -50,6 +50,24 @@ class NameNoticeTest extends AnyFlatSpec:
     assert(s.execute("f(2)").contains("not a function"))
   }
 
+  it should "report a nested call as well as the outer one" in
+  {
+    // The regression for the lookbehind removal: consuming the character before the name would
+    // eat the '(' of the outer call, so `foo(` — which follows it — would be missed entirely.
+    val out = session.execute("sqrt(foo(x))")
+    assert(out.contains("sqrt"), out)
+    assert(out.contains("foo"), out)
+  }
+
+  it should "not report a suffix of a longer name" in
+  {
+    // `sina` is a legitimate variable (the grammar's own example), and `ina(` must not be read
+    // out of the middle of it.
+    val out = session.execute("sina(x)")
+    assert(out.contains("sina"), out)
+    assert(!out.contains("'ina'"), out)
+  }
+
   it should "not fire on a parenthesised product, which needs no identifier" in
   {
     for fine <- List("2(x + 1)", "(a + b)(c + d)", "x * (y + 1)") do

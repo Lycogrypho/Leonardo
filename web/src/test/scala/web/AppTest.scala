@@ -55,6 +55,33 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     assert(byId("input").value.asInstanceOf[String] == "")
   }
 
+  // Placed AFTER the history cases deliberately: the math field submits through `submit`, so
+  // what it sends joins the history like any typed line - which is the point, and which would
+  // otherwise move the entries those cases name.
+  "the math field" should "submit through the same path the prompt uses" in
+  {
+    // A second input, not a replacement: it reaches `submit`, so the transcript, the history
+    // and every setting behave exactly as they do for a typed line.
+    typeMath("\\sin(x)")
+    assert(mathError() == "", mathError())
+    assert(lastOutput().contains("sin"), lastOutput())
+    assert(byId("mathfield").value.asInstanceOf[String] == "", "a submitted field is cleared")
+    press("ArrowUp")
+    assert(byId("input").value.asInstanceOf[String] == "sin(x)", "it joins the history")
+  }
+
+  it should "show a refusal rather than submit something the grammar would misread" in
+  {
+    // `int` is a binder the reader declines by name. Submitting it would not fail -- the
+    // grammar would read it as a product of free variables -- which is the whole reason the
+    // refusal happens here and not there.
+    val before = lastOutput()
+    typeMath("\\int x")
+    assert(mathError().contains("integral"), mathError())
+    assert(lastOutput() == before, "nothing should have been submitted")
+    assert(byId("mathfield").value.asInstanceOf[String] != "", "the field keeps what was written")
+  }
+
   "plot" should "emit a document Plotly could read, unlocked" in
   {
     typeLine("plot x^2 x 0 2 5")

@@ -178,6 +178,24 @@ s.execute("[[1, 200], [30, 4]]")
 s.execute("pretty off")
 ```
 
+## The math editor
+
+The [browser REPL](https://lycogrypho.github.io/Leonardo/app/) has a **second, optional input**
+below the prompt: a MathLive `<math-field>` where a formula is typed as it looks.  The text
+line above it is unchanged and still owns every command — `:save`, `latex off`,
+`samples x 0 10`, an assignment — none of which a math field can express.
+
+What the field holds is LaTeX.  Leonardo converts that to its own grammar and submits it
+through exactly the same path a typed line takes, so the transcript, the history and every
+setting behave identically.  **What cannot be converted is refused rather than submitted**, and
+the reason is the section below: handing the grammar something it does not recognise produces a
+confident product, not an error.  A refusal names the spelling to use — an integral typed in the
+field reports that it should be written `integral(f, x)` — and leaves the field alone so it can
+be corrected.
+
+The editor is only in the browser.  A terminal cannot typeset, which is the same reason
+`latex on` adds a channel rather than changing what is printed.
+
 ## When a name is invented
 
 The grammar has **no unknown-identifier error**.  An unrecognised name is a perfectly good
