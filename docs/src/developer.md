@@ -1341,7 +1341,7 @@ assert(math.abs(result - expected) < 1e-4)
 
 ## Build system
 
-The project uses SBT 1.10.11.  The version number is derived from git tags via
+The project uses SBT 1.13.0.  The version number is derived from git tags via
 `sbt-dynver` — do not hardcode it.
 
 Key build file sections:
@@ -1357,7 +1357,7 @@ Key build file sections:
 | `sbt checks` | Every repository guard in one sbt boot; what `ci.yml` runs |
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
-| `sbt unidoc` | One combined API across both modules → `target/scala-3.3.6/api`; this is what the site publishes, and what keeps `cli` in the reference |
+| `sbt unidoc` | One combined API across both modules → `target/scala-<version>/api`; this is what the site publishes, and what keeps `cli` in the reference |
 | `sbt mimaReportBinaryIssues` | Checks both published modules against `mimaBaseline` (currently `3.7.2`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in the release commit; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
 
 The `-Wconf:src=.*package\\.scala:silent` option suppresses the "No class, trait or object
@@ -1433,9 +1433,11 @@ had every invariant asserted only by prose in its own docstring.  The one except
 is the single property a Scala suite cannot reach.
 
 The fourth is the one with evidence rather than foresight behind it.  The build output
-directory carries the Scala version, so a path such as `web/target/scala-3.3.6/…` spells it —
+directory carries the Scala version, so a path such as `web/target/scala-3.3.8/…` spells it —
 and Scala Steward's bump branch must then edit that file, which for a workflow means the push
-is refused for want of the `workflow` PAT scope and the whole run fails.  `pages.yml` removed
+is refused for want of the `workflow` PAT scope and the whole run fails.  **That bump has since
+happened**: Steward moved the build 3.3.6 → 3.3.8 on 2026-09-22, inside a group labelled "patch
+updates", and the workflows were untouched because the glob was already there.  `pages.yml` removed
 its literal and wrote the incident above the glob that replaced it; `ci.yml` kept the same
 literal regardless.  The condition had already decayed while the explanation sat three files
 away, which is precisely what a comment cannot prevent and a check can.  Use a glob

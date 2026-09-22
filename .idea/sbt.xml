@@ -21,7 +21,7 @@
             <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\web" />
           </set>
         </option>
-        <option name="sbtVersion" value="1.10.11" />
+        <option name="sbtVersion" value="1.13.0" />
         <option name="useSbtShellForBuild" value="true" />
         <option name="useSbtShellForImport" value="true" />
       </SbtProjectSettings>
