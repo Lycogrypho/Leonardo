@@ -504,6 +504,16 @@ knowledge.  **Adding a setting means adding a pair**, which gets it saved, liste
 offered as a control at once; the order in that list is the order a script replays, so
 `exact precision` must stay before `exact` and both before the bindings.
 
+**A reader for another notation validates names itself; it never delegates the refusal.**
+`cli.AsciiMath` turns MathLive's AsciiMath into grammar text, and its whitelist is
+`Parser.ReservedWords` — the same surface the REPL's own call-syntax note uses, so the two
+cannot disagree about what a function is.  Handing unrecognised text to `Parser.parse` in the
+hope of an error would produce a silent product instead, for the reason above.  What it cannot
+convert it **refuses by name**, quoting the grammar's spelling: a binder becomes
+"write `integral(f, x)`" rather than a guess at which token was the integrand.  That choice is
+why reading AsciiMath is a rewrite table rather than a parser — the arithmetic core already
+*is* this grammar, and only the notation around it differs.
+
 **A diagnostic is appended to the answer, never folded into evaluation.**  Three now follow
 this shape — 3.3 slice F's domain note, and F_0030's two name notes — and the discipline is what
 makes them safe to add: the library's results stay byte-identical, so nothing that already
