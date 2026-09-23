@@ -196,9 +196,25 @@ class AsciiMathTest extends AnyFlatSpec:
 
   // --- what it refuses, and why ----------------------------------------------------------
 
+  "a summation" should "become the grammar's reduction (F_0037)" in
+  {
+    // Recorded from `convertLatexToAsciiMath`: the subscript is a group `(k=1)` and the
+    // superscript a bare token, so the spec parses exactly like `lim`'s.
+    converts(" sum  _(k=1)^n k^2", "sum(k^2, k, 1, n)")
+    converts(" prod  _(k=1)^5k", "product(k, k, 1, 5)")
+    converts(" sum  _(k=0)^4(((4) choose (k)))", "sum(((binom(4, k))), k, 0, 4)")
+  }
+
+  it should "refuse a reduction whose index shape is missing" in
+  {
+    // Without `k=lo` there is no index and no lower bound to recover -- the `lim` rule again.
+    for source <- List(" sum  k", " sum  _k^n k") do
+      assert(read(source).contains("sum(f, k, lo, hi)"), s"'$source': ${read(source)}")
+  }
+
   "a binder without its shape" should "still be refused with the grammar's spelling" in
   {
-    for (source, word) <- List(" sum  _(k=1)^n k^2" -> "tabulate", "lim x" -> "limit") do
+    for (source, word) <- List("lim x" -> "limit", " oint  f d z" -> "integral") do
       val message = read(source)
       assert(message.contains(word), s"'$source' should name the grammar spelling '$word': $message")
   }

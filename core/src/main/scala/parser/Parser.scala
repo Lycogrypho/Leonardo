@@ -117,6 +117,13 @@ object Parser extends JavaTokenParsers:
     "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus
     "fib", "lucas", "pell", "jacobsthal",                // numeric sequences
     "binom", "catalan", "harmonic", "tabulate",          // combinatorial + the tabulator
+    "sum", "product",                                    // F_0037 finite reductions. Both are
+                                                         // plausible variable names, so they
+                                                         // are reserved only because a
+                                                         // production needs them (the 2.13
+                                                         // rule) -- and the reservation is
+                                                         // free to release until it ships,
+                                                         // never after
     "cartesian", "cylindrical", "spherical", "sphericalmaths",  // coordinate systems. Each
                                                          // needs its own entry:
                                                          // the reserved check is exact, so
@@ -560,6 +567,13 @@ object Parser extends JavaTokenParsers:
     // tabulate(e, k, lo, hi): k is a BINDER, lo/hi ordinary children (the _DefIntegral shape)
     "tabulate(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ lo ~ _ ~ hi => _Tabulate(e, v, lo, hi) }                                       |
+    // F_0037: the same shape, folding the terms rather than listing them.  `tabulate` yields
+    // the terms, these yield their total -- which is why a summation could not be converted
+    // from the math editor until the nodes existed.
+    "sum(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ lo ~ _ ~ hi => _Reduction(ReduceKind.Sum, e, v, lo, hi) }                     |
+    "product(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ lo ~ _ ~ hi => _Reduction(ReduceKind.Product, e, v, lo, hi) }                 |
     "Si("       ~> guardedExpr <~ ")"                                    ^^ Si.apply                      |
     "Ci("       ~> guardedExpr <~ ")"                                    ^^ Ci.apply                      |
     "Ei("       ~> guardedExpr <~ ")"                                    ^^ Ei.apply                      |

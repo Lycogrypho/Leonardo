@@ -137,6 +137,21 @@ at(tabulate(fib(k), k, 0, 10), 1, 11) -> 55                rows are 1-based
 `tabulate` works for *any* expression, not just the sequences; the result is an ordinary
 1×n matrix, so `at`, tuple assignment and `:save` all apply.  `k` is a binder.
 
+### sum / product — the terms folded
+
+```
+sum(k, k, 1, 100)              -> 5050.0
+sum(k^2, k, 1, 4)              -> 30.0
+product(k, k, 1, 5)            -> 120.0
+sum(binom(4, k), k, 0, 4)      -> 16.0                    a Pascal row, added up
+sum(k*x, k, 1, 3)              -> x + 2x + 3x             symbolic terms EXPAND
+sum(k, k, 1, 0)                -> 0.0                     the empty sum; product gives 1
+```
+
+The same shape as `tabulate`, which yields the *terms* where these yield their total.  An
+exact term stays exact — `sum(1/k, k, 1, 3)` is `11/6` under `exact on`.  A free bound stays
+symbolic, and the range is capped like `tabulate`'s so a mistyped bound declines.
+
 ---
 
 ## Special functions

@@ -103,3 +103,23 @@ The result is an ordinary matrix, so indexing with `at`, tuple assignment, the m
 operations and `:save` all work on it unchanged. `k` is a binder — it belongs to the
 `tabulate` and is never substituted from outside. The number of terms is capped, so a
 mistyped bound declines rather than building an unbounded row.
+
+## `sum` and `product` — the terms folded
+
+The same shape, folding the terms rather than listing them:
+
+```scala mdoc
+_Reduction(ReduceKind.Sum, Power(k, _Number(2.0)), k, _Number(1.0), _Number(4.0)).eval(env)
+```
+
+```
+sum(k, k, 1, 100)           -> 5050.0
+product(k, k, 1, 5)         -> 120.0
+sum(binom(4, k), k, 0, 4)   -> 16.0            a Pascal row, added up
+```
+
+Three things follow the library's usual conventions rather than needing to be remembered
+separately. **An exact term stays exact** — under `exact on`, `sum(1/k, k, 1, 3)` is `11/6`,
+not a decimal. **Symbolic terms expand**: `sum(k*x, k, 1, 3)` becomes `x + 2x + 3x`, which
+`simplify` then collects to `6x`. And **an empty range is the identity** — `sum(…, k, 1, 0)`
+is `0` and the empty product is `1` — so a base case reads correctly instead of declining.

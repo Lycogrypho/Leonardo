@@ -38,21 +38,28 @@ object AsciiMath:
   private val Renamed: Map[String, String] =
     Map("arcsin" -> "asin", "arccos" -> "acos", "arctan" -> "atan")
 
+  /** Infix words AsciiMath writes between bracket groups, as the grammar's call (F_0037).
+   *
+   *  `\binom{4}{k}` arrives as `(4) choose (k)`, which MathLive emits inside a summation
+   *  often enough that refusing it would make the commonest `Σ` unusable.
+   */
+  private val Infix: Map[String, String] = Map("choose" -> "binom")
+
   /** Words that name something this reader does not build, mapped to the grammar spelling
    *  its refusal should suggest.
    *
-   *  Smaller than it was: F_0033 taught the reader `int`, the `d/dx` fraction and `lim`, so
-   *  what remains here is `oint` (a contour integral has no Leonardo counterpart, and reading
-   *  it as a plain integral would be a confident answer to a different question), the two
-   *  reductions (`sum`/`prod` produce a *number* the grammar has no node for — `tabulate`
-   *  yields the terms, not their sum), and `lim` **when its subscript shape is missing** — the
-   *  structured case in [[render]] consumes a well-formed limit before this map is consulted.
+   *  Smaller than it was: F_0033 taught the reader `int`, the `d/dx` fraction and `lim`, and
+   *  F_0037 the two reductions — so each of those is consumed by a structured case in
+   *  [[render]] before this map is ever reached, and what is left here is the **shape-less**
+   *  spelling of each: a `lim` without its `(x->a)`, a `sum` without its `(k=lo)^hi`.  Only
+   *  `oint` is refused outright, since a contour integral has no Leonardo counterpart and
+   *  reading it as a plain integral would be a confident answer to a different question.
    */
   private val Binders: Map[String, String] =
     Map(
       "oint" -> "integral(f, x)",
-      "lim"  -> "limit(f, x, a)",   "sum"  -> "tabulate(f, k, lo, hi)",
-      "prod" -> "tabulate(f, k, lo, hi)")
+      "lim"  -> "limit(f, x, a)",   "sum"  -> "sum(f, k, lo, hi)",
+      "prod" -> "product(f, k, lo, hi)")
 
   /** The operator glyphs MathLive emits, in the grammar's ASCII.
    *
@@ -146,6 +153,13 @@ object AsciiMath:
     case Node.Leaf(Tok.Name("int")) :: rest =>
       renderIntegral(rest)
 
+    //  sum|prod _(k=lo)^hi <body>  ->  sum|product(body, k, lo, hi)  (issue F_0037).  The
+    //  spec is a group, exactly as `lim`'s is, so the two parse the same shape; the upper
+    //  bound is a bare token or a group, as the integral's bounds are.
+    case Node.Leaf(Tok.Name(w)) :: Node.Leaf(Tok.Punct("_")) :: Node.Group(List(spec))
+        :: Node.Leaf(Tok.Punct("^")) :: hi :: rest if Reductions.contains(w) =>
+      renderReduction(Reductions(w), spec, hi, rest)
+
     //  lim _(v->point[^dir]) <body>  ->  limit(body, v, point[, dir])  (F_0033).
     //  THE BODY IS THE REST OF THE CURRENT RUN, brackets being how a reader limits it -- the
     //  standard reading of the notation, and the same extent rule the derivative below uses,
@@ -184,6 +198,13 @@ object AsciiMath:
           if content.isEmpty then Left("nested or empty '|...|' is ambiguous here; write abs(x)")
           else for c <- render(content); r <- render(tail) yield s"abs($c)$r"
         case _ => Left("unbalanced '|' in the formula; the absolute value is written abs(x)")
+
+    //  (A) choose (B) -> binom(A, B)  (F_0037): an INFIX word between two groups, which is
+    //  how AsciiMath spells `\binom`.  Matched before the generic group case, which would
+    //  otherwise render the left group and then meet `choose` as an unknown name.
+    case Node.Group(a) :: Node.Leaf(Tok.Name(w)) :: Node.Group(b) :: rest if Infix.contains(w) =>
+      for x <- renderItems(a); y <- renderItems(b); r <- render(rest)
+      yield s"${Infix(w)}($x, $y)$r"
 
     // sqrt(A) -> (A)^(1/2).  The grammar has no radical: a root is a fractional exponent, and
     // `ToLatex` reads all three spellings of one back as \sqrt.
@@ -282,6 +303,24 @@ object AsciiMath:
         case n :: tail => loop(tail, depth, n :: acc)
         case Nil       => Left("an integral needs its differential; write it as ∫ f dx, or integral(f, x)")
     loop(nodes, 0, Nil)
+
+  /** The reduction keywords MathLive emits, mapped to the grammar's spelling (F_0037). */
+  private val Reductions: Map[String, String] = Map("sum" -> "sum", "prod" -> "product")
+
+  /** Reads `(k=lo)`, the upper bound and the body into `sum(...)`/`product(...)` (F_0037).
+   *
+   *  The body extends to the end of the bracket group, the same one extent rule `lim` and
+   *  `d/dx` follow — the standard reading, with brackets as the way to confine it.
+   */
+  private def renderReduction(name: String, spec: List[Node], hi: Node,
+                              rest: List[Node]): Either[String, String] =
+    spec match
+      case Node.Leaf(Tok.Name(v)) :: Node.Leaf(Tok.Punct("=")) :: lo if lo.nonEmpty =>
+        if rest.isEmpty then Left(s"a $name needs a term to combine; write $name(f, k, lo, hi)")
+        else
+          for l <- render(lo); h <- boundText(hi); body <- render(rest)
+          yield s"$name($body, $v, $l, $h)"
+      case _ => Left(s"a $name's index is written (k=lo); or write $name(f, k, lo, hi)")
 
   /** Reads `(v->point[^+|-])` and the body that follows into `limit(...)` (issue F_0033). */
   private def renderLimit(spec: List[Node], rest: List[Node]): Either[String, String] =

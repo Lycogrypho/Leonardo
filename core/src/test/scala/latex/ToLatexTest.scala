@@ -278,6 +278,14 @@ class ToLatexTest extends AnyFlatSpec:
     assert(tex("sec(x)")  == "\\sec\\left(x\\right)")
   }
 
+  it should "render a reduction with its operator and limits (F_0037)" in
+  {
+    // A binder, so it prints a variable its `children` exclude -- and like every binder rule
+    // it must reach the Greek table by hand (F_0021), which the second case pins.
+    assert(tex("sum(k, k, 1, n)") == "\\sum_{k = 1.0}^{n} k")
+    assert(tex("product(theta, theta, 1, n)") == "\\prod_{\\theta = 1.0}^{n} \\theta")
+  }
+
   it should "render abs as its own delimiter, never as a named call" in
   {
     // The absolute value IS notation: \left|x\right|, not \mathrm{abs}(x)  (issue F_0036).

@@ -131,6 +131,18 @@ object ToLatex:
       (s"\\int_{${at(lo, Grouped)}}^{${at(hi, Grouped)}} ${at(e, AtProduct)} \\,d${greek(v.variable)}",
        AtSum)
 
+    // A reduction carries its index and BOTH limits on the operator (F_0037).  The index
+    // goes through `greek` by hand like every other binder rule -- without it `theta` would
+    // be a letter everywhere except under the operator that binds it (F_0021).  The term is
+    // bracketed at sum level for the reason the integrand is: `\sum a + b` reads as
+    // `(\sum a) + b`.
+    case _Reduction(kind, e, v, lo, hi) =>
+      val op = kind match
+        case ReduceKind.Sum     => "\\sum"
+        case ReduceKind.Product => "\\prod"
+      (s"${op}_{${greek(v.variable)} = ${at(lo, Grouped)}}^{${at(hi, Grouped)}} ${at(e, AtProduct)}",
+       AtSum)
+
     // The operator form `\frac{d}{dx}(…)` rather than `\frac{de}{dx}`: the operand is an
     // arbitrary expression, and brackets around it are conventional and never ambiguous.
     case _Derivative(e, v) =>

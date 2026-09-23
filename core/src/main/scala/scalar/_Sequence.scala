@@ -133,23 +133,121 @@ case class _Tabulate(e: _Expression, v: _Variable, lo: _Expression, hi: _Express
   override def rebuild(c: List[_Expression]): _Expression = _Tabulate(c.head, v, c(1), c(2))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val bounds =
-      for
-        l <- indexOf(lo, env)
-        h <- indexOf(hi, env)
-        if h >= l && (h - l + 1) <= MaxTabulateTerms
-      yield (l, h)
-    bounds match
+    // A row is a GRID, so an empty one is not a meaningful answer -- unlike a reduction,
+    // whose empty range has the identity.  Hence the `h >= l` filter here and not there.
+    indexRange(lo, hi, env).filter((l, h) => h >= l) match
       case None => Left(this)
       case Some((l, h)) =>
-        val terms = (l to h).toVector.map { i =>
-          e.eval(env.withBinding(v.variable, _Number(i.toDouble))).toExpression
-        }
+        val terms = termsOf(e, v, l, h, env)
         Left(_Matrix(1, terms.size, terms))
 
-  /** A bound as an integer, or `None` when it is not a concrete whole number. */
-  private def indexOf(b: _Expression, env: Environment): Option[Int] =
-    b.eval(env) match
-      case Right(_Number(d)) if !d.isNaN && !d.isInfinite && d == Math.floor(d) &&
-                                math.abs(d) <= Int.MaxValue => Some(d.toInt)
-      case _                                                => None
+
+/** A bound as an integer, or `None` when it is not a concrete whole number. */
+private def indexOf(b: _Expression, env: Environment): Option[Int] =
+  b.eval(env) match
+    case Right(_Number(d)) if !d.isNaN && !d.isInfinite && d == Math.floor(d) &&
+                              math.abs(d) <= Int.MaxValue => Some(d.toInt)
+    case _                                                => None
+
+/** Both bounds as integers, refusing a range longer than [[MaxTabulateTerms]].
+ *
+ *  Shared by [[_Tabulate]] and [[_Reduction]] rather than written twice: the cap is one
+ *  decision about how many terms a mistyped bound may build, and two copies of it would only
+ *  be a way for the two nodes to disagree about what is too many.
+ */
+private def indexRange(lo: _Expression, hi: _Expression, env: Environment): Option[(Int, Int)] =
+  for
+    l <- indexOf(lo, env)
+    h <- indexOf(hi, env)
+    if (h - l + 1) <= MaxTabulateTerms
+  yield (l, h)
+
+/** Evaluates `e` at each index in `[l, h]`, with `v` bound to that index.
+ *
+ *  **The index is built in the TERM's tier, not as a bare `_Number`** — the numeric-tier rule.
+ *  An index is a constant this traversal invents, so binding `1.0` into `sum(1/k, k, 1, 3)`
+ *  would demote every term through float contagion and the exact answer `11/6` would come
+ *  back as a `Double`, silently.  `literalLike` is what keeps the index in step with the term
+ *  it is about to be substituted into; outside exact mode it yields the same `_Number` as
+ *  before, so the inexact path is unchanged.
+ *
+ *  A term that does not fold stays symbolic, which is what lets a reduction expand rather than
+ *  refuse.
+ */
+private def termsOf(e: _Expression, v: _Variable, l: Int, h: Int,
+                    env: Environment): Vector[_Expression] =
+  (l to h).toVector.map(i =>
+    e.eval(env.withBinding(v.variable, _Rational.literalLike(i, e))).toExpression)
+
+
+/** Which reduction a [[_Reduction]] denotes (issue F_0037).
+ *
+ *  Two kinds, one definition: they differ only in the binary node that combines two terms and
+ *  in what an empty range is worth, so [[_Reduction]] holds both facts once and the named
+ *  spellings round-trip -- the `_Sequence`/`SeqKind` pattern.
+ */
+enum ReduceKind(val word: String):
+  /** `sum(e, k, lo, hi)` -- the terms added; the empty sum is `0`. */
+  case Sum extends ReduceKind("sum")
+  /** `product(e, k, lo, hi)` -- the terms multiplied; the empty product is `1`. */
+  case Product extends ReduceKind("product")
+
+
+/** `sum(e, k, lo, hi)` / `product(e, k, lo, hi)` -- a finite reduction over an integer range.
+ *
+ *  **The counterpart of [[_Tabulate]], which yields the terms rather than their total**, and
+ *  the reason a summation could not be converted from the editor before: `tabulate` is not an
+ *  answer to a `Σ`, so the AsciiMath reader had nothing to translate one into and refused it
+ *  by name.  Same shape as `tabulate` -- `k` is a **binder** (excluded from `children`, carried
+ *  through `rebuild`, so `substitute` cannot rewrite it) while `lo`/`hi` are ordinary children,
+ *  the [[_DefIntegral]] convention -- and the same `MaxTabulateTerms` cap, shared through
+ *  [[indexRange]].
+ *
+ *  **The terms are folded with `reduce`, never a seeded `fold`.**  Seeding with a literal
+ *  `_Number(0)` would be an *inexact-tier* constant, so an exact sum would be demoted through
+ *  float contagion before anything could use it -- the numeric-tier rule, and the single most
+ *  repeated bug of issues 4.L and 4.N.  The identity is therefore used for the **empty range
+ *  only**, where there is nothing to combine with and nothing to demote.
+ *
+ *  **An empty range is the identity rather than a refusal**, unlike `tabulate`'s empty grid:
+ *  the empty sum is 0 and the empty product 1 by universal convention, which is exactly what
+ *  makes `sum(f, k, 1, n)` read correctly at `n = 0` instead of declining a base case.
+ *
+ *  **Symbolic terms EXPAND.**  `sum(k*x, k, 1, 3)` becomes `x + 2x + 3x` rather than staying
+ *  folded, so `normalize`/`simplify` can collect it -- and since this is a `_Functional`,
+ *  F_0034's pass reduces it under the `simplify` command with no further wiring.
+ *
+ *  @param kind which reduction this is
+ *  @param e    the term, in which `v` is bound
+ *  @param v    the index variable (a binder)
+ *  @param lo   the first index, inclusive
+ *  @param hi   the last index, inclusive
+ */
+case class _Reduction(kind: ReduceKind, e: _Expression, v: _Variable,
+                      lo: _Expression, hi: _Expression) extends _Functional:
+
+  override def toString: String = s"${kind.word}($e, $v, $lo, $hi)"
+  override def children: List[_Expression] = List(e, lo, hi)
+  override def rebuild(c: List[_Expression]): _Expression = _Reduction(kind, c.head, v, c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    indexRange(lo, hi, env) match
+      case None                  => Left(this)
+      case Some((l, h)) if l > h => Right(identity)
+      case Some((l, h))          =>
+        val terms = termsOf(e, v, l, h, env)
+        // Accumulated FLAT: each step combines the running result with one term and evaluates
+        // immediately, so a numeric fold never builds the n-deep left spine a single
+        // `reduce`-then-`eval` would -- and a depth bound has to hold on the shallowest
+        // platform's stack, not the JVM's (the `Parser.MaxDepth` rule).
+        terms.reduce((acc, t) => combine(acc, t).eval(env).toExpression).eval(env)
+
+  /** The two terms combined -- the one place this kind's operator is named. */
+  private def combine(a: _Expression, b: _Expression): _Expression = kind match
+    case ReduceKind.Sum     => Sum(a, b)
+    case ReduceKind.Product => Product(a, b)
+
+  /** What an empty range is worth: the operator's identity. */
+  private def identity: _Value = kind match
+    case ReduceKind.Sum     => _Number(0)
+    case ReduceKind.Product => _Number(1)
