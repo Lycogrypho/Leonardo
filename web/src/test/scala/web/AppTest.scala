@@ -70,15 +70,31 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     assert(byId("input").value.asInstanceOf[String] == "sin(x)", "it joins the history")
   }
 
+  it should "echo the formula it held, typeset, beside the grammar text (F_0032)" in
+  {
+    // The formula used to vanish on Enter, replaced by the converted grammar alone -- which
+    // read as the editor being ignored. Both now appear: the grammar echo is the canonical
+    // form (what the history keeps and `:save` writes), the typeset block is what was drawn.
+    typeMath("\\sin(2x)")
+    assert(mathError() == "", mathError())
+    assert(typeset.last == "\\sin(2x)", "the echo typesets the INPUT LaTeX, as written")
+    assert(lastMathEcho().contains("\\sin(2x)"), lastMathEcho())
+    assert(lastEcho() == "> sin(2x)", "the grammar echo must survive beside it")
+    // The echoed formula is NOT a result: `lastMath()` filters the exact class name, so the
+    // `latex on` cases below still see only genuine results on that channel.
+  }
+
   it should "show a refusal rather than submit something the grammar would misread" in
   {
     // `int` is a binder the reader declines by name. Submitting it would not fail -- the
     // grammar would read it as a product of free variables -- which is the whole reason the
     // refusal happens here and not there.
-    val before = lastOutput()
+    val before   = lastOutput()
+    val formulas = typeset.size
     typeMath("\\int x")
     assert(mathError().contains("integral"), mathError())
     assert(lastOutput() == before, "nothing should have been submitted")
+    assert(typeset.size == formulas, "a refused formula must not be echoed either")
     assert(byId("mathfield").value.asInstanceOf[String] != "", "the field keeps what was written")
   }
 

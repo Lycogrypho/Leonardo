@@ -167,6 +167,14 @@ object FakeDom:
   def lastMath(): String =
     blocks("math").lastOption.fold("(nothing)")(_.innerHTML.asInstanceOf[String])
 
+  /** The newest typeset ECHO's markup — a math-field input, not a result (issue F_0032). */
+  def lastMathEcho(): String =
+    blocks("math echo").lastOption.fold("(nothing)")(_.innerHTML.asInstanceOf[String])
+
+  /** The newest `> line` echo in the transcript. */
+  def lastEcho(): String =
+    blocks("echo").lastOption.fold("(nothing)")(_.textContent.asInstanceOf[String])
+
   /** A settings field by its id; the panel nests one field inside each label. */
   def field(id: String): Option[js.Dynamic] =
     byId("settings").children.asInstanceOf[js.Array[js.Dynamic]].toVector.flatMap { label =>

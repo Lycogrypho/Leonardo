@@ -112,7 +112,7 @@ object App:
             case Left(message) => error.textContent = message.trim
             case Right(text)   =>
               field.value = ""
-              submit(text)
+              submit(text, typedLatex = Some(latex))
 
   /** MathLive's LaTeX-to-AsciiMath conversion, or `None` when the vendored build is missing.
    *
@@ -132,13 +132,26 @@ object App:
       cursor = math.max(0, math.min(history.size, cursor + delta))
       input.value = if cursor == history.size then "" else history(cursor)
 
-  /** Runs one line and shows what it produced. */
-  private def submit(line: String): Unit =
+  /** Runs one line and shows what it produced.
+   *
+   *  @param line       the grammar text to run — whatever its origin, this is what executes,
+   *                    joins the history and would be `:save`d
+   *  @param typedLatex the formula a math-field submission held, when there was one; echoed
+   *                    typeset BESIDE the grammar echo (issue F_0032), because the formula
+   *                    used to vanish the instant Enter was pressed, which read as the editor
+   *                    being ignored. The grammar echo stays: it is the canonical spelling of
+   *                    what was drawn, and hiding it would teach the reader nothing about how
+   *                    to type the same thing at the prompt.
+   */
+  private def submit(line: String, typedLatex: Option[String] = None): Unit =
     val trimmed = line.trim
     if trimmed.nonEmpty then
       history = (history :+ trimmed).takeRight(MaxHistory)
       cursor  = history.size
       echo(trimmed)
+      // Class "math echo", so it composes the two existing styles -- a formula, in the echo's
+      // accent colour -- and stays OFF the plain "math" class the result channel uses.
+      typedLatex.foreach(writeMath(_, kind = "math echo"))
       // The two browser-only commands are intercepted here rather than added to `Session`,
       // which keeps `Session` platform-neutral: a `plot` command on a terminal REPL would be
       // a command that cannot do anything. This is how the JVM loop treats `:save` too.
@@ -171,7 +184,7 @@ object App:
         // `latex on` turns `pretty` off in the session, so the text sitting beside the
         // formula is the compact form rather than the same layout twice.
         write(out, "out")
-        session.lastLatex.foreach(writeMath)
+        session.lastLatex.foreach(l => writeMath(l))
       // Every line can change a setting -- `latex on` typed at the prompt must move the
       // checkbox, or the panel becomes a second, stale source of truth for state the command
       // language already owns. Refreshing unconditionally costs one pass over seven fields.
@@ -265,14 +278,17 @@ object App:
    *  The block is appended **only on success**, so a renderer that did not load leaves no
    *  empty row behind for the caller's plain-text fallback to sit under.
    *
-   *  @param latex math-mode source from the session's LaTeX channel
+   *  @param latex math-mode source — the session's LaTeX channel, or a math-field echo
+   *  @param kind  the block's class: `"math"` for a result, `"math echo"` for an input
+   *               (issue F_0032); the distinction is what keeps a consumer reading results
+   *               from picking up echoes
    *  @return whether the transcript gained a formula
    */
-  private def writeMath(latex: String): Boolean =
+  private def writeMath(latex: String, kind: String = "math"): Boolean =
     val block = document.createElement("div")
     if !MathRender.render(latex, block) then false
     else
-      block.className = "math"
+      block.className = kind
       val transcript = byId("transcript")
       transcript.appendChild(block)
       transcript.scrollTop = transcript.scrollHeight

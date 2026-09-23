@@ -219,6 +219,10 @@ confident product, not an error.  A refusal names the spelling to use — an int
 field reports that it should be written `integral(f, x)` — and leaves the field alone so it can
 be corrected.
 
+On Enter the transcript shows **both spellings of what you drew**: the formula, typeset, and
+the grammar text it became — which is what runs, what the history keeps, and what `:save`
+writes, so it is also how you would type the same thing at the prompt.
+
 The editor is only in the browser.  A terminal cannot typeset, which is the same reason
 `latex on` adds a channel rather than changing what is printed.
 
