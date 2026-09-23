@@ -213,11 +213,20 @@ line above it is unchanged and still owns every command — `:save`, `latex off`
 
 What the field holds is LaTeX.  Leonardo converts that to its own grammar and submits it
 through exactly the same path a typed line takes, so the transcript, the history and every
-setting behave identically.  **What cannot be converted is refused rather than submitted**, and
+setting behave identically.
+
+**The calculus notations convert** — an integral written as an integral becomes
+`integral(f, x)`, with bounds `integral(f, x, a, b)` and iterated integrals nesting inside
+out; `d/dx` (and `∂/∂x`, and `d²/dx²`) becomes `derive(f, x)`; a limit with its subscript
+becomes `limit(f, x, a)`, one-sided arrows and `∞` included.  A limit's or derivative's
+operand extends to the end of its bracket group — the standard reading — so brackets are how
+you confine it.
+
+**What cannot be converted is refused rather than submitted**, and
 the reason is the section below: handing the grammar something it does not recognise produces a
-confident product, not an error.  A refusal names the spelling to use — an integral typed in the
-field reports that it should be written `integral(f, x)` — and leaves the field alone so it can
-be corrected.
+confident product, not an error.  A refusal names the spelling to use — a summation reports
+`tabulate(f, k, lo, hi)`, an integral missing its differential names `integral(f, x)` — and
+leaves the field alone so it can be corrected.
 
 On Enter the transcript shows **both spellings of what you drew**: the formula, typeset, and
 the grammar text it became — which is what runs, what the history keeps, and what `:save`

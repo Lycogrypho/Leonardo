@@ -38,15 +38,19 @@ object AsciiMath:
   private val Renamed: Map[String, String] =
     Map("arcsin" -> "asin", "arccos" -> "acos", "arctan" -> "atan")
 
-  /** Words that name something the grammar spells differently, mapped to that spelling.
+  /** Words that name something this reader does not build, mapped to the grammar spelling
+   *  its refusal should suggest.
    *
-   *  Refused rather than converted: each is a *binder*, and recovering one from AsciiMath means
-   *  locating an integrand and a `d`-variable inside an unbracketed token run.  Declining is
-   *  the honest answer while that is true (the `Asin` convention, applied to notation).
+   *  Smaller than it was: F_0033 taught the reader `int`, the `d/dx` fraction and `lim`, so
+   *  what remains here is `oint` (a contour integral has no Leonardo counterpart, and reading
+   *  it as a plain integral would be a confident answer to a different question), the two
+   *  reductions (`sum`/`prod` produce a *number* the grammar has no node for — `tabulate`
+   *  yields the terms, not their sum), and `lim` **when its subscript shape is missing** — the
+   *  structured case in [[render]] consumes a well-formed limit before this map is consulted.
    */
   private val Binders: Map[String, String] =
     Map(
-      "int"  -> "integral(f, x)",   "oint" -> "integral(f, x)",
+      "oint" -> "integral(f, x)",
       "lim"  -> "limit(f, x, a)",   "sum"  -> "tabulate(f, k, lo, hi)",
       "prod" -> "tabulate(f, k, lo, hi)")
 
@@ -131,6 +135,37 @@ object AsciiMath:
   private def render(nodes: List[Node]): Either[String, String] = nodes match
     case Nil => Right("")
 
+    //  int [_lo^hi] <integrand> d <v>  ->  integral(integrand, v[, lo, hi])  (F_0033).
+    //  The differential is the delimiter, so unlike `lim` there is nothing to guess: the
+    //  integrand is exactly what sits between the bounds and the matching `d`-pair.
+    case Node.Leaf(Tok.Name("int")) :: rest =>
+      renderIntegral(rest)
+
+    //  lim _(v->point[^dir]) <body>  ->  limit(body, v, point[, dir])  (F_0033).
+    //  THE BODY IS THE REST OF THE CURRENT RUN, brackets being how a reader limits it -- the
+    //  standard reading of the notation, and the same extent rule the derivative below uses,
+    //  so there is one rule to learn rather than two.
+    case Node.Leaf(Tok.Name("lim")) :: Node.Leaf(Tok.Punct("_")) :: Node.Group(List(spec)) :: rest =>
+      renderLimit(spec, rest)
+
+    //  (d)/(d v) f  ->  derive(f, v), and (d^n)/(d v^n) nests n times, since the grammar's
+    //  `derive` takes one variable (F_0033).  The shape is unmistakable -- no ordinary
+    //  quotient spells its numerator `d` and its denominator `d <name>` -- so the one loser
+    //  is a user with a variable literally named `d` dividing it by `d*v`, and standard
+    //  notation wins that collision.  MUST precede the generic Group case, which would
+    //  otherwise render it as the fraction it is not.
+    case Node.Group(List(num)) :: Node.Leaf(Tok.Punct("/")) :: Node.Group(List(den)) :: rest =>
+      derivativeOf(num, den) match
+        case Some((v, order)) =>
+          if rest.isEmpty then Left("d/dx needs an expression to differentiate; write derive(f, x)")
+          else render(rest).map(body => (1 to order).foldLeft(body)((b, _) => s"derive($b, $v)"))
+        case None =>
+          // An ordinary fraction of two bracketed groups: render the numerator and hand the
+          // rest back, so the generic cases below keep owning what a fraction looks like.
+          for n <- groupText(List(num))
+              r <- render(Node.Leaf(Tok.Punct("/")) :: Node.Group(List(den)) :: rest)
+          yield n + r
+
     // sqrt(A) -> (A)^(1/2).  The grammar has no radical: a root is a fractional exponent, and
     // `ToLatex` reads all three spellings of one back as \sqrt.
     case Node.Leaf(Tok.Name("sqrt")) :: Node.Group(arg) :: rest =>
@@ -155,18 +190,122 @@ object AsciiMath:
         Left(s"'$n' is not a function this grammar knows; '$n(...)' would read as a product with the variable '$n'")
       else for a <- renderItems(arg); r <- render(rest) yield s"$name($a)$r"
 
+    //  `x y` is a PRODUCT, never the identifier `xy` (F_0033, but a pre-existing fault).
+    //  Whitespace is presentational everywhere EXCEPT between two names: a multi-character
+    //  variable arrives as one token, so adjacent Name tokens can only be juxtaposed
+    //  multiplication -- and joining them bare would hand the grammar a different variable,
+    //  the confidently-wrong answer this reader exists to refuse.  A following number is
+    //  included (`x 2` would fuse into `x2`); a LEADING number is not, since a digit cannot
+    //  continue an identifier and `2x` must stay the `2x` the grammar already reads.
+    case Node.Leaf(t @ Tok.Name(_)) :: (rest @ Node.Leaf(Tok.Name(_) | Tok.Num(_)) :: _) =>
+      for head <- leaf(t); tail <- render(rest) yield s"$head*$tail"
+
     case Node.Leaf(tok) :: rest =>
       for head <- leaf(tok); tail <- render(rest) yield head + tail
 
     case Node.Group(items) :: rest =>
-      val inner =
-        if isMatrix(items) then
-          items.traverseJoin(row => row match
-            case List(Node.Group(cells)) => renderItems(cells).map(c => s"[$c]")
-            case _                       => Left("a matrix row must be bracketed"))
-            .map(rows => s"[${rows.mkString(", ")}]")
-        else renderItems(items).map(s => s"($s)")
-      for i <- inner; r <- render(rest) yield i + r
+      for i <- groupText(items); r <- render(rest) yield i + r
+
+  /** A bracket group's own text: a matrix when the shape says so, plain nesting otherwise. */
+  private def groupText(items: List[List[Node]]): Either[String, String] =
+    if isMatrix(items) then
+      items.traverseJoin(row => row match
+          case List(Node.Group(cells)) => renderItems(cells).map(c => s"[$c]")
+          case _                       => Left("a matrix row must be bracketed"))
+        .map(rows => s"[${rows.mkString(", ")}]")
+    else renderItems(items).map(s => s"($s)")
+
+  /** Reads `[_lo^hi] <integrand> d <v>` after an `int`, or refuses (issue F_0033).
+   *
+   *  The bounds are single tokens or groups, glued straight onto the integrand exactly as
+   *  MathLive writes them (`_0^1x^2 d x`); a group bound is inlined WITHOUT brackets because
+   *  the grammar's integral limits are signed values, not expressions.
+   */
+  private def renderIntegral(nodes: List[Node]): Either[String, String] =
+    val (bounds, body) = nodes match
+      case Node.Leaf(Tok.Punct("_")) :: lo :: Node.Leaf(Tok.Punct("^")) :: hi :: tail =>
+        (Some((lo, hi)), tail)
+      case other => (None, other)
+    splitDifferential(body).flatMap { (integrand, v, tail) =>
+      for
+        f <- render(integrand)
+        r <- render(tail)
+        text <- bounds match
+          case None => Right(s"integral($f, $v)")
+          case Some((lo, hi)) =>
+            for l <- boundText(lo); h <- boundText(hi) yield s"integral($f, $v, $l, $h)"
+      yield text + r
+    }
+
+  /** One integral bound: a bare token, or a group whose content is inlined bracket-free. */
+  private def boundText(node: Node): Either[String, String] = node match
+    case Node.Leaf(tok)               => leaf(tok)
+    case Node.Group(List(items))      => render(items)
+    case Node.Group(_)                => Left("an integral bound cannot carry a comma")
+
+  /** Splits an integrand from its closing `d <v>` pair, matching iterated integrals.
+   *
+   *  A nested bare `int` claims the FIRST pair that follows it, so ` int   int  x y d x d y`
+   *  closes inside-out; the depth counter is what says whose pair is whose.  A group is one
+   *  opaque node here — an `int` inside brackets settles its differential when the group's own
+   *  content is rendered.
+   */
+  private def splitDifferential(nodes: List[Node]): Either[String, (List[Node], String, List[Node])] =
+    @annotation.tailrec
+    def loop(ns: List[Node], depth: Int, acc: List[Node]): Either[String, (List[Node], String, List[Node])] =
+      ns match
+        case Node.Leaf(Tok.Name("d")) :: Node.Leaf(Tok.Name(v)) :: tail if depth == 0 =>
+          Right((acc.reverse, v, tail))
+        case (d @ Node.Leaf(Tok.Name("d"))) :: (n @ Node.Leaf(Tok.Name(_))) :: tail =>
+          loop(tail, depth - 1, n :: d :: acc)
+        case (i @ Node.Leaf(Tok.Name("int"))) :: tail =>
+          loop(tail, depth + 1, i :: acc)
+        case n :: tail => loop(tail, depth, n :: acc)
+        case Nil       => Left("an integral needs its differential; write it as ∫ f dx, or integral(f, x)")
+    loop(nodes, 0, Nil)
+
+  /** Reads `(v->point[^+|-])` and the body that follows into `limit(...)` (issue F_0033). */
+  private def renderLimit(spec: List[Node], rest: List[Node]): Either[String, String] =
+    spec match
+      case Node.Leaf(Tok.Name(v)) :: Node.Leaf(Tok.Punct("->")) :: point if point.nonEmpty =>
+        val (run, dir) = point.takeRight(2) match
+          case List(Node.Leaf(Tok.Punct("^")), Node.Leaf(Tok.Punct(d))) if d == "+" || d == "-" =>
+            (point.dropRight(2), Some(d))
+          case _ => (point, None)
+        if run.isEmpty then Left("a limit needs its point; write limit(f, x, a)")
+        else if rest.isEmpty then Left("a limit needs an expression to apply to; write limit(f, x, a)")
+        else
+          for p <- render(run); body <- render(rest)
+          yield dir.fold(s"limit($body, $v, $p)")(d => s"limit($body, $v, $p, $d)")
+      case _ => Left("a limit's subscript is written (x->a); or write limit(f, x, a)")
+
+  /** The `(d^n)/(d v^n)` shape as `(variable, order)`, or `None` for an ordinary fraction.
+   *
+   *  The marker is `d` or the partial glyph, the same on both sides; the orders must agree
+   *  and stay small — past [[MaxDeriveOrder]] a tower of `derive(...)` is more likely a
+   *  transcription accident than a request.
+   */
+  private def derivativeOf(num: List[Node], den: List[Node]): Option[(String, Int)] =
+    def marker(n: Node): Option[String] = n match
+      case Node.Leaf(Tok.Name("d"))    => Some("d")
+      case Node.Leaf(Tok.Punct("∂")) => Some("∂")
+      case _                           => None
+    def order(ns: List[Node]): Option[Int] = ns match
+      case Nil                                                => Some(1)
+      case List(Node.Leaf(Tok.Punct("^")), Node.Leaf(Tok.Num(n))) => n.toIntOption
+      case _                                                  => None
+    (num, den) match
+      case (m :: numTail, m2 :: Node.Leaf(Tok.Name(v)) :: denTail) =>
+        for
+          k  <- marker(m)
+          k2 <- marker(m2) if k == k2
+          n  <- order(numTail)
+          n2 <- order(denTail) if n == n2 && n >= 1 && n <= MaxDeriveOrder
+        yield (v, n)
+      case _ => None
+
+  /** Highest `d^n/dx^n` read as nested `derive` calls; above it the shape is refused. */
+  private val MaxDeriveOrder = 9
 
   /** Renders comma-separated items, keeping the separator the grammar uses for arguments. */
   private def renderItems(items: List[List[Node]]): Either[String, String] =
@@ -175,6 +314,8 @@ object AsciiMath:
   /** One token, refusing the words that name something this reader does not build. */
   private def leaf(tok: Tok): Either[String, String] = tok match
     case Tok.Num(text)   => Right(text)
+    // AsciiMath's infinity, which the grammar spells `inf` (issue F_0033).
+    case Tok.Name("oo")  => Right("inf")
     case Tok.Punct("_")  => Left("a subscript is only understood as the base of 'log'; write log(x, b)")
     case Tok.Punct("{") | Tok.Punct("}") =>
       Left("braces are not part of this grammar; a transform is written laplace(f, t, s)")

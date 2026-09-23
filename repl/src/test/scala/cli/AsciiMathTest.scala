@@ -106,16 +106,78 @@ class AsciiMathTest extends AnyFlatSpec:
     converts("((a+b))", "((a+b))")
   }
 
+  // --- the calculus notations (F_0033) ---------------------------------------------------
+  //
+  // Every input below is `convertLatexToAsciiMath`'s recorded output for the LaTeX a math
+  // field holds, re-probed 2026-09-23 against the vendored build -- parsed shapes, never
+  // guessed ones, which is the condition F_0033 set for lifting the refusal.
+
+  "an integral" should "close over its differential" in
+  {
+    converts(" int  x d x", "integral(x, x)")
+    converts(" int  sin (x) d x", "integral(sin(x), x)")
+    converts(" int  x^2+1 d x", "integral(x^2+1, x)")
+  }
+
+  it should "carry its bounds, glued to the integrand exactly as MathLive writes them" in
+  {
+    converts(" int  _a^b x d x", "integral(x, x, a, b)")
+    converts(" int  _0^1x^2 d x", "integral(x^2, x, 0, 1)")
+    converts(" int  _0^1sin (2x) d x", "integral(sin(2x), x, 0, 1)")
+  }
+
+  it should "nest an iterated integral, each differential closing the innermost" in
+  {
+    converts(" int   int  x y d x d y", "integral(integral(x*y, x), y)")
+  }
+
+  it should "be refused when no differential closes it" in
+  {
+    val message = read(" int  x")
+    assert(message.contains("integral"), s"the refusal must name the spelling: $message")
+  }
+
+  "a derivative" should "be read from the d/dx fraction, which no ordinary quotient spells" in
+  {
+    converts("(d)/(d x)sin (x)", "derive(sin(x), x)")
+    converts("(d)/(d x)(x^2+1)", "derive((x^2+1), x)")
+  }
+
+  it should "nest a higher order, since the grammar's derive takes one variable" in
+  {
+    converts("(d^2)/(d x^2)sin (x)", "derive(derive(sin(x), x), x)")
+  }
+
+  it should "read the partial-derivative glyph the same way" in
+  {
+    converts("(∂)/(∂x)x y", "derive(x*y, x)")
+  }
+
+  "a limit" should "be read from its subscript, direction and infinity included" in
+  {
+    converts("lim _(x->0)(sin (x))/(x)", "limit((sin(x))/(x), x, 0)")
+    converts("lim _(x->0^+)(1)/(x)", "limit((1)/(x), x, 0, +)")
+    converts("lim _(x->oo)(1)/(x)", "limit((1)/(x), x, inf)")
+    converts("lim _(x->a)f", "limit(f, x, a)")
+  }
+
+  "juxtaposed names" should "become a product, never one identifier" in
+  {
+    // Pre-existing and found by the integral cases: dropping ALL whitespace turned MathLive's
+    // `x y` into the single variable `xy` -- a confidently wrong answer, the exact failure
+    // this reader exists to prevent. Two adjacent Name tokens are always a product in
+    // AsciiMath, because a multi-character name arrives as ONE token.
+    converts("x y", "x*y")
+    converts("2x", "2x")          // a digit cannot continue an identifier: unchanged
+  }
+
   // --- what it refuses, and why ----------------------------------------------------------
 
-  "a binder" should "be refused with the grammar's spelling, not guessed at" in
+  "a binder without its shape" should "still be refused with the grammar's spelling" in
   {
-    // MathLive emits ` int  x d x` and `lim _(x->0)...`; pattern-matching those out of an
-    // undocumented intermediate form is exactly what this reader declines to do.
-    for (source, word) <- List(" int  x d x" -> "integral", "lim _(x->0)(sin x)/(x)" -> "limit") do
+    for (source, word) <- List(" sum  _(k=1)^n k^2" -> "tabulate", "lim x" -> "limit") do
       val message = read(source)
-      assert(message.contains("not accepted"), source)
-      assert(message.contains(word), s"'$source' should name the grammar spelling '$word'")
+      assert(message.contains(word), s"'$source' should name the grammar spelling '$word': $message")
   }
 
   it should "refuse the transform notation, which carries braces the grammar never uses" in
