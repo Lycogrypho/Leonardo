@@ -74,9 +74,11 @@ class AsciiMathTest extends AnyFlatSpec:
   it should "be refused when the grammar has no such function" in
   {
     // The whole point: passing this through would give a product with a free variable, which
-    // is an answer to a different question rather than an error.
-    assert(read("abs(x)").contains("abs"))
-    assert(read("abs(x)").contains("not a function"))
+    // is an answer to a different question rather than an error.  (`abs` was the example
+    // here until F_0036 made it a real function -- itself a measure of how visible the gap
+    // was; `floor` is today's plausible-but-absent name.)
+    assert(read("floor(x)").contains("floor"))
+    assert(read("floor(x)").contains("not a function"))
     assert(read("foo(x)").contains("not a function"))
   }
 
@@ -161,6 +163,27 @@ class AsciiMathTest extends AnyFlatSpec:
     converts("lim _(x->a)f", "limit(f, x, a)")
   }
 
+  "an absolute value" should "become abs(...), from every bar MathLive spells" in
+  {
+    // Recorded 2026-09-23: `\left|x\right|` => "|x|", `\lvert x+1\rvert` => the Unicode bar.
+    converts("|x|", "abs(x)")
+    converts("|x+1|", "abs(x+1)")
+    converts("∣x+1∣", "abs(x+1)")
+    converts("|(a)/(b)|", "abs((a)/(b))")           // `\left|\frac{a}{b}\right|`
+    converts("|2+3i|", "abs(2+3i)")                 // the modulus is the same notation
+    converts("|a|-|b|", "abs(a)-abs(b)")            // sequential pairing, bar by bar
+    converts("|x+(|y|)|", "abs(x+(abs(y)))")        // brackets give a fresh level
+  }
+
+  it should "refuse what the bars cannot say unambiguously" in
+  {
+    // A bar is its own closer, so nesting without brackets is ambiguous to reparse; and the
+    // norm bars mean something the grammar does not have.
+    assert(read("||a|-|b||").contains("abs"), read("||a|-|b||"))
+    assert(read("|a").contains("unbalanced"), read("|a"))
+    assert(read("∥x∥").contains("norm"), read("∥x∥"))
+  }
+
   "juxtaposed names" should "become a product, never one identifier" in
   {
     // Pre-existing and found by the integral cases: dropping ALL whitespace turned MathLive's
@@ -189,7 +212,7 @@ class AsciiMathTest extends AnyFlatSpec:
 
   "a refusal" should "be a Left, so the page can show it rather than submit nonsense" in
   {
-    assert(AsciiMath.toGrammar("abs(x)").isLeft)
+    assert(AsciiMath.toGrammar("foo(x)").isLeft)
     assert(AsciiMath.toGrammar("sin (x)").isRight)
   }
 

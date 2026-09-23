@@ -133,6 +133,12 @@ private def deriveImpl(e: _Expression, v: _Variable): _Expression = e match
   case Csc(a)               => dmul(dmul(_Number(-1), Product(Csc(a), Cot(a))), derive(a, v))
   case Cot(a)               => dmul(dmul(_Number(-1), Power(Csc(a), _Number(2))), derive(a, v))
   // sech'(u) = −sech(u)·tanh(u)·u' ;  csch'(u) = −csch(u)·coth(u)·u' ;  coth'(u) = −csch²(u)·u'
+  // abs'(u) = u·u'/abs(u) — the sign of u times u', wherever abs is differentiable.  At
+  // u = 0 the form evaluates to 0/0, which stays symbolic under Ratio's own rule: the one
+  // undifferentiable point refuses itself, so no gate is needed — and the abs(u) DENOMINATOR
+  // is what hands `differentiableDomainOf` its NonZero constraint through the existing
+  // Ratio arm, with no abs-specific rule in Domain.scala (issue F_0036).
+  case Abs(a)               => Ratio(dmul(a, derive(a, v)), Abs(a))
   case Sech(a)              => dmul(dmul(_Number(-1), Product(Sech(a), Tanh(a))), derive(a, v))
   case Csch(a)              => dmul(dmul(_Number(-1), Product(Csch(a), Coth(a))), derive(a, v))
   case Coth(a)              => dmul(dmul(_Number(-1), Power(Csch(a), _Number(2))), derive(a, v))

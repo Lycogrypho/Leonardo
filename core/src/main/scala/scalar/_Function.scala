@@ -4,7 +4,7 @@ package scalar
 import core.*
 import spire.math.Real
 import spire.algebra.Trig
-import scala.math.{exp, log, log10, sin, cos, tan, asin, acos, atan}
+import scala.math.{exp, log, log10, sin, cos, tan, asin, acos, atan, abs, hypot}
 
 
 /** Base class for unary elementary functions (`exp`, `ln`, `sin`, `cos`, etc.).
@@ -250,6 +250,33 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
             _Complex.div(le, lb).map(Right(_)).getOrElse(Left(this))
           case _ => Left(this)
       case (re, rb) => Left(LogBase(re.toExpression, rb.toExpression))
+
+
+/** The absolute value `abs(e)` — on a complex argument, the modulus (issue F_0036).
+ *
+ *  On the `Sin` template with one distinction: **`abs` is closed over the rationals**, so the
+ *  exact arm answers `r.abs` directly — negating a numerator loses nothing — rather than
+ *  taking `viaExact`'s approximate-at-working-precision route, which exists for the
+ *  transcendentals because *they* are not closed.  The complex case reduces to the real
+ *  magnitude through `math.hypot`, which does not overflow where `re² + im²` would.
+ *
+ *  @param e the argument expression
+ */
+case class Abs(e: _Expression) extends _Function with NamedFunction:
+  override def name: String = "abs"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = Abs(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      // Before the _Number arm, as everywhere: the widening extractor would read the exact
+      // value as a Double first and the closure over the rationals would silently vanish.
+      case Right(r: _Rational)     => Right(r.abs)
+      case Right(_Number(x))       => Right(_Number(abs(x)))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, abs)
+      case Right(c: _Complex)      => Right(_Number(hypot(c.re, c.im)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case other                   => Left(Abs(other.toExpression))
 
 
 /** The sine function `sin(e)`.

@@ -218,7 +218,8 @@ setting behave identically.
 **The calculus notations convert** — an integral written as an integral becomes
 `integral(f, x)`, with bounds `integral(f, x, a, b)` and iterated integrals nesting inside
 out; `d/dx` (and `∂/∂x`, and `d²/dx²`) becomes `derive(f, x)`; a limit with its subscript
-becomes `limit(f, x, a)`, one-sided arrows and `∞` included.  A limit's or derivative's
+becomes `limit(f, x, a)`, one-sided arrows and `∞` included; `|x|` becomes `abs(x)`, the
+modulus included.  A limit's or derivative's
 operand extends to the end of its bracket group — the standard reading — so brackets are how
 you confine it.
 

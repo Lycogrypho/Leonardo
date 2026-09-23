@@ -72,6 +72,11 @@ object Parser extends JavaTokenParsers:
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",   // hyperbolic
     "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic
+    "abs",                                               // absolute value / complex modulus
+                                                         // (F_0036); reserved because the
+                                                         // production needs it -- before it,
+                                                         // abs(x) was a silent product with
+                                                         // a free variable named abs
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "expm",                                                                                 // matrix exponential
     "series", "parallel", "feedback", "impulse",                                            // control theory
@@ -530,7 +535,8 @@ object Parser extends JavaTokenParsers:
     // The ONE-argument form belongs to `statistics`, which dispatches on the argument:
     // a distribution delegates back to `probability.Moments`, a matrix is a sample.  The
     // two-argument form above stays the linearity rule table and is untouched.
-    "variance(" ~> guardedExpr <~ ")"        ^^ { e => _Statistic(StatKind.Variance, e) }        |    "erf("     ~> guardedExpr <~ ")"                                     ^^ Erf.apply                     |
+    "variance(" ~> guardedExpr <~ ")"        ^^ { e => _Statistic(StatKind.Variance, e) }        |    "abs("     ~> guardedExpr <~ ")"                                     ^^ Abs.apply                     |
+    "erf("     ~> guardedExpr <~ ")"                                     ^^ Erf.apply                     |
     "erfc("    ~> guardedExpr <~ ")"                                     ^^ Erfc.apply                    |
     "digamma(" ~> guardedExpr <~ ")"                                     ^^ Digamma.apply                 |
     "gammaP("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ x => GammaP(a, x) }            |

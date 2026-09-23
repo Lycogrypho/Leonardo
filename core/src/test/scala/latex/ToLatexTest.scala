@@ -278,6 +278,13 @@ class ToLatexTest extends AnyFlatSpec:
     assert(tex("sec(x)")  == "\\sec\\left(x\\right)")
   }
 
+  it should "render abs as its own delimiter, never as a named call" in
+  {
+    // The absolute value IS notation: \left|x\right|, not \mathrm{abs}(x)  (issue F_0036).
+    assert(tex("abs(x)") == "\\left|x\\right|")
+    assert(tex("abs(x + 1)") == "\\left|x + 1.0\\right|")
+  }
+
   it should "use the conventional name where LaTeX and this grammar disagree" in
   {
     // The grammar says asin; mathematics says arcsin, and LaTeX provides \arcsin. Rendering

@@ -54,9 +54,14 @@ object AsciiMath:
       "lim"  -> "limit(f, x, a)",   "sum"  -> "tabulate(f, k, lo, hi)",
       "prod" -> "tabulate(f, k, lo, hi)")
 
-  /** The operator glyphs MathLive emits, in the grammar's ASCII. */
+  /** The operator glyphs MathLive emits, in the grammar's ASCII.
+   *
+   *  `∣` is `\lvert`'s spelling of the bar, folded onto `|` so the abs pairing below sees
+   *  one glyph; `∥` (`\|`, a norm) is deliberately NOT here — it is refused by name in
+   *  [[leaf]], since nothing in the grammar means it.
+   */
   private val Glyphs: Map[Char, String] =
-    Map('≠' -> "!=", '≤' -> "<=", '≥' -> ">=", '×' -> "*", '÷' -> "/")
+    Map('≠' -> "!=", '≤' -> "<=", '≥' -> ">=", '×' -> "*", '÷' -> "/", '∣' -> "|")
 
   /** One lexical unit: a name, a number, or a single punctuation character. */
   private enum Tok:
@@ -165,6 +170,20 @@ object AsciiMath:
           for n <- groupText(List(num))
               r <- render(Node.Leaf(Tok.Punct("/")) :: Node.Group(List(den)) :: rest)
           yield n + r
+
+    //  |…| -> abs(…)  (issue F_0036).  The bar is its own closer, so pairing is
+    //  SEQUENTIAL: the first bar opens and the next bar at this level closes it.  That reads
+    //  every unnested spelling correctly — `|a|-|b|` pairs as abs(a)-abs(b), `|x+(|y|)|` is
+    //  fine because a bracketed group is one opaque node with its own level — and makes a
+    //  NESTED one refuse itself: `||a||` pairs its two opening bars around nothing, and empty
+    //  content is refused by name rather than guessed at.
+    case Node.Leaf(Tok.Punct("|")) :: rest =>
+      val (content, after) = rest.span { case Node.Leaf(Tok.Punct("|")) => false; case _ => true }
+      after match
+        case Node.Leaf(Tok.Punct("|")) :: tail =>
+          if content.isEmpty then Left("nested or empty '|...|' is ambiguous here; write abs(x)")
+          else for c <- render(content); r <- render(tail) yield s"abs($c)$r"
+        case _ => Left("unbalanced '|' in the formula; the absolute value is written abs(x)")
 
     // sqrt(A) -> (A)^(1/2).  The grammar has no radical: a root is a fractional exponent, and
     // `ToLatex` reads all three spellings of one back as \sqrt.
@@ -320,6 +339,9 @@ object AsciiMath:
     case Tok.Punct("{") | Tok.Punct("}") =>
       Left("braces are not part of this grammar; a transform is written laplace(f, t, s)")
     case Tok.Punct("->") => Left("'->' is not part of this grammar; a limit is written limit(f, x, a)")
+    // The norm bars (`\|x\|`): nothing in the grammar means a norm, and reading them as abs
+    // would be a confident answer to a different question.
+    case Tok.Punct("∥")  => Left("'∥...∥' is a norm, which this grammar does not have; abs(x) is the absolute value")
     case Tok.Punct(text) => Right(text)
     case Tok.Name(text)  =>
       Binders.get(text) match

@@ -86,6 +86,7 @@ L, U, P := lu(A)       tuple binding from a 1×n decomposition result
 
 | Expression | Meaning |
 |---|---|
+| `abs(x)` | Absolute value; on a complex value, the modulus (`abs(3 + 4i)` is `5`) |
 | `exp(x)` | eˣ |
 | `ln(x)` | Natural logarithm |
 | `log(x)` | log₁₀(x) |

@@ -39,6 +39,7 @@ def compile(e: _Expression, v: _Variable, env: Environment): Option[Double => Do
   case LogBase(a, b) =>
     for fa <- compile(a, v, env); fb <- compile(b, v, env)
     yield (x: Double) => log(fa(x)) / log(fb(x))
+  case Abs(a)        => compile(a, v, env).map(fa => (x: Double) => math.abs(fa(x)))
   case Sin(a)        => compile(a, v, env).map(fa => (x: Double) => sin(fa(x)))
   case Cos(a)        => compile(a, v, env).map(fa => (x: Double) => cos(fa(x)))
   case Tg(a)         => compile(a, v, env).map(fa => (x: Double) => tan(fa(x)))

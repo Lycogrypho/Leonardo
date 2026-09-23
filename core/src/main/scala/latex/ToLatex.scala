@@ -189,6 +189,12 @@ object ToLatex:
       val text = escape(v.toString)
       (text, if text.startsWith("-") then AtSum else Atomic)
 
+    // The absolute value is its own delimiter — `\left|…\right|`, never `\mathrm{abs}(…)`
+    // (F_0036).  The bars group for themselves, so the content is Grouped; the pair is
+    // Atomic for the same reason a matrix is.  Must precede the generic NamedFunction arm,
+    // which would otherwise render the grammar's spelling instead of the notation.
+    case Abs(e) => (s"\\left|${at(e, Grouped)}\\right|", Atomic)
+
     // Every other named function: LaTeX's own operator where one exists, upright otherwise.
     case f: NamedFunction =>
       val args = f.children.map(at(_, Grouped)).mkString(", ")
