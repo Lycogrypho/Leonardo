@@ -26,7 +26,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `latex on\|off` | Also render each result as LaTeX (default `off`); the printed text is unchanged, and the browser REPL typesets it *beside* the text. Turns `pretty` off — a typeset matrix already carries the layout |
 | `names on\|off` | Announce each newly-seen free variable (default `off`). A name used as a function it is not — `sqrt(x)` — is reported whatever this is set to |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
-| `exact precision <n>` | Digits an irrational is approximated to (default 30) |
+| `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000) |
 | `simplify <expr>` | Structural simplification; also reduces any derivative, integral, limit or transform in the expression. Definitions are expanded, numeric bindings are not |
 | `expand <expr>` | Distribute products over sums; same preparation as `simplify` |
 | `eval <expr>` | Evaluate substituting current bindings |

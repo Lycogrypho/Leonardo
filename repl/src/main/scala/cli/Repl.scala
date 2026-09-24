@@ -41,7 +41,7 @@ import scala.util.control.NonFatal
  *  expand <expr>        distribute products over sums
  *  precision <n>        set decimal precision
  *  exact on | off       exact rational arithmetic (default: off); see "help exact"
- *  exact precision <n>  digits an irrational is approximated to (default: 30)
+ *  exact precision <n>  digits an irrational is approximated to (default: 30, max 1000)
  *  pretty on | off      multi-line, column-aligned matrix display (default: off)
  *  latex on | off       also emit each result as LaTeX, for a front end that can
  *                       typeset it (default: off); see [[Session.lastLatex]]
@@ -1113,16 +1113,26 @@ final class Session:
 
   /** Sets the working precision — the digits an irrational is approximated to.
    *
-   *  Deliberately unbounded above, unlike display `precision`, which is capped at
-   *  `MaxPrecision` because past that a `Double` has no more digits to show.  Working
-   *  precision has the opposite character: raising it is the entire remedy the exact tier
-   *  offers, so capping it would remove the point.  It is floored at 1.
+   *  Floored at 1 and capped at [[Session.MaxWorkingPrecision]].  The ceiling is **not** the
+   *  one display `precision` has: that stops at `MaxPrecision` because past it a `Double` has
+   *  no more digits to show, whereas raising *this* is the entire remedy the exact tier
+   *  offers — so the cap sits far above any working value rather than at the useful limit.
+   *
+   *  It is capped rather than open because the setting buys **time**, without bound: the
+   *  irrational kernels compute to whatever is asked, so `exact precision 5000000` and then any
+   *  irrational spends the session inside spire with no way back — Ctrl-C at a terminal, and
+   *  nothing at all in the browser, where a shared link carries this setting and the page
+   *  replays one on load (F_0041).  The `MaxSampleCount` rule: a mistyped digit must be
+   *  reported, not attempted.
    */
   private def setWorkingPrecision(text: String): String =
     text.toIntOption match
-      case Some(n) if n >= 1 => workingPrecision = n; exactState
-      case Some(n)           => s"working precision must be at least 1, got: $n"
-      case None              => s"working precision expects an integer, got: $text"
+      case Some(n) if n >= 1 && n <= Session.MaxWorkingPrecision =>
+        workingPrecision = n; exactState
+      case Some(n) if n > Session.MaxWorkingPrecision =>
+        s"working precision must be at most ${Session.MaxWorkingPrecision}, got: $n"
+      case Some(n) => s"working precision must be at least 1, got: $n"
+      case None    => s"working precision expects an integer, got: $text"
 
   /** Reads the `"on"`/`"off"` argument every toggle takes, or reports what was wrong.
    *
@@ -1263,6 +1273,27 @@ object Session:
    */
   val MaxSampleCount: Int = 100000
 
+  /** The most digits `exact precision <n>` will approximate an irrational to.
+   *
+   *  **The same rule as [[MaxSampleCount]], costing time rather than memory.**  The irrational
+   *  kernels compute to whatever precision they are asked for, so an uncapped setting is an
+   *  unbounded computation the session cannot be talked out of: at a terminal only Ctrl-C ends
+   *  it, and in the browser nothing does — and there it is reachable by a **third party**,
+   *  since `exact precision` is part of [[Session.settings]], `script` writes it, and the page
+   *  replays a shared link's script on load (issue F_0041).
+   *
+   *  **1000 is measured, not chosen for roundness.**  One `pi*e` on the JVM costs, by digits:
+   *  100 → 0.1 s, 250 → 0.2 s, 500 → 0.5 s, 1000 → 2 s, 2000 → 11 s, 4000 → 60 s — worse than
+   *  quadratic, near `n^2.4`, so 10 000 is upwards of ten minutes and would have been a
+   *  ceiling that bounds nothing.  1000 holds a single evaluation to about two seconds while
+   *  sitting 33× above the default of 30 and far beyond the largest precision any example in
+   *  this project uses; Scala.js is slower still, which argues the same way.
+   *
+   *  It is deliberately NOT `MaxExactFactorial`'s 10 000: sharing a number across caps whose
+   *  cost curves differ would make the figure look considered when it is only consistent.
+   */
+  val MaxWorkingPrecision: Int = 1000
+
   /** A completed sampling: the points, and the text they came from.
    *
    *  The two strings are carried because **a plot has to say what it is showing** — they title
@@ -1362,7 +1393,7 @@ object Session:
       """|Exact rational arithmetic.  Off by default; both settings are persisted by :save.
          |  exact on            numeric literals become exact rationals
          |  exact off           literals are Doubles (default)
-         |  exact precision <n> digits an irrational is approximated to (default: 30)
+         |  exact precision <n> digits an irrational is approximated to (default: 30, 1..1000)
          |  exact               show both settings
          |With it on, 0.1 + 0.2 is exactly 3/10 and 1/3 * 3 is exactly 1 -- neither of which
          |a Double can represent.  The mode is decided at PARSE time because it has to be:
@@ -1637,7 +1668,7 @@ object Session:
       |precision <n>        set decimal precision
       |colors <scheme>      syntax highlighting: dark | light | none  (default: dark)
       |exact on | off       exact rational arithmetic; see "help exact" (default: off)
-      |exact precision <n>  digits an irrational is approximated to (default: 30)
+      |exact precision <n>  digits an irrational is approximated to (default: 30, max 1000)
       |pretty on | off      multi-line, column-aligned matrix display (default: off)
       |latex on | off       also emit each result as LaTeX (default: off); the text
       |                     answer is unchanged, so only a front end that typesets

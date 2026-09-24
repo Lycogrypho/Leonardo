@@ -141,6 +141,12 @@ e.execute("exact precision 40")
 e.execute("exact")
 ```
 
+The working precision runs from 1 to **1000 digits**.  The ceiling is not where the tier stops
+being useful — it is where one command stops being interruptible: the cost grows near `n^2.4`,
+so a single `pi*e` takes about 0.1 s at 100 digits, 2 s at 1000 and a full minute at 4000.  An
+unbounded setting therefore bought an unbounded computation, which a terminal could only end
+with Ctrl-C and a browser tab could not end at all.  1000 is still 33× the default.
+
 Those kernels are genuinely arbitrary-precision, so raising the working precision sharpens
 the `sin()` itself and not merely the arithmetic around it:
 
@@ -447,7 +453,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `logic minmax\|product\|lukasiewicz` | Select the fuzzy t-norm family |
 | `precision <n>` | Set decimal digits |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
-| `exact precision <n>` | Digits an irrational is approximated to |
+| `exact precision <n>` | Digits an irrational is approximated to (1 to 1000) |
 | `pretty on` / `off` | Multi-line, column-aligned matrix display |
 | `latex on\|off` | Also render each result as LaTeX (the printed text is unchanged) |
 | `names on\|off` | Announce each newly-seen free variable (default `off`) |

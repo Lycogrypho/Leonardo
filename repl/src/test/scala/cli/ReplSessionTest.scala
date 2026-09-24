@@ -728,6 +728,46 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("exact precision 0").contains("at least 1"))
   }
 
+  // --- the working precision is bounded ABOVE as well (F_0041) -----------------------------
+
+  it should "refuse a working precision past the cap, leaving the old one standing" in
+  {
+    // The MaxSampleCount rule: a mistyped digit must be reported, not attempted. Before the
+    // cap, `exact precision 5000000` was accepted and the next irrational hung the session --
+    // in the terminal with only Ctrl-C to end it, and in the browser with nothing at all,
+    // since a share link carries this setting and the page replays one on load.
+    val s = session
+    s.execute("exact precision 40")
+    val out = s.execute(s"exact precision ${Session.MaxWorkingPrecision + 1}")
+    assert(out.contains(Session.MaxWorkingPrecision.toString), out)
+    assert(s.execute("exact").contains("working precision = 40"),
+           "a refused value must not be partly applied")
+  }
+
+  it should "accept the cap itself, and stay usable there" in
+  {
+    // The boundary is the whole point: the remedy the exact tier offers is raising this, so a
+    // cap whose own limit were unusable would be no better than the hang it replaces. The cap
+    // was measured for exactly this -- one irrational at 1000 digits is ~1s here, which is what
+    // makes this case affordable to run on every push; at the 10000 first proposed it was
+    // minutes, which is how the number got fixed.
+    val s = session
+    assert(s.execute(s"exact precision ${Session.MaxWorkingPrecision}").contains("working precision"))
+    s.execute("exact on")
+    assert(s.execute("pi") == "3.14159")
+  }
+
+  it should "bound a working precision arriving from a script, which is how a link carries one" in
+  {
+    // `Session.script` writes `exact precision` and `load` replays it, so this is the exact
+    // path a shared link takes into the session (web.App.restoreFromLink). The cap has to hold
+    // there or it only covers the prompt.
+    val s = session
+    s.load(s"exact precision ${Session.MaxWorkingPrecision * 100}\nexact on")
+    assert(s.execute("exact").contains(s"working precision = ${Environment.DefaultWorkingPrecision}"),
+           "a script must not raise the working precision past the cap")
+  }
+
   it should "reject an unrecognised mode with a helpful message" in
   {
     val s = session
