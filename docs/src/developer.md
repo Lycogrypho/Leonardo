@@ -1437,9 +1437,10 @@ all ` ```scala mdoc ``` ` code blocks in the docs.
 ### The app is a build artifact, not a workflow step
 
 `sbt app` assembles the browser REPL into `web/target/app/`; the Pages workflow copies that
-directory and adds nothing to it, and `release.yml` zips it onto every GitHub Release as
-`leonardo-app-<version>.zip` (~1.5 MB).  One task, two consumers, so the live `/app` and the
-downloadable bundle cannot drift.  The layout used to exist **only** as four `cp` lines inside
+directory and adds nothing to it, `release.yml` zips it onto every GitHub Release as
+`leonardo-app-<version>.zip` (~1.5 MB), and `app-bundle.yml` uploads it as a workflow artifact
+on request.  **One task, three consumers**, differing only in *which* build a reader can
+obtain — the live one, a tagged one, or any commit — never in what the app is.  The layout used to exist **only** as four `cp` lines inside
 `pages.yml`, which made obtaining the app a matter of reading a workflow and repeating it by
 hand — and left no way for a change in one to reach the other.
 

@@ -1,0 +1,64 @@
+name: Bundle the browser REPL
+
+# Produces the browser REPL AS A DOWNLOADABLE ARTIFACT, for any commit, on request
+# (issue D_0026 step 2).
+#
+# WHAT IT ADDS OVER THE TWO WAYS THAT ALREADY EXIST, which is the whole of its justification:
+# `sbt app` gives anyone with a checkout the same directory, and every GitHub Release carries
+# `leonardo-app-<version>.zip` permanently. Neither covers an UNTAGGED commit for someone who
+# is not building locally -- a reviewer, a demo of `main`, a bisect between two releases. That
+# gap is what this fills, and it is why it is `workflow_dispatch` only: a bundle per push
+# would be ninety days of artifacts nobody asked for.
+#
+# WHY IT DOES NOT PUBLISH ANYWHERE. The `gemfile-lock.yml` reasoning exactly: an artifact
+# needs no secret and no `contents: write`, while issue 2.10 holds every workflow to least
+# privilege because `release.yml` carries the GPG signing key. The manual download is the
+# price, and it is the right one for something requested by hand in the first place.
+#
+# CAVEAT WORTH KNOWING BEFORE RELYING ON IT: artifacts EXPIRE (90 days by default). A build
+# that must outlive that is a tagged release, whose asset never expires.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # The default shallow clone is enough: the app is built from the files at this commit
+        # and embeds no version string, so nothing here depends on what sbt-dynver derives.
+
+      - name: Set up JDK
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8 # v1.5.9
+
+      - name: Assemble the browser REPL
+        # `sbt app` is the single definition of what the app is (D_0026), shared with
+        # pages.yml and release.yml -- so a downloaded bundle, the live /app and a release
+        # asset are the same files by construction rather than by three copies staying in step.
+        run: sbt app
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # The commit is in the NAME because nothing inside the bundle says which build it
+          # is -- the app carries no version string, which is the same fact that makes the
+          # release asset's name load-bearing.
+          name: leonardo-app-${{ github.sha }}
+          path: web/target/app
+          # GitHub zips the artifact itself, so the directory is NOT zipped here -- doing both
+          # would deliver a zip inside a zip. The consequence is that the files sit at the
+          # archive's root rather than under one folder, unlike the release asset, because the
+          # layout inside an artifact is the platform's to choose and not ours.
+          if-no-files-found: error
