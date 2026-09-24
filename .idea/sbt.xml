@@ -9,16 +9,6 @@
         <option name="modules">
           <set>
             <option value="C:\Users\Mimmo\IdeaProjects\Leonardo" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\core" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\core\.js" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\core\.jvm" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\docs" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\project" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\repl" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\repl\.js" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\repl\.jvm" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\tools" />
-            <option value="C:\Users\Mimmo\IdeaProjects\Leonardo\web" />
           </set>
         </option>
         <option name="sbtVersion" value="1.13.0" />

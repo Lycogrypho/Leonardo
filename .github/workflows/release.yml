@@ -10,6 +10,12 @@ name: Release
 # tagging -- the workflow reads the file as it stands at the tagged commit, and a missing
 # section degrades to auto-generated notes with a warning rather than failing.
 #
+# Every Release also carries `leonardo-app-<version>.zip`, the browser REPL as a directory
+# anyone can serve (D_0026 step 3). It is assembled by `sbt app`, the same task pages.yml
+# deploys from, so the downloadable bundle and the live /app cannot drift -- and since the app
+# embeds no version string, being attached to the tag is the ONLY thing that says which build
+# it is. Nothing else about releasing changes: it is still a tag and nothing else.
+#
 # The four secrets this needs are documented in the `env` block below. None of them lives in
 # the repository.
 
@@ -83,7 +89,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # Only CHANGELOG.md is read, so the default shallow clone is enough here.
+        # CHANGELOG.md is read and the app bundle is built from the sources at this commit, so
+        # the default shallow clone is still enough: every file is present at depth 1, and the
+        # bundle carries NO version string of its own -- which is exactly why the asset's name
+        # and its attachment to the tag are what answer "which app build is this?".
+
+      # sbt is set up in this job as well as in `publish`, which is what keeps the two apart:
+      # nothing NEW enters the workflow (the same two actions at the same pinned SHAs), and the
+      # job that can write to the repository still never sees a secret. Passing the bundle from
+      # `publish` as a workflow artifact was the alternative, and it would have added a
+      # third-party action to the job that holds the GPG key -- the one thing this file avoids.
+      - name: Set up JDK
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8 # v1.5.9
 
       - name: Create GitHub Release from the tag
         # `gh` rather than a release action, deliberately. It is preinstalled on the runner, so
@@ -118,3 +142,25 @@ jobs:
             printf '%s\n' "$notes" |
               gh release create "$VERSION" --title "$VERSION" --verify-tag --notes-file -
           fi
+
+      - name: Attach the browser REPL to the Release
+        # AFTER the Release exists, deliberately: `gh release upload` needs one, and building
+        # first would mean a link failure leaves a published Central version with no Release at
+        # all -- the same reasoning the missing-CHANGELOG fallback above follows. A failed
+        # upload leaves the Release standing and the run red, which is visible and repairable;
+        # a re-run replaces the asset rather than failing on it (--clobber).
+        #
+        # `sbt app` is the single definition of what the app is (D_0026): the same directory
+        # pages.yml deploys to /app, so the downloadable bundle and the live one cannot drift.
+        # The zip holds ONE top-level directory, so unpacking it into a web root produces a
+        # named folder rather than scattering index.html and vendor/ into the current one.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          sbt app
+          cp -r web/target/app "leonardo-app-$VERSION"
+          zip -r -q "leonardo-app-$VERSION.zip" "leonardo-app-$VERSION"
+          gh release upload "$VERSION" "leonardo-app-$VERSION.zip" --clobber
+          echo "attached leonardo-app-$VERSION.zip ($(stat -c%s "leonardo-app-$VERSION.zip") bytes)"
