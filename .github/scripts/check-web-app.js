@@ -34,7 +34,7 @@ function bundlePath() {
     .map(d => `${root}/${d}/leonardo-web-opt/main.js`)
     .filter(p => fs.existsSync(p));
   if (found.length === 1) return found[0];
-  if (found.length === 0) throw new Error('no linked bundle under ' + root + '; run `sbt web/fullLinkJS`');
+  if (found.length === 0) throw new Error('no linked bundle under ' + root + '; run `sbt app`');
   throw new Error('several linked bundles, so the current one would be a guess; run `sbt clean`:\n  ' + found.join('\n  '));
 }
 

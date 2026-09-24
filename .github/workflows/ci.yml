@@ -72,16 +72,25 @@ jobs:
         # fires or so tight it fails on an unrelated Scala.js release. A figure in the log lets
         # a regression be seen by comparing two runs, which is what anyone would actually do.
         #
-        # The bundle path is a GLOB and must stay one (issue F_0023): a hardcoded
-        # scala-<version> makes Scala Steward's bump branch edit this workflow, and pushing a
-        # workflow change is refused for a PAT without the `workflow` scope -- failing the
-        # whole run. pages.yml records that incident; this file kept the literal anyway,
-        # which is why the CheckScalaVersion guard now enforces the rule instead of a comment.
-        # A fresh checkout links exactly one scala-* directory, and `ls` fails loudly if none.
+        # `app` RATHER THAN `web/fullLinkJS` (issue F_0042). D_0026 made one task feed all
+        # three delivery routes -- the live /app, a Release asset, a dispatched artifact -- and
+        # this job ran none of them, so a break in it surfaced only at a docs deploy, a tag or
+        # a manual dispatch: the three places where finding out is most expensive. `app`
+        # depends on fullLinkJSOutput, so it still links exactly what the previous command did
+        # and check-web-app.js still finds the linked bundle.
+        #
+        # It also retires this file's last version GLOB. The path had to be one (issue
+        # F_0023): a hardcoded scala-<version> makes Scala Steward's bump branch edit this
+        # workflow, and pushing a workflow change is refused for a PAT without the `workflow`
+        # scope -- failing the whole run. pages.yml records that incident; this file kept the
+        # literal anyway, which is why CheckScalaVersion now enforces the rule. `app`
+        # assembles a FIXED path, so the rule is satisfied by construction here too, and
+        # reading the size from the assembly makes this echo double as proof that the
+        # directory the three routes copy was actually built.
         run: |
-          sbt web/test web/fullLinkJS
+          sbt web/test app
           node .github/scripts/check-web-app.js
-          bundle=$(ls web/target/scala-*/leonardo-web-opt/main.js)
+          bundle=web/target/app/main.js
           echo "leonardo: $(stat -c%s "$bundle") raw / $(gzip -c "$bundle" | wc -c) gzipped"
           echo "plotly:   $(stat -c%s web/vendor/plotly.min.js) raw / $(gzip -c web/vendor/plotly.min.js | wc -c) gzipped"
           echo "mathlive: $(stat -c%s web/vendor/mathlive/mathlive.min.js) raw / $(gzip -c web/vendor/mathlive/mathlive.min.js | wc -c) gzipped"

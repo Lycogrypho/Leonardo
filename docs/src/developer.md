@@ -1440,7 +1440,10 @@ all ` ```scala mdoc ``` ` code blocks in the docs.
 directory and adds nothing to it, `release.yml` zips it onto every GitHub Release as
 `leonardo-app-<version>.zip` (~1.5 MB), and `app-bundle.yml` uploads it as a workflow artifact
 on request.  **One task, three consumers**, differing only in *which* build a reader can
-obtain — the live one, a tagged one, or any commit — never in what the app is.  The layout used to exist **only** as four `cp` lines inside
+obtain — the live one, a tagged one, or any commit — never in what the app is.
+
+`ci.yml` runs `sbt web/test app` on every push, so the task all three depend on is covered by
+the ordinary build rather than first exercised at a deploy, a tag or a manual dispatch.  The layout used to exist **only** as four `cp` lines inside
 `pages.yml`, which made obtaining the app a matter of reading a workflow and repeating it by
 hand — and left no way for a change in one to reach the other.
 
