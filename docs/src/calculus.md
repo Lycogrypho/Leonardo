@@ -197,9 +197,16 @@ matching sign; the two conventions agree on the curl of the same physical field.
 ## Definite integration (Simpson's rule)
 
 `_DefIntegral(e, v, lo, hi)` computes the definite integral numerically using composite
-[Simpson's rule](https://en.wikipedia.org/wiki/Simpson%27s_rule). It uses a compiled
-`Double ⇒ Double` closure when the integrand is free of unresolvable nodes — no per-step
-allocation:
+[Simpson's rule](https://en.wikipedia.org/wiki/Simpson%27s_rule).
+
+The limits are **children**, not binders: only `v` is bound, so a limit may be any expression
+and may name other variables.  That is what gives iterated integration with variable limits
+(`integral(integral(x*y, y, 0, x), x, 0, 1)`) for free — the inner limit is an ordinary free
+occurrence of the outer variable, bound per sample by the outer pass.  In the grammar the
+limits are full expressions too, so `integral(sin(x), x, 0, 2*pi)` is written as it reads.
+
+It uses a compiled `Double ⇒ Double` closure when the integrand is free of unresolvable
+nodes — no per-step allocation:
 
 ```scala mdoc
 // ∫₀¹ x² dx = 1/3

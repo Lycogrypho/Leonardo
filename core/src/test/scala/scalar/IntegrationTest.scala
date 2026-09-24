@@ -17,6 +17,56 @@ class IntegrationTest extends AnyFlatSpec:
       case Right(_Number(y)) => y
       case other             => fail(s"expected a numeric result but got: $other")
 
+  /** Parses and evaluates a source line, failing with the parser's own message. */
+  def evalOf(src: String): Either[_Expression, _Value] =
+    val p = Parser.parse(src)
+    assert(p.successful, s"'$src' must parse: $p")
+    p.get.eval(env)
+
+  // --- the limits are ordinary expressions (F_0040) -------------------------------------
+
+  "a definite integral's limits" should "accept an expression, not just a signed atom" in
+  {
+    // Reported 2026-09-24: `integral(sin(x), x, -100*pi, 100*pi)` was a PARSE error at the
+    // `*`, because the limit positions took `signedValue` -- an optional sign and one atom --
+    // while every other bounded construct (`ode`, `taylor`, `laurent`, `tabulate`, `sum`)
+    // took a full expression. `0` to `2*pi` is the commonest definite integral there is.
+    evalOf("integral(sin(x), x, -100*pi, 100*pi)") match
+      case Right(_Number(d)) => assert(!d.isNaN && !d.isInfinite, d)
+      case other             => fail(s"expected a number, got: $other")
+    // Exact over a full period, and Simpson is accurate on a smooth periodic integrand.
+    evalOf("integral(sin(x), x, 0, 2*pi)") match
+      case Right(_Number(d)) => assert(math.abs(d) < 1e-4, d)
+      case other             => fail(s"expected a number, got: $other")
+    // An arithmetic bound: the upper limit is 2, so the answer is 2.
+    evalOf("integral(x, x, 0, 1+1)") match
+      case Right(_Number(d)) => assert(math.abs(d - 2.0) < 1e-4, d)
+      case other             => fail(s"expected a number, got: $other")
+  }
+
+  it should "still carry an outer variable, so iterated integration keeps working" in
+  {
+    // The limits are `children`, not binders, so an inner limit naming the outer variable is
+    // an ordinary free occurrence -- and it may now be an expression in it.
+    evalOf("integral(integral(1, y, 0, 2*x), x, 0, 1)") match
+      case Right(_Number(d)) => assert(math.abs(d - 1.0) < 1e-4, d)
+      case other             => fail(s"expected a number, got: $other")
+  }
+
+  it should "round-trip, since toString prints the limits as expressions" in
+  {
+    val src = "integral(sin(x), x, 0, 2*pi)"
+    val e   = Parser.parse(src)
+    assert(e.successful, src)
+    assert(Parser.parse(e.get.toString).successful, s"round-trip of ${e.get}")
+  }
+
+  "the indefinite form" should "still be reached when no limits follow" in
+  {
+    // The 4-argument arm is tried first and must fail cleanly back to the 2-argument one.
+    assert(Parser.parse("integral(sin(x), x)").get.isInstanceOf[_Integral])
+  }
+
   "∫1 dx from 0 to 5" should "equal 5.0" in
   {
     assert(math.abs(evalDefInt(_Number(1), x, 0, 5) - 5.0) < 1e-4)

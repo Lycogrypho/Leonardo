@@ -649,7 +649,9 @@ object Parser extends JavaTokenParsers:
       case rhs ~ _ ~ y ~ _ ~ t ~ _ ~ t0 ~ _ ~ y0 ~ _ ~ tgt => _ODE(rhs, y, t, t0, y0, tgt)
     }                                                                                             |
     // defuzz(e, v, lo, hi): centre-of-gravity defuzzification over [lo, hi].
-    "defuzz(" ~> guardedMembership ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")" ^^ {
+    // The bounds are expressions for the same reason the integral's are (F_0040): a
+    // defuzzification over `0` to `2*pi` is as ordinary as one over `0` to `10`.
+    "defuzz(" ~> guardedMembership ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ l ~ _ ~ h => _Defuzzify(e, v, l, h)
     }                                                                                             |
     // taylor(e, v, point, n); maclaurin(e, v, n) is sugar for point = 0, the same
@@ -665,7 +667,12 @@ object Parser extends JavaTokenParsers:
       case e ~ _ ~ v ~ _ ~ m ~ _ ~ n => _Pade(e, v, m, n)
     }                                                                                             |
     "derive("   ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Derivative(e, v)            } |
-    "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ signedValue ~ "," ~ signedValue <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
+    // The limits are ordinary EXPRESSIONS (F_0040).  They took `signedValue` -- an optional
+    // sign and one atom -- until 2026-09-24, so `integral(sin(x), x, 0, 2*pi)` was a parse
+    // error at the `*`: the commonest definite integral there is.  Every other bounded
+    // construct (`ode`, `taylor`, `pade`, `laurent`, `tabulate`, `sum`) already took
+    // `guardedExpr`, which also carries the nesting-depth guard an atom never needed.
+    "integral(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")"  ^^ { case e ~ _ ~ v ~ _ ~ l ~ _ ~ u => _DefIntegral(e, v, l, u) } |
     "integral(" ~> guardedExpr ~ "," ~ variable <~ ")"                                           ^^ { case e ~ _ ~ v             => _Integral(e, v)              } |
     // Base conversion.  `tobase` covers any radix 2..36; `balanced` is ternary with
     // the {-1, 0, 1} digit set that the symmetric ternary logic already uses.
@@ -720,7 +727,15 @@ object Parser extends JavaTokenParsers:
   private def domainKind(k: Option[String]): DomainKind =
     if k.contains("complex") then DomainKind.Complex else DomainKind.Real
 
-  /** A signed value for integral-limit positions (`integral(x, x, -1, 1)`). */
+  /** A signed atom: an optional sign and one number, constant or variable.
+   *
+   *  **No longer used by the grammar** (F_0040).  It was what `integral`'s and `defuzz`'s
+   *  bounds took, which made `integral(sin(x), x, 0, 2*pi)` a parse error; both now take
+   *  `guardedExpr` like every other bounded construct.  Kept rather than deleted because it
+   *  is a public member of a published module and removing one is a binary break for no gain
+   *  -- a `lazy val` nothing forces costs nothing at run time, and the empty
+   *  `mimaBinaryIssueFilters` list is a state worth preserving.
+   */
   lazy val signedValue: Parser[_Expression] = opt("+" | "-") ~ value ^^
     {
       case sign ~ e => applySign(sign, e)

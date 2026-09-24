@@ -258,8 +258,10 @@ object AsciiMath:
   /** Reads `[_lo^hi] <integrand> d <v>` after an `int`, or refuses (issue F_0033).
    *
    *  The bounds are single tokens or groups, glued straight onto the integrand exactly as
-   *  MathLive writes them (`_0^1x^2 d x`); a group bound is inlined WITHOUT brackets because
-   *  the grammar's integral limits are signed values, not expressions.
+   *  MathLive writes them (`_0^1x^2 d x`); a group bound is inlined WITHOUT brackets, which is
+   *  safe because a comma already delimits the slot.  Until F_0040 it was also *necessary* —
+   *  the grammar's integral limits were signed atoms, so a bracketed bound would not have
+   *  parsed; they are ordinary expressions now, and `-100*pi` reaches the parser intact.
    */
   private def renderIntegral(nodes: List[Node]): Either[String, String] =
     val (bounds, body) = nodes match
@@ -277,7 +279,11 @@ object AsciiMath:
       yield text + r
     }
 
-  /** One integral bound: a bare token, or a group whose content is inlined bracket-free. */
+  /** One bound: a bare token, or a group whose content is inlined bracket-free.
+   *
+   *  A comma-carrying group is refused rather than inlined: it is a matrix or an argument
+   *  list, and either would silently become a second bound.
+   */
   private def boundText(node: Node): Either[String, String] = node match
     case Node.Leaf(tok)               => leaf(tok)
     case Node.Group(List(items))      => render(items)

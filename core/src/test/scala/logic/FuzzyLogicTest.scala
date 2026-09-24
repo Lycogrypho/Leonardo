@@ -450,6 +450,16 @@ class FuzzyLogicTest extends AnyFlatSpec:
       case other             => fail(s"expected a number, got: $other")
   }
 
+  it should "accept an EXPRESSION as a bound, not just a signed atom (F_0040)" in
+  {
+    // The bounds shared `integral`'s `signedValue` restriction and the same fix: a
+    // defuzzification over `0` to `2*5` is as ordinary as one over `0` to `10`, and the two
+    // must agree.
+    val expr  = parse("defuzz(trimf(x, 0, 3, 6) or trimf(x, 4, 7, 10), x, 0, 2*5)")
+    val plain = parse("defuzz(trimf(x, 0, 3, 6) or trimf(x, 4, 7, 10), x, 0, 10)")
+    assert(expr.eval(minmax) == plain.eval(minmax))
+  }
+
   it should "accept connectives under the hedges as well" in
   {
     assert(parse("very(trimf(x, 0, 5, 10) or trimf(x, 2, 6, 9))").isInstanceOf[Very])

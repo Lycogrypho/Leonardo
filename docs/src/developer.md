@@ -497,6 +497,11 @@ Key parser decisions:
   unsigned (`3-2` is subtraction, not `3 * (-2)`).
 - **Word-boundary guards**: `pi`, `e`, `i` are always constants; reserved names like
   `sin`, `derive`, `solve` cannot be variable names.
+- **A bounded construct takes a full expression in every slot**: `integral`, `defuzz`, `ode`,
+  `taylor`, `pade`, `laurent`, `tabulate`, `sum` and `product` all read their limits with
+  `guardedExpr`, which carries the nesting-depth guard.  The integral and `defuzz` read a
+  signed *atom* until F_0040, which made `integral(sin(x), x, 0, 2*pi)` a parse error at the
+  `*` — when adding a construct, reach for `guardedExpr` and not for a narrower production.
 - **Matrix dispatch**: when one operand is structurally a `_Matrix` or `_MatrixOperation`,
   `+`/`-`/`*` build `MatSum`/`MatProduct`/`MatScale` instead of scalar nodes.  This is
   purely structural at parse time; runtime dispatch handles the remaining ambiguity.

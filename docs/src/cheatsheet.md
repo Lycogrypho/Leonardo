@@ -294,8 +294,14 @@ second for `spherical`, third for `sphericalmaths`.
 
 ### Definite integration (Simpson's rule)
 
+The limits are ordinary **expressions**, so arithmetic, constants and other variables are all
+legal there.
+
 ```
 integral(sin(x), x, 0, pi)      -> ≈ 2.0
+integral(sin(x), x, 0, 2*pi)    -> ≈ 0.0        over a full period
+integral(sin(x), x, -100*pi, 100*pi)          an expression bound is not a special case
+integral(integral(1, y, 0, 2*x), x, 0, 1) -> 1.0   iterated, inner limit in the outer variable
 ```
 
 ### Limits
