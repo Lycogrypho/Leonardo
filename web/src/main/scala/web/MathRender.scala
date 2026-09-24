@@ -34,10 +34,16 @@ object MathRender:
 
   /** Typesets `latex` into `block`.
    *
-   *  **The one `innerHTML` in the page, and deliberately so**: markup is what a typesetter
-   *  returns.  The transcript's rule — `textContent`, never `innerHTML`, because a result is
-   *  full of `<`, `>` and `&` — is not broken by it: the string is not user text but
-   *  MathLive's serialisation of a *parsed* formula, so every character has passed through
+   *  **The only `innerHTML` in the page that WRITES CONTENT, and deliberately so**: markup is
+   *  what a typesetter returns.  Two others exist and are not exceptions — `App.clearTranscript`
+   *  and `Plot.clear` assign the **empty string** to empty a container, which carries nothing
+   *  to escape; stating the rule as "the one `innerHTML`" was imprecise enough that a reader
+   *  checking it found it false (issue D_0031).  The distinction that matters is content, not
+   *  count.
+   *
+   *  The transcript's rule — `textContent`, never `innerHTML`, because a result is full of
+   *  `<`, `>` and `&` — is not broken here: the string is not user text but MathLive's
+   *  serialisation of a *parsed* formula, so every character has passed through
    *  [[latex.ToLatex]]'s escaper and then MathLive's tokenizer, and a `<` comes back as
    *  `&lt;` (checked, rather than assumed, before this call was written).
    *
