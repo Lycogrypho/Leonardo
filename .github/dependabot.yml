@@ -16,6 +16,13 @@ version: 2
 # DELIBERATELY LIMITED TO github-actions. Scala/sbt dependencies are Scala Steward's job
 # (.scala-steward.conf); enabling Dependabot's `sbt` ecosystem as well would open two pull
 # requests for every library update and lose spire's deliberate pin (issue 4.N).
+#
+# That is about UPDATES, not ALERTS, and the two are separate mechanisms -- a distinction worth
+# keeping straight here, because "Dependabot does not cover the JVM tree" was true of this file
+# and false of the repository after D_0030. `dependency-graph.yml` submits the sbt dependency
+# graph, which switches on Dependabot **alerts** for the Maven dependencies: no pull requests,
+# no second opinion about versions, and every deliberate pin left exactly as it is. Steward
+# still owns what is *newer*; alerts now say what is *vulnerable*, which Steward never did.
 updates:
   - package-ecosystem: github-actions
     directory: "/"

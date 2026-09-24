@@ -1,0 +1,64 @@
+name: Submit the dependency graph
+
+# Gives the JVM dependencies ADVISORY coverage, which nothing had before (issue D_0030).
+#
+# WHAT WAS MISSING, precisely. Dependabot already watches two ecosystems here -- the pinned
+# action SHAs and the docs site's Ruby gems -- and Scala Steward opens weekly PRs for the sbt
+# dependencies. But Steward is a *version* bumper, not an advisory feed: it proposes what is
+# newer, never what is vulnerable, and `.scala-steward.conf` puts `spire` and
+# `scala-parser-combinators` on `updates.ignore` UNCONDITIONALLY, so a security release of
+# either would be skipped in silence. Both pins are well argued (F_0025's JDK floor, 4.M's gcd
+# policy) and neither should be lifted -- the gap was that nothing would *tell* anyone.
+#
+# This submits the sbt dependency graph to GitHub's Dependency submission API, which turns on
+# Dependabot **alerts** (not pull requests) for the Maven tree. Every pin stays exactly as it
+# is; what changes is that an advisory against one becomes visible instead of silent.
+#
+# A SEPARATE WORKFLOW, and that is the point rather than tidiness: submission needs
+# `contents: write`, while ci.yml is `contents: read` and runs on pull requests too -- including
+# from forks, whose tokens are read-only, so the step could only fail there. The same split
+# release.yml makes between the job that signs and the job that writes.
+#
+# NO SCHEDULE is needed: a snapshot describes a commit, and Dependabot re-evaluates the stored
+# graph as new advisories are published. It is resubmitted only when the graph could actually
+# have changed, which is what the `paths` filter below says.
+
+on:
+  push:
+    branches: [main]
+    # The graph is derived from the build definition, so nothing else can change it. A library
+    # source edit cannot add a dependency without touching one of these.
+    paths:
+      - "build.sbt"
+      - "project/**"
+      - ".github/workflows/dependency-graph.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8 # v1.5.9
+
+      - name: Submit
+        # NO `modules-ignore` / `configs-ignore`. Restricting the submission to the two
+        # published modules would mean a hand-maintained list of the ones to leave out, and a
+        # new module would have to be remembered into it -- the drift this repository avoids
+        # everywhere else (the `Files.GuardedRoots` lesson, F_0028). Submitting everything
+        # needs no list at all. A test-scope alert is not a consumer-facing risk, but it is
+        # still something worth being told about a build that runs on every push.
+        uses: scalacenter/sbt-dependency-submission@d84eef4c09e633bcf5f113bcad7fd5e9af1baee9 # v3.2.3

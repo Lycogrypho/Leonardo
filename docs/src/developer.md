@@ -1530,6 +1530,8 @@ its literal and wrote the incident above the glob that replaced it; `ci.yml` kep
 literal regardless.  The condition had already decayed while the explanation sat three files
 away, which is precisely what a comment cannot prevent and a check can.  Use a glob
 (`web/target/scala-*/…`) or a directory scan; a build produces exactly one such directory.
+Best of all, avoid needing one: since F_0042 `ci.yml` reads `web/target/app/main.js`, the fixed
+path `sbt app` assembles, so it spells no version and the guard has nothing to police there.
 
 **A guard must be clean of its own rules — in prose as much as in code.**  `FixMojibake.Lossy`
 builds its damaged sequences from code points rather than writing them, because the table *is*
@@ -1544,3 +1546,27 @@ The pattern generalises past these three.  When a fix consists of bringing many 
 line — an encoding, a pinning convention, an import rule — the fix itself is the easy half;
 what keeps it true is a check that fails the next divergence.  Without one the condition
 decays quietly and the next person finds no evidence that it was ever deliberate.
+
+### Dependency updates and dependency alerts are different things
+
+Both are automated here, by different machinery, and conflating them leaves a real gap — which
+is what D_0030 found.
+
+**Updates** are Scala Steward's (`.scala-steward.conf`, weekly pull requests) for the sbt
+dependencies, and Dependabot's (`.github/dependabot.yml`) for the pinned action SHAs and the
+docs site's gems.  Steward proposes what is **newer**.  It says nothing about what is
+*vulnerable*, and two artifacts sit on its `updates.ignore` list unconditionally — `spire` and
+`scala-parser-combinators`, each pinned for a reason that still holds — so a security release
+of either would have been skipped in silence.
+
+**Alerts** come from the dependency graph.  `dependency-graph.yml` submits the sbt graph to
+GitHub on any push that touches `build.sbt` or `project/**`, which switches Dependabot alerts
+on for the Maven tree.  No pull request, no opinion about versions, and no pin is overridden:
+an advisory against a deliberately pinned dependency simply becomes **visible**.
+
+Two details worth keeping.  It is a **separate workflow** because submission needs
+`contents: write`, while `ci.yml` is `contents: read` and also runs on pull requests from
+forks, whose tokens are read-only — the same privilege split `release.yml` makes internally.
+And it submits **everything**, with no `modules-ignore`: narrowing it to the published modules
+would mean a hand-maintained list of exclusions that a new module must be remembered into,
+which is the drift `Files.GuardedRoots` exists to prevent.
