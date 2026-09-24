@@ -67,11 +67,18 @@ jobs:
         run: sbt "docs/mdoc; unidoc; injectApiStyles"
 
       # ── Browser REPL (the /app subfolder, F_0003 phase 4) ──────────────────
-      - name: Link the browser REPL
-        # `web` is deliberately outside the root aggregate, so it must be named: the task above
-        # does not reach it. fullLinkJS rather than fastLinkJS because this is what ships --
-        # 3.46 MB against fastLink's ~20 MB, and the gzipped figure is what a reader pays.
-        run: sbt web/fullLinkJS
+      - name: Assemble the browser REPL
+        # `sbt app` links the bundle and assembles web/target/app -- index.html, main.js and
+        # vendor/ -- which the copy step below deploys verbatim. The layout is DEFINED in
+        # build.sbt (D_0026) rather than here: it used to exist only as this workflow's copy
+        # step, so the only way to obtain the app was to read a workflow and repeat it by hand,
+        # and a change to one could not reach the other.
+        #
+        # `web` is deliberately outside the root aggregate, so it must be named: the sbt task
+        # above does not reach it -- the `app` alias is that qualification. fullLinkJS rather
+        # than fastLinkJS because this is what ships -- 3.46 MB against fastLink's ~20 MB, and
+        # the gzipped figure is what a reader pays.
+        run: sbt app
 
       # ── Jekyll prose site (Just the Docs over docs/src) ──────────────────────
       - name: Set up Ruby
@@ -122,20 +129,16 @@ jobs:
           touch _site/.nojekyll
 
       - name: Add the browser REPL at /app
-        # Same glob reasoning as the API copy above: no file may spell the Scala version, or
-        # Scala Steward's bump branch edits this workflow and the push is refused for want of
-        # the `workflow` PAT scope. A fresh checkout links exactly one leonardo-web-opt, and
-        # cp fails loudly if it linked none.
+        # ONE copy of a directory the build assembled. It was four copies until D_0026, one of
+        # them through a `web/target/scala-*/leonardo-web-opt` glob -- which existed because no
+        # file under .github may spell the Scala version (F_0023), and is now not needed at all,
+        # since the `app` task resolves the linker's output directory from the build itself.
         #
         # Jekyll never sees any of this: it builds target/mdoc into _site, and /app is added
         # afterwards. So index.html is served exactly as written, with no front matter and no
         # Liquid processing -- which matters, because the page is full of {{ }}-free but
         # brace-heavy JavaScript that Liquid would otherwise be entitled to interpret.
-        run: |
-          mkdir -p _site/app
-          cp web/index.html _site/app/index.html
-          cp web/target/scala-*/leonardo-web-opt/main.js _site/app/main.js
-          cp -r web/vendor _site/app/vendor
+        run: cp -r web/target/app _site/app
 
       - name: Verify the deployed app is complete
         # Cheap, and it guards the failure mode this layout actually has: a page that loads,

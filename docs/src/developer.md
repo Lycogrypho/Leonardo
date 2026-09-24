@@ -1417,8 +1417,10 @@ Key build file sections:
 | `lazy val replModule` | The REPL — the `cli` package and `Main.scala`.  Publishes as `it.grypho:leonardo-repl`.  The only module that depends on `jline` |
 | `lazy val docs` | Runs mdoc; `publish / skip := true`.  Separate because `MdocPlugin` adds `org.scalameta:mdoc` to the enabled project's `libraryDependencies`, from where it reaches the published POM |
 | `lazy val tools` | The repository's own guards (F_0027); `publish / skip := true`, not aggregated, and **forked** — a guard's answer is its exit code, and `sys.exit` in sbt's own JVM would end the session mid-`checks` |
+| `lazy val web` | The browser front end; Scala.js only, `publish / skip := true`, **not aggregated** — linking a bundle on every `sbt test` would put front-end work in the path of every library change, so `web/test` is named explicitly by `ci.yml` |
 | `lazy val root` | Pure aggregate over the three; publishes nothing |
 | `sbt checks` | Every repository guard in one sbt boot; what `ci.yml` runs |
+| `sbt app` | Links the browser REPL and assembles `web/target/app/` — `index.html`, `main.js`, `vendor/` — the directory `pages.yml` deploys to `/app` and anyone can serve as-is |
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
 | `sbt unidoc` | One combined API across both modules → `target/scala-<version>/api`; this is what the site publishes, and what keeps `cli` in the reference |
@@ -1431,6 +1433,22 @@ The public docs site is hosted on GitHub Pages (Just the Docs theme) and rebuilt
 automatically by `.github/workflows/pages.yml` on every push to `main`.  Prose pages go in
 `docs/src/` with Jekyll front matter (`title`, `nav_order`).  The `mdoc` plugin verifies
 all ` ```scala mdoc ``` ` code blocks in the docs.
+
+### The app is a build artifact, not a workflow step
+
+`sbt app` assembles the browser REPL into `web/target/app/`; the Pages workflow copies that
+directory and adds nothing to it.  The layout used to exist **only** as four `cp` lines inside
+`pages.yml`, which made obtaining the app a matter of reading a workflow and repeating it by
+hand — and left no way for a change in one to reach the other.
+
+The app carries no absolute URL: `index.html` references `main.js` and `vendor/` relatively and
+the share link is built from `location.href` at runtime, so the assembled directory runs from
+any origin, a local folder included.  Two consequences follow.  **`localStorage` is
+per-origin**, so a `:save`d session belongs to the origin it was saved at and does not travel
+with the files.  And the task depends on `fullLinkJSOutput` rather than globbing
+`web/target/scala-*/leonardo-web-opt`: the build knows where the linker wrote, so the Scala
+version is spelled nowhere — the rule `CheckScalaVersion` enforces under `.github/`, here
+satisfied by construction.
 
 The site's Ruby gems are resolved from `docs/Gemfile`.  To refresh the lockfile, run the
 **`Generate docs/Gemfile.lock`** workflow from the Actions tab and commit the artifact it

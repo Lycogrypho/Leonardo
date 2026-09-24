@@ -474,6 +474,22 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
 // NOT aggregated by root, and that is a judgement rather than an oversight: linking a bundle
 // on every `sbt test` would put front-end work in the path of every library change.  The cost
 // is that `web/test` must be named explicitly, which ci.yml does.
+
+/** The retrievable bundle of the browser REPL (issue D_0026), assembled by `sbt app`.
+ *
+ *  What the app IS -- an `index.html`, the linked `main.js` and the vendored libraries beside
+ *  them -- was a specification that existed only inside `pages.yml`'s copy step.  So obtaining
+ *  the app meant reading a workflow and repeating it by hand, and a change to the layout had no
+ *  way of reaching whoever had done so.  The workflow now copies THIS directory, which makes
+ *  the build the single definition and the deployment one of its consumers.
+ *
+ *  It depends on `fullLinkJSOutput` rather than globbing `web/target/scala-*\/leonardo-web-opt`:
+ *  the build knows where it put the bundle, so the Scala version is spelled nowhere (F_0023 is
+ *  served structurally here rather than by its guard) and a stale sibling directory cannot be
+ *  picked up instead.
+ */
+lazy val app = taskKey[File]("Assembles the browser REPL into web/target/app: index.html, main.js, vendor/.")
+
 lazy val web = (project in file("web"))
   .enablePlugins(ScalaJSPlugin)
   .dependsOn(replModule.js)
@@ -493,7 +509,22 @@ lazy val web = (project in file("web"))
     // entry points reachable as globals.  ESModule would be the choice if a bundler were ever
     // introduced -- there is deliberately none, matching the vendored-not-bundled stance the
     // docs site already takes with svg-pan-zoom.
-    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.NoModule) }
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.NoModule) },
+
+    app := {
+      val linked = (Compile / fullLinkJSOutput).value
+      val vendor = baseDirectory.value / "vendor"
+      val out    = target.value / "app"
+      // copyDirectory on an absent source is a silent no-op, and an app without its vendored
+      // libraries is exactly the failure this assembly exists to make impossible.
+      if (!vendor.isDirectory) sys.error(s"the vendored libraries are missing: $vendor")
+      IO.delete(out) // so a file deleted upstream cannot survive in a stale assembly
+      IO.copyFile(baseDirectory.value / "index.html", out / "index.html")
+      IO.copyFile(linked / "main.js", out / "main.js")
+      IO.copyDirectory(vendor, out / "vendor")
+      streams.value.log.info(s"app assembled -> $out (main.js ${(out / "main.js").length} bytes)")
+      out
+    }
   )
 
 // ── The repository's own guards, in the repository's own language (issue F_0027) ────────
@@ -546,6 +577,10 @@ ThisBuild / libraryDependencies ++= Nil
 addCommandAlias("repl", "replModuleJVM/runMain it.grypho.scala.leonardo.cli.repl")
 // The parser demo, likewise moved: a published library artifact carries no main class.
 addCommandAlias("demo", "replModuleJVM/runMain it.grypho.scala.leonardo.main")
+// The browser REPL as a directory anyone can serve (D_0026). Project-qualified for the same
+// reason `web/test` is: `web` is outside the root aggregate, so the bare task is not defined
+// on the project a user stands in.
+addCommandAlias("app", "web/app")
 // Full site: regenerate UML diagram → validate code examples → Scaladoc site + CSS.
 // `docs/mdoc`, not `mdoc`: MdocPlugin is enabled on the docs project, not on root, so that
 // the mdoc dependency stays out of the published POM. `unidoc`, not `doc`: since the module

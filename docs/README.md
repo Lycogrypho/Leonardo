@@ -37,10 +37,18 @@ sources, or build:
 
 1. `sbt "docs/mdoc; unidoc; injectApiStyles"` — verifies the `scala mdoc` code samples in the
    prose, renders the Scaladoc API, and applies the logo/CSS.
-2. `bundle exec jekyll build --source ../target/mdoc --destination ../_site --config _config.yml`
+2. `sbt app` — links the browser REPL and assembles `web/target/app/`.  The **build** defines
+   what the app is; this workflow only copies it (issue D_0026), so `sbt app` on any machine
+   produces the same directory that is deployed.
+3. `bundle exec jekyll build --source ../target/mdoc --destination ../_site --config _config.yml`
    — renders the prose into `_site` with the Just the Docs theme.
-3. Copies `target/scala-3.3.6/api` into `_site/api` and drops `_site/.nojekyll`.
-4. Uploads `_site` and deploys it with `actions/deploy-pages`.
+4. Copies `target/scala-*/api` into `_site/api` and drops `_site/.nojekyll`.  The version is
+   **globbed, never spelled**: a literal would put it in a file Scala Steward's bump branch has
+   to edit, and a workflow edit is refused for a PAT without the `workflow` scope.
+5. Copies `web/target/app` to `_site/app`, after Jekyll has run — so `index.html` is served
+   exactly as written, with no front matter and no Liquid processing of its brace-heavy
+   JavaScript — then verifies the deployed files are present and non-empty.
+6. Uploads `_site` and deploys it with `actions/deploy-pages`.
 
 ### A trap worth knowing: `remote_theme` does not install the theme's gems
 
