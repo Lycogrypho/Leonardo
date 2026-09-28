@@ -359,9 +359,14 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
 // A separate project is the actual answer -- it is also what mdoc's own documentation
 // recommends -- and `publish / skip` keeps it out of Central entirely.
 //
-// Base directory `docs/` only so the project has one; it compiles nothing (there is no
-// docs/src/main/scala). `target` is redirected under the root's target/ so that no build
-// output is written inside the directory Jekyll publishes from.
+// Base directory `docs/` only so the project has one. `target` is redirected under the root's
+// target/ so that no build output is written inside the directory Jekyll publishes from.
+//
+// It DOES compile a little Scala since D_0003: the lesson transcript helper. Both source roots
+// are REDIRECTED to docs/helper rather than appended to, and that is load-bearing -- mdoc copies
+// every file under `mdocIn` to `mdocOut`, processing only the markdown, so the defaults
+// (docs/src/main/scala and docs/src/test/scala) sit INSIDE mdocIn and would publish the helper
+// and its suite to the documentation site as ordinary assets.
 lazy val docs = (project in file("docs"))
   .enablePlugins(MdocPlugin)
   // Examples import `it.grypho.scala.leonardo.*`, so the library must be on the classpath
@@ -379,6 +384,14 @@ lazy val docs = (project in file("docs"))
     mimaFailOnNoPrevious  := false,
 
     target := (ThisBuild / baseDirectory).value / "target" / "docs-project",
+
+    // See the note above: REDIRECTED, never appended -- the defaults live under mdocIn.
+    Compile / scalaSource := baseDirectory.value / "helper" / "scala",
+    Test / scalaSource    := baseDirectory.value / "helper" / "test",
+
+    // `sbt docs/test`; NOT in the root aggregate, for the reason `web` and `tools` are not --
+    // this is documentation machinery, not library behaviour. ci.yml names it explicitly.
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.20" % Test,
 
     // Source markdown lives in docs/src/; mdoc compiles every scala mdoc block and writes
     // verified markdown to the ROOT's target/mdoc/. Keeping the output there is load-bearing:

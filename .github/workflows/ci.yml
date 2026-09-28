@@ -129,7 +129,12 @@ jobs:
         # outside the root aggregate (the `web` precedent), so folding it into `sbt test`
         # would quietly change what that number means. Each command labels its own output, so
         # one step costs no log clarity.
-        run: sbt checks tools/test
+        #
+        # `docs/test` rides along for the third time of the same reason (D_0003): the lesson
+        # transcript helper is documentation machinery, so it is outside the root aggregate like
+        # `web` and `tools`, and an unnamed suite is one nothing runs. It is cheap and it guards
+        # the property the course rests on -- that a transcript is executed rather than typed.
+        run: sbt checks tools/test docs/test
 
       - name: Binary compatibility
         # Checks both published modules against the `mimaBaseline` in build.sbt (issue 2.9).
