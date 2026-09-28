@@ -974,10 +974,40 @@ final class Session:
    *  @return the sampling, or the message explaining why nothing could be sampled
    */
   def samplePoints(rest: String): Either[String, Session.Samples] =
-    sweepArgs(rest, "samples").map { a =>
-      Session.Samples(a.expr, a.variable,
-                      sample(a.resolved, _Variable(a.variable), a.lo, a.hi, a.n, env))
+    sweepArgs(rest, "samples").flatMap { a =>
+      val v      = _Variable(a.variable)
+      val points = sample(a.resolved, v, a.lo, a.hi, a.n, env)
+      if points.sizeIs < a.n && wholeIndexedIn(a.resolved, v) then Left(wholeGridAdvice(a))
+      else Right(Session.Samples(a.expr, a.variable, points))
     }
+
+  /** Refuses a continuous grid over an expression that has values only at whole numbers,
+   *  naming the grid that would work (issue F_0044 step 2).
+   *
+   *  **Refusing beats drawing the few points the grid happened to hit.**  Those points are a
+   *  true picture of nothing anyone asked for — their spacing is an artefact of where the step
+   *  landed rather than of the function — and this project would rather decline than answer a
+   *  different question confidently.  Re-gridding silently was the other candidate and was
+   *  rejected for the same reason: it is the one option that can be wrong without saying so.
+   *
+   *  **The trigger is the STRUCTURE together with real loss**, never loss alone: `wholeIndexedIn`
+   *  says the expression is whole-indexed, and `points < n` says this particular grid actually
+   *  missed.  So a pole is never reported as a grid problem, and a grid that already lands on
+   *  the integers — the very recipe below — is not refused, which is what keeps the advice
+   *  honest rather than an obstacle.
+   *
+   *  @param a the parsed sweep arguments
+   *  @return the message, carrying the whole-numbered bounds and count when one exists
+   */
+  private def wholeGridAdvice(a: Session.SweepArgs): String =
+    val lo    = Math.ceil(a.lo).toLong
+    val hi    = Math.floor(a.hi).toLong
+    val count = hi - lo + 1
+    val head  = s"samples: sum, product and tabulate need whole bounds, so ${a.expr} has a value " +
+                s"only where ${a.variable} is a whole number"
+    if count >= 2 && count <= Session.MaxSampleCount then
+      s"$head\nnote: one point per integer plots it — try: ${a.expr} ${a.variable} $lo $hi $count"
+    else s"$head, and no whole-numbered grid fits between ${a.lo} and ${a.hi}"
 
   /** The frequency sweep behind the browser's `bode` command (issue F_0004).
    *
@@ -1011,6 +1041,40 @@ final class Session:
                       control.nyquistSweep(a.resolved, _Variable(a.variable),
                                            a.lo, a.hi, a.n, env))
     }
+
+  /** How many samples the sweeping commands will attempt for `rest` (issue F_0044).
+   *
+   *  **Additive rather than a field on [[Session.Samples]]**, which is what it looks like it
+   *  should be: that record is public API of a published module, so widening it would break
+   *  binary compatibility and cost a `mimaBinaryIssueFilters` entry — against a list whose
+   *  emptiness is worth keeping, and for a message.  Reading the count back through the same
+   *  `sweepArgs` parser costs one cheap re-parse and leaves the argument syntax with a single
+   *  definition, which is the property that matters.
+   *
+   *  @param rest the command's arguments, exactly as passed to [[samplePoints]]
+   *  @return the requested count, or `None` when the arguments do not parse
+   */
+  def requestedSampleCount(rest: String): Option[Int] =
+    sweepArgs(rest, "samples").toOption.map(_.n)
+
+  /** The note a sweep appends when the grid yielded fewer values than it asked for.
+   *
+   *  **Reported only when something was lost, and with no threshold**: the test is
+   *  `plotted < requested`, so there is no arbitrary fraction to argue about and the ordinary
+   *  path stays silent.  A sweep drops a sample whenever the expression has no finite value
+   *  there — a pole, an argument outside the domain, or a `sum` whose bound is not whole — and
+   *  before F_0044 it dropped them without a word, so `(plotted 1 points)` read as success
+   *  where 199 of 200 samples had in fact been discarded.
+   *
+   *  The domain-note discipline (3.3 slice F): appended to the answer, never folded into it,
+   *  so every existing result is unchanged byte for byte.
+   *
+   *  @param kept      how many samples produced a finite value
+   *  @param requested how many were attempted, when that is known
+   *  @return the note, or the empty string when nothing was lost
+   */
+  private def sampleNote(kept: Int, requested: Option[Int]): String =
+    requested.filter(_ > kept).fold("")(n => s"\nnote: only $kept of $n samples had a finite value")
 
   /** Reads the `<expr> <var> <lo> <hi> [<n>]` argument shape the sweeping commands share.
    *
@@ -1054,7 +1118,7 @@ final class Session:
     case Right(s) =>
       s.points.map((x, y) =>
         s"${_Number(x).display(precision)}\t${_Number(y).display(precision)}"
-      ).mkString("\n")
+      ).mkString("\n") + sampleNote(s.points.size, requestedSampleCount(rest))
 
   /** Sets the display precision, rejecting out-of-range values. */
   private def setPrecision(text: String): String =

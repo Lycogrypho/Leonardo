@@ -110,6 +110,25 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     assert(js.isUndefined(drawn.layout.yaxis.scaleanchor))
   }
 
+  it should "report the samples it lost, not only the ones it drew (F_0044)" in
+  {
+    // A pole costs one of eleven samples. The figure is still worth drawing -- the loss has no
+    // better remedy than saying so.
+    typeLine("plot 1/x x -1 1 11")
+    assert(lastOutput().contains("10 of 11"), lastOutput())
+  }
+
+  it should "refuse a continuous grid over a whole-indexed expression, naming one that fits" in
+  {
+    // `sum`'s bound is the plotted variable, so the expression has a value only at integers --
+    // over 0..100 at the default 200 points, at exactly one of them, which drew a single point
+    // on the origin and looked like an empty figure. Drawing the points the step happened to
+    // hit would be a true picture of nothing anyone asked for (F_0044 step 2).
+    typeLine("plot sum(k, k, 1, n) n 0 100")
+    assert(lastOutput().contains("whole number"), lastOutput())
+    assert(lastOutput().contains("0 100 101"), lastOutput())
+  }
+
   "points" should "lock the axes, which is why Plotly was chosen over Vega-Lite" in
   {
     typeLine("points x x -1 1 3")

@@ -53,6 +53,59 @@ class SampleReplTest extends AnyFlatSpec:
     assert(out.contains("no finite values"))
   }
 
+  // --- the grid can silently produce fewer values than asked for (F_0044) ----------------
+
+  "the samples command" should "say how many samples had a value, not silently shrink" in
+  {
+    // A sweep drops every point with no finite value and used to do it without a word, so a
+    // shrunken result read as success. The pole at x = 0 costs one of eleven samples.
+    // (A whole-indexed expression is REFUSED rather than noted -- see the case below -- so the
+    // note is pinned here on the loss that has no better remedy than reporting it.)
+    val s   = Session()
+    val out = s.execute("samples 1/x x -1 1 11")
+    assert(out.contains("10 of 11"), out)
+  }
+
+  it should "refuse an integer-indexed expression with the grid that would work" in
+  {
+    // `sum`'s bound is the sampled variable, so the expression has a value only at whole
+    // numbers.  Rather than draw the one or two points the grid happens to hit, say so and name
+    // the count that lands on every integer -- 101 over 0..100 (F_0044 step 2).
+    val s   = Session()
+    val out = s.execute("samples sum(k, k, 1, n) n 0 100")
+    assert(out.contains("whole"), out)
+    assert(out.contains("0 100 101"), out)
+  }
+
+  it should "sample an integer-indexed expression happily once the grid fits" in
+  {
+    // The recipe has to work, or the refusal is just an obstacle: at one point per integer
+    // every sample evaluates, so nothing is lost and nothing is refused.
+    val s   = Session()
+    val out = s.execute("samples sum(k, k, 1, n) n 0 100 101")
+    assert(!out.contains("whole"), out)
+    assert(out.linesIterator.length == 101, out)
+  }
+
+  it should "not refuse an ordinary expression that merely has a pole" in
+  {
+    // The refusal is keyed on the STRUCTURE -- a reduction whose bound is the sampled variable
+    // -- not on the loss alone, or every pole would be reported as a grid problem.
+    val s   = Session()
+    val out = s.execute("samples 1/x x -1 1 11")
+    assert(!out.contains("whole"), out)
+  }
+
+  it should "stay quiet when every sample had a value" in
+  {
+    // The count is reported only when something was lost -- no arbitrary threshold, and no
+    // noise on the ordinary path.
+    val s   = Session()
+    val out = s.execute("samples x x 0 1 10")
+    assert(!out.contains("of 10"), out)
+    assert(out.linesIterator.length == 10, out)
+  }
+
   "the samples command with lo >= hi" should "report an error" in
   {
     val s = Session()

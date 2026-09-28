@@ -207,7 +207,7 @@ object App:
         val spec =
           if geometric then PlotSpec.coordinates(r.points, r.expr)
           else PlotSpec.line(r.points, r.expr, r.variable)
-        draw(spec, r.points.size)
+        draw(spec, r.points.size, session.requestedSampleCount(rest))
 
   /** Draws a Bode diagram — gain and unwrapped phase over a logarithmic frequency axis. */
   private def bode(rest: String): String =
@@ -216,7 +216,8 @@ object App:
       case Left(why)                             => why
       case Right(r) if r.points.isEmpty          => EmptySweep
       case Right(r) =>
-        draw(PlotSpec.bode(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size)
+        draw(PlotSpec.bode(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size,
+             session.requestedSampleCount(rest))
 
   /** Draws a Nyquist diagram — the same sweep in the complex plane, axes locked. */
   private def nyquist(rest: String): String =
@@ -225,12 +226,27 @@ object App:
       case Left(why)                             => why
       case Right(r) if r.points.isEmpty          => EmptySweep
       case Right(r) =>
-        draw(PlotSpec.coordinates(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size)
+        draw(PlotSpec.coordinates(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size,
+             session.requestedSampleCount(rest))
 
-  /** Hands a spec to the page and answers with the line the transcript should carry. */
-  private def draw(spec: String, count: Int): String =
+  /** Hands a spec to the page and answers with the line the transcript should carry.
+   *
+   *  **The denominator appears only when samples were lost** (issue F_0044).  A sweep drops
+   *  every point where the expression has no finite value — a pole, an argument outside the
+   *  domain, or a `sum` whose bound is not a whole number — and it used to drop them without a
+   *  word, so `(plotted 1 points)` read as success where 199 of 200 had been discarded and the
+   *  figure looked empty.  Reporting `N of M` whenever `N < M` needs no threshold to argue
+   *  about and leaves the ordinary path reading exactly as it did.
+   *
+   *  @param spec      the Plotly document
+   *  @param count     how many points the figure carries
+   *  @param requested how many samples were attempted, when the session could say
+   */
+  private def draw(spec: String, count: Int, requested: Option[Int]): String =
     Plot.draw(spec, byId("figure")) match
-      case Right(_)  => s"(plotted $count points)"
+      case Right(_)  =>
+        requested.filter(_ > count)
+          .fold(s"(plotted $count points)")(n => s"(plotted $count of $n samples)")
       case Left(why) => why
 
   /** Copies a link that restores this session. */

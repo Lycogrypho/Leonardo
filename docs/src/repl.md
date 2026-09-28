@@ -341,6 +341,37 @@ rather than attempted beyond that, because the whole grid is built before anythi
 The same bounds apply to the browser's `plot`, `points`, `bode` and `nyquist`, which read
 their arguments through the same code.
 
+**A sample with no finite value is dropped, and the count says so.**  A pole, an argument
+outside the domain, or a `sum` whose bound is not a whole number all leave a grid point with
+nothing to plot.  Where that happens the table appends `note: only N of M samples had a finite
+value` and the browser answers `(plotted N of M samples)`; when nothing is lost, neither says
+anything extra.
+
+That last case is **refused rather than drawn**, because it has a remedy the others do not.
+`sum`, `product` and `tabulate` need whole bounds, so `sum(k, k, 1, n)` has a value only where
+the grid lands exactly on an integer — over `0 … 100` at 200 points the step is `100/199` and
+exactly one sample qualifies.  Drawing that one point would be a true picture of nothing you
+asked for, its spacing an artefact of where the step fell, so the command says so and names the
+grid that fits:
+
+```
+> plot sum(k, k, 1, n) n 0 100
+plot: sum, product and tabulate need whole bounds, so sum(k, k, 1, n) has a value only where
+n is a whole number
+note: one point per integer plots it — try: sum(k, k, 1, n) n 0 100 101
+```
+
+Taking that advice works, which is what keeps it advice rather than an obstacle — at one point
+per integer every sample evaluates, nothing is lost and nothing is refused:
+
+```
+plot sum(k, k, 1, n) n 0 100 101      # step = 1.0, so every sample is a whole number
+```
+
+The refusal is keyed on the **shape** of the expression — a reduction whose bound is the sampled
+variable — together with real loss on this particular grid.  Loss alone would report every pole
+as a grid problem, and the shape alone would refuse the grid that already works.
+
 ## In the browser
 
 The [browser REPL](https://lycogrypho.github.io/Leonardo/app/) runs this same `Session`
