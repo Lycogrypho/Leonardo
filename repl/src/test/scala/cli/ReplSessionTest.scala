@@ -427,6 +427,71 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(restored.script.contains("precision 3"))
   }
 
+  // --- F_0046: a DEFINITION must round-trip as exactly as a binding does ---
+  // The two cases above have always passed and could not have caught this: every constant in
+  // them (`3`, `1`, `2`) is an integer exactly representable at DefaultPrecision, so the
+  // definitions path's `toString` lost nothing. The shape of the test was right; only the case
+  // was missing.
+
+  "a definition carrying an irrational constant" should "round-trip at full precision" in
+  {
+    val original = session
+    original.execute("radius := 3")
+    original.execute("area := pi * radius^2")
+    val before = original.execute("area")
+
+    val restored = session
+    restored.load(original.script)
+    // Before F_0046 the script wrote `area := (3.14159 * ...)`, so this answered 28.27431
+    // where the original answered 28.27433.
+    assert(restored.execute("area") == before,
+           s"definition lost precision across :save/:load: $before vs ${restored.execute("area")}")
+  }
+
+  it should "write the constant at full precision, not at the display precision" in
+  {
+    val s = session
+    s.execute("f := pi * x")
+    // `3.14159` is what `toString` produced and is exactly what must not appear.
+    assert(s.script.contains("3.141592653589793"),
+           s"expected pi at full precision in the script, got:\n${s.script}")
+  }
+
+  "a definition carrying a long exact rational" should "keep its exactness, not become a decimal" in
+  {
+    val original = session
+    original.execute("exact on")
+    original.execute("f := pi * x")
+    // `_Rational.toString` falls back to a decimal past MaxDisplayDigits, which is the worse
+    // half of F_0046: the definition lost exactness, not merely digits.
+    assert(original.script.contains("/"),
+           s"expected an exact fraction in the script, got:\n${original.script}")
+
+    val restored = session
+    restored.load(original.script)
+    restored.execute("x := 1")
+    original.execute("x := 1")
+    assert(restored.execute("f") == original.execute("f"))
+  }
+
+  "an exact rational serialised as a POWER BASE" should "re-parse with its own precedence" in
+  {
+    // The position the bracketing guard exists for, and the only one that needs it. A `Ratio`
+    // node brackets itself, so `(1/3)^x` is safe either way; a single `_Rational` *leaf* does
+    // not, and `exact` always writes it as `n/d`. Unbracketed, `n/d ^ x` re-parses as
+    // `n/(d^x)` — a different expression — because `^` binds tighter than `/`.
+    val original = session
+    original.execute("exact on")
+    original.execute("h := pi^x")          // pi is ONE _Rational leaf at the working precision
+    original.execute("x := 2")
+    val before = original.execute("h")
+
+    val restored = session
+    restored.load(original.script)
+    assert(restored.execute("h") == before,
+           s"precedence or precision changed across the round trip: $before vs ${restored.execute("h")}")
+  }
+
   "load" should "skip blank lines and # comments" in
   {
     val s = session

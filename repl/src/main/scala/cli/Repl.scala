@@ -335,11 +335,60 @@ final class Session:
     case _Bool(b)   => if b then "true" else "false"
     case other      => other.toString
 
-  /** Shared line-builder for `script` (replayable) and `state` (human-readable). */
-  private def buildLines(headers: List[String], bindFmt: _Value => String): String =
+  /** Serialises a whole *expression* for a `:save` script, preserving every leaf exactly
+   *  (issue F_0046).
+   *
+   *  **The counterpart of [[substituted]], by the same mechanism and for the same reason.**  Only
+   *  the *leaves* of an expression have a printed form that can lose information, so each
+   *  [[core._Value]] is replaced by a [[Session.Rendered]] carrying [[serializeValue]]'s text and
+   *  the rebuilt tree is printed — every composite's own form (precedence, parentheses, operator
+   *  spelling, binder notation) is therefore **reused rather than restated**, across all ~125 node
+   *  types.
+   *
+   *  Before this, a definition was written as a bare `s"$k := $e"`, i.e. `toString`, which is fixed
+   *  at `Environment.DefaultPrecision` — so `area := pi * radius^2` saved as
+   *  `area := (3.14159 * (radius ^ 2.0))` and answered `28.27431` after a reload where it had
+   *  answered `28.27433` before.  Worse, `_Rational.toString` falls back to a **decimal** past
+   *  `MaxDisplayDigits`, so a long exact rational in a definition lost its *exactness*, which is
+   *  the very thing `serializeValue`'s first arm exists to keep.  `Session.script` is the single
+   *  serialiser behind `:save`, the browser's `localStorage` **and** the shareable link, so all
+   *  three were affected.
+   *
+   *  It reuses `serializeValue` rather than restating it: a value binding and the same value
+   *  inside a definition cannot disagree about how a number is written, which is precisely the
+   *  property whose absence was the defect.
+   */
+  private def serialized(e: _Expression): _Expression = e match
+    case v: _Value => Session.Rendered(parenthesisedIfNeeded(serializeValue(v)))
+    // Total, exactly as `substituted` is: every `rebuild` in the codebase constructs from
+    // `List[_Expression]` directly, with no cast and no index beyond the list it is handed.
+    case other     => other.rebuild(other.children.map(serialized))
+
+  /** Brackets a serialised leaf unless it can stand as an operand unparenthesised.
+   *
+   *  A *binding* is written at the top level, where `serializeValue`'s text needs no brackets; a
+   *  leaf inside a definition sits in a precedence-sensitive position, where it does.  An exact
+   *  rational is the case that forces this — `exact` always emits `n/d`, so an unbracketed
+   *  `-3/4` as a power base would re-parse as `-(3/(4^2))` rather than `(-3/4)^2`.  A leading `-`
+   *  is the same hazard for a plain negative number.  Bracketing is always safe, since a
+   *  parenthesised expression is a valid factor everywhere the grammar takes one.
+   */
+  private def parenthesisedIfNeeded(text: String): String =
+    val atomic = text.nonEmpty && text.forall(c => c.isLetterOrDigit || c == '_' || c == '.')
+    if atomic then text else s"($text)"
+
+  /** Shared line-builder for `script` (replayable) and `state` (human-readable).
+   *
+   *  `defFmt` is separate from `bindFmt` because the two callers want different things from a
+   *  **definition**: `script` must serialise it losslessly (F_0046) while `state` is a human
+   *  view and keeps display formatting.
+   */
+  private def buildLines(headers: List[String],
+                         bindFmt: _Value => String,
+                         defFmt: _Expression => String): String =
     (headers ++
      bindings.toList.sortBy(_._1).map((k, v) => s"$k := ${bindFmt(v)}") ++
-     definitions.toList.sortBy(_._1).map((k, e) => s"$k := $e")
+     definitions.toList.sortBy(_._1).map((k, e) => s"$k := ${defFmt(e)}")
     ).mkString("\n")
 
   /** Every session setting as a `(command, argument)` pair, in the order a script must
@@ -380,7 +429,7 @@ final class Session:
    *  Pure: this is what the REPL writes to a `:save` file.
    */
   def script: String =
-    buildLines(settingPairs.map((k, v) => s"$k $v"), serializeValue)
+    buildLines(settingPairs.map((k, v) => s"$k $v"), serializeValue, serialized(_).toString)
 
   /** Execute a whole script body (e.g. the contents of a `:load` file), returning the
    *  newline-joined non-empty outputs of its commands. Blank lines and `#` comments are
@@ -1253,7 +1302,9 @@ final class Session:
     else s"$name is not set"
 
   /** Returns the current session state in human-readable form. */
-  private def state: String = buildLines(List(s"precision = $precision"), _.toString)
+  // Display formatting on both sides: this is the human-readable view, not the replayable one.
+  private def state: String =
+    buildLines(List(s"precision = $precision"), _.toString, _.toString)
 
 /** Companion object: constants and IO helpers shared across the REPL entry point. */
 object Session:
