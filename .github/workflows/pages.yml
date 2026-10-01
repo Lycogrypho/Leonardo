@@ -60,7 +60,7 @@ jobs:
           cache: sbt
 
       - name: Set up sbt
-        uses: sbt/setup-sbt@82da71df4e122282484a99a8d70096bc2369dbd8 # v1.5.9
+        uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
 
       - name: Build API docs (mdoc verifies samples, unidoc renders, injectApiStyles adds the logo/CSS)
         # Both task names are project-qualified or plugin-specific since the 5.2 phase 1.1
@@ -89,7 +89,7 @@ jobs:
 
       # ── Jekyll prose site (Just the Docs over docs/src) ──────────────────────
       - name: Set up Ruby
-        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
+        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
         with:
           ruby-version: "3.3"
           bundler-cache: true
