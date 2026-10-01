@@ -19,24 +19,26 @@ import scala.scalajs.js.Dynamic.global
 object ShareLink:
 
   /** The fragment key, so the encoding can gain neighbours without becoming ambiguous. */
-  private val Key = "s="
+  private val Key = cli.ShareEncoding.Key
 
   /** Browsers do not agree on a URL length limit and the practical floor is around 64k, so a
    *  long session is refused rather than truncated: half a script would `:load` as a *valid*
    *  but different session, which is worse than a link that plainly says it is too big.
    */
-  private[web] val MaxFragment = 32000
+  private[web] val MaxFragment = cli.ShareEncoding.MaxFragment
 
   /** Builds the fragment for a session script.
+   *
+   *  **The format lives in `cli.ShareEncoding`, not here** (issue F_0045): the documentation
+   *  helper has to build the same fragment on the JVM, to put a run link beside an executed
+   *  lesson transcript, and it cannot import a Scala.js project.  The cross-built `repl` module
+   *  is the only place both can read, so the key, the cap and the encoder moved there and this
+   *  is a wrapper.  Decoding stays below, because only a browser ever needs it.
    *
    *  @param script the session script, from `Session.script`
    *  @return the fragment text including its key, or a message if the script is too long
    */
-  def encode(script: String): Either[String, String] =
-    val encoded = encodeComponent(script)
-    if encoded.length > MaxFragment then
-      Left(s"session is too large to share as a link (${encoded.length} of $MaxFragment characters)")
-    else Right(Key + encoded)
+  def encode(script: String): Either[String, String] = cli.ShareEncoding.fragmentFor(script)
 
   /** Reads a session script out of a fragment.
    *
@@ -52,9 +54,9 @@ object ShareLink:
       try Option(decodeComponent(body.substring(Key.length))).filter(_.nonEmpty)
       catch case _: Throwable => None
 
-  /** `encodeURIComponent`, which is a JavaScript global rather than anything in the JDK. */
-  private def encodeComponent(s: String): String =
-    global.encodeURIComponent(s).asInstanceOf[String]
-
+  /** `decodeURIComponent`, which is a JavaScript global rather than anything in the JDK. It is
+   *  the authority this module's encoder is checked against, and is deliberately not
+   *  re-implemented: only a browser ever decodes a fragment.
+   */
   private def decodeComponent(s: String): String =
     global.decodeURIComponent(s).asInstanceOf[String]

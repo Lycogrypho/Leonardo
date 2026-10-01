@@ -51,3 +51,51 @@ class LessonTest extends AnyFlatSpec with Matchers:
     val out = Lesson().render(Seq("pretty off", "1 + 1"))
     out should not include "\n\n"
   }
+
+  // --- F_0045: the run link ------------------------------------------------------------------
+
+  "page" should "put the run link under the block, outside the fence" in {
+    val out = Lesson().page(Seq("x := 3"))
+    out should include("```text\n")
+    // Outside, or the reader would see the markdown source of a link instead of a link.
+    out.indexOf("run this session") should be > out.lastIndexOf("```")
+    out should include(Lesson.AppUrl)
+  }
+
+  "the run link" should "carry the session as it stands, not as it started" in {
+    val lesson = Lesson()
+    lesson.render(Seq("x := 3", "y := 4"))
+    val fragment = lesson.runLink.getOrElse(fail("expected a link"))
+    // `%3A%3D` is `:=` encoded; both names must be in the carried script.
+    fragment should include("x%20%3A%3D%203.0")
+    fragment should include("y%20%3A%3D%204.0")
+  }
+
+  it should "RELOAD to the same session, which is the only property that matters" in {
+    // The guard the entry asked for: a link that fails to replay is worse than no link. Decoding
+    // here is by hand rather than through `web.ShareLink`, which is Scala.js and unreachable from
+    // this JVM suite -- `ShareLinkTest` is what proves the encoder agrees with the browser's
+    // decoder, so between the two suites the whole path is covered.
+    val sender = Lesson()
+    sender.render(Seq("precision 7", "x := 3.5", "f := sin(x) + x^2"))
+    val link = sender.runLink.getOrElse(fail("expected a link"))
+
+    val fragment = link.substring(link.indexOf("#s=") + 3, link.lastIndexOf(')'))
+    // `URLDecoder` would read a literal `+` as a space, which is the very asymmetry F_0045 is
+    // about — but it is safe here precisely because the encoder escapes `+` as `%2B`, so no
+    // literal one can reach this line. (A test asserting that is in ShareLinkTest.)
+    val script = java.net.URLDecoder.decode(fragment, "UTF-8")
+
+    val receiver = cli.Session()
+    receiver.load(script)
+    // `script` is the canonical statement of session state, so one assertion covers precision,
+    // bindings, definitions and every toggle.
+    receiver.script shouldBe sender.sessionScript
+  }
+
+  it should "be omitted rather than truncated when the session is too large" in {
+    val lesson = Lesson()
+    // Past ShareEncoding.MaxFragment: half a script would load as a valid but different session.
+    for i <- 1 to 1200 do lesson.render(Seq(s"name_this_a_rather_long_identifier_$i := $i"))
+    lesson.runLink shouldBe None
+  }

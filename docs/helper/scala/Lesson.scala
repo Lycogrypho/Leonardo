@@ -32,13 +32,22 @@ import cli.Session
  *  a lesson builds up state, and a fresh session per block would silently un-define every name
  *  the previous paragraph introduced.
  *
- *  **Two things it deliberately does not do.**  It does not render a `plot` — that command is
+ *  **Each transcript carries a run link** (issue F_0045): the same executed session that printed
+ *  the block also yields the URL that reproduces it, because `Session.script` percent-encoded *is*
+ *  the fragment `web.ShareLink` reads.  The link therefore costs one call and reproduces the state
+ *  **at that point in the lesson**, so a reader may join at any paragraph rather than only at the
+ *  top.  The encoder is `cli.ShareEncoding`, shared with the page so the two cannot disagree; when
+ *  it refuses — a session too long to carry — the link is simply omitted, since a truncated one
+ *  would `:load` as a valid but different session.
+ *
+ *  **The link always points at the published app**, never at a local build.  A locally generated
+ *  page therefore sends a reader to the live site, which is the right trade: the alternative is a
+ *  link that works only on the machine that built it, and these pages exist to be published.
+ *
+ *  **One thing it deliberately does not do.**  It does not render a `plot` — that command is
  *  intercepted by the browser page and never reaches `Session`, so executing `plot …` here would
- *  quietly produce the echo of a free variable rather than a figure, and a plotting lesson must
- *  carry a run link and a static image instead.  And it does not yet emit that run link: the
- *  encoder it needs must agree with `web.ShareLink`'s `decodeURIComponent` and is filed
- *  separately, which costs nothing now because **the signature already absorbs it** — links will
- *  appear by changing this class, with no lesson rewritten.
+ *  quietly produce the echo of a free variable rather than a figure.  A plotting lesson pairs the
+ *  run link above with a static image instead.
  */
 final class Lesson:
 
@@ -49,7 +58,36 @@ final class Lesson:
    *
    *  @param lines the commands, exactly as a reader would type them at the prompt
    */
-  def show(lines: String*): Unit = println(render(lines))
+  def show(lines: String*): Unit = println(page(lines))
+
+  /** The transcript for `lines` followed by its run link, which is what [[show]] prints.
+   *
+   *  Separate from [[render]] so that each half is pinned on its own: `render`'s contract is the
+   *  fenced block and nothing else, and a link that cannot be built must leave that block
+   *  untouched rather than appended to with an apology.
+   *
+   *  @param lines the commands to run, in order
+   *  @return the block, and the link beneath it when one could be built
+   */
+  private[docs] def page(lines: Seq[String]): String =
+    val block = render(lines)
+    runLink.fold(block)(link => s"$block\n\n$link")
+
+  /** A link that opens the browser REPL on the session as it stands, or `None` if it is too big.
+   *
+   *  Read **after** the lines have run, so the link carries the state the reader has just been
+   *  shown rather than the state before it.
+   */
+  private[docs] def runLink: Option[String] =
+    cli.ShareEncoding.fragmentFor(session.script).toOption
+      // Short, because a page carries one of these per transcript -- up to fourteen on the longer
+      // lessons -- and a full sentence repeated that often reads as clutter rather than an
+      // affordance. Under a block, three words say everything. Plain ASCII: a decorative glyph
+      // would be one more thing for the charset guard to have to allow.
+      .map(fragment => s"*[run this session](${Lesson.AppUrl}#$fragment)*")
+
+  /** The session's own script, so a test can compare a reloaded session against this one. */
+  private[docs] def sessionScript: String = session.script
 
   /** Builds the fenced transcript for `lines`, running each through the shared session.
    *
@@ -75,3 +113,15 @@ final class Lesson:
     session.execute(line) match
       case ""     => Seq.empty
       case answer => answer.linesIterator.toSeq.dropWhile(_.isBlank).reverse.dropWhile(_.isBlank).reverse
+
+
+/** Where a lesson's run link points. */
+object Lesson:
+
+  /** The published browser REPL.
+   *
+   *  Absolute and hard-coded on purpose: `/app` is assembled *after* Jekyll runs, so a relative
+   *  link to it fails mdoc's own link check — the same reason every `/api` reference on this site
+   *  is absolute.
+   */
+  val AppUrl: String = "https://lycogrypho.github.io/Leonardo/app/"
