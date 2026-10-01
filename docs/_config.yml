@@ -77,6 +77,12 @@ search_enabled: true
 heading_anchors: true
 
 aux_links:
+  # `/app` sits here beside the API reference because the lessons lean on it: Branch R opens in
+  # the browser REPL, so a reader following the course wants it one click away from every page,
+  # not only from the landing page. Absolute, like the API link, since both directories are
+  # produced after Jekyll runs and a relative link to either would fail mdoc's check.
+  "Browser REPL":
+    - "/Leonardo/app/"
   "API (Scaladoc)":
     - "/Leonardo/api/"
   "GitHub":

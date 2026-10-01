@@ -56,7 +56,13 @@ object Files:
     // Gitignored, so absent from every CI checkout and scanned on a LOCAL run only. Listed
     // anyway because this is where most of the project's prose is actually written, and a local
     // run is therefore the only place damage in them could ever be caught.
-    "CLAUDE.md", "ToDo.md", "Done.md", "DesignNotes.md"
+    //
+    // METHODOLOGY.md was MISSING until 2026-09-30 -- 29 KB of prose, gitignored like the other
+    // four and scanned by nothing. F_0028's own gap, recurring: that issue widened the list to
+    // every source *tree* and the local documents that existed then, which is a one-time repair
+    // of a condition that keeps decaying. A document added later joins the set the guards are
+    // for and nothing points it out, exactly as a new source tree would.
+    "CLAUDE.md", "ToDo.md", "Done.md", "DesignNotes.md", "METHODOLOGY.md"
   ).map(Paths.get(_))
 
   /** The roots a guard was told to scan, or [[GuardedRoots]] when it was told none.

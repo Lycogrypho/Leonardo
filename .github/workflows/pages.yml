@@ -15,9 +15,16 @@ on:
       # a top-level src/, which no longer exists -- so "src/main/**" silently matched NOTHING
       # and a library change stopped rebuilding the site at all. The published Scaladoc went
       # stale until some other path happened to fire. Found while adding web/ below.
+      # BOTH platform trees, not only js: the jvm pair was missing until 2026-09-30, so a
+      # change to Terminal.scala, Highlighter.scala, Main.scala or the JVM DoubleRender never
+      # rebuilt the site -- the same silent no-match as the "src/main/**" bug above, caught the
+      # same way (by listing the directories that exist and comparing). All four are scanned by
+      # `Files.GuardedRoots` and all four are real sources; the asymmetry was an oversight.
       - "core/src/main/**"
+      - "core/jvm-src/main/**"
       - "core/js-src/main/**"
       - "repl/src/main/**"
+      - "repl/jvm-src/main/**"
       - "repl/js-src/main/**"
       # The browser REPL is deployed from here too (F_0003 phase 4).
       - "web/**"

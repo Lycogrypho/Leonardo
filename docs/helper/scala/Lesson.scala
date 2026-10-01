@@ -65,8 +65,13 @@ final class Lesson:
     val body = lines.flatMap(line => s"> $line" +: answerOf(line))
     (("```text" +: body) :+ "```").mkString("\n")
 
-  /** The answer lines for one command: its output split into lines, or nothing when it is empty. */
+  /** The answer lines for one command: its output split into lines, or nothing when it is empty.
+   *
+   *  Blank lines at either end are dropped.  They carry no information in a transcript — an
+   *  answer is the text, not its surrounding whitespace — and at least one command emits a
+   *  leading newline before a matrix, which would otherwise read as an empty first result.
+   */
   private def answerOf(line: String): Seq[String] =
     session.execute(line) match
       case ""     => Seq.empty
-      case answer => answer.linesIterator.toSeq
+      case answer => answer.linesIterator.toSeq.dropWhile(_.isBlank).reverse.dropWhile(_.isBlank).reverse

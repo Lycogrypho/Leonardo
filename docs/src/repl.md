@@ -8,6 +8,9 @@ nav_order: 11
 # Interactive REPL
 <div style="clear:both"></div>
 
+*New to the REPL? **[Lessons: at the prompt](lessons/repl.md)** teaches it in ten short lessons
+starting in the browser, with nothing to install. This page is the reference.*
+
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.cli.Session
 ```

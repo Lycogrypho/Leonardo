@@ -66,6 +66,19 @@ d.eval(env)
 | **Sampling** | `sample(e, v, lo, hi, n)` → `Vector[(Double, Double)]`; compiled `Double ⇒ Double` fast path |
 | **REPL** | Interactive session with bindings, named functions, session scripts |
 
+## New here? Start with a lesson
+
+Twenty short lessons, each ending in an exercise, and every example on them is executed when this
+site is built. Two branches, by what you are holding:
+
+- **[Lessons: at the prompt](lessons/repl.md)** — the REPL, in a terminal or in your browser.
+  Nothing to install; [R1](lessons/r1.md) opens in the browser REPL.
+- **[Lessons: in your program](lessons/library.md)** — Leonardo as a library in your own Scala.
+  Starts at [L1](lessons/l1.md) with a dependency line.
+
+The pages below are the *reference*: they answer "what does this do?", where a lesson asks
+"how do I get started?".
+
 ## Pages
 
 - [Getting Started](getting-started.md) — add to your project, first expressions
@@ -82,6 +95,8 @@ d.eval(env)
 - [Cheat sheet](cheatsheet.md) — every REPL command on one page
 - [Architecture](architecture.md) — package diagram and design decisions
 - [Developer Guide](developer.md) — onboarding reference for contributors
+- [Lessons: at the prompt](lessons/repl.md) · [Lessons: in your program](lessons/library.md) —
+  the guided path through both of the above
 
 ## Licence
 

@@ -8,6 +8,11 @@ nav_order: 2
 # Getting Started
 <div style="clear:both"></div>
 
+*New to Leonardo? **[Lessons: in your program](lessons/library.md)** is the guided path through
+this page and everything after it — ten short lessons, each with an exercise. If you would
+rather type at a prompt than write Scala, start at
+**[Lessons: at the prompt](lessons/repl.md)** instead, which needs no installation at all.*
+
 ## Prerequisites
 
 - Scala 3.3 or later

@@ -43,3 +43,6 @@ package tools
 
 /** Flags a hardcoded Scala version under `.github`. See [[CheckScalaVersion]]. */
 @main def scalaVersion(args: String*): Unit = sys.exit(CheckScalaVersion.run(args))
+
+/** Flags a relative documentation link that does not resolve. See [[CheckDocLinks]]. */
+@main def docLinks(args: String*): Unit = sys.exit(CheckDocLinks.run(args))

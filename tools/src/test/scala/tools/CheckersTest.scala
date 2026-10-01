@@ -26,6 +26,82 @@ class CheckersTest extends AnyFlatSpec:
     }
     dir
 
+  // --- documentation links -----------------------------------------------------------
+
+  "the doc-link guard" should "flag a target that does not exist" in
+  {
+    val dir = fixture("page.md" -> "See [the other page](missing.md).\n")
+    val (found, checked) = CheckDocLinks.offences(List(dir))
+    assert(checked == 1)
+    assert(found.size == 1, s"expected the broken link flagged: $found")
+  }
+
+  it should "resolve a link that climbs out of a subdirectory" in
+  {
+    // The lesson layout: docs/src/lessons/l1.md pointing back at a reference page.
+    val dir = fixture("target.md" -> "# target\n", "sub/page.md" -> "[up](../target.md)\n")
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.isEmpty, s"expected '../' to resolve: $found")
+  }
+
+  it should "flag the same link when it forgets the '../'" in
+  {
+    val dir = fixture("target.md" -> "# target\n", "sub/page.md" -> "[up](target.md)\n")
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.size == 1, s"expected the missing '../' flagged: $found")
+  }
+
+  it should "check an html asset, which is how the shared logo breaks" in
+  {
+    val dir = fixture("sub/page.md" -> ("""<img src="logo_bw.svg" alt=""/>""" + "\n"))
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.size == 1, s"expected the image flagged: $found")
+  }
+
+  it should "ignore absolute urls, anchors and mdoc variables" in
+  {
+    // /app and /api MUST be absolute: both are produced after mdoc runs.
+    val dir = fixture("page.md" ->
+      """[app](https://lycogrypho.github.io/Leonardo/app/)
+         |[mail](mailto:nobody@example.com)
+         |[section](#heading)
+         |`"it.grypho" %% "leonardo" % "@VERSION@"`
+         |""".stripMargin)
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.isEmpty, s"expected all four ignored: $found")
+  }
+
+  it should "ignore a link inside a fenced code block" in
+  {
+    // A sample is not a link; flagging one would make the guard something to switch off.
+    val dir = fixture("page.md" ->
+      """```markdown
+         |[an example](nowhere.md)
+         |```
+         |""".stripMargin)
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.isEmpty, s"expected the fenced sample ignored: $found")
+  }
+
+  it should "keep checking after a fence closes" in
+  {
+    val dir = fixture("page.md" ->
+      """```
+         |[ignored](nowhere.md)
+         |```
+         |[checked](alsonowhere.md)
+         |""".stripMargin)
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.size == 1, s"expected only the link after the fence: $found")
+  }
+
+  it should "strip a fragment before resolving" in
+  {
+    val dir = fixture("target.md" -> "# target\n", "page.md" -> "[deep](target.md#a-heading)\n")
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.isEmpty, s"expected the fragment stripped: $found")
+  }
+
   // --- action pins -------------------------------------------------------------------
 
   "the action-pin guard" should "flag a tag and a branch, which are both mutable" in
@@ -155,6 +231,8 @@ class CheckersTest extends AnyFlatSpec:
     // the list is deliberately wider than any one working copy. `walk` answers an absent root
     // with nothing, which is what makes listing them safe rather than a per-environment case.
     assert(Files.walk(Paths.get("no-such-tree"), Files.TextExtensions).isEmpty)
-    for local <- List("ToDo.md", "Done.md", "DesignNotes.md") do
+    // METHODOLOGY.md joined this list on 2026-09-30, having been overlooked when F_0028 widened
+    // the roots: it is gitignored prose like the other four and was scanned by nothing.
+    for local <- List("ToDo.md", "Done.md", "DesignNotes.md", "METHODOLOGY.md") do
       assert(Files.GuardedRoots.contains(Paths.get(local)), s"$local should be guarded when present")
   }

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="Leonardo.Leonardo.coreJVM.main,Leonardo.Leonardo.coreJVM.test,Leonardo.Leonardo.main,Leonardo.Leonardo.test,Leonardo.leonardo-docs.main,Leonardo.leonardo-docs.test,Leonardo.leonardo-repl.main,Leonardo.leonardo-repl.replModuleJVM.main,Leonardo.leonardo-repl.replModuleJVM.test,Leonardo.leonardo-repl.test,Leonardo.leonardo-tools.main,Leonardo.leonardo-tools.test,Leonardo.main,Leonardo.main~1,Leonardo.test,Leonardo.test~1">
+    <profile name="sbt 1" modules="Leonardo.Leonardo.coreJVM.main,Leonardo.Leonardo.coreJVM.main~1,Leonardo.Leonardo.coreJVM.test,Leonardo.Leonardo.coreJVM.test~1,Leonardo.Leonardo.main,Leonardo.Leonardo.test,Leonardo.leonardo-docs.main,Leonardo.leonardo-docs.main~1,Leonardo.leonardo-docs.test,Leonardo.leonardo-docs.test~1,Leonardo.leonardo-repl.main,Leonardo.leonardo-repl.replModuleJVM.main,Leonardo.leonardo-repl.replModuleJVM.main~1,Leonardo.leonardo-repl.replModuleJVM.test,Leonardo.leonardo-repl.replModuleJVM.test~1,Leonardo.leonardo-repl.test,Leonardo.leonardo-tools.main,Leonardo.leonardo-tools.main~1,Leonardo.leonardo-tools.test,Leonardo.leonardo-tools.test~1,Leonardo.main,Leonardo.main~1,Leonardo.test,Leonardo.test~1">
       <option name="deprecationWarnings" value="true" />
       <option name="featureWarnings" value="true" />
       <parameters>
@@ -11,7 +11,7 @@
       </parameters>
     </profile>
     <profile name="sbt 2" modules="Leonardo,Leonardo.Leonardo,Leonardo.Leonardo.coreJS,Leonardo.Leonardo.coreJVM,Leonardo.leonardo-docs,Leonardo.leonardo-repl,Leonardo.leonardo-repl.replModuleJS,Leonardo.leonardo-repl.replModuleJVM,Leonardo.leonardo-tools,Leonardo.leonardo-web,leonardo_5360" />
-    <profile name="sbt 3" modules="Leonardo.Leonardo.coreJS.main,Leonardo.Leonardo.coreJS.test,Leonardo.leonardo-repl.replModuleJS.main,Leonardo.leonardo-repl.replModuleJS.test,Leonardo.leonardo-web.main,Leonardo.leonardo-web.test">
+    <profile name="sbt 3" modules="Leonardo.Leonardo.coreJS.main,Leonardo.Leonardo.coreJS.main~1,Leonardo.Leonardo.coreJS.test,Leonardo.Leonardo.coreJS.test~1,Leonardo.leonardo-repl.replModuleJS.main,Leonardo.leonardo-repl.replModuleJS.main~1,Leonardo.leonardo-repl.replModuleJS.test,Leonardo.leonardo-repl.replModuleJS.test~1,Leonardo.leonardo-web.main,Leonardo.leonardo-web.main~1,Leonardo.leonardo-web.test,Leonardo.leonardo-web.test~1">
       <option name="deprecationWarnings" value="true" />
       <option name="featureWarnings" value="true" />
       <parameters>

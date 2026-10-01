@@ -28,10 +28,16 @@ target/
 /docs/.jekyll-cache/
 
 
+# The local planning-and-record documents. `Done.md` was NOT here until 2026-09-30 and was
+# ignored only by `.git/info/exclude` -- which is per-clone and never shared, so on any fresh
+# clone it would have appeared as untracked and been one `git add .` away from being committed.
+# CLAUDE.md states as a design fact that `Done.md` is not tracked ("so it is not an alternative
+# to the changelog"); that fact was resting on a file git does not distribute.
 /CLAUDE.md
 /.sbtopts
 /ToDo.md
 /DesignNotes.md
+/Done.md
 
 # Python bytecode from the .github/scripts guards (issue 2.8); regenerated on every run.
 __pycache__/
