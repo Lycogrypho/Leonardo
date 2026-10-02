@@ -1,7 +1,10 @@
 # Changelog
 
 Release-level history: one entry per tag, or per group of tags where the individual ones were
-development markers rather than releases.
+development markers rather than releases, or where a release changed only the documentation or
+the presentation (layout, styling, branding) and no behaviour a user of the library or the REPL
+could observe. Such a release is folded into the entry it follows and named in it, so it stays
+findable without an entry of its own.
 
 The per-issue record — every decision, what was rejected and why — is kept in `Done.md`, which
 is maintainer-local and not published. **This file answers "should I upgrade?"; `Done.md`
@@ -20,17 +23,21 @@ Each section's body is published verbatim as that tag's GitHub Release, extracte
 `.github/workflows/release.yml`. **Write the section before tagging**, and keep the heading in
 the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
-## 3.8.0 — 2026-10-02
+## 3.8.0 – 3.8.1 — 2026-10-02
 
 *On Maven Central.* The browser release: Leonardo runs in a web page, renders LaTeX, and comes
-with a course of lessons.
+with a course of lessons. 3.8.1 changed only the browser page's layout, described in the first
+entry below.
 
 - **Browser REPL** — the library and the REPL are cross-built for Scala.js, and the full REPL
   runs at [`/app`](https://lycogrypho.github.io/Leonardo/app/) with nothing to install: plotting
   (`plot`, `points`, `bode`, `nyquist`), shareable links that carry a whole session in the URL, a
   settings panel, and `:save` / `:load` backed by browser storage. Every GitHub Release now
   attaches the app as `leonardo-app-<version>.zip`, which runs from any folder. The Maven
-  artifacts remain JVM-only.
+  artifacts remain JVM-only. *Since 3.8.1:* on a wide window a plot opens in a column beside
+  the REPL rather than below it (on a narrow window, or a browser without `:has()` support, it
+  stays below), and the page header shows the project banner, as the documentation site does,
+  in place of a text title.
 - **LaTeX** — a new `latex` package renders any expression as math-mode LaTeX (`ToLatex`). In the
   REPL, `latex on` offers each result's LaTeX on a second channel, which the browser typesets
   beside the answer; the printed text itself never changes.
@@ -63,7 +70,8 @@ with a course of lessons.
 > REPL artifact `leonardo-repl` is not, in exactly one place: splitting its source for the
 > Scala.js build removed the compiler-generated class `cli.Repl$package`. No source change is
 > needed, but code compiled against 3.7.2's REPL artifact must be recompiled — which is why this
-> is 3.8.0 rather than 3.7.3, chosen from MiMa's report as 3.7.2's note promised.
+> is 3.8.0 rather than 3.7.3, chosen from MiMa's report as 3.7.2's note promised. 3.8.1 changed
+> no library or REPL source, so both artifacts are binary-compatible with 3.8.0.
 
 ## 3.7.2 — 2026-09-13
 

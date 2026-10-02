@@ -501,7 +501,7 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
  *  served structurally here rather than by its guard) and a stale sibling directory cannot be
  *  picked up instead.
  */
-lazy val app = taskKey[File]("Assembles the browser REPL into web/target/app: index.html, main.js, vendor/.")
+lazy val app = taskKey[File]("Assembles the browser REPL into web/target/app: index.html, main.js, Banner.svg, vendor/.")
 
 lazy val web = (project in file("web"))
   .enablePlugins(ScalaJSPlugin)
@@ -531,9 +531,16 @@ lazy val web = (project in file("web"))
       // copyDirectory on an absent source is a silent no-op, and an app without its vendored
       // libraries is exactly the failure this assembly exists to make impossible.
       if (!vendor.isDirectory) sys.error(s"the vendored libraries are missing: $vendor")
+      // The page's header is the docs site's banner, COPIED from docs/src rather than kept as
+      // a second file beside index.html, so the two published faces of the project cannot
+      // drift apart. Copied rather than linked as `../Banner.svg` because the app must run
+      // from any origin -- the release zip, a local folder -- where there is no site above it.
+      val banner = (ThisBuild / baseDirectory).value / "docs" / "src" / "Banner.svg"
+      if (!banner.isFile) sys.error(s"the banner is missing: $banner")
       IO.delete(out) // so a file deleted upstream cannot survive in a stale assembly
       IO.copyFile(baseDirectory.value / "index.html", out / "index.html")
       IO.copyFile(linked / "main.js", out / "main.js")
+      IO.copyFile(banner, out / "Banner.svg")
       IO.copyDirectory(vendor, out / "vendor")
       streams.value.log.info(s"app assembled -> $out (main.js ${(out / "main.js").length} bytes)")
       out

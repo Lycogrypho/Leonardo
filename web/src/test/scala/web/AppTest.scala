@@ -110,6 +110,15 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     assert(js.isUndefined(drawn.layout.yaxis.scaleanchor))
   }
 
+  it should "re-measure the figure once it has a column to measure" in
+  {
+    // The first figure is sized while #figure is still hidden, so Plotly falls back to its
+    // 700-pixel default -- wider than the side column the page then gives it.
+    val before = resized
+    typeLine("plot x x 0 1 3")
+    assert(resized == before + 1, s"resized $resized times")
+  }
+
   it should "report the samples it lost, not only the ones it drew (F_0044)" in
   {
     // A pole costs one of eleven samples. The figure is still worth drawing -- the loss has no

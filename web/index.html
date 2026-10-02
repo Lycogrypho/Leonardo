@@ -77,9 +77,24 @@
         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       main { max-width: 62rem; margin: 0 auto; }
-      header { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; }
-      h1 { font-size: 1.3rem; margin: 0 0 .25rem; font-weight: 600; }
+      /*
+        Widened only while a figure is on show, so a session that never plots keeps the
+        column it always had. Without :has() support the page keeps 62rem, the two flex items
+        below cannot both fit, and the figure wraps under the REPL -- the old layout, rather
+        than a cramped one.
+      */
+      main:has(#figure:not(:empty)) { max-width: 110rem; }
+      header { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+      /* The banner is the docs site's own (Banner.svg), so the word mark is drawn in the
+         logo's typeface -- it is outlined in the SVG, so no font has to be installed. The
+         <h1> stays for the document outline, and its alt text keeps the title readable. */
+      h1 { margin: 0; line-height: 0; }
+      h1 img { height: 3.6rem; width: auto; }
       header p { margin: 0; color: var(--dim); font-size: .875rem; }
+
+      /* The REPL and the figure side by side, wrapping onto two rows below ~64rem. */
+      .workspace { display: flex; flex-wrap: wrap; gap: 0 1.25rem; align-items: flex-start; }
+      .repl { flex: 1 1 34rem; min-width: 0; }
       .mono { font-family: ui-monospace, "Cascadia Code", Consolas, "DejaVu Sans Mono", monospace; }
 
       #transcript {
@@ -147,11 +162,11 @@
       }
       button:hover { border-color: var(--accent); color: var(--accent); }
 
-      /* Stays out of the flow until a figure is drawn, so the REPL is not pushed down the
-         page by an empty box on load. */
+      /* Stays out of the flow until a figure is drawn, so the REPL keeps the whole width on
+         load rather than sharing it with an empty box. */
       #figure:empty { display: none; }
       #figure {
-        margin-top: .9rem; background: var(--panel);
+        flex: 1 1 30rem; min-width: 0; margin-top: .9rem; background: var(--panel);
         border: 1px solid var(--edge); border-radius: 6px;
       }
 
@@ -164,12 +179,14 @@
   <body>
     <main>
       <header>
-        <h1>Leonardo</h1>
+        <h1><img src="Banner.svg" alt="Leonardo" width="402" height="117"></h1>
         <p>a symbolic maths REPL, running entirely in this tab</p>
       </header>
 
       <noscript>This page is a JavaScript program; with scripting off there is nothing to show.</noscript>
 
+      <div class="workspace">
+      <section class="repl" aria-label="REPL">
       <div id="transcript" class="mono" role="log" aria-live="polite"></div>
 
       <div class="prompt">
@@ -215,8 +232,10 @@
         <button id="share" type="button">Copy shareable link</button>
         <button id="clear" type="button">Clear transcript</button>
       </div>
+      </section>
 
       <div id="figure"></div>
+      </div>
 
       <footer>
         <code class="mono">help</code> lists the commands.
