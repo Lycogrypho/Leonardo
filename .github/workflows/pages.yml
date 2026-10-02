@@ -154,6 +154,7 @@ jobs:
         run: |
           test -s _site/app/index.html
           test -s _site/app/main.js
+          test -s _site/app/Banner.svg
           test -s _site/app/vendor/plotly.min.js
           test -s _site/app/vendor/mathlive/mathlive.min.js
           test -s _site/app/vendor/mathlive/mathlive-static.css

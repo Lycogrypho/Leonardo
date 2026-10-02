@@ -34,6 +34,9 @@ object FakeDom:
   /** The last document handed to Plotly, so a test can read what would have been drawn. */
   var drawn: js.Dynamic = null
 
+  /** How many times a figure was re-measured against its column after drawing. */
+  var resized: Int = 0
+
   /** Every LaTeX string handed to the typesetter, newest last. */
   var typeset: Vector[String] = Vector.empty
 
@@ -78,6 +81,7 @@ object FakeDom:
   def install(): Unit =
     elements = Ids.map(id => id -> element(id)).toMap
     drawn    = null
+    resized  = 0
     typeset  = Vector.empty
 
     val doc = literal()
@@ -101,6 +105,8 @@ object FakeDom:
       drawn = literal(data = data, layout = layout)
     }: js.Function3[js.Dynamic, js.Dynamic, js.Dynamic, Unit]
     plotly.purge = ((_: js.Dynamic) => ()): js.Function1[js.Dynamic, Unit]
+    // Returns nothing, where the real one returns a promise: Plot must cope with either.
+    plotly.Plots = literal(resize = ((_: js.Dynamic) => resized += 1): js.Function1[js.Dynamic, Unit])
     g.Plotly = plotly
 
     // MathLive likewise, and the stub is deliberately recognisable: what is under test is that

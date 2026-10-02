@@ -1420,7 +1420,7 @@ Key build file sections:
 | `lazy val web` | The browser front end; Scala.js only, `publish / skip := true`, **not aggregated** — linking a bundle on every `sbt test` would put front-end work in the path of every library change, so `web/test` is named explicitly by `ci.yml` |
 | `lazy val root` | Pure aggregate over the three; publishes nothing |
 | `sbt checks` | Every repository guard in one sbt boot; what `ci.yml` runs |
-| `sbt app` | Links the browser REPL and assembles `web/target/app/` — `index.html`, `main.js`, `vendor/` — the directory `pages.yml` deploys to `/app` and anyone can serve as-is |
+| `sbt app` | Links the browser REPL and assembles `web/target/app/` — `index.html`, `main.js`, `Banner.svg` (copied from `docs/src`, so the page and the docs site carry one logo), `vendor/` — the directory `pages.yml` deploys to `/app` and anyone can serve as-is |
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
 | `sbt unidoc` | One combined API across both modules → `target/scala-<version>/api`; this is what the site publishes, and what keeps `cli` in the reference |
@@ -1438,7 +1438,7 @@ all ` ```scala mdoc ``` ` code blocks in the docs.
 
 `sbt app` assembles the browser REPL into `web/target/app/`; the Pages workflow copies that
 directory and adds nothing to it, `release.yml` zips it onto every GitHub Release as
-`leonardo-app-<version>.zip` (~1.5 MB), and `app-bundle.yml` uploads it as a workflow artifact
+`leonardo-app-<version>.zip` (~1.8 MB), and `app-bundle.yml` uploads it as a workflow artifact
 on request.  **One task, three consumers**, differing only in *which* build a reader can
 obtain — the live one, a tagged one, or any commit — never in what the app is.
 
