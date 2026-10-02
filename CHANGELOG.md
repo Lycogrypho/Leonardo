@@ -20,6 +20,51 @@ Each section's body is published verbatim as that tag's GitHub Release, extracte
 `.github/workflows/release.yml`. **Write the section before tagging**, and keep the heading in
 the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
+## 3.8.0 — 2026-10-02
+
+*On Maven Central.* The browser release: Leonardo runs in a web page, renders LaTeX, and comes
+with a course of lessons.
+
+- **Browser REPL** — the library and the REPL are cross-built for Scala.js, and the full REPL
+  runs at [`/app`](https://lycogrypho.github.io/Leonardo/app/) with nothing to install: plotting
+  (`plot`, `points`, `bode`, `nyquist`), shareable links that carry a whole session in the URL, a
+  settings panel, and `:save` / `:load` backed by browser storage. Every GitHub Release now
+  attaches the app as `leonardo-app-<version>.zip`, which runs from any folder. The Maven
+  artifacts remain JVM-only.
+- **LaTeX** — a new `latex` package renders any expression as math-mode LaTeX (`ToLatex`). In the
+  REPL, `latex on` offers each result's LaTeX on a second channel, which the browser typesets
+  beside the answer; the printed text itself never changes.
+- **Visual math editor** — in the browser, a formula can be entered in a math field. Integrals,
+  derivatives, limits, sums, products, binomials and `|x|` convert into the grammar, and anything
+  the grammar does not know is refused rather than guessed.
+- **New in the language** — `abs` (absolute value and complex modulus, exact on exact input);
+  finite `sum` / `product`; integral and `defuzz` limits that accept any expression
+  (`integral(sin(x), x, 0, 2*pi)` used to be a parse error); and `control.frequencyResponse` /
+  `nyquistSweep`, log-spaced sweeps with the phase unwrapped.
+- **Lessons** — twenty lessons in two branches, *at the prompt* and *in your program*, every
+  example executed when the site is built. Each transcript carries a link that opens the browser
+  REPL with that session already loaded.
+- **Fixes.** Saved sessions and share links now reproduce definitions exactly — a constant inside
+  a definition was written at five decimals, and a long exact rational as a decimal, so a
+  reloaded session could compute different numbers. `simplify` and `expand` reduce derivatives
+  and integrals, as plain evaluation always did. Session precision and `pretty` now reach
+  composite results, not only bare values, and `pretty` and `latex` no longer hide each other. A
+  plot reports the samples it had to drop, and refuses a grid that would miss an expression
+  defined only at whole numbers. `exact precision` is capped at 1000 digits. A call to a function
+  the grammar does not know, such as `sqrt(x)`, is now flagged instead of being read silently as
+  a product.
+- **Supply chain and maintenance.** Repository guards rewritten in Scala, plus a new one that
+  fails the build on a broken documentation link; JVM dependencies covered by security-advisory
+  alerts; `scala-parser-combinators` held at 2.4.0, because 2.5.0 would raise the minimum JDK
+  from 8 to 17 for every consumer; Scala 3.3 LTS, JLine 3 and sbt 1 pinned against unreviewed
+  major upgrades.
+
+> **Binary compatibility.** `leonardo` is binary-compatible with 3.7.2 — MiMa finds no change. The
+> REPL artifact `leonardo-repl` is not, in exactly one place: splitting its source for the
+> Scala.js build removed the compiler-generated class `cli.Repl$package`. No source change is
+> needed, but code compiled against 3.7.2's REPL artifact must be recompiled — which is why this
+> is 3.8.0 rather than 3.7.3, chosen from MiMa's report as 3.7.2's note promised.
+
 ## 3.7.2 — 2026-09-13
 
 *On Maven Central.* The control-theory release.

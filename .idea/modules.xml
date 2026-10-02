@@ -5,34 +5,34 @@
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.Leonardo-build.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.Leonardo-build.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.core-sources.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.js/Leonardo.Leonardo.coreJS.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/core/.jvm/Leonardo.Leonardo.coreJVM.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.js/Leonardo.leonardo-repl.replModuleJS.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.replModuleJVM.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/tools/Leonardo.leonardo-tools.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.test~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main~1.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test~1.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test~1.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/web/Leonardo.leonardo-web.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/Leonardo.test.iml" />
     </modules>
   </component>
 </project>

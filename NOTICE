@@ -76,6 +76,16 @@ the LaTeX-to-AsciiMath conversion the input reader consumes. It is not part of
 the published library artifacts, and no Scala code binds to it -- the facades
 pass and receive strings.
 
+0.110.0 IS A SECURITY FLOOR, not merely the version that happened to be
+current (audit of 2026-10-01). Two XSS advisories exist against earlier
+MathLive releases, both in the convertLatexToMarkup path the page's
+MathRender uses: CVE-2025-29049 (\htmlData, <= 0.103.0, fixed 0.104.0) and
+CVE-2026-54705 (\text{}/\mbox{} unescaped, <= 0.109.2, fixed in exactly
+0.110.0). A vendored library is invisible to Scala Steward and Dependabot
+alike, so nothing automated will ever warn about it: if this file is ever
+re-vendored, the replacement must be >= 0.110.0, and the advisory database
+should be re-checked the same way.
+
 This is the FULL distribution, which replaced the render-only SSR one at F_0017;
 it carries the same conversion functions, so one file supersedes the other
 rather than joining it. It is UMD, so it loads as a plain `<script src>` and

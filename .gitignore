@@ -28,6 +28,14 @@ target/
 /docs/.jekyll-cache/
 
 
+# Claude Code's per-machine settings. `.claude/settings.json` is the shared, committable one and
+# is deliberately NOT ignored; `settings.local.json` holds facts true only of this working copy —
+# today the `additionalDirectories` reach into `../Leonardo_Training`, whose path exists on this
+# machine and nowhere else. Committing that would also invert the dependency in the record: the
+# library would be publishing a claim about courses that depend on *it*, which is the repo-level
+# form of "core depends on no domain".
+/.claude/settings.local.json
+
 # The local planning-and-record documents. `Done.md` was NOT here until 2026-09-30 and was
 # ignored only by `.git/info/exclude` -- which is per-clone and never shared, so on any fresh
 # clone it would have appeared as untracked and been one `git add .` away from being committed.

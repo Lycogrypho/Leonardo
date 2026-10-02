@@ -1,26 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ScalaSbtSettings">
-    <option name="customVMPath" value="$PROJECT_DIR$/../../../../../../Users/Mimmo/.jdks/openjdk-26.0.1" />
+    <option name="customVMPath" value="$USER_HOME$/.jdks/temurin-25.0.4.1" />
     <option name="linkedExternalProjectsSettings">
       <SbtProjectSettings>
         <option name="converterVersion" value="2" />
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="modules">
           <set>
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\core" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\core\.js" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\core\.jvm" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\docs" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\project" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\repl" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\repl\.js" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\repl\.jvm" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\tools" />
-            <option value="C:\_PA\Documents\Workspace\IntelliJIdea\Leonardo\web" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\core" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\core\.js" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\core\.jvm" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\docs" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\project" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\repl" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\repl\.js" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\repl\.jvm" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\tools" />
+            <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\web" />
           </set>
         </option>
+        <option name="sbtVersion" value="1.13.0" />
         <option name="useSbtShellForBuild" value="true" />
         <option name="useSbtShellForImport" value="true" />
       </SbtProjectSettings>
