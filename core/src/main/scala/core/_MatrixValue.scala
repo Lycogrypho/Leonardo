@@ -36,6 +36,37 @@ object _MatrixValue:
     129060195264000.0, 10559470521600.0, 670442572800.0, 33522128640.0,
     1323241920.0, 40840800.0, 960960.0, 16380.0, 182.0, 1.0)
 
+  /** The augmented exponential `exp([[A, B], [0, 0]]·τ) = [[Φ, Γ], [0, I]]`, returned as `(Φ, Γ)`.
+   *
+   *  `Φ = e^(Aτ)` and `Γ = ∫₀^τ e^(As) ds · B`.  The block form is defined for a **singular**
+   *  `A`, where the inverse form `Γ = A⁻¹(Φ − I)B` is not — and a singular `A` is ordinary,
+   *  since any system with an integrator has one.  One kernel serves both callers, so they
+   *  agree by construction (F_0006): `control.c2dExact` reads `(A_d, B_d)` at `τ = Ts`, and the
+   *  `ode` system tier reads `y(T) = Φ·y0 + Γ` at `τ = T − t0` for `y' = A·y + b`.
+   *
+   *  @param a   the square state matrix
+   *  @param b   the input matrix, with as many rows as `a`
+   *  @param tau the time step, of either sign
+   *  @return `Some((Φ, Γ))`, or `None` when the operands do not conform or [[expm]] fails
+   */
+  private[leonardo] def augmentedExp(a: _MatrixValue, b: _MatrixValue,
+                                     tau: Double): Option[(_MatrixValue, _MatrixValue)] =
+    if a.rows != a.cols || b.rows != a.rows then None
+    else
+      val n    = a.rows
+      val m    = b.cols
+      val size = n + m
+      val block = new _MatrixValue(size, size, Array.tabulate(size * size) { idx =>
+        val (i, j) = (idx / size, idx % size)
+        if i < n && j < n then a(i, j) * tau
+        else if i < n then b(i, j - n) * tau
+        else 0.0
+      })
+      block.expm.map { e =>
+        (new _MatrixValue(n, n, Array.tabulate(n * n)(idx => e(idx / n, idx % n))),
+         new _MatrixValue(n, m, Array.tabulate(n * m)(idx => e(idx / m, n + idx % m))))
+      }
+
   /** n×n identity matrix — dense counterpart of the `matrix.IdentityMatrix` node.
    *  Used by the vectorized (Sylvester) solver tier for absent left/right coefficients.
    *  @param n side length; must be positive

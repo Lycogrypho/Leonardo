@@ -50,7 +50,13 @@ def solveODESymbolic(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
     case Some(coeffs) if coeffs.length <= 2 =>
       val b = coeffs.headOption.getOrElse(_Number(0))          // constant term  (free of y)
       val a = if coeffs.length == 2 then coeffs(1) else _Number(0)  // coefficient of y
-      if dependsOn(a, indepVar) || dependsOn(b, indepVar) then
+      // A matrix coefficient is a SYSTEM, which this tier cannot solve: it would build
+      // `y0 * exp(A*tau)` -- the factors in the wrong order and an element-wise exp where the
+      // matrix exponential belongs, folding to a confident wrong number whenever the shapes
+      // happen to conform (F_0006).  A matrix y0 under a SCALAR coefficient is still fine here,
+      // since a scalar commutes.  The system tier, tried before this one, owns the matrix case.
+      if isMatrixValued(a, env) then None
+      else if dependsOn(a, indepVar) || dependsOn(b, indepVar) then
         // Variable coefficients: integrating-factor method (falls through to None -> RK4
         // when either required integral stays symbolic).
         integratingFactorSolution(a, b, indepVar, t0, y0, target)
@@ -244,6 +250,11 @@ private def integratingFactorSolution(a: _Expression, b: _Expression, indepVar: 
       val numer = Sum(Sum(at(bigQ, target), Product(_Number(-1), at(bigQ, t0))),
                       Product(y0, at(mu, t0)))
       Some(simplifyFully(Ratio(numer, at(mu, target))))
+
+/** True when `e` evaluates to a matrix, dense or symbolic. */
+private def isMatrixValued(e: _Expression, env: Environment): Boolean = e.eval(env) match
+  case Right(_: _MatrixValue) | Left(_: _MatrixShaped) => true
+  case _                                               => false
 
 /** True when `e` still contains an unresolved `scalar._Integral` node (an integral that
  *  the integration engine could not reduce to a closed form). */

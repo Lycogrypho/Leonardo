@@ -106,19 +106,9 @@ def observable(a: _Expression, c: _Expression): Option[Boolean] =
  *  @return `(A_d, B_d)`, or `None` when the operands are not conforming dense matrices
  */
 def c2dExact(a: _Expression, b: _Expression, ts: Double): Option[(_MatrixValue, _MatrixValue)] =
+  // The block assembly lives in core (F_0006) so the ode system tier shares it: the two
+  // cannot disagree about the augmented exponential, and ode need not import this leaf.
   for
-    am <- denseOf(a); bm <- denseOf(b)
-    if am.rows == am.cols && bm.rows == am.rows
-    n    = am.rows
-    m    = bm.cols
-    size = n + m
-    block = _MatrixValue(size, size, Array.tabulate(size * size) { idx =>
-      val (i, j) = (idx / size, idx % size)
-      if i < n && j < n then am(i, j) * ts
-      else if i < n then bm(i, j - n) * ts
-      else 0.0
-    })
-    e <- block.expm
-  yield
-    (_MatrixValue(n, n, Array.tabulate(n * n)(idx => e(idx / n, idx % n))),
-     _MatrixValue(n, m, Array.tabulate(n * m)(idx => e(idx / m, n + idx % m))))
+    am     <- denseOf(a); bm <- denseOf(b)
+    result <- _MatrixValue.augmentedExp(am, bm, ts)
+  yield result

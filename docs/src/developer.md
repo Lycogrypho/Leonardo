@@ -744,6 +744,13 @@ Reference: [Wikipedia — Runge–Kutta methods](https://en.wikipedia.org/wiki/R
 The step count scales with interval length so accuracy is maintained across arbitrarily
 long integration spans.
 
+Linear **systems** (`SolveODESystem.scala`, tried first whenever `y0` is a column):
+`y' = A·y + b` is solved as `exp([[A, b], [0, 0]]·τ) = [[Φ, Γ], [0, 1]]`,
+`y(target) = Φ·y0 + Γ`, through `_MatrixValue.augmentedExp` — the kernel `c2dExact` uses,
+so the two agree by construction. `ode` recognises a literal `MatProduct`/`MatSum` through the
+`core` traits `_MatrixProductShaped`/`_MatrixSumShaped` rather than importing `matrix`.
+Reference: [Wikipedia — Matrix exponential](https://en.wikipedia.org/wiki/Matrix_exponential#Linear_differential_equations)
+
 ### z-transform and control (`transform/`, `control/`)
 
 | Topic | Reference |

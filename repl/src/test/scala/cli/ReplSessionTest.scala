@@ -1176,6 +1176,44 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("r") == "2.71828")
   }
 
+  // --- F_0006: linear ODE systems through the matrix exponential ---
+
+  "an ode system" should "solve y' = A*y for a bound A and for a literal A alike" in
+  {
+    val s = session
+    s.execute("A := [[0, 1], [-1, 0]]")
+    // (cos 1, -sin 1) at precision 5
+    assert(s.execute("ode(A*y, y, t, 0, [[1], [0]], 1)") == "[[0.5403], [-0.84147]]")
+    assert(s.execute("ode([[0, 1], [-1, 0]] * y, y, t, 0, [[1], [0]], 1)") == "[[0.5403], [-0.84147]]")
+  }
+
+  it should "solve the affine y' = A*y + b with a singular A" in
+  {
+    val s = session
+    assert(s.execute("ode([[0, 1], [0, 0]] * y + [[0], [1]], y, t, 0, [[0], [0]], 2)") == "[[2.0], [2.0]]")
+  }
+
+  it should "never fold a matrix coefficient through the scalar closed form" in
+  {
+    val s = session
+    s.execute("A := [[0, 1], [-1, 0]]")
+    s.execute("r0 := [[1, 0]]")
+    // a row y0 conformed with the scalar tier's `y0 * exp(A)` and folded to a wrong number
+    assert(!s.execute("ode(A*y, y, t, 0, r0, 1)").startsWith("[["))
+  }
+
+  it should "survive :save / :load as a definition" in
+  {
+    val s1 = session
+    s1.execute("A := [[0, 1], [-1, 0]]")
+    assert(s1.execute("sys := ode(A*y, y, t, 0, [[1], [0]], T)").startsWith("sys :="))
+    s1.execute("T := 1")
+    val s2 = session
+    s2.load(s1.script)
+    assert(s2.execute("sys") == "[[0.5403], [-0.84147]]")
+    assert(s2.execute("sys") == s1.execute("sys"))
+  }
+
   // --- issue 1.4: evaluation errors are reported, never crash the session ---
 
   "an evaluation that throws (Int-overflow matrix dimension)" should "be reported, not crash" in

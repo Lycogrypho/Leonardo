@@ -216,7 +216,9 @@ private def buildVD(mv: _MatrixValue): Option[(_Matrix, _Matrix)] =
  *  @param a left matrix operand
  *  @param b right matrix operand
  */
-case class MatSum(a: _Expression, b: _Expression) extends _MatrixOperation, _ElementWise:
+case class MatSum(a: _Expression, b: _Expression) extends _MatrixOperation, _ElementWise, _MatrixSumShaped:
+  override def left: _Expression  = a
+  override def right: _Expression = b
   override def toString: String = s"($a + $b)"
   override def children: List[_Expression] = List(a, b)
   override def rebuild(c: List[_Expression]): _Expression = MatSum(c.head, c(1))
@@ -242,7 +244,9 @@ case class MatSum(a: _Expression, b: _Expression) extends _MatrixOperation, _Ele
  *  @param a left operand (matrix or scalar)
  *  @param b right operand (matrix or scalar)
  */
-case class MatProduct(a: _Expression, b: _Expression) extends _MatrixOperation:
+case class MatProduct(a: _Expression, b: _Expression) extends _MatrixOperation, _MatrixProductShaped:
+  override def left: _Expression  = a
+  override def right: _Expression = b
   override def toString: String = s"($a * $b)"
   override def children: List[_Expression] = List(a, b)
   override def rebuild(c: List[_Expression]): _Expression = MatProduct(c.head, c(1))

@@ -70,6 +70,17 @@ package "core" {
         + cols: Int
     }
 
+    interface "_MatrixProductShaped" <<trait>> [[matrix.html]] {
+        + left: _Expression
+        + right: _Expression
+        __ lets ode read A*y without importing matrix (F_0006) __
+    }
+
+    interface "_MatrixSumShaped" <<trait>> [[matrix.html]] {
+        + left: _Expression
+        + right: _Expression
+    }
+
     class "_Number" <<value>> [[expressions.html]] {
         + d: Double
         + display(precision: Int): String
@@ -189,6 +200,8 @@ package "core" {
     "_Value"        --|> "_Expression"
     "_ElementWise"  --|> "_Expression"
     "_MatrixShaped" --|> "_Expression"
+    "_MatrixProductShaped" --|> "_Expression"
+    "_MatrixSumShaped"     --|> "_Expression"
     "_Number"      ..|> "_Value"
     "_Bool"        ..|> "_Value"
     "_Truth"       ..|> "_Value"
@@ -783,6 +796,9 @@ package "matrix" {
     "Transpose" ..|> "_ElementWise"
     ' Symbolic matrix marker: scalar functions distribute element-wise (exp(A), sin(A), ...)
     "_Matrix"   ..|> "_MatrixShaped"
+    ' Shape traits: ode recognises a linear system structurally through core (F_0006)
+    "MatProduct" ..|> "_MatrixProductShaped"
+    "MatSum"     ..|> "_MatrixSumShaped"
 
     "_Matrix"          ..> "_MatrixValue" : collapses to at eval
     "_MatrixOperation" ..> "_MatrixValue" : dense kernels (fast path)
@@ -901,9 +917,21 @@ package "ode" {
         with Q = integral(mu*b dt)
     }
 
+    class "SolveODESystem" <<utility>> [[calculus.html]] {
+        + solveODESystem(...): Option[_MatrixValue]
+        __ constant-coeff linear system y' = A*y + b, y0 an n x 1 column __
+        exp([[A, b], [0, 0]]*tau) = [[Phi, Gamma], [0, 1]]
+        y(target) = Phi*y0 + Gamma
+        declines A(t), b(t), non-conforming shapes, symbolic tau
+    }
+
     "_ODE" --|> "_Functional"
 
-    "_ODE" ..> "SolveODESymbolic" : closed-form tier first
+    "_ODE" ..> "SolveODESystem"   : system tier first (y0 a column)
+    "_ODE" ..> "SolveODESymbolic" : closed-form scalar tier
+    "SolveODESystem" ..> "_MatrixValue" : augmentedExp() -- shared with c2dExact
+    "SolveODESystem" ..> "_MatrixProductShaped" : reads A*y
+    "SolveODESystem" ..> "_MatrixSumShaped"     : reads A*y + b
     "_ODE" ..> "SolveODE"         : RK4 fallback at eval
     "SolveODESymbolic" ..> "Normalize" : collect() linear-in-y coeffs
     "SolveODESymbolic" ..> "Integrate" : integral(a), integral(mu*b) (variable-coeff tier)

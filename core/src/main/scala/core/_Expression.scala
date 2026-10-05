@@ -73,6 +73,34 @@ trait _MatrixShaped extends _Expression:
   def cols: Int
 
 
+/** Shape trait for a matrix **product** node `left · right`, exposing its two operands in order.
+ *
+ *  Lets a package below `matrix` recognise a matrix product structurally without importing
+ *  `matrix` — the [[_MatrixShaped]] precedent.  `ode` reads a linear system `A·y` through it
+ *  (F_0006): a literal coefficient builds `matrix.MatProduct`, and `ode` imports only `core`
+ *  and `scalar`.  Recognising the node by class name instead would keep compiling after a
+ *  rename and silently stop matching.  The operand order is the product's and is load-bearing,
+ *  since a matrix product does not commute.
+ */
+trait _MatrixProductShaped extends _Expression:
+  /** The left factor. */
+  def left: _Expression
+  /** The right factor. */
+  def right: _Expression
+
+
+/** Shape trait for a matrix **sum** node `left + right`, exposing its two operands.
+ *
+ *  The counterpart of [[_MatrixProductShaped]], for the same reason: `ode` recognises the affine
+ *  system `A·y + b` written with a literal matrix, which builds `matrix.MatSum`.
+ */
+trait _MatrixSumShaped extends _Expression:
+  /** The left operand. */
+  def left: _Expression
+  /** The right operand. */
+  def right: _Expression
+
+
 /** Companion for the concrete real scalar value [[_Number]]. */
 object _Number:
 

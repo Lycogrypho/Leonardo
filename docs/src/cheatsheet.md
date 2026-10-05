@@ -739,3 +739,15 @@ ode(y*y, y, t, 0, 1, 0.5)      nonlinear -> RK4 numeric fallback
 
 Closed-form tier covers linear `y' = a(t)·y + b(t)`.
 RK4 (4th-order Runge-Kutta) is the numeric fallback for all other shapes.
+
+Linear **systems** `y' = A·y + b` with a column `y0` (`A` constant and square, `b` a column):
+
+```
+ode([[0, 1], [-1, 0]] * y, y, t, 0, [[1], [0]], 1)    -> [[cos 1], [-sin 1]]
+A := [[0, 1], [0, 0]]                                  (a bound A works the same)
+ode(A*y + [[0], [1]], y, t, 0, [[0], [0]], 2)          -> [[2.0], [2.0]]   singular A
+```
+
+`e^(A·τ)·y₀` by the augmented matrix exponential (the `c2dExact` kernel), so a defective or
+singular `A` is fine. Numeric only; a time-varying `A(t)`/`b(t)`, a non-conforming shape and a
+nonlinear system stay symbolic.
