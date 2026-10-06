@@ -126,6 +126,21 @@ For a command-by-command listing of the REPL see the [cheat sheet](cheatsheet.md
   is computed — and `expect(X*Y, X)` deliberately stays symbolic, because it needs an
   independence assumption the language cannot state.
 
+  **Bayesian inference** comes in the two forms every textbook opens with. `bayes(prior,
+  likelihood)` applies Bayes' theorem over a finite set of hypotheses — two rows (or two
+  columns) in, the normalised posterior out in the same shape — and it is *exact on exact
+  input*, so a posterior of fractions stays a posterior of fractions.
+  `posterior(prior, likelihood, data)` performs a conjugate update, with the likelihood written
+  as the sampling family whose unknown parameter is left free:
+  `posterior(betadist(2, 2), binomial(10, p), 7)` evaluates to `betadist(9.0, 5.0)`, an
+  ordinary distribution that `pdf`, `cdf`, `quantile` and `expect` accept unchanged. Three
+  pairs are in the table — Beta–Binomial, Gamma–Poisson and Normal–Normal with known
+  `sigma` — and the two families they need, `betadist(a, b)` and `gammadist(k, rate)`, are
+  distributions in their own right; `gammadist` is **shape–rate**, the parameterisation in
+  which the Poisson update is simply additive. Anything outside the table stays symbolic: a
+  general posterior has no closed form and would need numerical integration or sampling, and
+  a confident approximation is exactly what the library declines to return.
+
 - **Precision Control**: Configurable display precision for numeric results, kept separate
   from the exact tier's *working* precision — showing five decimals of a value computed to
   thirty is the normal case, and conflating the two would make raising display precision

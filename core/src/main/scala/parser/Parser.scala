@@ -101,6 +101,10 @@ object Parser extends JavaTokenParsers:
     "normal", "uniform", "exponential", "binomial", "poisson",  // distributions
     "pdf", "cdf", "prob", "quantile", "expect", "variance",     // queries + moments
     "studentt", "chisq",                                       // t / chi-squared distributions
+    "betadist", "gammadist", "bayes", "posterior",             // F_0050: the conjugate families
+                                                         // (betadist/gammadist, because beta
+                                                         // and gamma stay free as variables)
+                                                         // and Bayesian updating
     "mean", "pvariance", "stddev", "pstddev", "covariance", "correlation",  // descriptive statistics
     "regress", "ttest", "confint", "chisqtest",                // regression + inference
     "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",  // analytic tier; lowercase-safe --
@@ -525,6 +529,14 @@ object Parser extends JavaTokenParsers:
     "ttest("       ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.TTest, a, b) }     |
     "confint("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ConfInt, a, b) }   |
     "chisqtest("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ChiSqTest, a, b) } |
+    // F_0050: the conjugate families and Bayesian updating.  `posterior` takes the likelihood
+    // as a family with its unknown parameter left FREE (`binomial(10, p)`), so its second
+    // argument is an ordinary expression that the node reads structurally at eval time.
+    "betadist("    ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.BetaDist, List(a, b)) }  |
+    "gammadist("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.GammaDist, List(a, b)) } |
+    "bayes("       ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case p ~ _ ~ l => _Bayes(p, l) }                                   |
+    "posterior("   ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case p ~ _ ~ l ~ _ ~ d => _Posterior(p, l, d) }                                                                                |
     // The two distribution families the inference tier needs.
     "studentt("    ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.StudentT, List(a)) }   |
     "chisq("       ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.ChiSquared, List(a)) } |    "pdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Pdf, d, List(x)) }      |

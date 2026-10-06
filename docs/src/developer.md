@@ -768,7 +768,8 @@ Reference: [Wikipedia — Matrix exponential](https://en.wikipedia.org/wiki/Matr
 
 | Topic | Reference |
 |---|---|
-| The distribution families | [Wikipedia — Normal](https://en.wikipedia.org/wiki/Normal_distribution) · [Binomial](https://en.wikipedia.org/wiki/Binomial_distribution) · [Poisson](https://en.wikipedia.org/wiki/Poisson_distribution) · [Student's t](https://en.wikipedia.org/wiki/Student%27s_t-distribution) · [Chi-squared](https://en.wikipedia.org/wiki/Chi-squared_distribution) |
+| The distribution families | [Wikipedia — Normal](https://en.wikipedia.org/wiki/Normal_distribution) · [Binomial](https://en.wikipedia.org/wiki/Binomial_distribution) · [Poisson](https://en.wikipedia.org/wiki/Poisson_distribution) · [Student's t](https://en.wikipedia.org/wiki/Student%27s_t-distribution) · [Chi-squared](https://en.wikipedia.org/wiki/Chi-squared_distribution) · [Beta](https://en.wikipedia.org/wiki/Beta_distribution) · [Gamma](https://en.wikipedia.org/wiki/Gamma_distribution) |
+| Bayes' theorem and conjugate priors (`bayes`, `posterior`) | [Wikipedia — Bayes' theorem](https://en.wikipedia.org/wiki/Bayes%27_theorem) · [Conjugate prior](https://en.wikipedia.org/wiki/Conjugate_prior) |
 | Linearity of expectation (the `expect` rule table) | [Wikipedia — Expected value](https://en.wikipedia.org/wiki/Expected_value#Properties) |
 | Unbiased sample variance (`n − 1`) | [Wikipedia — Bessel's correction](https://en.wikipedia.org/wiki/Bessel%27s_correction) |
 | Least squares by QR | [Wikipedia — Ordinary least squares](https://en.wikipedia.org/wiki/Ordinary_least_squares) · [Numerical methods](https://en.wikipedia.org/wiki/Numerical_methods_for_linear_least_squares) |

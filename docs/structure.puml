@@ -1450,6 +1450,7 @@ package "probability" <<Rectangle>> {
         Normal  Uniform  Exponential
         Binomial  Poisson
         StudentT  ChiSquared   (added by 4.Q)
+        BetaDist  GammaDist    (F_0050; gammadist is SHAPE-RATE)
     }
 
     enum "Query" <<data>> [[developer.html]] {
@@ -1485,6 +1486,24 @@ package "probability" <<Rectangle>> {
         another random variable is not a constant
     }
 
+    class "_Bayes" <<case>> [[developer.html]] {
+        bayes(prior, likelihood): Bayes' theorem over a
+          finite set of hypotheses (F_0050)
+        rows or columns in, normalised posterior out
+        EXACT on exact input: rebuilds the prior's
+          _MatrixShaped node with rational cells
+        refuses: shape mismatch, negative entry,
+          zero evidence (no posterior at all)
+    }
+
+    class "_Posterior" <<case>> [[developer.html]] {
+        posterior(prior, likelihood, data): conjugate
+          update; likelihood = family with ONE free parameter
+        Beta-Binomial / Gamma-Poisson / Normal-Normal (sigma known)
+        result: an ordinary _Distribution (Double params)
+        outside the table -> stays symbolic
+    }
+
     "_Distribution"      ..|> "_Value"
     "_Distribution"      ..>  "DistKind"
     "_DistributionOf"    ..>  "_Distribution" : eval
@@ -1493,6 +1512,9 @@ package "probability" <<Rectangle>> {
     "_DistributionQuery" ..>  "Predicate"     : prob(X < c) form
     "_Expectation"       ..>  "Moments"
     "_Variance"          ..>  "Moments"
+    "_Posterior"         ..>  "_Distribution" : conjugate table, validating factory
+    "_Posterior"         ..>  "DistKind"
+    "_Bayes"             ..>  "_MatrixShaped"  : exact row rebuilt in place
 }
 package "parser" {
     class "Parser" <<object>> [[getting-started.html]] {

@@ -196,6 +196,8 @@ betaI(x, a, b)                  regularised incomplete beta
 normal(m, s)   uniform(a, b)   exponential(l)     continuous families
 binomial(n, p) poisson(l)                         discrete families
 studentt(nu)   chisq(k)                           Student-t and chi-squared
+betadist(a, b) gammadist(k, rate)                 Beta and Gamma; gammadist is SHAPE-RATE,
+                                                  not shape-scale (its mean is k/rate)
 pdf(d, x)      cdf(d, x)                          density / mass and cumulative distribution
 prob(d, lo, hi)   quantile(d, p)                  interval probability and inverse cdf
 prob(X < 2)                                       predicate form; `and` intersects,
@@ -203,6 +205,21 @@ prob(X < 2)                                       predicate form; `and` intersec
 expect(d)      variance(d)                        a distribution's own moments
 expect(e, X)   variance(e, X)                     moments of an expression, by linearity:
                                                   expect(2*X + 3, X) -> 2*E[X] + 3
+```
+
+### Bayesian inference
+
+```
+bayes(prior, likelihood)             Bayes' theorem over a finite set of hypotheses: two
+                                     rows (or columns) in, the normalised posterior out,
+                                     in the same shape; exact on exact input
+posterior(prior, lik, data)          conjugate update; the likelihood is the family with
+                                     its unknown parameter left FREE, and the result is an
+                                     ordinary distribution (pdf/cdf/quantile/expect apply)
+  posterior(betadist(a, b), binomial(n, p), k)          -> betadist(a + k, b + n - k)
+  posterior(gammadist(k, r), poisson(l), [[x1, x2]])    -> gammadist(k + sum x, r + n)
+  posterior(normal(m0, s0), normal(m, s), [[x1, x2]])   -> normal(mn, sn), s KNOWN
+                                     anything outside the table stays symbolic
 ```
 
 ### Descriptive statistics and inference

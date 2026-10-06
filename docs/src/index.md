@@ -58,7 +58,7 @@ d.eval(env)
 | **Transforms** | Laplace, Fourier, inverse Laplace, and the one-sided z-transform and its inverse |
 | **Series** | Taylor and Maclaurin, numeric Fourier series, Padé approximants, Laurent series about a pole |
 | **Logic** | Boolean, three-valued (Kleene), symmetric ternary, and fuzzy — one shared rule table |
-| **Probability & statistics** | Distributions as first-class values; `expect`/`variance` by linearity; descriptive statistics, regression by QR, elementary inference |
+| **Probability & statistics** | Distributions as first-class values; `expect`/`variance` by linearity; Bayes' theorem and conjugate posteriors; descriptive statistics, regression by QR, elementary inference |
 | **Vector calculus** | `grad div curl laplacian jacobian hessian` in Cartesian, cylindrical, and spherical coordinates |
 | **Control** | Transfer-function algebra, poles and stability, step/impulse response, Bode/Nyquist, state space, discretisation |
 | **ODEs** | First-order initial-value problems: closed forms where possible, Runge–Kutta otherwise |

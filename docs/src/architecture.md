@@ -175,7 +175,7 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 | **`transform`** | Laplace, Fourier, inverse Laplace, and the one-sided z-transform and its inverse | [Features](features.md) |
 | **`ode`** | `_ODE` node; closed-form linear and separable tiers, Runge–Kutta fallback | [Features](features.md) |
 | **`logic`** | The five connectives over one Kleene/fuzzy rule table; simplification, CNF/DNF, truth tables, membership curves, defuzzification | [Logic](logic.md) |
-| **`probability`** | Distributions as first-class values; `pdf`/`cdf`/`prob`/`quantile`; `expect`/`variance` by a linearity rule table | [Features](features.md) |
+| **`probability`** | Distributions as first-class values; `pdf`/`cdf`/`prob`/`quantile`; `expect`/`variance` by a linearity rule table; Bayes' theorem over hypotheses and conjugate posteriors (`bayes`, `posterior`) | [Features](features.md) |
 | **`statistics`** | Descriptive statistics, regression by QR, elementary inference (`ttest`, `confint`, `chisqtest`) | [Features](features.md) |
 | **`domain`** | Renders the neutral domain analysis (`domain`, `differentiable`, `singularities`) into relation nodes | [Features](features.md) |
 | **`vector`** | `grad`/`div`/`curl`/`laplacian`/`jacobian`/`hessian` over an ordered coordinate tuple, in three coordinate systems | [Calculus](calculus.md) |

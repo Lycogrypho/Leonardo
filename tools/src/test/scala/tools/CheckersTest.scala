@@ -232,7 +232,7 @@ class CheckersTest extends AnyFlatSpec:
     // with nothing, which is what makes listing them safe rather than a per-environment case.
     assert(Files.walk(Paths.get("no-such-tree"), Files.TextExtensions).isEmpty)
     // METHODOLOGY.md joined this list on 2026-09-30, having been overlooked when F_0028 widened
-    // the roots: it is gitignored prose like the other four and was scanned by nothing.
-    for local <- List("ToDo.md", "Done.md", "DesignNotes.md", "METHODOLOGY.md") do
+    // the roots, and left it on 2026-10-05 when the document moved outside the repository.
+    for local <- List("ToDo.md", "Done.md", "DesignNotes.md") do
       assert(Files.GuardedRoots.contains(Paths.get(local)), s"$local should be guarded when present")
   }

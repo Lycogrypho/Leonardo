@@ -55,4 +55,3 @@ __pycache__/
 # (a ToDo.md re-ordering pass, a one-time scan) that must not reach the repository.
 /.claudetools/
 /DevResources/
-/METHODOLOGY.md

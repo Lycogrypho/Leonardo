@@ -28,6 +28,21 @@ enum DistKind:
   case StudentT
   /** `chisq(k)` — parameter `(k)`, the degrees of freedom, with `k > 0`. */
   case ChiSquared
+  /** `betadist(a, b)` — parameters `(a, b)`, both strictly positive (F_0050).
+   *
+   *  Spelled `betadist`, not `beta`: `beta` is kept free as a variable name, which is the
+   *  reason the *function* is capitalised `Beta`, and a distribution keyword could not take
+   *  the lower-case spelling either.  The conjugate prior of the binomial.
+   */
+  case BetaDist
+  /** `gammadist(k, rate)` — **shape and rate**, both strictly positive (F_0050).
+   *
+   *  Shape–rate rather than shape–scale, stated because the literature splits and a silent
+   *  choice makes every result wrong for half its readers: rate is the form in which the
+   *  Gamma–Poisson update is additive, `(k, rate) → (k + Σx, rate + n)`.  The conjugate prior
+   *  of the Poisson.  `gammadist`, not `gamma`, for the `betadist` reason.
+   */
+  case GammaDist
 
 object DistKind:
   /** The grammar keyword for a family.
@@ -46,6 +61,7 @@ object DistKind:
     case Normal | Uniform | Binomial        => 2
     case Exponential | Poisson              => 1
     case StudentT | ChiSquared              => 1
+    case BetaDist | GammaDist               => 2
 
   /** Looks a family up by its grammar keyword. */
   def fromKeyword(s: String): Option[DistKind] = values.find(k => keyword(k) == s)
@@ -75,6 +91,8 @@ object _Distribution:
         case DistKind.Poisson     => params(0) > 0.0
         case DistKind.StudentT    => params(0) > 0.0
         case DistKind.ChiSquared  => params(0) > 0.0
+        case DistKind.BetaDist    => params(0) > 0.0 && params(1) > 0.0
+        case DistKind.GammaDist   => params(0) > 0.0 && params(1) > 0.0
         case DistKind.Binomial    =>
           params(0) >= 0.0 && params(0) == Math.floor(params(0)) &&
           params(1) >= 0.0 && params(1) <= 1.0
@@ -151,6 +169,28 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
             lg <- lgammaOf(k / 2.0)
             r  <- finite(exp((k / 2.0 - 1.0) * log(x) - x / 2.0 - (k / 2.0) * log(2.0) - lg))
           yield r
+      case DistKind.BetaDist =>
+        val (a, b) = (params(0), params(1))
+        if x < 0.0 || x > 1.0 then Some(0.0)
+        // The endpoints are decided explicitly: `(a - 1) * log(0)` is `0 * -inf = NaN` at
+        // a = 1, where the density is the finite value b, and infinite below it.
+        else if x == 0.0 then betaEdge(a, b)
+        else if x == 1.0 then betaEdge(b, a)
+        else
+          for
+            la  <- lgammaOf(a); lb <- lgammaOf(b); lab <- lgammaOf(a + b)
+            r   <- finite(exp((a - 1.0) * log(x) + (b - 1.0) * log(1.0 - x) + lab - la - lb))
+          yield r
+      case DistKind.GammaDist =>
+        val (k, rate) = (params(0), params(1))
+        if x < 0.0 then Some(0.0)
+        else if x == 0.0 then
+          if k > 1.0 then Some(0.0) else if k == 1.0 then Some(rate) else None
+        else
+          for
+            lg <- lgammaOf(k)
+            r  <- finite(exp(k * log(rate) + (k - 1.0) * log(x) - rate * x - lg))
+          yield r
 
   /** The cumulative distribution function `P(X ≤ x)`.
    *
@@ -199,6 +239,13 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
       case DistKind.ChiSquared =>
         // P(X <= x) = P(k/2, x/2), the regularised lower incomplete gamma.
         if x <= 0.0 then Some(0.0) else lowerGammaP(params(0) / 2.0, x / 2.0)
+      case DistKind.BetaDist =>
+        // The regularised incomplete beta IS the beta cdf.
+        if x <= 0.0 then Some(0.0) else if x >= 1.0 then Some(1.0)
+        else incompleteBetaOf(x, params(0), params(1))
+      case DistKind.GammaDist =>
+        // P(X <= x) = P(k, rate * x), the regularised lower incomplete gamma in the rate form.
+        if x <= 0.0 then Some(0.0) else lowerGammaP(params(0), params(1) * x)
 
   /** The mean `E[X]`.
    *  @return the mean, or `None` if it does not exist
@@ -213,6 +260,8 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
     // so `None` here is a fact about the distribution, not a computational give-up.
     case DistKind.StudentT    => Option.when(params(0) > 1.0)(0.0)
     case DistKind.ChiSquared  => Some(params(0))
+    case DistKind.BetaDist    => finite(params(0) / (params(0) + params(1)))
+    case DistKind.GammaDist   => finite(params(0) / params(1))
 
   /** The variance `Var(X)`.
    *  @return the variance, or `None` if it does not exist
@@ -227,6 +276,10 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
     // should hand back, so both give `None`.
     case DistKind.StudentT    => Option.when(params(0) > 2.0)(params(0) / (params(0) - 2.0))
     case DistKind.ChiSquared  => Some(2.0 * params(0))
+    case DistKind.BetaDist    =>
+      val s = params(0) + params(1)
+      finite(params(0) * params(1) / (s * s * (s + 1.0)))
+    case DistKind.GammaDist   => finite(params(0) / (params(1) * params(1)))
 
   /** `P(lo ≤ X ≤ hi)`.
    *
@@ -265,6 +318,11 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
         lnk <- lgammaOf(n - k + 1.0)
         r   <- finite(exp(ln - lk - lnk + k * log(p) + (n - k) * log(1.0 - p)))
       yield r
+
+  /** The beta density at the endpoint where the exponent `a - 1` applies: zero above
+   *  `a = 1`, the finite value `b` at it (`1/B(1, b)`), and infinite — so `None` — below. */
+  private def betaEdge(a: Double, b: Double): Option[Double] =
+    if a > 1.0 then Some(0.0) else if a == 1.0 then Some(b) else None
 
   private def finite(d: Double): Option[Double] =
     Option.when(!d.isNaN && !d.isInfinite)(d)

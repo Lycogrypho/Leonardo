@@ -61,8 +61,11 @@ object Files:
     // four and scanned by nothing. F_0028's own gap, recurring: that issue widened the list to
     // every source *tree* and the local documents that existed then, which is a one-time repair
     // of a condition that keeps decaying. A document added later joins the set the guards are
-    // for and nothing points it out, exactly as a new source tree would.
-    "CLAUDE.md", "ToDo.md", "Done.md", "DesignNotes.md", "METHODOLOGY.md"
+    // for and nothing points it out, exactly as a new source tree would. It LEFT the list on
+    // 2026-10-05, when the document moved out of the repository to a folder shared with the
+    // author's other projects (CLAUDE.md names it): a root that can never be present is a
+    // stale claim, not a guard.
+    "CLAUDE.md", "ToDo.md", "Done.md", "DesignNotes.md"
   ).map(Paths.get(_))
 
   /** The roots a guard was told to scan, or [[GuardedRoots]] when it was told none.
