@@ -1,6 +1,6 @@
 ---
 title: Cheatsheet
-nav_order: 12
+nav_order: 13
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
@@ -233,6 +233,29 @@ regress(X, y)                        least squares by QR; no intercept column ad
 ttest(sample, mu)                    two-sided one-sample t-test p-value
 confint(sample, level)               confidence interval for the mean, as [[lo, hi]]
 chisqtest(obs, exp)                  Pearson goodness-of-fit p-value
+```
+
+---
+## Optimization
+
+An answer that cannot be proved complete is not given: the call stays as written.
+
+```
+stationary(f, x, y)                  every point where grad f = 0, one row per point;
+                                     false when provably none; the REPL classifies
+                                     each as minimum / maximum / saddle point
+convex(f, x, y)                      true (proved from every PRINCIPAL minor of the
+                                     Hessian), false (with a witness), else symbolic
+lagrange(f, [[g1], [g2]], x, y)      stationary points of f on g1 = 0, g2 = 0;
+                                     a cell may be an equation, one constraint needs
+                                     no matrix
+kkt(f, g, h, x, y)                   the KKT conditions of: minimise f, g <= 0, h = 0
+                                     (multipliers mu0.., lambda0..); 0 = absent group
+minimize(f, [[x], [y]], x0, m)       numeric minimiser as a column; m is gd, newton,
+                                     bfgs or pbfgs, always named
+minimize(f, [[x], [y]], x0, lb, ub, m)   with bounds (inf for none): pbfgs or gd
+                                     a point is returned only if its gradient passes
+                                     the precision's tolerance; else the REPL says why
 ```
 
 ---

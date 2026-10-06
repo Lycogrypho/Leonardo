@@ -118,6 +118,18 @@ For a command-by-command listing of the REPL see the [cheat sheet](cheatsheet.md
   condition number is never squared; and an inference tier — `ttest`, `confint`,
   `chisqtest` — so `ttest(sample, 5) < 0.05` reads the way statistics is actually written.
 
+- **Optimization**: The symbolic half first — what a numeric library cannot do.
+  `stationary(f, x, y)` lists every point where the gradient vanishes, solving the nonlinear
+  system by elimination and following the branch where an eliminated coefficient is zero, so
+  no point silently disappears; the REPL classifies each by the second-order test.
+  `convex(f, x, y)` proves convexity from every principal minor of the symbolic Hessian, or
+  refutes it with a witness. `lagrange` handles equality constraints and `kkt` states the
+  Karush–Kuhn–Tucker conditions in the language. A numeric `minimize` — gradient descent,
+  Newton, BFGS and a projected BFGS for box constraints, each named explicitly — returns a
+  point only after checking its gradient against the precision, and otherwise says why it
+  declined. Throughout, an answer that cannot be proved complete is not given: a list of
+  stationary points is read as *all* of them. See [Optimization](optimization.md).
+
 - **Probability**: Distributions are first-class values — `normal(0, 1)`, `binomial(10, 0.3)`,
   `poisson(4)` and friends bind to names like any other value. `pdf`, `cdf`, `prob` and
   `quantile` answer numeric questions about them, with every cumulative distribution a closed

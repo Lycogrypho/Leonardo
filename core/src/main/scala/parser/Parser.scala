@@ -14,6 +14,7 @@ import logic.*
 import domain.*
 import vector.*
 import control.*
+import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, MinimizeMethod}
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -119,6 +120,11 @@ object Parser extends JavaTokenParsers:
                                                          // C spelling; Fresnel spelled out --
                                                          // bare S/C would be homoglyph traps
     "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus
+    "stationary", "convex", "lagrange", "kkt", "minimize",  // F_0010 optimization; the
+                                                         // method words (gd, newton, bfgs,
+                                                         // pbfgs) are NOT reserved: they are
+                                                         // matched only in minimize's last
+                                                         // slot, the real/complex precedent
     "fib", "lucas", "pell", "jacobsthal",                // numeric sequences
     "binom", "catalan", "harmonic", "tabulate",          // combinatorial + the tabulator
     "sum", "product",                                    // F_0037 finite reductions. Both are
@@ -717,7 +723,32 @@ object Parser extends JavaTokenParsers:
     "curl("      ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Curl(f, vs.toVector, cSys(s))      } |
     "laplacian(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Laplacian(f, vs.toVector, cSys(s)) } |
     "jacobian("  ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Jacobian(f, vs.toVector, cSys(s))  } |
-    "hessian("   ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Hessian(f, vs.toVector, cSys(s))   }
+    "hessian("   ~> guardedExpr ~ "," ~ rep1sep(variable, ",") ~ opt("," ~> coordSystem) <~ ")" ^^ { case f ~ _ ~ vs ~ s => _Hessian(f, vs.toVector, cSys(s))   } |
+    // F_0010 optimization.  The symbolic four take the variable tuple as trailing varargs,
+    // grad's convention; `minimize` takes it as a COLUMN of names, because a varargs tuple
+    // cannot be followed by a starting point, bounds and a method.
+    "stationary(" ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Stationary(f, vs.toVector) } |
+    "convex("     ~> guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ { case f ~ _ ~ vs => _Convex(f, vs.toVector)     } |
+    "lagrange("   ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ {
+      case f ~ _ ~ g ~ _ ~ vs => _Lagrange(f, g, vs.toVector) } |
+    "kkt("        ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ rep1sep(variable, ",") <~ ")" ^^ {
+      case f ~ _ ~ g ~ _ ~ h ~ _ ~ vs => _KKT(f, g, h, vs.toVector) } |
+    // The method-only tail is tried FIRST: a method word would otherwise parse as a variable
+    // in the lower-bound slot and the call would fail one argument later.
+    "minimize("   ~> guardedExpr ~ ("," ~> variableColumn) ~ ("," ~> guardedExpr) ~ (
+        ("," ~> minimizeMethod <~ ")") ^^ { m => (Option.empty[(_Expression, _Expression)], m) } |
+        ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> minimizeMethod) <~ ")" ^^ {
+          case lo ~ hi ~ m => (Some((lo, hi)), m) }
+      ) ^^ { case f ~ vs ~ x0 ~ ((b, m)) => _Minimize(f, vs, x0, b, m) }
+
+  /** A column of variable names, `[[x], [y]]` — `minimize`'s variable tuple. */
+  private lazy val variableColumn: Parser[Vector[_Variable]] =
+    "[" ~> rep1sep("[" ~> variable <~ "]", ",") <~ "]" ^^ (_.toVector)
+
+  /** `minimize`'s method keyword, matched only in that slot so none of them is reserved. */
+  private lazy val minimizeMethod: Parser[MinimizeMethod] =
+    "pbfgs" ^^^ MinimizeMethod.ProjectedBFGS | "bfgs" ^^^ MinimizeMethod.BFGS |
+    "newton" ^^^ MinimizeMethod.Newton | "gd" ^^^ MinimizeMethod.GradientDescent
 
   /** The coordinate-system keyword of a vector operator.
    *

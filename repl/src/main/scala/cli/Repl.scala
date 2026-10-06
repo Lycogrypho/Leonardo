@@ -9,6 +9,8 @@ import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable,
                   MaxTruthTableVars, MaxKleeneTableVars}
 import latex.ToLatex
 import parser.Parser
+import optimize.{_Stationary, _Minimize, MinimizeFailure, MinimizeMethod, StationaryKind,
+                 classifyStationary, numericPoints}
 
 import scala.util.control.NonFatal
 
@@ -808,11 +810,12 @@ final class Session:
     resolveDerivativeBinders(e) match
       case Left(message) => message
       case Right(resolved) =>
-        val result = substitute(resolved, definitions).eval(env)
-        val shown  =
+        val expanded = substitute(resolved, definitions)
+        val result   = expanded.eval(env)
+        val shown    =
           if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
           else formatResult(result)
-        val note = domainNote(result)
+        val note = domainNote(result) + optimizeNote(expanded, result)
         // The LaTeX is offered only when the text says nothing the formula does not (issue
         // F_0020). A domain note is exactly such a thing -- it is prose, it is not in the
         // rendering, and it is the whole value of an answer that otherwise echoes itself
@@ -832,6 +835,54 @@ final class Session:
   private def domainNote(result: Either[_Expression, _Value]): String =
     val note = result.left.toOption.flatMap(findDomainViolation)
     note.fold("")(n => s"\n  note: $n")
+
+  /** Classifies the points `stationary` found, or says why `minimize` declined (F_0010).
+   *
+   *  The F_0052 Decision A mechanism, and 3.3 slice F's discipline: the library answers as
+   *  it always would, and the REPL appends the reason in prose — so a reader learns *why*
+   *  without a status code that would need a legend.  Only a call that IS the line's answer is
+   *  annotated: nested inside a larger expression, the note would describe something the
+   *  reader is not looking at.  `minimize` is re-run to get its reason, which costs a second
+   *  solve on the decline path only.
+   */
+  private def optimizeNote(e: _Expression, result: Either[_Expression, _Value]): String =
+    val text = (e, result) match
+      case (s: _Stationary, Left(points: _Matrix)) => classification(s, points)
+      case (m: _Minimize, Left(_)) =>
+        m.detailed(env).left.toOption.map(why => s"minimize declined: ${describeFailure(why)}")
+      case _ => None
+    text.fold("")(n => s"\n  note: $n")
+
+  /** The second-order test at each numeric stationary point, as one line of prose. */
+  private def classification(s: _Stationary, points: _Matrix): Option[String] =
+    val names = s.vars.map(_.variable).mkString("(", ", ", ")")
+    val parts = numericPoints(points).map { p =>
+      val at = s.vars.map(v => formatExpression(_Number(p(v.variable)), false)).mkString("(", ", ", ")")
+      val what = classifyStationary(s.f, s.vars, p, env) match
+        case Some(StationaryKind.Minimum)    => "a minimum"
+        case Some(StationaryKind.Maximum)    => "a maximum"
+        case Some(StationaryKind.Saddle)     => "a saddle point"
+        case Some(StationaryKind.Degenerate) => "not decided by the second-order test (singular Hessian)"
+        case None                            => "not classified"
+      s"$names = $at is $what"
+    }
+    Option.when(parts.nonEmpty)(parts.mkString("; "))
+
+  /** A [[MinimizeFailure]] in prose.  Gradient norms are rendered in full, not at the session
+   *  precision: at five decimals the norm that failed the certificate could print as `0`. */
+  private def describeFailure(why: MinimizeFailure): String = why match
+    case MinimizeFailure.InvalidInput(detail)           => detail
+    case MinimizeFailure.NotEvaluable                   => "the objective or its gradient is not a real number at an iterate"
+    case MinimizeFailure.LineSearchFailed(k)            => s"the line search found no acceptable step at iteration $k"
+    case MinimizeFailure.MaxIterations(limit, g)        =>
+      s"the iteration limit ($limit) was reached with the gradient norm at ${_Number.render(g)}"
+    case MinimizeFailure.HessianNotPositiveDefinite(k)  =>
+      s"the Hessian is not positive definite at iteration $k; newton needs a convex neighbourhood, bfgs does not"
+    case MinimizeFailure.Unbounded                      => "the objective appears unbounded below"
+    case MinimizeFailure.Stalled(g)                     =>
+      s"progress stopped with the gradient norm at ${_Number.render(g)}, above the precision's tolerance"
+    case MinimizeFailure.MethodTakesNoBounds(m)         =>
+      s"${MinimizeMethod.keyword(m)} takes no bounds; use pbfgs or gd"
 
   /** The first unevaluated limit or definite integral whose point leaves its own domain. */
   private def findDomainViolation(e: _Expression): Option[String] =

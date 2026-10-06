@@ -1,6 +1,6 @@
 ---
 title: Developer Guide
-nav_order: 14
+nav_order: 15
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
@@ -769,6 +769,9 @@ Reference: [Wikipedia — Matrix exponential](https://en.wikipedia.org/wiki/Matr
 | Topic | Reference |
 |---|---|
 | The distribution families | [Wikipedia — Normal](https://en.wikipedia.org/wiki/Normal_distribution) · [Binomial](https://en.wikipedia.org/wiki/Binomial_distribution) · [Poisson](https://en.wikipedia.org/wiki/Poisson_distribution) · [Student's t](https://en.wikipedia.org/wiki/Student%27s_t-distribution) · [Chi-squared](https://en.wikipedia.org/wiki/Chi-squared_distribution) · [Beta](https://en.wikipedia.org/wiki/Beta_distribution) · [Gamma](https://en.wikipedia.org/wiki/Gamma_distribution) |
+| Stationary points, the second-order test, convexity (`optimize/`) | [Wikipedia — Second partial derivative test](https://en.wikipedia.org/wiki/Second_partial_derivative_test) · [Sylvester's criterion](https://en.wikipedia.org/wiki/Sylvester%27s_criterion) |
+| Lagrange multipliers and the KKT conditions | [Wikipedia — Lagrange multiplier](https://en.wikipedia.org/wiki/Lagrange_multiplier) · [Karush–Kuhn–Tucker conditions](https://en.wikipedia.org/wiki/Karush%E2%80%93Kuhn%E2%80%93Tucker_conditions) |
+| BFGS, line searches, projected methods | [Wikipedia — BFGS](https://en.wikipedia.org/wiki/Broyden%E2%80%93Fletcher%E2%80%93Goldfarb%E2%80%93Shanno_algorithm) · [Wolfe conditions](https://en.wikipedia.org/wiki/Wolfe_conditions) |
 | Bayes' theorem and conjugate priors (`bayes`, `posterior`) | [Wikipedia — Bayes' theorem](https://en.wikipedia.org/wiki/Bayes%27_theorem) · [Conjugate prior](https://en.wikipedia.org/wiki/Conjugate_prior) |
 | Linearity of expectation (the `expect` rule table) | [Wikipedia — Expected value](https://en.wikipedia.org/wiki/Expected_value#Properties) |
 | Unbiased sample variance (`n − 1`) | [Wikipedia — Bessel's correction](https://en.wikipedia.org/wiki/Bessel%27s_correction) |

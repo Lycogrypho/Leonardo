@@ -1373,6 +1373,77 @@ package "control" {
 }
 
 ' ===================================================
+' PACKAGE: optimize (imports core + scalar + matrix + equation + vector + logic) -- F_0010
+' ===================================================
+package "optimize" <<Rectangle>> {
+
+    class "Elimination" <<utility>> [[optimization.html]] {
+        eliminate(eqs, unknowns): EVERY real solution
+          or None -- never a partial list
+        1. linear, constant coefficient: substitute (exact)
+        2. one unknown left: every real root
+           (square-free parts, the 2.5 rule)
+        3. linear, coefficient c in other unknowns:
+           divide AND branch on c = 0 -- dividing
+           alone silently drops those solutions
+        every candidate verified against the originals
+        MaxEliminationSteps = 4000 (measured)
+    }
+
+    class "Stationary" <<utility>> [[optimization.html]] {
+        stationaryPoints: solve grad f = 0
+        classifyStationary: Hessian eigenvalue signs
+          (relative zero test; Degenerate = unknown)
+        lagrangePoints: multipliers from freshVar
+    }
+
+    class "Convexity" <<utility>> [[optimization.html]] {
+        true: EVERY PRINCIPAL minor provably >= 0
+          (leading minors prove definiteness only)
+          and f defined everywhere
+        false: a WITNESS -- a minor provably < 0, or a
+          grid point where f is real and curvature < 0
+        else symbolic
+    }
+
+    class "KKT" <<utility>> [[optimization.html]] {
+        kktConditions: STATED as and/=/<=/>=
+          (min f, g <= 0, h = 0; mu, lambda via freshVar)
+        kktPoints: 2^m active sets over Elimination
+          MaxKKTInequalities = 10 (measured)
+    }
+
+    class "Minimize" <<utility>> [[optimization.html]] {
+        gd | newton | bfgs | pbfgs -- ALWAYS named
+        pbfgs = PROJECTED BFGS, not L-BFGS-B (R_0069)
+        answer only if the (projected) gradient passes
+          0.5*10^-precision; else Left(MinimizeFailure)
+        MaxMinimizeIterations = 2000 (measured)
+    }
+
+    class "_Stationary" <<case>> [[optimization.html]]
+    class "_Convex" <<case>> [[optimization.html]]
+    class "_Lagrange" <<case>> [[optimization.html]]
+    class "_KKT" <<case>> [[optimization.html]]
+    class "_Minimize" <<case>> [[optimization.html]] {
+        detailed(env): Either[MinimizeFailure, Result]
+        what the REPL queries to explain a decline
+    }
+
+    "_Stationary" ..> "Stationary"
+    "_Lagrange"   ..> "Stationary"
+    "_Convex"     ..> "Convexity"
+    "_KKT"        ..> "KKT"
+    "_Minimize"   ..> "Minimize"
+    "Stationary"  ..> "Elimination"
+    "KKT"         ..> "Elimination"
+    "Stationary"  ..> "_Hessian"    : one definition of the Hessian
+    "Convexity"   ..> "_Hessian"
+    "Elimination" ..> "Polynomial"  : rationalCoeffs, squareFreeFactors
+    "KKT"         ..> "_Comparison" : the conditions are relations
+}
+
+' ===================================================
 ' PACKAGE: statistics (imports core + scalar + matrix + probability)
 ' ===================================================
 package "statistics" <<Rectangle>> {

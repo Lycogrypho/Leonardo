@@ -59,6 +59,7 @@ d.eval(env)
 | **Series** | Taylor and Maclaurin, numeric Fourier series, Padé approximants, Laurent series about a pole |
 | **Logic** | Boolean, three-valued (Kleene), symmetric ternary, and fuzzy — one shared rule table |
 | **Probability & statistics** | Distributions as first-class values; `expect`/`variance` by linearity; Bayes' theorem and conjugate posteriors; descriptive statistics, regression by QR, elementary inference |
+| **Optimization** | Stationary points solved and classified; convexity; Lagrange and KKT conditions; certified numeric `minimize` |
 | **Vector calculus** | `grad div curl laplacian jacobian hessian` in Cartesian, cylindrical, and spherical coordinates |
 | **Control** | Transfer-function algebra, poles and stability, step/impulse response, Bode/Nyquist, state space, discretisation |
 | **ODEs** | First-order initial-value problems: closed forms where possible, Runge–Kutta otherwise |

@@ -1,6 +1,6 @@
 ---
 title: Architecture
-nav_order: 13
+nav_order: 14
 ---
 
 <img src="logo_bw.svg" alt="" style="height:80px;width:auto;float:right;margin:0 0 8px 16px"/>
@@ -179,6 +179,7 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 | **`statistics`** | Descriptive statistics, regression by QR, elementary inference (`ttest`, `confint`, `chisqtest`) | [Features](features.md) |
 | **`domain`** | Renders the neutral domain analysis (`domain`, `differentiable`, `singularities`) into relation nodes | [Features](features.md) |
 | **`vector`** | `grad`/`div`/`curl`/`laplacian`/`jacobian`/`hessian` over an ordered coordinate tuple, in three coordinate systems | [Calculus](calculus.md) |
+| **`optimize`** | Stationary points by elimination with case splits, their classification, convexity from principal minors, Lagrange multipliers, the KKT conditions, and a certified numeric `minimize` | [Optimization](optimization.md) |
 | **`control`** | Transfer-function algebra, stability, time and frequency response, state space, discretisation | [Control Systems](control.md) |
 | **`latex`** | `ToLatex(e)` — an expression as math-mode LaTeX source, display only; nothing reads it back | [Interactive REPL](repl.md#latex) |
 | **`parser`** | Recursive-descent `Parser` (extends `JavaTokenParsers`); produces all AST node types; `ReservedWords` guard | [Getting Started](getting-started.md) |
