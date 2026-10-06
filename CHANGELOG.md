@@ -20,17 +20,42 @@ Each section's body is published verbatim as that tag's GitHub Release, extracte
 `.github/workflows/release.yml`. **Write the section before tagging**, and keep the heading in
 the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
-## 3.8.0 — 2026-10-02
+## 3.8.2 — 2026-10-06
+
+*A correctness fix. Upgrade.*
+
+- **A leading minus now negates only the first term.** Since the grammar's first release, a sign
+  at the start of an expression applied to the whole sum: `-1 - 1` evaluated to `0`, `-x + y` to
+  `-(x + y)`, and `-2*x - 3` to `-2x + 3`. It now reads as written everywhere an expression is
+  parsed — the REPL, the browser, `Parser.parse`, function arguments, equations and inequalities.
+  `solve(-x + 1 = 0, x)` answers `x = 1` (it answered `x = -1`), and `solve(-x^2 + 4 > 0, x)`
+  answers `-2 < x < 2` (it answered `false`). An expression with a single leading term — `-x`,
+  `-3k`, `-(a + b)`, `-2^2` — parses exactly as before.
+
+> **Saved sessions and share links can change meaning, and that includes ones Leonardo wrote.**
+> A line such as `f := -x + y` in a `:save`d script or a shared link was evaluated wrongly by
+> every earlier release and is evaluated correctly by this one. The library's own output was
+> affected too: a sum beginning with a negative number — which `simplify`, `consolidate` and the
+> exact tier can produce — prints as `(-3.0 + x)`, and earlier releases read that back as
+> `-(3 + x)`. Re-check any result computed from such a line.
+
+> **Binary compatibility.** Both artifacts are binary-compatible with 3.8.1; MiMa finds no change.
+
+## 3.8.0 – 3.8.1 — 2026-10-02
 
 *On Maven Central.* The browser release: Leonardo runs in a web page, renders LaTeX, and comes
-with a course of lessons.
+with a course of lessons. 3.8.1 changed only the browser page's layout, described in the first
+entry below.
 
 - **Browser REPL** — the library and the REPL are cross-built for Scala.js, and the full REPL
   runs at [`/app`](https://lycogrypho.github.io/Leonardo/app/) with nothing to install: plotting
   (`plot`, `points`, `bode`, `nyquist`), shareable links that carry a whole session in the URL, a
   settings panel, and `:save` / `:load` backed by browser storage. Every GitHub Release now
   attaches the app as `leonardo-app-<version>.zip`, which runs from any folder. The Maven
-  artifacts remain JVM-only.
+  artifacts remain JVM-only. *Since 3.8.1:* on a wide window a plot opens in a column beside
+  the REPL rather than below it (on a narrow window, or a browser without `:has()` support, it
+  stays below), and the page header shows the project banner, as the documentation site does,
+  in place of a text title.
 - **LaTeX** — a new `latex` package renders any expression as math-mode LaTeX (`ToLatex`). In the
   REPL, `latex on` offers each result's LaTeX on a second channel, which the browser typesets
   beside the answer; the printed text itself never changes.
@@ -63,7 +88,8 @@ with a course of lessons.
 > REPL artifact `leonardo-repl` is not, in exactly one place: splitting its source for the
 > Scala.js build removed the compiler-generated class `cli.Repl$package`. No source change is
 > needed, but code compiled against 3.7.2's REPL artifact must be recompiled — which is why this
-> is 3.8.0 rather than 3.7.3, chosen from MiMa's report as 3.7.2's note promised.
+> is 3.8.0 rather than 3.7.3, chosen from MiMa's report as 3.7.2's note promised. 3.8.1 changed
+> no library or REPL source, so both artifacts are binary-compatible with 3.8.0.
 
 ## 3.7.2 — 2026-09-13
 

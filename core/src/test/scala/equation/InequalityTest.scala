@@ -157,12 +157,14 @@ class InequalityTest extends AnyFlatSpec:
     assert(solved("solve(4 - x^2 > 0, x)") == "((x > -2.0) and (x < 2.0))")
   }
 
-  it should "read a leading minus as applying to the whole additive chain" in
+  it should "read a leading minus as applying to the first term only" in
   {
-    // Not a solver property but a grammar one, pinned here because it looks like a solver
-    // bug: `expr ::= opt("+"|"-") ~ simpleExpr`, so the sign covers the ENTIRE chain and
-    // `-x^2 + 4` means `-(x^2 + 4)`, which is <= -4 everywhere. `false` is the right answer.
-    assert(solved("solve(-x^2 + 4 > 0, x)") == "false")
+    // A grammar property, pinned here because it is where it was first seen. Until 3.8.2 the
+    // sign covered the ENTIRE additive chain, so `-x^2 + 4` read as `-(x^2 + 4)` and this test
+    // asserted `false` -- the defect, written down as though it were the design (F_0070).
+    // `-x^2 + 4 > 0` is `4 - x^2 > 0`, the downward parabola of the case above.
+    assert(solved("solve(-x^2 + 4 > 0, x)") == "((x > -2.0) and (x < 2.0))")
+    assert(solved("solve(-x^2 + 4 > 0, x)") == solved("solve(4 - x^2 > 0, x)"))
   }
 
   // ── conjunctions (slice D) ─────────────────────────────────────────────────

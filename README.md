@@ -87,7 +87,7 @@ Leonardo is published to Maven Central for **Scala 3.3 LTS**. The library is wha
 always want:
 
 ```scala
-libraryDependencies += "it.grypho" %% "leonardo" % "3.8.0"
+libraryDependencies += "it.grypho" %% "leonardo" % "3.8.2"
 ```
 
 The interactive REPL is a second artifact: a standalone program that drives Leonardo from the
@@ -95,14 +95,14 @@ command line. It depends on `leonardo`, so this line replaces the one above rath
 joining it:
 
 ```scala
-libraryDependencies += "it.grypho" %% "leonardo-repl" % "3.8.0"
+libraryDependencies += "it.grypho" %% "leonardo-repl" % "3.8.2"
 ```
 
 To simply *try* the REPL, nothing needs to be cloned, built or added to a project — with
 [coursier](https://get-coursier.io/) installed, one command fetches it and starts a session:
 
 ```
-cs launch it.grypho:leonardo-repl_3:3.8.0 -M it.grypho.scala.leonardo.cli.repl
+cs launch it.grypho:leonardo-repl_3:3.8.2 -M it.grypho.scala.leonardo.cli.repl
 ```
 
 ### First steps in code
