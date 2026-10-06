@@ -78,10 +78,18 @@ private def trimTrailingZeros(cs: Vector[_Expression]): Vector[_Expression] =
 
 /** Whether `e` is a literal zero in either numeric tier.
  *
- *  `_Number` is a widening extractor, so this one pattern covers the exact zero too.
+ *  `_Number` is a widening extractor, so this one pattern covers the exact zero too.  Every
+ *  test of a SIMPLIFIED value for zero goes through here, never `== _Number(0)`: since
+ *  F_0073 `simplify` returns an exact zero for exact input, and the identity comparison
+ *  misses it -- a singular exact system then divides by zero instead of declining.
  */
-private def isZeroLiteral(e: _Expression): Boolean = e match
+private[leonardo] def isZeroLiteral(e: _Expression): Boolean = e match
   case _Number(0.0) => true
+  case _            => false
+
+/** Whether `e` is a literal one in either numeric tier; the [[isZeroLiteral]] reasoning. */
+private[leonardo] def isOneLiteral(e: _Expression): Boolean = e match
+  case _Number(1.0) => true
   case _            => false
 
 /** Rebuilds `e` as a sum of like terms collected as a polynomial in `v`.
@@ -102,11 +110,11 @@ def normalize(e: _Expression, v: _Variable): _Expression = e match
       case None => e   // not polynomial in v: unchanged
       case Some(cs) =>
         val terms = cs.zipWithIndex.flatMap { (c, k) =>
-          if c == _Number(0) then None
+          if isZeroLiteral(c) then None
           else Some(k match
             case 0 => c
-            case 1 => if c == _Number(1) then v else Product(c, v)
-            case _ => if c == _Number(1) then Power(v, _Number(k))
+            case 1 => if isOneLiteral(c) then v else Product(c, v)
+            case _ => if isOneLiteral(c) then Power(v, _Number(k))
                       else Product(c, Power(v, _Number(k))))
         }
         if terms.isEmpty then _Number(0) else terms.reduceLeft(Sum(_, _))

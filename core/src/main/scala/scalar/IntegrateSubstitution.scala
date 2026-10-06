@@ -50,7 +50,7 @@ private def productOf(fs: List[_Expression]): _Expression =
  *  @return the simplified, factor-cancelled quotient `num / den`
  */
 private def cancelRatio(num: _Expression, den: _Expression): _Expression =
-  def isOne(f: _Expression): Boolean = f == _Number(1)
+  def isOne(f: _Expression): Boolean = isOneLiteral(f)
   val numF = flattenFactors(num).map(simplifyFully).filterNot(isOne)
   val denF = scala.collection.mutable.ListBuffer(flattenFactors(den).map(simplifyFully).filterNot(isOne)*)
   val keptNum = numF.filter { f =>

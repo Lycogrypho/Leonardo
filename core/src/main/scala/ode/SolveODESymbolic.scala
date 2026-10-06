@@ -212,8 +212,10 @@ private def splitSeparable(rhs: _Expression, depVar: _Variable,
 private def constantCoefficientSolution(a: _Expression, b: _Expression,
                                         t0: _Expression, y0: _Expression,
                                         target: _Expression): Option[_Expression] =
-  val aZero = simplifyFully(a) == _Number(0.0)
-  val bZero = simplifyFully(b) == _Number(0.0)
+  // By value, not `== _Number(0.0)`: an exact zero coefficient must take the zero branch, or
+  // the general form divides by it (F_0073).
+  val aZero = isZeroLiteral(simplifyFully(a))
+  val bZero = isZeroLiteral(simplifyFully(b))
   val tau   = Sum(target, Product(_Number(-1), t0))       // target - t0
   val sol =
     if bZero then Product(y0, Exp(Product(a, tau)))        // y0 * exp(a * tau)

@@ -15,7 +15,7 @@ import core.*
  *  all callers hit the same cache instead of re-walking the rule table.
  */
 
-/** The tier every constant `derive` invents is built in (F_0071).
+/** The tier every constant `derive` and `simplify` invent is built in (F_0071, F_0073).
  *
  *  Decided ONCE, from the whole expression being differentiated, and threaded through the
  *  recursion: a subterm such as `x` carries no tier of its own, so a per-node test could not
@@ -27,7 +27,7 @@ import core.*
  *  exact tier approximates irrationals at the working precision, which lives in an
  *  `Environment` that `derive` does not have.
  */
-private final class Tier(val exact: Boolean):
+private[scalar] final class Tier(val exact: Boolean):
   /** The integer `k` in this tier. */
   def n(k: Int): _Value = if exact then _Rational(k) else _Number(k)
   /** One half, the exponent of a square root. */

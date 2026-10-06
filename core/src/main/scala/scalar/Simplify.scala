@@ -26,10 +26,23 @@ import scala.math.pow
 // Memoized entry point: simplify is pure in e, so results are cached across calls.
 // simplifyFully's fixpoint iteration and shared subtrees hit the cache instead of
 // re-walking the rule table (the pragmatic core of the legacy hash-consing idea).
-private val simplifyMemo = new Memo[_Expression, _Expression](10000)
+//
+// Keyed by the TIER too (F_0073), for F_0071's reason: one subterm simplifies to different
+// invented constants inside an exact and an inexact expression.
+private val simplifyMemo = new Memo[(_Expression, Boolean), _Expression](10000)
 
 def simplify(e: _Expression): _Expression =
-  simplifyMemo.getOrElseUpdate(e)(simplifyImpl(e))
+  simplifyIn(e)(using Tier(_Rational.containsExact(e)))
+
+/** [[simplify]] within a tier decided by the outermost call.
+ *
+ *  Every constant a rule invents (`x + x → 2·x`, `x·x → x²`, `x/x → 1`, `cos(0) → 1`) is
+ *  built in that tier, so an exact expression stays exact; an expression with no exact value
+ *  gets the `Double` constants it always had.  The irrational values (`asin(1) = π/2`, …)
+ *  stay `Double`, the F_0071 rule.
+ */
+private def simplifyIn(e: _Expression)(using t: Tier): _Expression =
+  simplifyMemo.getOrElseUpdate((e, t.exact))(simplifyImpl(e))
 
 /** The environment constant folding runs in — empty, because `simplify` ignores bindings
  *  by design.  Its working precision is the default, which only matters for a fractional
@@ -55,32 +68,32 @@ private def fold(node: _Expression): _Expression =
     case Right(v) => v
     case Left(_)  => node
 
-private def simplifyImpl(e: _Expression): _Expression = e match
+private def simplifyImpl(e: _Expression)(using t: Tier): _Expression = e match
   case _: _Number   => e
   case _: _Complex  => e
   case _: _Variable => e
 
   case Sum(a, b) =>
-    (simplify(a), simplify(b)) match
+    (simplifyIn(a), simplifyIn(b)) match
       case (_Number(d), y) if d == 0.0 => y
       case (x, _Number(d)) if d == 0.0 => x
       case (x @ _Number(_), y @ _Number(_)) => fold(Sum(x, y))
-      case (x, y) if x == y            => simplify(Product(_Number(2), x))
-      case (x, Product(_Number(d), y)) if d == -1.0 && x == y => _Number(0)
-      case (Product(_Number(d), x), y) if d == -1.0 && x == y => _Number(0)
+      case (x, y) if x == y            => simplifyIn(Product(t.n(2), x))
+      case (x, Product(_Number(d), y)) if d == -1.0 && x == y => t.n(0)
+      case (Product(_Number(d), x), y) if d == -1.0 && x == y => t.n(0)
       // Constant folding in nested sums: (x + c1) + c2 → x + (c1+c2)
       // The constants are bound whole and re-folded through `fold`, rather than taken as
       // their Doubles, so merging two exact coefficients does not produce an inexact one.
-      case (Sum(x, c1 @ _Number(_)), c2 @ _Number(_)) => simplify(Sum(x, fold(Sum(c1, c2))))
-      case (Sum(c1 @ _Number(_), x), c2 @ _Number(_)) => simplify(Sum(x, fold(Sum(c1, c2))))
-      case (c1 @ _Number(_), Sum(x, c2 @ _Number(_))) => simplify(Sum(x, fold(Sum(c1, c2))))
-      case (c1 @ _Number(_), Sum(c2 @ _Number(_), x)) => simplify(Sum(x, fold(Sum(c1, c2))))
+      case (Sum(x, c1 @ _Number(_)), c2 @ _Number(_)) => simplifyIn(Sum(x, fold(Sum(c1, c2))))
+      case (Sum(c1 @ _Number(_), x), c2 @ _Number(_)) => simplifyIn(Sum(x, fold(Sum(c1, c2))))
+      case (c1 @ _Number(_), Sum(x, c2 @ _Number(_))) => simplifyIn(Sum(x, fold(Sum(c1, c2))))
+      case (c1 @ _Number(_), Sum(c2 @ _Number(_), x)) => simplifyIn(Sum(x, fold(Sum(c1, c2))))
       case (x, y)                      => Sum(x, y)
 
   case Product(a, b) =>
-    (simplify(a), simplify(b)) match
-      case (_Number(d), _) if d == 0.0              => _Number(0)
-      case (_, _Number(d)) if d == 0.0              => _Number(0)
+    (simplifyIn(a), simplifyIn(b)) match
+      case (_Number(d), _) if d == 0.0              => t.n(0)
+      case (_, _Number(d)) if d == 0.0              => t.n(0)
       case (_Number(d), y) if d == 1.0              => y
       case (x, _Number(d)) if d == 1.0              => x
       case (x @ _Number(_), y @ _Number(_))         => fold(Product(x, y))
@@ -94,21 +107,22 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (Product(x, _Number(da)), _Number(db))
         if da == -1.0 && db == -1.0                 => x
       // Constant folding in nested products: (c1 * x) * c2 → (c1·c2) * x and mirrors
-      case (Product(c1 @ _Number(_), x), c2 @ _Number(_)) => simplify(Product(fold(Product(c1, c2)), x))
-      case (Product(x, c1 @ _Number(_)), c2 @ _Number(_)) => simplify(Product(fold(Product(c1, c2)), x))
-      case (c1 @ _Number(_), Product(c2 @ _Number(_), x)) => simplify(Product(fold(Product(c1, c2)), x))
-      case (c1 @ _Number(_), Product(x, c2 @ _Number(_))) => simplify(Product(fold(Product(c1, c2)), x))
-      case (x, y) if x == y                         => simplify(Power(x, _Number(2)))
+      case (Product(c1 @ _Number(_), x), c2 @ _Number(_)) => simplifyIn(Product(fold(Product(c1, c2)), x))
+      case (Product(x, c1 @ _Number(_)), c2 @ _Number(_)) => simplifyIn(Product(fold(Product(c1, c2)), x))
+      case (c1 @ _Number(_), Product(c2 @ _Number(_), x)) => simplifyIn(Product(fold(Product(c1, c2)), x))
+      case (c1 @ _Number(_), Product(x, c2 @ _Number(_))) => simplifyIn(Product(fold(Product(c1, c2)), x))
+      case (x, y) if x == y                         => simplifyIn(Power(x, t.n(2)))
       case (x, y)                                   => Product(x, y)
 
   case Ratio(a, b) =>
-    (simplify(a), simplify(b)) match
-      case (_Number(d), y) if d == 0.0 && y != _Number(0) => _Number(0)
+    (simplifyIn(a), simplifyIn(b)) match
+      // By value: an exact zero denominator passed the old `y != _Number(0)`, and 0/0 became 0.
+      case (_Number(d), y) if d == 0.0 && !isZeroLiteral(y) => t.n(0)
       case (x, _Number(d)) if d == 1.0  => x
       // Reuses the matched -1 rather than building a fresh one, so an exact -1 stays exact.
-      case (x, c @ _Number(d)) if d == -1.0 => simplify(Product(c, x))
+      case (x, c @ _Number(d)) if d == -1.0 => simplifyIn(Product(c, x))
       case (x @ _Number(_), y @ _Number(_)) => fold(Ratio(x, y))
-      case (x, y) if x == y && x != _Number(0) => _Number(1)
+      case (x, y) if x == y && !isZeroLiteral(x) => t.n(1)
       // Reciprocal/quotient normalisation into the reciprocal functions, so the
       // library has exactly one spelling of each: 1/cos → sec, cos/sin → cot, and so on.
       case (_Number(d), Cos(u))  if d == 1.0 => Sec(u)
@@ -126,66 +140,66 @@ private def simplifyImpl(e: _Expression): _Expression = e match
       case (x, y)                      => Ratio(x, y)
 
   case Power(a, b) =>
-    (simplify(a), simplify(b)) match
+    (simplifyIn(a), simplifyIn(b)) match
       // x^0 = 1, including 0^0 = 1 — the common CAS/IEEE convention, and consistent with
       // Power.eval (Java pow(0, 0) = 1.0). Both places must agree so simplify then eval
       // (and vice versa) never disagree on 0^0.
-      case (x, _Number(d)) if d == 0.0 => _Number(1)
+      case (x, _Number(d)) if d == 0.0 => t.n(1)
       case (x, _Number(d)) if d == 1.0 => x
-      case (_Number(d), _) if d == 1.0 => _Number(1)
+      case (_Number(d), _) if d == 1.0 => t.n(1)
       case (x @ _Number(_), y @ _Number(_)) => fold(Power(x, y))
       case (x, y)                      => Power(x, y)
 
   case Exp(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(1)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(1)
       case Ln(x)                  => x             // exp(ln(x)) = x
       case x                      => Exp(x)
 
   case Ln(a) =>
-    simplify(a) match
-      case _Number(d) if d == 1.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 1.0 => t.n(0)
       case Exp(x)                 => x             // ln(exp(x)) = x
       case x                      => Ln(x)
 
   case LogBase(a, b) =>
-    (simplify(a), simplify(b)) match
-      case (_Number(d), _) if d == 1.0 => _Number(0)   // log_b(1) = 0
-      case (x, y) if x == y            => _Number(1)   // log_b(b) = 1
+    (simplifyIn(a), simplifyIn(b)) match
+      case (_Number(d), _) if d == 1.0 => t.n(0)   // log_b(1) = 0
+      case (x, y) if x == y            => t.n(1)   // log_b(b) = 1
       case (x, y)                      => LogBase(x, y)
 
   case Sin(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(0)
       case x                      => Sin(x)
 
   case Cos(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(1)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(1)
       case x                      => Cos(x)
 
   case Tg(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(0)
       case x                      => Tg(x)
 
   case Asin(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0  => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0  => t.n(0)
       case _Number(d) if d == 1.0  => _Number(math.Pi / 2)
       case _Number(d) if d == -1.0 => _Number(-math.Pi / 2)
       case x                       => Asin(x)
 
   case Acos(a) =>
-    simplify(a) match
-      case _Number(d) if d == 1.0  => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 1.0  => t.n(0)
       case _Number(d) if d == 0.0  => _Number(math.Pi / 2)
       case _Number(d) if d == -1.0 => _Number(math.Pi)
       case x                       => Acos(x)
 
   case Atan(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(0)
       case _Number(d) if d == 1.0 => _Number(math.Pi / 4)
       case x                      => Atan(x)
 
@@ -193,65 +207,65 @@ private def simplifyImpl(e: _Expression): _Expression = e match
   // (only the always-valid direction — acosh(cosh(x)) = |x|, so it is deliberately absent)
   // and known values at zero.
   case Sinh(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(0)
       case Asinh(x)               => x
       case x                      => Sinh(x)
 
   case Cosh(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(1)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(1)
       case Acosh(x)               => x             // cosh(acosh(x)) = x on acosh's domain x ≥ 1
       case x                      => Cosh(x)
 
   case Tanh(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(0)
       case Atanh(x)               => x
       case x                      => Tanh(x)
 
   case Asinh(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(0)
       case Sinh(x)                => x
       case x                      => Asinh(x)
 
   case Acosh(a) =>
-    simplify(a) match
-      case _Number(d) if d == 1.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 1.0 => t.n(0)
       case x                      => Acosh(x)
 
   case Atanh(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(0)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(0)
       case Tanh(x)                => x
       case x                      => Atanh(x)
 
   // sec(0) = 1/cos(0) = 1 and sech(0) = 1/cosh(0) = 1; the remaining reciprocals
   // (csc/cot/csch/coth) have a pole at 0, so they stay symbolic there.
   case Sec(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(1)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(1)
       case x                      => Sec(x)
-  case Csc(a)  => Csc(simplify(a))
-  case Cot(a)  => Cot(simplify(a))
+  case Csc(a)  => Csc(simplifyIn(a))
+  case Cot(a)  => Cot(simplifyIn(a))
   case Sech(a) =>
-    simplify(a) match
-      case _Number(d) if d == 0.0 => _Number(1)
+    simplifyIn(a) match
+      case _Number(d) if d == 0.0 => t.n(1)
       case x                      => Sech(x)
-  case Csch(a) => Csch(simplify(a))
-  case Coth(a) => Coth(simplify(a))
+  case Csch(a) => Csch(simplifyIn(a))
+  case Coth(a) => Coth(simplifyIn(a))
 
   case _Heaviside(a) =>
-    simplify(a) match
-      case _Number(d) => _Number(if d >= 0 then 1.0 else 0.0)
+    simplifyIn(a) match
+      case _Number(d) => t.n(if d >= 0 then 1 else 0)
       case sa         => _Heaviside(sa)
-  case _Derivative(f, v)          => _Derivative(simplify(f), v)
-  case _Integral(f, v)            => _Integral(simplify(f), v)
-  case _DefIntegral(f, v, lo, hi) => _DefIntegral(simplify(f), v, simplify(lo), simplify(hi))
-  case _Limit(f, bv, pt, dir)     => _Limit(simplify(f), bv, simplify(pt), dir)
+  case _Derivative(f, v)          => _Derivative(simplifyIn(f), v)
+  case _Integral(f, v)            => _Integral(simplifyIn(f), v)
+  case _DefIntegral(f, v, lo, hi) => _DefIntegral(simplifyIn(f), v, simplifyIn(lo), simplifyIn(hi))
+  case _Limit(f, bv, pt, dir)     => _Limit(simplifyIn(f), bv, simplifyIn(pt), dir)
   // Element-wise containers (see core._ElementWise): simplify each child in place.
-  case ew: _ElementWise           => ew.rebuild(ew.children.map(simplify))
+  case ew: _ElementWise           => ew.rebuild(ew.children.map(simplifyIn(_)))
   case other                      => other
 
 
@@ -262,7 +276,12 @@ private def simplifyImpl(e: _Expression): _Expression = e match
  *  @param e the expression to simplify fully
  *  @return the fully simplified expression
  */
-@annotation.tailrec
 def simplifyFully(e: _Expression): _Expression =
-  val s = simplify(e)
-  if s == e then e else simplifyFully(s)
+  // One tier for the whole fixpoint, decided from the input: a pass may fold the last exact
+  // value away, and the next must not then switch to inventing Double constants.
+  given Tier = Tier(_Rational.containsExact(e))
+  @annotation.tailrec
+  def loop(x: _Expression): _Expression =
+    val s = simplifyIn(x)
+    if s == x then x else loop(s)
+  loop(e)

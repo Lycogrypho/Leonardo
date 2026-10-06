@@ -154,7 +154,7 @@ private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]
   boundary:
     for pivot <- 0 until n do
       val pivVal = simplifyFully(aug(pivot)(pivot))
-      if pivVal == _Number(0) then break(None)
+      if isZeroLiteral(pivVal) then break(None)   // by value: an exact zero is a zero (F_0073)
       for row <- pivot + 1 until n do
         val factor = simplifyFully(Ratio(aug(row)(pivot), pivVal))
         for col <- pivot to n do
@@ -169,6 +169,6 @@ private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]
       for j <- i + 1 until n do
         rhs = simplifyFully(Sum(rhs, Product(_Number(-1), Product(aug(i)(j), x(j)))))
       val denom = simplifyFully(aug(i)(i))
-      if denom == _Number(0) then break(None)
+      if isZeroLiteral(denom) then break(None)
       x(i) = simplifyFully(Ratio(rhs, denom))
     Some(x.toVector)
