@@ -209,3 +209,28 @@ Parser.parse("expm([[0, 1], [0, 0]])").get.eval(env).toExpression.toString
 // a rotation generator exponentiates to the rotation matrix
 Parser.parse("expm([[0, -1], [1, 0]])").get.eval(env).toExpression.toString
 ```
+
+## Cholesky factorisation
+
+`chol(A)` returns the lower-triangular `L` with a positive diagonal and `A = L·Lᵀ` — the
+[Cholesky factorisation](https://en.wikipedia.org/wiki/Cholesky_decomposition) of a symmetric
+positive-definite matrix. Like `expm` it is a single matrix, not a row, so `chol(A) * x` is an
+ordinary matrix product.
+
+```scala mdoc
+Parser.parse("chol([[4, 2], [2, 3]])").get.eval(env).toExpression.toString
+```
+
+Its **refusal is as useful as its answer**: a matrix that is not symmetric, or not positive
+definite (indefinite, negative definite, or singular), stays unevaluated — the cheapest test
+there is that a quadratic form is strictly convex. An asymmetric matrix is never factored
+from one triangle, which would answer for a different matrix. Both tests are **relative** to
+the matrix's largest entry, so rescaling `A` never changes the verdict:
+
+```scala mdoc
+// indefinite: the eigenvalues are 3 and -1
+Parser.parse("chol([[1, 2], [2, 1]])").get.eval(env).toExpression.toString
+```
+
+In exact mode the factor is computed over the rationals and stays exact; a pivot whose square
+root is irrational takes it at the working precision, as every irrational in the exact tier does.

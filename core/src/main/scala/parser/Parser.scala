@@ -80,6 +80,7 @@ object Parser extends JavaTokenParsers:
                                                          // a free variable named abs
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "expm",                                                                                 // matrix exponential
+    "chol",                                                                                 // F_0054 Cholesky factor
     "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
                                                          // library function with no grammar
@@ -498,6 +499,7 @@ object Parser extends JavaTokenParsers:
     // expm(...) before eigen/eig: no prefix relation between them, but it keeps the matrix
     // functions that return a single matrix together, above those returning a row of them.
     "expm("   ~> guardedExpr <~ ")"                                       ^^ _MatrixExponential.apply      |
+    "chol("   ~> guardedExpr <~ ")"                                       ^^ _Cholesky.apply               |
     "lu("     ~> guardedExpr <~ ")"                                       ^^ _LUDecomposition.apply        |
     "qr("     ~> guardedExpr <~ ")"                                       ^^ _QRDecomposition.apply        |
     "eigen("  ~> guardedExpr <~ ")"                                       ^^ _EigenDecomposition.apply     |

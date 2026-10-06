@@ -138,3 +138,41 @@ def exactInverse(cells: Vector[_Rational], n: Int, policy: GcdPolicy): Option[Ve
             go(cleared, k + 1)
 
   go(augmented, 0).map(m => Vector.tabulate(n, n)((i, j) => m(i)(j + n)).flatten)
+
+/** The Cholesky factor of a symmetric positive-definite rational matrix (F_0054).
+ *
+ *  Symmetry and the sign of every pivot are decided **exactly**, so no tolerance enters a
+ *  refusal.  Each diagonal entry is the square root of an exact pivot: rational when the pivot
+ *  is a rational square, otherwise `core.exactSqrt` at the working precision — the entries
+ *  below it are then exact quotients by that value, so `L·Lᵀ` reproduces `A` to the working
+ *  precision.
+ *
+ *  @param cells  the row-major exact cells
+ *  @param n      the dimension
+ *  @param policy the reduction policy for the intermediate arithmetic
+ *  @param digits the working precision for an irrational pivot root
+ *  @return the row-major cells of the lower-triangular `L`, or `None` when the matrix is not
+ *          symmetric or not positive definite
+ */
+def exactCholesky(cells: Vector[_Rational], n: Int, policy: GcdPolicy,
+                  digits: Int): Option[Vector[_Rational]] =
+  val a = rowsOf(cells, n, n)
+  def dot(x: Vector[_Rational], y: Vector[_Rational], upTo: Int): _Rational =
+    (0 until upTo).foldLeft(_Rational.Zero)((s, k) => s.add(x(k).multiply(y(k), policy), policy))
+
+  /** Fills column `j` of `l`, or `None` at a non-positive pivot. */
+  def column(l: Vector[Vector[_Rational]], j: Int): Option[Vector[Vector[_Rational]]] =
+    val pivot = a(j)(j).subtract(dot(l(j), l(j), j), policy)
+    if pivot.signum <= 0 then None
+    else exactSqrt(pivot, digits).flatMap { ljj =>
+      (j + 1 until n).foldLeft(Option(l.updated(j, l(j).updated(j, ljj)))) { (acc, i) =>
+        acc.flatMap { m =>
+          a(i)(j).subtract(dot(m(i), m(j), j), policy).divide(ljj, policy).map(v => m.updated(i, m(i).updated(j, v)))
+        }
+      }
+    }
+
+  val symmetric = (0 until n).forall(i => (0 until i).forall(j => a(i)(j) == a(j)(i)))
+  if !symmetric then None
+  else (0 until n).foldLeft(Option(Vector.fill(n, n)(_Rational.Zero)))((acc, j) => acc.flatMap(column(_, j)))
+    .map(_.flatten)

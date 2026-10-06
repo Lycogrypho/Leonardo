@@ -170,10 +170,10 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 |---------|------|---------------|
 | **`core`** | `_Expression` trait, `_Value` marker, `_Number`, `_Bool`, `_Complex`, `_Rational`, `_Truth`, `_Based`, `_Variable`, `_MatrixValue`, `Environment` — the foundation shared by every domain | [Expressions & Evaluation](expressions.md) |
 | **`scalar`** | AST nodes (`Sum`, `Product`, `Power`, functions, functionals) and all algorithms: `derive`, `integrate`, `simplify`, `expand`, `normalize`, `compile`, `sample`, series expansions, domain analysis, plus a data-driven rewrite-rule engine (`Rewrite`) backing the parameterised table of integrals (`IntegralRules`) | [Expressions & Evaluation](expressions.md) · [Calculus](calculus.md) |
-| **`matrix`** | `_Matrix` symbolic node + `_MatrixOperation` nodes, constructors, the decompositions and `expm`; dense `_MatrixValue` kernels live in `core` | [Matrices](matrix.md) |
+| **`matrix`** | `_Matrix` symbolic node + `_MatrixOperation` nodes, constructors, the decompositions, `expm` and `chol`; dense `_MatrixValue` kernels live in `core` | [Matrices](matrix.md) |
 | **`equation`** | `_Equation`, `_Comparison`, `_EqualityCheck` relation nodes; `solve` (equations, inequalities, matrix unknowns) and `solveSystem` | [Equations & Complex Numbers](equations.md) |
 | **`transform`** | Laplace, Fourier, inverse Laplace, and the one-sided z-transform and its inverse | [Features](features.md) |
-| **`ode`** | `_ODE` node; closed-form linear and separable tiers, Runge–Kutta fallback | [Features](features.md) |
+| **`ode`** | `_ODE` node; closed-form linear and separable tiers, linear systems by the matrix exponential, Runge–Kutta for the rest — vector systems certified by step doubling — and the public `odeStep`/`odeSolve` | [Features](features.md) |
 | **`logic`** | The five connectives over one Kleene/fuzzy rule table; simplification, CNF/DNF, truth tables, membership curves, defuzzification | [Logic](logic.md) |
 | **`probability`** | Distributions as first-class values; `pdf`/`cdf`/`prob`/`quantile`; `expect`/`variance` by a linearity rule table; Bayes' theorem over hypotheses and conjugate posteriors (`bayes`, `posterior`) | [Features](features.md) |
 | **`statistics`** | Descriptive statistics, regression by QR, elementary inference (`ttest`, `confint`, `chisqtest`) | [Features](features.md) |

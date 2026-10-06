@@ -495,6 +495,37 @@ case class _MatrixExponential(m: _Expression) extends _MatrixOperation:
       case _          => Left(this)
 
 
+/** Cholesky factorisation: `chol(A)` -- the lower-triangular `L` with `A = L·Lᵀ` (F_0054).
+ *
+ *  A dense operand uses [[core._MatrixValue.cholesky]]; an **exact** one is factored over the
+ *  rationals by [[exactCholesky]] and stays a symbolic [[_Matrix]] of exact cells, the
+ *  `inv`/`det` precedent; a literal mixing exact and inexact cells demotes to the dense kernel.
+ *  A matrix that is not square, not symmetric, or not positive definite **stays unevaluated**
+ *  — that refusal is the convexity test the QP tier (F_0053) builds on — and so does a
+ *  symbolic one.
+ *
+ *  Extends `_MatrixOperation`, like [[_MatrixExponential]], because its result is a single
+ *  matrix: `chol(A) * x` then dispatches as a matrix product.
+ *
+ *  @param m the matrix expression to factor
+ */
+case class _Cholesky(m: _Expression) extends _MatrixOperation:
+  override def toString: String = s"chol($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _Cholesky(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    m.eval(env) match
+      case Right(mv: _MatrixValue) => mv.cholesky.map(Right(_)).getOrElse(Left(this))
+      case r => asLiteral(r) match
+        case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
+          exactCells(lit).flatMap(c => exactCholesky(c, lit.rows, env.rationalPolicy, env.workingPrecision)) match
+            case Some(l) => Left(_Matrix(lit.rows, lit.cols, l.map(x => x: _Expression)))
+            case None    => Left(_Cholesky(r.toExpression))
+        case Some(lit) => denseOf(lit).flatMap(_.cholesky).map(Right(_)).getOrElse(Left(_Cholesky(r.toExpression)))
+        case None      => Left(_Cholesky(r.toExpression))
+
+
 case class _QRDecomposition(m: _Expression) extends _Expression:
   override def toString: String = s"qr($m)"
   override def children: List[_Expression] = List(m)

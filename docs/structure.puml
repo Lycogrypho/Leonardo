@@ -173,6 +173,8 @@ package "core" {
         + determinant: Option[Double]
         + inverse: Option[_MatrixValue]
         + luDecompose: Option[(L, U, P)]
+        + cholesky: Option[_MatrixValue]  (F_0054; relative tolerances)
+        + expm: Option[_MatrixValue]
         + qrDecompose: Option[(Q, R)]
         + eigenDecompose: Option[Vector[_Value]]
         + spectralDecompose: Option[(Vector[Vector[_Value]], Vector[_Value])]
@@ -765,6 +767,21 @@ package "matrix" {
         result: Left(_Matrix(1,2,...))
     }
 
+    class "_MatrixExponential" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ expm(A) → e^A __
+        scaling + squaring, degree-13 Padé
+        a single matrix, so a _MatrixOperation
+    }
+
+    class "_Cholesky" <<case>> [[matrix.html]] {
+        m : _Expression
+        __ chol(A) → L, A = L·Lᵀ (F_0054) __
+        dense: _MatrixValue.cholesky
+        exact: exactCholesky over the rationals
+        not square / symmetric / pos. definite → symbolic
+    }
+
     class "_MatrixIndex" <<case>> [[matrix.html]] {
         matrix : _Expression
         row    : _Expression
@@ -782,6 +799,8 @@ package "matrix" {
     "Inverse"          --|> "_MatrixOperation"
     "IdentityMatrix"   --|> "_MatrixOperation"
     "ZeroMatrix"       --|> "_MatrixOperation"
+    "_MatrixExponential" --|> "_MatrixOperation"
+    "_Cholesky"        --|> "_MatrixOperation"
     "Determinant"      --|> "_Expression"
     "_MatrixIndex"     --|> "_Expression"
     "_LUDecomposition"    --|> "_Expression"
@@ -925,6 +944,31 @@ package "ode" {
         declines A(t), b(t), non-conforming shapes, symbolic tau
     }
 
+    class "VectorODE" <<utility>> [[calculus.html]] {
+        + odeCertified(...): Either[OdeFailure, Vector[Double]]
+        + odeStep(...) / odeSolve(...)
+        __ F_0051: time-varying and nonlinear systems __
+        OdeState: Whole(y) | Components([[x], [v]])
+        OdeMethod: Euler | RK4 | RK45 (Dormand-Prince)
+        ode: RK4, n and 2n steps must agree (certificate)
+        odeStep/odeSolve: uncertified, the step is the caller's
+    }
+
+    class "_ODESystem" <<case>> [[calculus.html]] {
+        __ ode(rhs, [[x], [v]], t, t0, y0, target) __
+        a column of state names; separate node,
+        since _ODE.depVar is a published _Variable
+    }
+
+    class "_OdeStep" <<case>> [[calculus.html]] {
+        __ odeStep(F, y, t, t0, y0, h, method) __
+    }
+
+    class "_OdeSolve" <<case>> [[calculus.html]] {
+        __ odeSolve(F, y, t, t0, y0, t1, h, method) __
+        rows [t, state...], t1 always the last
+    }
+
     "_ODE" --|> "_Functional"
 
     "_ODE" ..> "SolveODESystem"   : system tier first (y0 a column)
@@ -933,6 +977,13 @@ package "ode" {
     "SolveODESystem" ..> "_MatrixProductShaped" : reads A*y
     "SolveODESystem" ..> "_MatrixSumShaped"     : reads A*y + b
     "_ODE" ..> "SolveODE"         : RK4 fallback at eval
+    "_ODE" ..> "VectorODE"        : vector tier (y0 a column)
+    "_ODESystem" --|> "_Expression"
+    "_OdeStep"   --|> "_Expression"
+    "_OdeSolve"  --|> "_Expression"
+    "_ODESystem" ..> "VectorODE" : odeCertified
+    "_OdeStep"   ..> "VectorODE" : odeStep
+    "_OdeSolve"  ..> "VectorODE" : odeSolve
     "SolveODESymbolic" ..> "Normalize" : collect() linear-in-y coeffs
     "SolveODESymbolic" ..> "Integrate" : integral(a), integral(mu*b) (variable-coeff tier)
     "SolveODESymbolic" ..> "Simplify"  : simplifyFully() output
@@ -1611,10 +1662,15 @@ package "parser" {
 "Parser" ..> "_EigenDecomposition" : eigen(A)
 "Parser" ..> "_EigDecomposition"   : eig(A)
 "Parser" ..> "_JordanDecomposition" : jordan(A)
+"Parser" ..> "_MatrixExponential"  : expm(A)
+"Parser" ..> "_Cholesky"           : chol(A)
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
 "Parser" ..> "_ODE"            : ode(rhs, y, t, t0, y0, target)
+"Parser" ..> "_ODESystem"      : ode(rhs, [[x], [v]], t, t0, y0, target)
+"Parser" ..> "_OdeStep"        : odeStep(..., method)
+"Parser" ..> "_OdeSolve"       : odeSolve(..., method)
 "Parser" ..> "_Heaviside"      : step(expr)
 "Parser" ..> "_Connective"     : and / or / not / implies / xor
 "Parser" ..> "_Truth"          : unknown literal (true / false -> _Bool)

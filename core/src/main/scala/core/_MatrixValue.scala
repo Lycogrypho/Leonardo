@@ -24,6 +24,18 @@ object _MatrixValue:
    */
   private[core] val PadeTheta13: Double = 5.371920351148152
 
+  /** The relative tolerance of [[_MatrixValue.cholesky]]'s two refusals (F_0054), as a fraction
+   *  of the matrix's largest entry: an asymmetry `|aᵢⱼ − aⱼᵢ|` above it is a non-symmetric
+   *  matrix, and a pivot at or below it a matrix that is not (numerically) positive definite.
+   *
+   *  **Relative, never absolute** — both quantities scale with `A`, so an absolute threshold
+   *  would be a claim about the matrix's units and `A → k·A` would move the verdict (the 2.11
+   *  rule).  `1e-12` sits four orders above `Double`'s rounding of a computed `M·Mᵀ`, so such a
+   *  matrix is accepted; a relative pivot below it is a matrix whose condition number exceeds
+   *  about `1e12`, whose factor would carry no reliable digits — declined rather than returned.
+   */
+  private[core] val CholeskyTolerance: Double = 1e-12
+
   /** Coefficients of the degree-13 Padé approximant to `e^x`, indexed `b(0) … b(13)`.
    *
    *  Tabulated rather than derived: they are the numerators of a fixed rational approximant,
@@ -422,6 +434,42 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           if j < i then lData(i * n + j) = a(i * n + j)
           else uData(i * n + j) = a(i * n + j)
       Some((_MatrixValue(n, n, lData), _MatrixValue(n, n, uData), _MatrixValue(n, n, pData)))
+
+  /** [[https://en.wikipedia.org/wiki/Cholesky_decomposition Cholesky factorisation]] of a
+   *  symmetric positive-definite matrix: the lower-triangular `L` with a positive diagonal and
+   *  `A = L·Lᵀ` (F_0054).
+   *
+   *  **The refusals are the point**: its failure is the cheapest convexity test there is, which
+   *  is what the quadratic-programming tier (F_0053) relies on.  A non-square matrix, an
+   *  asymmetric one — never factored from one triangle, which would answer for a different
+   *  matrix — and one with a non-positive pivot (indefinite, negative definite, or singular
+   *  semidefinite) give `None`.  Both tests are relative to the largest entry, at
+   *  `CholeskyTolerance`, so rescaling the matrix never moves the verdict.
+   *
+   *  @return `Some(L)` for a symmetric positive-definite matrix, `None` otherwise
+   */
+  def cholesky: Option[_MatrixValue] =
+    val n     = rows
+    val scale = data.foldLeft(0.0)((m, d) => math.max(m, math.abs(d)))
+    val tol   = _MatrixValue.CholeskyTolerance * scale
+    def symmetric: Boolean =
+      (0 until n).forall(i => (0 until i).forall(j => math.abs(data(i * n + j) - data(j * n + i)) <= tol))
+    if rows != cols || !isFinite || scale == 0.0 || !symmetric then None
+    else
+      val l = new Array[Double](n * n)
+      def dot(i: Int, j: Int, upTo: Int): Double = (0 until upTo).foldLeft(0.0)((s, k) => s + l(i * n + k) * l(j * n + k))
+      // Column by column: the pivot first, then the entries below it.  `forall` stops at the
+      // first non-positive pivot, which is the whole refusal.
+      val positive = (0 until n).forall { j =>
+        val pivot = data(j * n + j) - dot(j, j, j)
+        pivot > tol && {
+          val ljj = math.sqrt(pivot)
+          l(j * n + j) = ljj
+          (j + 1 until n).foreach(i => l(i * n + j) = (data(i * n + j) - dot(i, j, j)) / ljj)
+          true
+        }
+      }
+      Option.when(positive)(new _MatrixValue(n, n, l))
 
   /** Eigenvalue decomposition via [[https://en.wikipedia.org/wiki/QR_algorithm QR iteration]] with Wilkinson shifts.
    *  Returns the `n` eigenvalues as [[_Number]] (real) or [[_Complex]] (conjugate pairs

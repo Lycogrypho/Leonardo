@@ -645,6 +645,17 @@ expm([[0, -t], [t, 0]])         -> rotation by t
 Works for **defective** matrices (a repeated eigenvalue with too few eigenvectors), where the
 eigen-decomposition route has no basis to use.
 
+### Cholesky factor — a single matrix, not a row
+
+```
+chol(A)                         -> L, lower triangular, A = L·Lᵀ
+chol([[4, 2], [2, 3]])          -> [[2, 0], [1, 1.41421]]
+chol([[1, 2], [2, 1]])          -> stays chol(...)   indefinite
+```
+
+Stays unevaluated unless `A` is square, symmetric and positive definite — the refusal *is* the
+convexity test. Tolerances are relative to the largest entry; exact input stays exact.
+
 ### Indexing decomposition results
 
 ```
