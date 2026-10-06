@@ -77,7 +77,11 @@ ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
 // first baseline. Bump this on every release, and prefer bumping it in the release commit so
 // the value and the tag cannot drift apart -- 3.7.2 shipped without the bump, which is how it
 // stayed on 3.7.1 for a release.
-lazy val mimaBaseline = "3.7.2"
+//
+// 3.8.1 since the 3.8.2 release branch: that is the release a patch must stay compatible
+// with, and it is on Central, so the check can resolve it. 3.8.0 and 3.8.1 had both shipped
+// with the bump still pending -- the second time the value drifted a release behind.
+lazy val mimaBaseline = "3.8.1"
 
 // ThisBuild, not bare: a bare `scalacOptions ++=` in build.sbt applies to the ROOT project
 // only, so after the module split the repl module would silently compile without -explain,
@@ -444,27 +448,12 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline),
 
-    mimaBinaryIssueFilters ++= Seq(
-      // INTENTIONAL, and an artefact of Scala 3's encoding rather than an API change.
-      //
-      // Scala 3 gathers a file's TOP-LEVEL defs and vals into a synthetic class named after
-      // the FILE, so `Repl.scala` produced `cli.Repl$package`. Phase 2 moved the read loop and
-      // its key bindings out of that file into `jvm-src/cli/Terminal.scala`, because they are
-      // JLine-bound and cannot cross-compile -- so those members now live in
-      // `cli.Terminal$package` and the old class is gone. Nothing was removed and no signature
-      // changed: the definitions were renamed by being relocated.
-      //
-      // Safe because nothing outside the module referenced it. The launcher entry point is the
-      // class `@main def repl` generates, named `cli.repl` independently of its file, so
-      // `cs launch -M it.grypho.scala.leonardo.cli.repl` is unaffected; every other moved
-      // member is `private[cli]`. `Session`, which IS this module's API, did not move.
-      //
-      // The rule worth carrying: in Scala 3, moving a top-level `def` or `val` to a
-      // differently-named file is a BINARY change even though no source consumer can tell.
-      // Splitting a file for a cross-build is exactly when that bites.
-      ProblemFilters.exclude[MissingClassProblem]("it.grypho.scala.leonardo.cli.Repl$package"),
-      ProblemFilters.exclude[MissingClassProblem]("it.grypho.scala.leonardo.cli.Repl$package$")
-    )
+    // Empty again since the baseline moved to 3.8.1. It held the two `cli.Repl$package`
+    // filters while the baseline was 3.7.2: the cross-build split `Repl.scala` and Scala 3
+    // names a file's top-level members after the FILE, so the class vanished -- a binary
+    // change no source consumer could see. 3.8.0 shipped without it, so against 3.8.1 there
+    // is nothing to excuse and the filters retired with the baseline they existed for.
+    mimaBinaryIssueFilters ++= Seq()
   )
   .jsSettings(
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "js-src" / "main" / "scala",

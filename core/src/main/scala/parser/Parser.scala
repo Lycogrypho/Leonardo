@@ -386,21 +386,34 @@ object Parser extends JavaTokenParsers:
       case l ~ None           => l
     }
 
-  /** An expression with an optional leading sign. */
-  lazy val expr: Parser[_Expression] = opt("+" | "-") ~ simpleExpr ^^
+  /** An expression with an optional leading sign, which belongs to the FIRST TERM (F_0070).
+   *
+   *  Until 3.8.2 this read `opt(sign) ~ simpleExpr` and applied the sign to the folded sum, so
+   *  `-1 - 1` was `-(1 - 1) = 0` and `-x + y` was `-(x + y)` — since the grammar's first
+   *  release.  It even broke the round trip: a sum the library printed as `(-3.0 + x)` read
+   *  back as `-(3 + x)`, so a session Leonardo had saved itself could reload differently.  The
+   *  sign is still read HERE rather than left to `signedPower`, so every single-term form
+   *  (`-3k`, `-x*y`, `-(a + b)`, `-[[1, 2]]`) keeps exactly the tree it had: only the sums
+   *  that were wrong change.
+   */
+  lazy val expr: Parser[_Expression] = opt("+" | "-") ~ term ~ rep(("+" | "-") ~ term) ^^
     {
-      case sign ~ e => applySign(sign, e)
+      case sign ~ first ~ rights => additive(applySign(sign, first), rights)
     }
 
   /** A sequence of additive terms. */
   lazy val simpleExpr: Parser[_Expression] = term ~ rep(("+" | "-") ~ term) ^^
     {
-      case left ~ rights => rights.foldLeft(left)
-        {
-          case (x, "+" ~ y) => mkSum(x, y)
-          case (x, "-" ~ y) => mkSum(x, mkNeg(y))
-        }
+      case left ~ rights => additive(left, rights)
     }
+
+  /** Folds `+ t` / `- t` onto `left`, the one definition `expr` and `simpleExpr` share. */
+  private def additive(left: _Expression, rights: List[String ~ _Expression]): _Expression =
+    rights.foldLeft(left)
+      {
+        case (x, "+" ~ y) => mkSum(x, y)
+        case (x, _ ~ y)   => mkSum(x, mkNeg(y))
+      }
 
   /** Explicit `*` and `/` take a signed right operand; implicit multiplication takes an unsigned one.
    *

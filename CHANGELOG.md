@@ -23,6 +23,27 @@ Each section's body is published verbatim as that tag's GitHub Release, extracte
 `.github/workflows/release.yml`. **Write the section before tagging**, and keep the heading in
 the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
+## 3.8.2 — 2026-10-06
+
+*A correctness fix. Upgrade.*
+
+- **A leading minus now negates only the first term.** Since the grammar's first release, a sign
+  at the start of an expression applied to the whole sum: `-1 - 1` evaluated to `0`, `-x + y` to
+  `-(x + y)`, and `-2*x - 3` to `-2x + 3`. It now reads as written everywhere an expression is
+  parsed — the REPL, the browser, `Parser.parse`, function arguments, equations and inequalities.
+  `solve(-x + 1 = 0, x)` answers `x = 1` (it answered `x = -1`), and `solve(-x^2 + 4 > 0, x)`
+  answers `-2 < x < 2` (it answered `false`). An expression with a single leading term — `-x`,
+  `-3k`, `-(a + b)`, `-2^2` — parses exactly as before.
+
+> **Saved sessions and share links can change meaning, and that includes ones Leonardo wrote.**
+> A line such as `f := -x + y` in a `:save`d script or a shared link was evaluated wrongly by
+> every earlier release and is evaluated correctly by this one. The library's own output was
+> affected too: a sum beginning with a negative number — which `simplify`, `consolidate` and the
+> exact tier can produce — prints as `(-3.0 + x)`, and earlier releases read that back as
+> `-(3 + x)`. Re-check any result computed from such a line.
+
+> **Binary compatibility.** Both artifacts are binary-compatible with 3.8.1; MiMa finds no change.
+
 ## 3.8.0 – 3.8.1 — 2026-10-02
 
 *On Maven Central.* The browser release: Leonardo runs in a web page, renders LaTeX, and comes
