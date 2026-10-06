@@ -21,6 +21,7 @@
             <option value="C:\_MiM\Documents\Mimmo\Workspace\IdeaProjects\Leonardo\web" />
           </set>
         </option>
+        <option name="sbtVersion" value="1.13.0" />
       </SbtProjectSettings>
     </option>
   </component>

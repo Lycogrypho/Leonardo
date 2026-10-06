@@ -107,12 +107,21 @@ class ODESystemTest extends AnyFlatSpec:
 
   // ───────────────────────────── declines ─────────────────────────────
 
-  "the system tier" should "decline a time-varying A(t)" in:
-    assert(parse("ode([[0, t], [-1, 0]] * y, y, t, 0, [[1], [0]], 1)").eval(new Environment()).isLeft)
+  // A time-varying system has no closed form here, so the SYSTEM tier still declines it -- and
+  // since F_0051 the vector RK4 tier answers it instead, certified by step doubling.  These two
+  // cases pinned "stays symbolic" until then (F_0006 decision C: decline now, integrate later).
+  "the system tier" should "decline a time-varying A(t), which the vector tier then integrates" in:
+    val rhs = parse("[[0, t], [-1, 0]] * y")
+    assert(solveODESystem(rhs, y, t, _Number(0), parse("[[1], [0]]"), _Number(1), new Environment()).isEmpty)
+    assert(column(parse("ode([[0, t], [-1, 0]] * y, y, t, 0, [[1], [0]], 1)").eval(new Environment())).size == 2)
 
-  it should "decline a time-varying input b(t)" in:
-    assert(parse("ode([[0, 1], [0, 0]] * y + [[0], [t]], y, t, 0, [[0], [0]], 1)")
-             .eval(new Environment()).isLeft)
+  it should "decline a time-varying input b(t), which the vector tier then integrates" in:
+    // y1' = y2, y2' = t from rest: y2 = t^2/2, y1 = t^3/6.
+    val rhs = parse("[[0, 1], [0, 0]] * y + [[0], [t]]")
+    assert(solveODESystem(rhs, y, t, _Number(0), parse("[[0], [0]]"), _Number(1), new Environment()).isEmpty)
+    assertClose(column(parse("ode([[0, 1], [0, 0]] * y + [[0], [t]], y, t, 0, [[0], [0]], 1)")
+                         .eval(new Environment())),
+                Vector(1.0 / 6, 0.5), 1e-6)
 
   it should "decline a non-square A" in:
     assert(parse("ode([[0, 1, 0], [1, 0, 0]] * y, y, t, 0, [[1], [0], [0]], 1)").eval(new Environment()).isLeft)

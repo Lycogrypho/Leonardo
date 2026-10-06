@@ -25,7 +25,8 @@ import scalar.*
  *  matrix builds; sums likewise through [[core._MatrixSumShaped]].  The `core` traits are what
  *  keep `ode` free of a `matrix` import.
  *
- *  **Declines**, returning `None` so the caller falls through: a time-varying `A(t)` or `b(t)`
+ *  **Declines**, returning `None` so the caller falls through (a vector problem reaches F_0051's
+ *  certified RK4, `odeCertified`): a time-varying `A(t)` or `b(t)`
  *  (no closed form in general — it needs the Magnus series), a coefficient that is not a square
  *  dense matrix (a *scalar* coefficient is left to the scalar tier, which is correct for it),
  *  any non-conforming `b` or `y0`, and a `τ` that does not fold to a number, since

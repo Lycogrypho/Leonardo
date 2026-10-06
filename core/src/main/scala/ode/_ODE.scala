@@ -16,7 +16,7 @@ import scalar.*
  *  `rhs`, `t0`, `y0`, and `target` are ordinary children and may hold free
  *  variables (e.g. a symbolic `target` keeps the result closed-form).
  *
- *  Evaluation strategy (three tiers, in order):
+ *  Evaluation strategy (four tiers, in order):
  *   1. **Linear system** via `solveODESystem` (F_0006): when `y0` evaluates to an `n×1`
  *      column and `rhs` is `A*y` or `A*y + b` with a constant square matrix `A`, the
  *      answer is `e^(A*tau)*y0` (plus the input term) by the augmented matrix exponential.
@@ -27,7 +27,11 @@ import scalar.*
  *      `t0`/`y0`/`target` are free.  It declines a matrix coefficient, which is tier 1's.
  *   3. **Numeric RK4** via `solveODE`: folds `t0`/`y0`/`target` to concrete
  *      `_Number`s and runs the integrator; returns `Right(_Number(result))`.
- *  When neither applies, `eval` returns `Left(this)` — the fixpoint convention
+ *   4. **Vector RK4** (F_0051) via `odeCertified`, when `y0` is a column and tiers 1–2 declined
+ *      — a time-varying `A(t)*y`, or a nonlinear system written through `at(y, i, 1)`: `depVar`
+ *      is bound to the whole column, and the answer is certified by step doubling.  The
+ *      column-of-names spelling builds [[_ODESystem]] instead.
+ *  When none applies, `eval` returns `Left(this)` — the fixpoint convention
  *  shared with the transform nodes and the `scalar._Functional` hierarchy.
  *
  *  Round-trip: `toString` emits `ode(rhs, depVar, indepVar, t0, y0, target)`,
@@ -50,7 +54,23 @@ case class _ODE(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
   override def eval(env: Environment): Either[_Expression, _Value] =
     solveODESystem(rhs, depVar, indepVar, t0, y0, target, env) match
       case Some(state) => Right(state)
-      case None        => evalScalar(env)
+      case None        =>
+        evalScalar(env) match
+          case l @ Left(_) =>
+            vectorDetail(env).fold(l)(_.fold(_ => l, s => Right(_MatrixValue(s.size, 1, s.toArray))))
+          case r => r
+
+  /** The vector tier (F_0051): when `y0` is a column and the closed forms declined, RK4 with
+   *  `depVar` bound to the whole column, certified by step doubling.  `None` when `y0` is not a
+   *  column (the scalar tiers own that case); otherwise the state or why there is none — what
+   *  the REPL appends as a note. */
+  def vectorDetail(env: Environment): Option[Either[OdeFailure, Vector[Double]]] =
+    columnState(y0, env).map { y =>
+      (t0.eval(env), target.eval(env)) match
+        case (Right(_Number(a)), Right(_Number(b))) =>
+          odeCertified(rhs, OdeState.Whole(depVar), indepVar, a, y, b, env)
+        case _ => Left(OdeFailure.InvalidInput("t0 and the target must be numbers"))
+    }
 
   /** The scalar tiers: the closed forms, then RK4. */
   private def evalScalar(env: Environment): Either[_Expression, _Value] =

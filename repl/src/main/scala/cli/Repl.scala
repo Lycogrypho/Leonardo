@@ -11,6 +11,7 @@ import latex.ToLatex
 import parser.Parser
 import optimize.{_Stationary, _Minimize, MinimizeFailure, MinimizeMethod, StationaryKind,
                  classifyStationary, numericPoints}
+import ode.{_ODE, _ODESystem, _OdeStep, _OdeSolve, OdeFailure}
 
 import scala.util.control.NonFatal
 
@@ -836,7 +837,8 @@ final class Session:
     val note = result.left.toOption.flatMap(findDomainViolation)
     note.fold("")(n => s"\n  note: $n")
 
-  /** Classifies the points `stationary` found, or says why `minimize` declined (F_0010).
+  /** Classifies the points `stationary` found, or says why `minimize` declined (F_0010) or a
+   *  vector ODE integration did (F_0051).
    *
    *  The F_0052 Decision A mechanism, and 3.3 slice F's discipline: the library answers as
    *  it always would, and the REPL appends the reason in prose — so a reader learns *why*
@@ -850,6 +852,11 @@ final class Session:
       case (s: _Stationary, Left(points: _Matrix)) => classification(s, points)
       case (m: _Minimize, Left(_)) =>
         m.detailed(env).left.toOption.map(why => s"minimize declined: ${describeFailure(why)}")
+      // F_0051: the vector ODE tier explains a decline the same way.
+      case (o: _ODESystem, Left(_)) => o.detailed(env).left.toOption.map(odeDeclined("ode"))
+      case (o: _ODE, Left(_))       => o.vectorDetail(env).flatMap(_.left.toOption).map(odeDeclined("ode"))
+      case (s: _OdeStep, Left(_))   => s.detailed(env).left.toOption.map(odeDeclined("odeStep"))
+      case (s: _OdeSolve, Left(_))  => s.detailed(env).left.toOption.map(odeDeclined("odeSolve"))
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
@@ -883,6 +890,23 @@ final class Session:
       s"progress stopped with the gradient norm at ${_Number.render(g)}, above the precision's tolerance"
     case MinimizeFailure.MethodTakesNoBounds(m)         =>
       s"${MinimizeMethod.keyword(m)} takes no bounds; use pbfgs or gd"
+
+  /** An [[OdeFailure]] in prose, prefixed by the call that declined.  Times and differences are
+   *  rendered in full, as `describeFailure` renders gradient norms. */
+  private def odeDeclined(call: String)(why: OdeFailure): String =
+    val text = why match
+      case OdeFailure.InvalidInput(detail)    => detail
+      case OdeFailure.NotEvaluable(t)         => s"the right-hand side is not numeric at t = ${_Number.render(t)}"
+      case OdeFailure.ShapeMismatch(r, c, n)  => s"the right-hand side is ${r}x$c, but the state is ${n}x1"
+      case OdeFailure.NonFinite(t)            =>
+        s"the state left the finite numbers at t = ${_Number.render(t)} (a stiff system needs an implicit method)"
+      case OdeFailure.StepSizeUnderflow(t)    =>
+        s"the adaptive step vanished at t = ${_Number.render(t)} (a stiff system or a singularity)"
+      case OdeFailure.MaxSteps(limit)         => s"the step limit ($limit) was reached"
+      case OdeFailure.NotCertified(d)         =>
+        s"n and 2n steps disagree by ${_Number.render(d)}, above the precision's tolerance"
+      case OdeFailure.TooManyRows(rows)       => s"the trajectory would have $rows rows; use a larger h"
+    s"$call declined: $text"
 
   /** The first unevaluated limit or definite integral whose point leaves its own domain. */
   private def findDomainViolation(e: _Expression): Option[String] =

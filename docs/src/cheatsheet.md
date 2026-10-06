@@ -789,5 +789,35 @@ ode(A*y + [[0], [1]], y, t, 0, [[0], [0]], 2)          -> [[2.0], [2.0]]   singu
 ```
 
 `e^(A·τ)·y₀` by the augmented matrix exponential (the `c2dExact` kernel), so a defective or
-singular `A` is fine. Numeric only; a time-varying `A(t)`/`b(t)`, a non-conforming shape and a
-nonlinear system stay symbolic.
+singular `A` is fine. Numeric only; a non-conforming shape stays symbolic.
+
+**Time-varying and nonlinear systems** are integrated numerically. The state is one name bound
+to the whole column, or a **column of names**, each bound to its component:
+
+```
+ode([[v], [-x]], [[x], [v]], t, 0, [[1], [0]], 1)      -> [[0.5403], [-0.84147]]
+ode([[x - x*y], [x*y - y]], [[x], [y]], t, 0, [[2], [1]], 5)    Lotka-Volterra
+ode([[t, 0], [0, -t]] * y, y, t, 0, [[1], [2]], 1)     A(t) through the single name
+```
+
+RK4, **certified by step doubling**: `n` and `2n` steps must agree within the `=` tolerance
+(`0.5·10^-precision`), or the call stays symbolic and the REPL says why — a stiff system is
+refused rather than answered wrong. A right-hand side that is not a conforming column is never
+broadcast.
+
+The public step and trajectory, with the method **always named** (`euler`, `rk4`, `rk45`):
+
+```
+odeStep(F, y, t, t0, y0, h, method)        state at t0 + h      (n x 1)
+odeSolve(F, y, t, t0, y0, t1, h, method)   one row per time:  [t, state...]
+
+odeStep([[y]], [[y]], t, 0, [[1]], 0.1, euler)            -> [[1.1]]
+odeSolve([[1]], [[x]], t, 0, [[0]], 1, 0.5, rk4)          -> [[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]]
+```
+
+`euler`/`rk4` take exactly one step of size `h` per interval, **uncertified** — the step is
+yours. `rk45` is adaptive Dormand–Prince: `h` is the spacing of the output rows, and the steps
+between them hold a local error three orders below the `=` tolerance. `t1` is always the last row,
+the final interval cut short when `h` does not divide the span; at most 100 000 rows. A name
+bound in the session (a control input) is a constant during the step. `euler`, `rk4` and `rk45`
+are matched only in the method slot, so they stay legal variable names.

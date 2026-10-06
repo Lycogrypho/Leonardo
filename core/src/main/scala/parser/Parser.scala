@@ -120,6 +120,8 @@ object Parser extends JavaTokenParsers:
                                                          // C spelling; Fresnel spelled out --
                                                          // bare S/C would be homoglyph traps
     "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus
+    "odeStep", "odeSolve",                               // F_0051 public ODE step / trajectory;
+                                                         // euler/rk4/rk45 are slot-matched only
     "stationary", "convex", "lagrange", "kkt", "minimize",  // F_0010 optimization; the
                                                          // method words (gd, newton, bfgs,
                                                          // pbfgs) are NOT reserved: they are
@@ -676,8 +678,24 @@ object Parser extends JavaTokenParsers:
     }                                                                                             |
     // ode(rhs, depVar, indepVar, t0, y0, target): first-order IVP y' = rhs, y(t0) = y0,
     // evaluated at target.  depVar/indepVar are variables; rhs/t0/y0/target are expressions.
+    // F_0051: the state may instead be a COLUMN of names, [[x], [v]], each bound to its
+    // component -- a separate node, since _ODE's depVar is one published _Variable.  The
+    // column form is tried first; a bare name cannot start with `[`, so the two never overlap.
+    "ode(" ~> guardedExpr ~ "," ~ variableColumn ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
+      case rhs ~ _ ~ ys ~ _ ~ t ~ _ ~ t0 ~ _ ~ y0 ~ _ ~ tgt => _ODESystem(rhs, ys, t, t0, y0, tgt)
+    }                                                                                             |
     "ode(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case rhs ~ _ ~ y ~ _ ~ t ~ _ ~ t0 ~ _ ~ y0 ~ _ ~ tgt => _ODE(rhs, y, t, t0, y0, tgt)
+    }                                                                                             |
+    // F_0051: the public step and trajectory, the method always named (slot-matched, not
+    // reserved -- the minimize precedent).
+    "odeStep(" ~> guardedExpr ~ ("," ~> odeStateSpec) ~ ("," ~> variable) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> odeMethod) <~ ")" ^^ {
+      case rhs ~ st ~ t ~ t0 ~ y0 ~ h ~ m => _OdeStep(rhs, st, t, t0, y0, h, m)
+    }                                                                                             |
+    "odeSolve(" ~> guardedExpr ~ ("," ~> odeStateSpec) ~ ("," ~> variable) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> odeMethod) <~ ")" ^^ {
+      case rhs ~ st ~ t ~ t0 ~ y0 ~ t1 ~ h ~ m => _OdeSolve(rhs, st, t, t0, y0, t1, h, m)
     }                                                                                             |
     // defuzz(e, v, lo, hi): centre-of-gravity defuzzification over [lo, hi].
     // The bounds are expressions for the same reason the integral's are (F_0040): a
@@ -757,6 +775,15 @@ object Parser extends JavaTokenParsers:
   /** A column of variable names, `[[x], [y]]` — `minimize`'s variable tuple. */
   private lazy val variableColumn: Parser[Vector[_Variable]] =
     "[" ~> rep1sep("[" ~> variable <~ "]", ",") <~ "]" ^^ (_.toVector)
+
+  /** How an ODE system's state is named (F_0051): a column of names, or one name. */
+  private lazy val odeStateSpec: Parser[OdeState] =
+    variableColumn ^^ (vs => OdeState.Components(vs)) | variable ^^ (v => OdeState.Whole(v))
+
+  /** An ODE integration method, slot-matched.  `rk45` BEFORE `rk4`, longest first, or `rk4`
+   *  matches the prefix and `5` is left dangling. */
+  private lazy val odeMethod: Parser[OdeMethod] =
+    "rk45" ^^^ OdeMethod.RK45 | "rk4" ^^^ OdeMethod.RK4 | "euler" ^^^ OdeMethod.Euler
 
   /** `minimize`'s method keyword, matched only in that slot so none of them is reserved. */
   private lazy val minimizeMethod: Parser[MinimizeMethod] =

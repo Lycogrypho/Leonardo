@@ -255,3 +255,58 @@ val pts2 = Sin(x).sample(x, 0.0, math.Pi, 5, env)
 ```scala mdoc
 pts2 == pts
 ```
+
+## Systems of differential equations
+
+`ode(rhs, y, t, t0, y0, target)` solves the initial-value problem `y' = rhs(t, y)`,
+`y(t0) = y0`, at `target`.  When `y0` is a column the problem is a **system**: a
+constant-coefficient linear one closes through the matrix exponential, and a **time-varying or
+nonlinear** one is integrated numerically.  The state may be one name bound to the whole column
+(`A(t)*y`, or components read with `at(y, i, 1)`) or a **column of names**, each bound to its
+component, so a system reads as written:
+
+```scala mdoc:silent
+import it.grypho.scala.leonardo.parser.Parser
+import it.grypho.scala.leonardo.ode.*
+
+def run(s: String) = Parser.parse(s) match
+  case Parser.Success(e, _) => e.eval(env)
+  case other                => sys.error(other.toString)
+```
+
+```scala mdoc
+// x'' = -x as x' = v, v' = -x, from (1, 0): the answer is (cos 1, -sin 1)
+run("ode([[v], [-x]], [[x], [v]], t, 0, [[1], [0]], 1)")
+```
+
+```scala mdoc
+// Lotka-Volterra predator-prey, nonlinear
+run("ode([[x - x*y], [x*y - y]], [[x], [y]], t, 0, [[2], [1]], 5)")
+```
+
+The answer is **certified by step doubling**: fourth-order
+[Runge–Kutta](https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods) runs with `n` and `2n`
+steps, and the state is returned only when the two agree within the tolerance `=` uses
+(`0.5·10^-precision`).  An explicit method on a
+[stiff](https://en.wikipedia.org/wiki/Stiff_equation) system produces a finite, confident and
+wrong number; here it produces a refusal instead, and the node's `detailed` says why — the reason
+the REPL appends as a note:
+
+```scala mdoc
+Parser.parse("ode([[-1000000 * (y - cos(t))]], [[y]], t, 0, [[0]], 1)") match
+  case Parser.Success(s: _ODESystem, _) => s.detailed(env)
+  case other                            => sys.error(other.toString)
+```
+
+The integrator is also public as a **step** and a **trajectory**, the method always named —
+`euler`, `rk4`, or the adaptive
+[Dormand–Prince](https://en.wikipedia.org/wiki/Dormand%E2%80%93Prince_method) `rk45`:
+`odeStep(F, y, t, t0, y0, h, method)` is the state at `t0 + h`, and
+`odeSolve(F, y, t, t0, y0, t1, h, method)` the trajectory, one row `[t, state…]` per output time,
+`t1` always the last.  These are **not** certified: the step is the caller's choice, which is
+what a controller simulation wants.  For `rk45`, `h` is the spacing of the output rows and the
+steps between them are chosen to hold the tolerance.
+
+```scala mdoc
+run("odeSolve([[v], [-x]], [[x], [v]], t, 0, [[1], [0]], 0.3, 0.1, rk4)")
+```
