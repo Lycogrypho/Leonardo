@@ -78,10 +78,11 @@ ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
 // the value and the tag cannot drift apart -- 3.7.2 shipped without the bump, which is how it
 // stayed on 3.7.1 for a release.
 //
-// 3.8.1 since the 3.8.2 release branch: that is the release a patch must stay compatible
-// with, and it is on Central, so the check can resolve it. 3.8.0 and 3.8.1 had both shipped
-// with the bump still pending -- the second time the value drifted a release behind.
-lazy val mimaBaseline = "3.8.1"
+// 3.8.2 since it resolved from Central (2026-10-06), bumped in a separate commit AFTER the
+// release: a baseline naming the version being released asks Central for an artifact that
+// does not exist yet, which turns ci.yml red (F_0001 step 6). 3.8.0 and 3.8.1 had both shipped
+// with the bump pending; the 3.8.2 release branch caught it up to 3.8.1, and this is 3.8.2.
+lazy val mimaBaseline = "3.8.2"
 
 // ThisBuild, not bare: a bare `scalacOptions ++=` in build.sbt applies to the ROOT project
 // only, so after the module split the repl module would silently compile without -explain,
@@ -448,7 +449,7 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline),
 
-    // Empty again since the baseline moved to 3.8.1. It held the two `cli.Repl$package`
+    // Empty since the baseline moved past 3.7.2. It held the two `cli.Repl$package`
     // filters while the baseline was 3.7.2: the cross-build split `Repl.scala` and Scala 3
     // names a file's top-level members after the FILE, so the class vanished -- a binary
     // change no source consumer could see. 3.8.0 shipped without it, so against 3.8.1 there

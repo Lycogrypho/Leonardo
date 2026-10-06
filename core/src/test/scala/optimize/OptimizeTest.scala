@@ -56,6 +56,14 @@ class OptimizeTest extends AnyFlatSpec:
     assertPoints("stationary(x^2 + x*y + y^2 - 3*x, x, y)", Vector(2.0, -1.0))
   }
 
+  it should "stay exact end to end, derivative included (F_0071)" in
+  {
+    parse("stationary(x^2 + x*y + y^2 - 3*x, x, y)", Some(30)).eval(env) match
+      case Left(_Matrix(1, 2, Vector(_Equation(_, a: _Rational), _Equation(_, b: _Rational)))) =>
+        assert(a.toDouble == 2.0 && b.toDouble == -1.0)
+      case other => fail(s"expected one exact point, got $other")
+  }
+
   "eliminate" should "stay exact on exact input" in
   {
     // The gradient of x^2 + x*y + y^2 - 3*x, written out: `derive` itself demotes an exact
@@ -113,9 +121,9 @@ class OptimizeTest extends AnyFlatSpec:
     val xy = vars("x", "y")
     assert(classifyStationary(f, xy, Map("x" -> 1.0, "y" -> 0.0), env).contains(StationaryKind.Minimum))
     assert(classifyStationary(f, xy, Map("x" -> -1.0, "y" -> 0.0), env).contains(StationaryKind.Saddle))
-    // Written `0 - ...`: a LEADING minus negates the whole sum in the current grammar (filed
-    // as a Priority 1 parser defect), so `-(x^2) - y^2` would be read as a saddle.
-    assert(classifyStationary(parse("0 - x^2 - y^2"), xy, Map("x" -> 0.0, "y" -> 0.0), env)
+    // `-(x^2) - y^2` is the case that FOUND F_0070: before 3.8.2 a leading minus negated the
+    // whole sum, so this read as `-(x^2 - y^2)` and classified as a saddle.
+    assert(classifyStationary(parse("-(x^2) - y^2"), xy, Map("x" -> 0.0, "y" -> 0.0), env)
              .contains(StationaryKind.Maximum))
     // x^4: zero Hessian at a minimum -- the test cannot decide, and says so
     assert(classifyStationary(parse("x^4"), vars("x"), Map("x" -> 0.0), env)
