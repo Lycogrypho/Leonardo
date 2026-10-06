@@ -606,7 +606,25 @@ ln(-1)                          -> (0.0 + 3.14159i)
 eye(n)                          n×n identity matrix
 zeros(r, c)                     r×c zero matrix
 zeros(n)                        n×n zero matrix
+ones(r, c) / ones(n)            all-ones matrix
 ```
+
+### Block matrices — a number counts as a 1×1 block in hcat/vcat/blkdiag/kron
+
+```
+hcat(A, B, …)                   side by side (equal heights)
+vcat(A, B, …)                   stacked (equal widths)
+blkdiag(A, B, …)                on the diagonal, zeros elsewhere
+repmat(A, m, n)                 A tiled m down, n across
+kron(A, B)                      Kronecker product
+submatrix(A, r0, r1, c0, c1)    rows r0..r1, cols c0..c1 — 1-BASED, INCLUSIVE (like at)
+
+kron(eye(2), [[1, 2]])          -> [[1, 2, 0, 0], [0, 0, 1, 2]]
+submatrix(A, i, i, j, j)        -> the 1×1 matrix holding at(A, i, j)
+```
+
+A free name is never guessed to be a scalar: `hcat(x, A)` waits until `x` is bound. A result
+above 1 000 000 cells is refused before it is built. `sub` is **not** reserved.
 
 ### Operations
 
@@ -765,6 +783,8 @@ frequencyResponse(g, s, wMin, wMax, n, env)   Vector[(omega, dB, degrees)]
 nyquistSweep(g, s, wMin, wMax, n, env)    Vector[(real, imaginary)]   the same grid
 
 stateSpace(a, b, c, d)          1x4 _Matrix of matrices, the lu/qr/eig shape
+mpcMatrices(A, B, C, Np, Nc)    [[Phi, Gamma]]  Y = Phi*x + Gamma*U; last move HELD past Nc
+                                (also at the prompt; a number is a 1x1 matrix)
 controllable(a, b) / observable(a, c)     Option[Boolean]
 c2dExact(a, b, ts)              (A_d, B_d) via expm of the block matrix; singular A is fine
 c2d(g, s, z, ts, Zoh | Tustin)  Option[_Expression]   method is never a hidden default

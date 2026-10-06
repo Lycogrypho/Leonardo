@@ -782,6 +782,21 @@ package "matrix" {
         not square / symmetric / pos. definite → symbolic
     }
 
+    class "BlockMatrix" <<utility>> [[matrix.html]] {
+        __ F_0055: one assembly path for every carrier __
+        cellGrid: operand -> grid of cells
+          (a number is 1x1; a free name is NEVER guessed)
+        assembleBlocks: conformity + MaxMatrixCells,
+          then one _Matrix -> dense / exact / symbolic
+        _HCat _VCat _BlkDiag _RepMat _Kron _SubMatrix
+        submatrix: 1-based, inclusive (the at convention)
+    }
+
+    class "_Ones" <<case>> [[matrix.html]] {
+        __ ones(r, c) / ones(n) __
+        the ZeroMatrix template
+    }
+
     class "_MatrixIndex" <<case>> [[matrix.html]] {
         matrix : _Expression
         row    : _Expression
@@ -801,6 +816,9 @@ package "matrix" {
     "ZeroMatrix"       --|> "_MatrixOperation"
     "_MatrixExponential" --|> "_MatrixOperation"
     "_Cholesky"        --|> "_MatrixOperation"
+    "_Ones"            --|> "_MatrixOperation"
+    "BlockMatrix"      ..> "_MatrixOperation" : six block nodes extend it
+    "BlockMatrix"      ..> "_MatrixValue"     : kronecker (dense fast path)
     "Determinant"      --|> "_Expression"
     "_MatrixIndex"     --|> "_Expression"
     "_LUDecomposition"    --|> "_Expression"
@@ -1421,6 +1439,16 @@ package "control" {
     "Discretisation"   ..> "ZTransform"     : 6.33 is the ZOH prerequisite
     "Discretisation"   ..> "TransferFunction" : normaliseTf (single definition)
     "StateSpace"       ..> "_MatrixValue"   : expm (6.39)
+    "StateSpace"       ..> "BlockMatrix"    : ctrb assembled, no private hcat
+
+    class "Mpc" <<object>> [[control.html]] {
+        __ F_0055: Y = Phi*x + Gamma*U __
+        mpcMatrices(A, B, C, Np, Nc) -> [[Phi, Gamma]]
+        Gamma's last column ACCUMULATES: the last
+          move is held past Nc (stated convention)
+        a number is a 1x1 matrix; exact stays exact
+    }
+    "Mpc" ..> "BlockMatrix" : cellGrid / assembleBlocks
 }
 
 ' ===================================================
@@ -1664,6 +1692,9 @@ package "parser" {
 "Parser" ..> "_JordanDecomposition" : jordan(A)
 "Parser" ..> "_MatrixExponential"  : expm(A)
 "Parser" ..> "_Cholesky"           : chol(A)
+"Parser" ..> "BlockMatrix"         : hcat vcat blkdiag repmat kron submatrix
+"Parser" ..> "_Ones"               : ones(r, c)
+"Parser" ..> "Mpc"                 : mpcMatrices(...)
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)

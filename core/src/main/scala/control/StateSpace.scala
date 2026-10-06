@@ -30,19 +30,12 @@ private def denseOf(e: _Expression): Option[_MatrixValue] =
     case Right(m: _MatrixValue) => Some(m)
     case _                      => None
 
-/** Controllability matrix `[B, A*B, A^2*B, …, A^(n-1)*B]`. */
-private def ctrbOf(a: _MatrixValue, b: _MatrixValue): _MatrixValue =
-  (1 until a.rows).foldLeft(Vector(b))((acc, _) => acc :+ a.multiply(acc.last))
-    .reduce((l, r) => hcat(l, r))
-
-/** Horizontal concatenation of two matrices with the same row count. */
-private def hcat(l: _MatrixValue, r: _MatrixValue): _MatrixValue =
-  val cols = l.cols + r.cols
-  val out  = new Array[Double](l.rows * cols)
-  for i <- 0 until l.rows do
-    for j <- 0 until l.cols do out(i * cols + j) = l(i, j)
-    for j <- 0 until r.cols do out(i * cols + l.cols + j) = r(i, j)
-  _MatrixValue(l.rows, cols, out)
+/** Controllability matrix `[B, A*B, A^2*B, …, A^(n-1)*B]`, joined by the shared block assembly
+ *  (F_0055) — the private concatenation this file used to carry was a second definition of
+ *  `hcat`.  `None` only past `matrix.MaxMatrixCells`. */
+private def ctrbOf(a: _MatrixValue, b: _MatrixValue): Option[_MatrixValue] =
+  val blocks = (1 until a.rows).foldLeft(Vector(b))((acc, _) => acc :+ a.multiply(acc.last))
+  assembleBlocks(Vector(blocks.map(_Matrix.fromValue))).flatMap(matrix.denseOf)
 
 /** Full row rank test, by QR of the transpose.
  *
@@ -73,7 +66,8 @@ def controllable(a: _Expression, b: _Expression): Option[Boolean] =
   for
     am <- denseOf(a); bm <- denseOf(b)
     if am.rows == am.cols && bm.rows == am.rows
-  yield fullRowRank(ctrbOf(am, bm))
+    ctrb <- ctrbOf(am, bm)
+  yield fullRowRank(ctrb)
 
 /** Is the pair `(A, C)` [[https://en.wikipedia.org/wiki/Observability observable]] — can the output distinguish every state?
  *
@@ -88,7 +82,8 @@ def observable(a: _Expression, c: _Expression): Option[Boolean] =
   for
     am <- denseOf(a); cm <- denseOf(c)
     if am.rows == am.cols && cm.cols == am.rows
-  yield fullRowRank(ctrbOf(am.transpose, cm.transpose))
+    obsv <- ctrbOf(am.transpose, cm.transpose)
+  yield fullRowRank(obsv)
 
 /** **Exact** state-space discretisation over one sample period: `A_d = e^(A*Ts)`.
  *

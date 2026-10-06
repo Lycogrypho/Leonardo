@@ -81,6 +81,10 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "expm",                                                                                 // matrix exponential
     "chol",                                                                                 // F_0054 Cholesky factor
+    "hcat", "vcat", "blkdiag", "ones", "repmat", "kron", "submatrix",                       // F_0055 block matrices;
+                                                         // NOT "sub" (Decision B): too plausible a
+                                                         // variable name to tax
+    "mpcMatrices",                                                                          // F_0055 MPC prediction
     "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
                                                          // library function with no grammar
@@ -500,6 +504,22 @@ object Parser extends JavaTokenParsers:
     // functions that return a single matrix together, above those returning a row of them.
     "expm("   ~> guardedExpr <~ ")"                                       ^^ _MatrixExponential.apply      |
     "chol("   ~> guardedExpr <~ ")"                                       ^^ _Cholesky.apply               |
+    // F_0055 block matrices.  The n-ary three take any number of blocks; `ones` follows the
+    // `zeros` shape, its one-argument form the square matrix.
+    "hcat("    ~> rep1sep(guardedExpr, ",") <~ ")"                        ^^ (bs => _HCat(bs))             |
+    "vcat("    ~> rep1sep(guardedExpr, ",") <~ ")"                        ^^ (bs => _VCat(bs))             |
+    "blkdiag(" ~> rep1sep(guardedExpr, ",") <~ ")"                        ^^ (bs => _BlkDiag(bs))          |
+    "ones("    ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ {
+      case n ~ None    => _Ones(n, n)
+      case r ~ Some(c) => _Ones(r, c)
+    }                                                                                                       |
+    "repmat("  ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case m ~ r ~ c => _RepMat(m, r, c)
+    }                                                                                                       |
+    "kron("    ~> guardedExpr ~ ("," ~> guardedExpr) <~ ")"                ^^ { case a ~ b => _Kron(a, b) }  |
+    // 1-based and inclusive (Decision A), the at(A, i, j) convention.
+    "submatrix(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) <~ ")" ^^ { case m ~ r0 ~ r1 ~ c0 ~ c1 => _SubMatrix(m, r0, r1, c0, c1) }        |
     "lu("     ~> guardedExpr <~ ")"                                       ^^ _LUDecomposition.apply        |
     "qr("     ~> guardedExpr <~ ")"                                       ^^ _QRDecomposition.apply        |
     "eigen("  ~> guardedExpr <~ ")"                                       ^^ _EigenDecomposition.apply     |
@@ -524,6 +544,9 @@ object Parser extends JavaTokenParsers:
     "feedback(" ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ variable <~ ")" ^^ {
       case g ~ _ ~ h ~ _ ~ vv            => _Feedback(g, h, vv)
     }                                                                                             |
+    // F_0055: the MPC prediction matrices, as the row [[Phi, Gamma]] (Decision D).
+    "mpcMatrices(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) <~ ")" ^^ { case a ~ b ~ c ~ np ~ nc => _MpcMatrices(a, b, c, np, nc) }          |
     // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
     // log(x) has with LogBase(x, 10).
     "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |

@@ -234,3 +234,39 @@ Parser.parse("chol([[1, 2], [2, 1]])").get.eval(env).toExpression.toString
 
 In exact mode the factor is computed over the rationals and stays exact; a pivot whose square
 root is irrational takes it at the working precision, as every irrational in the exact tier does.
+
+## Block matrices
+
+`hcat` and `vcat` join any number of blocks side by side and stacked, `blkdiag` puts them on the
+diagonal, `repmat(A, m, n)` tiles one, `kron(A, B)` is the
+[Kronecker product](https://en.wikipedia.org/wiki/Kronecker_product), and `ones(m, n)` is the
+all-ones counterpart of `zeros`:
+
+```scala mdoc
+Parser.parse("blkdiag([[1]], [[2, 3], [4, 5]])").get.eval(env).toExpression.toString
+```
+
+```scala mdoc
+Parser.parse("kron(eye(2), [[1, 2]])").get.eval(env).toExpression.toString
+```
+
+`submatrix(A, r0, r1, c0, c1)` slices rows `r0..r1` and columns `c0..c1`, **1-based and
+inclusive** — the convention `at(A, i, j)` uses, so the `1×1` slice `submatrix(A, i, i, j, j)`
+holds exactly `at(A, i, j)`:
+
+```scala mdoc
+Parser.parse("submatrix([[1, 2, 3], [4, 5, 6], [7, 8, 9]], 2, 3, 1, 2)").get.eval(env).toExpression.toString
+```
+
+All of them rearrange cells through one shared assembly, so they work unchanged on numeric,
+exact and symbolic matrices. In `hcat`, `vcat`, `blkdiag` and `kron` a **number counts as a
+`1×1` block**; a name with no value yet is **never guessed** to be one, since it might later be
+bound to a matrix of any shape, so the call waits:
+
+```scala mdoc
+Parser.parse("hcat(1, [[2]])").get.eval(env).toExpression.toString
+Parser.parse("hcat(x, [[2]])").get.eval(env).toExpression.toString
+```
+
+Blocks that do not conform, and indices out of range or not whole, leave the call unevaluated;
+a result above a million cells is refused before anything is built.

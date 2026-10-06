@@ -42,7 +42,7 @@ private def sumOf(a: _Expression, b: _Expression): _Expression = (a, b) match
   case _                            => Sum(a, b)
 
 /** Folds two already-reduced operands with `*`, applying the zero short-circuit. */
-private def productOf(a: _Expression, b: _Expression): _Expression = (a, b) match
+private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (a, b) match
   // An exact zero stays exact: it is the additive identity of the sums this feeds, so
   // demoting it here would make one zero entry infect a whole exact row.
   case (z: _Rational, _) if z.isZero          => z
@@ -409,6 +409,26 @@ case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOpe
       case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r) && validDenseDim(c) =>
         Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(0.0)))
       case (rr, rc) => Left(ZeroMatrix(rr.toExpression, rc.toExpression))
+
+
+/** All-ones matrix: `ones(rows, cols)`, and `ones(n)` for the square one (F_0055).
+ *
+ *  The [[ZeroMatrix]] template exactly, so the two constructors cannot disagree about what a
+ *  valid dimension is: non-integer, non-positive or over-`MaxDenseDim` arguments stay symbolic.
+ *
+ *  @param nRows number-of-rows expression
+ *  @param nCols number-of-columns expression
+ */
+case class _Ones(nRows: _Expression, nCols: _Expression) extends _MatrixOperation:
+  override def toString: String = s"ones($nRows, $nCols)"
+  override def children: List[_Expression] = List(nRows, nCols)
+  override def rebuild(c: List[_Expression]): _Expression = _Ones(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    (nRows.eval(env), nCols.eval(env)) match
+      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r) && validDenseDim(c) =>
+        Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(1.0)))
+      case (rr, rc) => Left(_Ones(rr.toExpression, rc.toExpression))
 
 
 /** LU decomposition: `lu(A)` -- returns `[[L, U, P]]` where `P * A = L * U`.

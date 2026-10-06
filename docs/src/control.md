@@ -196,6 +196,25 @@ than it sounds. Rank is decided by QR of the transposed controllability matrix, 
 the same plant with `B` in millivolts rather than volts came back *uncontrollable*. Scaling
 `B` cannot change which states the input can reach, and the tests pin that it does not.
 
+## Prediction matrices for MPC
+
+A [model-predictive controller](https://en.wikipedia.org/wiki/Model_predictive_control) writes
+the outputs over a prediction horizon `Np` as `Y = Φ·x + Γ·U`, where `U` holds the next `Nc`
+input moves. `mpcMatrices(A, B, C, Np, Nc)` returns the row `[[Phi, Gamma]]` — the `lu`/`stateSpace`
+shape, so `Phi, G := mpcMatrices(…)` binds both at the prompt:
+
+```scala mdoc
+tf("mpcMatrices(0.5, 1, 1, 3, 2)").eval(env).toExpression.toString
+```
+
+`Φ` stacks `C·Aⁱ` for `i = 1..Np`; `Γ`'s block `(i, j)` is `C·Aⁱ⁻ʲ·B` below the diagonal and zero
+above it. **The last column accumulates**: past `Nc` the last move is *held*, so that column is
+`Σ C·Aᵏ·B` — the `1.5` above is `1 + 0.5`. That is stated because the other common convention,
+moves beyond `Nc` set to zero, gives a different `Γ` for the same plant. A number is read as a
+`1×1` matrix, as here; a name with no value yet is never guessed to be one. The matrices are
+built from ordinary products and the block-matrix words (`hcat`, `vcat`, `blkdiag`, `kron`,
+`submatrix` — see [Matrices](matrix.md)), so exact input gives exact `Φ` and `Γ`.
+
 ## Discrete time
 
 Discretisation always names its method — the
