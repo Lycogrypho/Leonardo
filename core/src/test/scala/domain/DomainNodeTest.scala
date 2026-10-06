@@ -84,9 +84,10 @@ class DomainNodeTest extends AnyFlatSpec:
 
   // ── differentiable ─────────────────────────────────────────────────────────
 
-  "differentiable(step(x), x)" should "be false" in
+  "differentiable(step(x), x)" should "exclude only the step" in
   {
-    assert(run("differentiable(step(x), x)") == "false")
+    // F_0056 Decision B: was `false` until 2026-10-06, a defect the old pin tolerated.
+    assert(run("differentiable(step(x), x)") == "((x < 0.0) or (x > 0.0))")
   }
 
   "differentiable(ln(x), x)" should "match where ln is defined" in

@@ -488,6 +488,17 @@ package "scalar" {
         DomainSet(constraints, intervals)
         neutral: rendered above the equation line
     }
+    class "MinMax" <<utility>> [[expressions.html]] {
+        __ F_0056: two operations, two names __
+        _Join     maximum/minimum(a, b, ...)  element-wise
+        _Extreme  max/min(v)  reduction over every entry
+        _Clamp    clamp(x, lo, hi)  element-wise
+        _Softplus softplus(x, k)  overflow-free
+        a SELECTION: exact stays exact
+        complex / truth / unbound names declined
+        tie: the FIRST argument wins (derivative)
+    }
+    "MinMax" ..> "Domain" : kinks -> NonZero (a step's too)
     class "Singularity" <<utility>> [[calculus.html]] {
         ~ singularitiesOf(e, v, env): Option
         Removable | Pole(order)

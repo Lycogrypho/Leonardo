@@ -108,17 +108,20 @@ private[leonardo] def domainOf(e: _Expression, v: _Variable, kind: DomainKind,
  *
  *  The derivative's own domain intersected with the function's — `ln(x)` is differentiable
  *  exactly where it is defined, but `x^(1/2)` loses the endpoint its derivative divides by.
- *  `_Heaviside` is defined everywhere and differentiable nowhere at its step, so it
- *  contributes a `Never`.
+ *  **Kinks** are excluded as points: a step is differentiable everywhere but where its argument
+ *  is zero, a join where its two sides meet, a clamp at either bound — each contributes
+ *  `NonZero` on that difference (F_0056). A step used to contribute `Never`, which emptied the
+ *  whole domain and answered `differentiable(step(x), x)` with `false`: a confident wrong answer
+ *  for every `x` but one.
  *
  *  Note `digamma` exists, so `Gamma` / `fact` / `lgamma` *are* differentiable; they
  *  contribute only their own pole constraints.
  */
 private[leonardo] def differentiableDomainOf(e: _Expression, v: _Variable, kind: DomainKind,
                                              env: Environment): DomainSet =
-  val stepPoints = heavisideArgs(e).map(a => Constraint(a, Requirement.Never))
-  val cs         = (collectConstraints(e, kind) ++
-                    collectConstraints(derive(e, v), kind) ++ stepPoints).distinct
+  val kinks = kinkArgs(e).map(a => Constraint(a, Requirement.NonZero))
+  val cs    = (collectConstraints(e, kind) ++
+               collectConstraints(derive(e, v), kind) ++ kinks).distinct
   DomainSet(cs, resolveIntervals(cs, v, env))
 
 /** The first requirement `e` violates when `v` takes the value `x`, if any.
@@ -177,10 +180,20 @@ private[leonardo] def describe(req: Requirement): String =
     case NotNonPositiveInteger   => "must not be zero or a negative integer"
     case Never                   => "is not computable here"
 
-/** Arguments of every `_Heaviside` in `e` — the points where a step is not differentiable. */
-private def heavisideArgs(e: _Expression): Vector[_Expression] = e match
-  case _Heaviside(a) => Vector(a) ++ e.children.toVector.flatMap(heavisideArgs)
-  case _             => e.children.toVector.flatMap(heavisideArgs)
+/** Every kink in `e`, as the expression that is zero there (F_0056): a step's argument; for a
+ *  join, the running join minus each next argument (the left fold the derivative follows); for
+ *  a clamp, the value minus either bound. */
+private def kinkArgs(e: _Expression): Vector[_Expression] =
+  def minus(a: _Expression, b: _Expression): _Expression = Sum(a, Product(_Number(-1), b))
+  val here = e match
+    case _Heaviside(a)     => Vector(a)
+    case _Join(k, args)    =>
+      args.tail.foldLeft((args.head, Vector.empty[_Expression])) { case ((acc, ks), b) =>
+        (_Join(k, List(acc, b)), ks :+ minus(acc, b))
+      }._2
+    case _Clamp(x, lo, hi) => Vector(minus(x, lo), minus(x, hi))
+    case _                 => Vector.empty
+  here ++ e.children.toVector.flatMap(kinkArgs)
 
 /** Walks the tree and unions the requirements each node places on its arguments. */
 private def collectConstraints(e: _Expression, kind: DomainKind): Vector[Constraint] =
@@ -214,6 +227,8 @@ private def own(e: _Expression, kind: DomainKind): Vector[Constraint] =
     case Atan(g) => if real then Vector.empty else Vector(Constraint(g, Never))
 
     case Tg(g) => Vector(Constraint(g, NotOddMultipleOfHalfPi))
+
+    case _Softplus(_, k) => Vector(Constraint(k, Positive))   // F_0056: the sharpness
 
     case Gamma(g)      => Vector(Constraint(g, NotNonPositiveInteger))
     case Factorial(g)  => Vector(Constraint(g, NotNonPositiveInteger))

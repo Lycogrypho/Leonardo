@@ -81,6 +81,9 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "expm",                                                                                 // matrix exponential
     "chol",                                                                                 // F_0054 Cholesky factor
+    "maximum", "minimum", "max", "min", "clamp", "softplus",                                // F_0056 order functions;
+                                                         // the join and the reduction under two
+                                                         // names each (Decision A, numpy style)
     "hcat", "vcat", "blkdiag", "ones", "repmat", "kron", "submatrix",                       // F_0055 block matrices;
                                                          // NOT "sub" (Decision B): too plausible a
                                                          // variable name to tax
@@ -601,6 +604,16 @@ object Parser extends JavaTokenParsers:
     // a distribution delegates back to `probability.Moments`, a matrix is a sample.  The
     // two-argument form above stays the linearity rule table and is untouched.
     "variance(" ~> guardedExpr <~ ")"        ^^ { e => _Statistic(StatKind.Variance, e) }        |    "abs("     ~> guardedExpr <~ ")"                                     ^^ Abs.apply                     |
+    // F_0056, Decision A (the numpy split): maximum/minimum are the element-wise JOIN, two or
+    // more operands; max/min are the REDUCTION of one array.  No prefix clash: "max(" needs
+    // the bracket right after the x, which "maximum(" does not have.
+    "maximum("  ~> guardedExpr ~ rep1("," ~> guardedExpr) <~ ")" ^^ { case a ~ bs => _Join(Extreme.Max, a :: bs) } |
+    "minimum("  ~> guardedExpr ~ rep1("," ~> guardedExpr) <~ ")" ^^ { case a ~ bs => _Join(Extreme.Min, a :: bs) } |
+    "max("      ~> guardedExpr <~ ")"                    ^^ { e => _Extreme(Extreme.Max, e) }                    |
+    "min("      ~> guardedExpr <~ ")"                    ^^ { e => _Extreme(Extreme.Min, e) }                    |
+    "clamp("    ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case v ~ lo ~ hi => _Clamp(v, lo, hi) }                                                                |
+    "softplus(" ~> guardedExpr ~ ("," ~> guardedExpr) <~ ")" ^^ { case v ~ k => _Softplus(v, k) }            |
     "erf("     ~> guardedExpr <~ ")"                                     ^^ Erf.apply                     |
     "erfc("    ~> guardedExpr <~ ")"                                     ^^ Erfc.apply                    |
     "digamma(" ~> guardedExpr <~ ")"                                     ^^ Digamma.apply                 |

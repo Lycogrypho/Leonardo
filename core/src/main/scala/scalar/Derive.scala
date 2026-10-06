@@ -170,6 +170,23 @@ private def deriveImpl(e: _Expression, v: _Variable)(using t: Tier): _Expression
   // is what hands `differentiableDomainOf` its NonZero constraint through the existing
   // Ratio arm, with no abs-specific rule in Domain.scala (issue F_0036).
   case Abs(a)               => Ratio(dmul(a, deriveIn(a, v)), Abs(a))
+  // F_0056: the join through the step, the FIRST argument favoured at a tie — a stated
+  // subgradient choice.  For maximum the step is on a − b, for minimum on b − a; either way it
+  // is 1 exactly when `a` is chosen, ties included, so the slope there is a' rather than the
+  // a' + b' that `step(a−b)·a' + step(b−a)·b'` would give (step(0) = 1 on both sides).  An
+  // n-ary join is the left fold of the binary one, so the leftmost argument wins a tie.
+  case _Join(k, List(a, b))  =>
+    val s = _Heaviside(k match
+      case Extreme.Max => Sum(a, dmul(t.n(-1), b))
+      case Extreme.Min => Sum(b, dmul(t.n(-1), a)))
+    dadd(dmul(s, deriveIn(a, v)), dmul(Sum(t.n(1), dmul(t.n(-1), s)), deriveIn(b, v)))
+  case _Join(k, args) if args.size > 2 => deriveIn(_Join(k, List(_Join(k, args.init), args.last)), v)
+  case _Clamp(x, lo, hi)    => deriveIn(_Join(Extreme.Min, List(_Join(Extreme.Max, List(x, lo)), hi)), v)
+  // softplus'(u) = u' / (1 + e^(−k·u)) for a constant k — the logistic form, which cannot
+  // overflow to ∞/∞ the way the quotient of the definition's derivative does.
+  case _Softplus(u, k) if !dependsOn(k, v) =>
+    Ratio(deriveIn(u, v), Sum(t.n(1), Exp(dmul(t.n(-1), Product(k, u)))))
+  case _Softplus(u, k)      => deriveIn(Ratio(Ln(Sum(t.n(1), Exp(Product(k, u)))), k), v)
   case Sech(a)              => dmul(dmul(t.n(-1), Product(Sech(a), Tanh(a))), deriveIn(a, v))
   case Csch(a)              => dmul(dmul(t.n(-1), Product(Csch(a), Coth(a))), deriveIn(a, v))
   case Coth(a)              => dmul(dmul(t.n(-1), Power(Csch(a), t.n(2))), deriveIn(a, v))

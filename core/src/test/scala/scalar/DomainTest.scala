@@ -110,12 +110,14 @@ class DomainTest extends AnyFlatSpec:
 
   // ── slice B: differentiability ─────────────────────────────────────────────
 
-  "a step" should "be defined everywhere but differentiable nowhere at the step" in
+  "a step" should "be defined everywhere and differentiable everywhere but at the step" in
   {
+    // F_0056 Decision B: this pinned `Never` and an EMPTY domain until 2026-10-06 -- a defect,
+    // not a design: it answered "differentiable nowhere" for a function flat on both sides.
     assert(realDomain(_Heaviside(x)).isUnrestricted)
     val d = differentiableDomainOf(_Heaviside(x), x, DomainKind.Real, env)
-    assert(d.constraints.exists(_.req == Requirement.Never))
-    assert(d.isEmpty)
+    assert(d.constraints.contains(Constraint(x, Requirement.NonZero)))
+    assert(!d.isEmpty)
   }
 
   "ln" should "be differentiable exactly where it is defined" in

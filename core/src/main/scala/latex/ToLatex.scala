@@ -236,7 +236,9 @@ object ToLatex:
                          "sinh", "cosh", "tanh", "coth", "exp", "ln", "log")
     identical.map(n => n -> s"\\$n").toMap ++ Map(
       "asin"  -> "\\arcsin", "acos" -> "\\arccos", "atan" -> "\\arctan",
-      "Gamma" -> "\\Gamma"
+      "Gamma" -> "\\Gamma",
+      // F_0056: both the join and the reduction are written \max / \min in mathematics.
+      "max" -> "\\max", "min" -> "\\min", "maximum" -> "\\max", "minimum" -> "\\min"
     )
 
   /** A variable's name as a Greek letter when it *is* one, unchanged otherwise.

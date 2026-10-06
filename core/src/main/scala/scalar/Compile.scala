@@ -40,6 +40,22 @@ def compile(e: _Expression, v: _Variable, env: Environment): Option[Double => Do
     for fa <- compile(a, v, env); fb <- compile(b, v, env)
     yield (x: Double) => log(fa(x)) / log(fb(x))
   case Abs(a)        => compile(a, v, env).map(fa => (x: Double) => math.abs(fa(x)))
+  // F_0056: the scalar order functions; NaN stands for "undefined here", as for Ln.
+  case _Join(k, args) =>
+    val fs = args.map(compile(_, v, env))
+    Option.when(fs.forall(_.isDefined)) {
+      val gs = fs.flatten
+      val op: (Double, Double) => Double = if k == Extreme.Max then math.max else math.min
+      (x: Double) => gs.map(_(x)).reduce(op)
+    }
+  case _Clamp(a, lo, hi) =>
+    for fa <- compile(a, v, env); fl <- compile(lo, v, env); fh <- compile(hi, v, env)
+    yield (x: Double) =>
+      val (l, h) = (fl(x), fh(x))
+      if l > h then Double.NaN else math.min(math.max(fa(x), l), h)
+  case _Softplus(a, k) =>
+    for fa <- compile(a, v, env); fk <- compile(k, v, env)
+    yield (x: Double) => { val kk = fk(x); if kk > 0 then softplusOf(fa(x), kk) else Double.NaN }
   case Sin(a)        => compile(a, v, env).map(fa => (x: Double) => sin(fa(x)))
   case Cos(a)        => compile(a, v, env).map(fa => (x: Double) => cos(fa(x)))
   case Tg(a)         => compile(a, v, env).map(fa => (x: Double) => tan(fa(x)))

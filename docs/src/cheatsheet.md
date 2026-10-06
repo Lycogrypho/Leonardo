@@ -102,6 +102,16 @@ L, U, P := lu(A)       tuple binding from a 1×n decomposition result
 | `sec(x)` / `csc(x)` / `cot(x)` | Secant / cosecant / cotangent (`1/cos`, `1/sin`, `cos/sin`) |
 | `sech(x)` / `csch(x)` / `coth(x)` | Hyperbolic secant / cosecant / cotangent |
 | `step(x)` | Heaviside unit step (1 if x ≥ 0, 0 otherwise) |
+| `maximum(a, b, …)` / `minimum(a, b, …)` | The larger / smaller argument — **element-wise** on matrices, a number spreading over every cell |
+| `max(v)` / `min(v)` | The largest / smallest **entry** of one array, over all entries (shape irrelevant) |
+| `clamp(x, lo, hi)` | `x` limited to `[lo, hi]`, element-wise; bounds may be numbers or columns |
+| `softplus(x, k)` | `ln(1 + e^(k·x))/k`, the smooth `maximum(0, x)`; `k > 0` |
+
+Two names, two operations: `maximum` **joins** its arguments, `max` **reduces** one array. Both
+keep an exact value exact (they select, they do not compute) and stay unevaluated on a complex or
+truth value and on a name with no value yet. At a tie the **first** argument wins, which is what
+their derivatives use: `derive(maximum(x, 2*x), x)` is `1` at `x = 0`. `differentiable` excludes
+the kinks — `differentiable(maximum(0, x), x)` and `differentiable(step(x), x)` are both `x ≠ 0`.
 
 `simplify` folds the ratio spelling into the reciprocal node, so there is one form of each:
 `1/cos(x)` → `sec(x)`, `cos(x)/sin(x)` → `cot(x)`, `1/cosh(x)` → `sech(x)`, `1/cos(x)^2` → `sec(x)^2`.
