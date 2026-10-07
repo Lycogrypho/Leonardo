@@ -102,8 +102,10 @@ Global / excludeLintKeys += idePackagePrefix
 // ── PlantUML ──────────────────────────────────────────────────────────────────
 // Hidden Ivy config — PlantUML JAR is resolved by sbt but never placed on the
 // compile or test classpath. `sbt puml` runs `java -jar plantuml.jar` via
-// Process; Graphviz is NOT required because structure.puml uses `!pragma layout
-// smetana` (PlantUML's built-in pure-Java layout engine).
+// Process. The layout engine is Graphviz dot (structure.puml sets no pragma); if `dot`
+// is not on PATH, point GRAPHVIZ_DOT at it, or add `!pragma layout smetana` to the
+// .puml for PlantUML's built-in pure-Java engine -- which drops the clickable [[url]]
+// links that make the diagram navigation.
 // Check https://mvnrepository.com/artifact/net.sourceforge.plantuml/plantuml
 // for the latest version and update the string below if needed.
 lazy val PlantUML = config("plantuml").hide
@@ -308,6 +310,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     // reserves `core/.jvm` and `core/.js` for build output.  `baseDirectory` for coreJVM IS
     // `core/.jvm`, hence the `getParentFile`.
     Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "main" / "scala",
+    // JVM-only suites: what Node cannot run at all, such as real threads (F_0058's
+    // concurrency check on compiled closures). replModule has had the same directory since F_0003.
+    Test    / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "test" / "scala",
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo" % mimaBaseline),

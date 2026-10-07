@@ -245,6 +245,41 @@ The fast path compiles the expression to a `Double ⇒ Double` closure (no
 per-step allocation). A fallback per-step `eval` handles non-compilable nodes
 like `_Derivative`.
 
+### Compiled closures over several variables
+
+Code that evaluates the same model thousands of times — an optimiser's cost and Jacobian, a
+controller's prediction — can compile it once. `compile(e, vars, env)` returns a closure over an
+`Array[Double]` read in the order of `vars`, and `compileMatrix(m, vars, env)` does the same for
+a matrix, returning its cells row-major. Both are built from the same table as the
+one-variable form, so they decline exactly what it declines (`None`), and any other free name
+must be bound in `env`. This is library API; the REPL needs none.
+
+```scala mdoc:silent
+val model = Sum(Product(Power(x, _Number(2.0)), y), Sin(y))
+val fast  = compile(model, Seq(x, y), env)
+```
+
+```scala mdoc
+fast.map(f => f(Array(2.0, 0.5)))
+```
+
+A Jacobian is a symbolic matrix once evaluated, so it compiles cell by cell:
+
+```scala mdoc:silent
+val field = _Matrix.ofRows(Vector(model), Vector(Product(x, y)))
+val jac   = _Jacobian(field, Vector(x, y)).eval(env).left.toOption
+val fastJ = jac.flatMap(j => compileMatrix(j, Seq(x, y), env))
+```
+
+```scala mdoc
+fastJ.map(f => f(Array(2.0, 0.5)).toVector)
+```
+
+Measured on the JVM (F_0058), a compiled 3×3 Jacobian evaluates **7–10 times faster** than
+walking the tree with `eval`, and within 1.3–1.6× of the same cells written by hand in Scala.
+The remaining gap to hand-written code is the cost of the functions themselves (`exp`, `sin`,
+`ln`), which compilation cannot remove.
+
 The Syntax extension gives method-call form:
 
 ```scala mdoc:silent

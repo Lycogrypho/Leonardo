@@ -466,6 +466,8 @@ package "scalar" {
     }
     class "Compile" <<utility>> [[calculus.html]] {
         + compile(e, v, env): Option
+        + compile(e, vars, env): Option
+        + compileMatrix(m, vars, env): Option
     }
     class "Polynomial" <<utility>> [[equations.html]] {
         ~ polyDegree(cs): Int

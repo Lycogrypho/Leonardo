@@ -447,7 +447,7 @@ They do not form a class or object hierarchy — they are imported where needed:
 | `Normalize.scala` | `collect(e, v)`, `normalize(e, v)` |
 | `Analysis.scala` | `dependsOn(e, v)` |
 | `Substitute.scala` | `substitute(e, definitions)` |
-| `Compile.scala` | `compile(e, v, env)` |
+| `Compile.scala` | `compile(e, v, env)`, `compile(e, vars, env)`, `compileMatrix(m, vars, env)` |
 | `Sample.scala` | `sample(e, v, lo, hi, n, env)` |
 | `Limit.scala` | `evalLimit(e, v, point, dir, env)` |
 

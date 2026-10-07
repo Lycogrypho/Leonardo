@@ -204,7 +204,9 @@ which re-derives the same subexpressions hundreds of times per evaluation.
 **`compile` fast path** — `compile(e, v, env): Option[Double ⇒ Double]`
 translates an expression into a JVM closure when all nodes are compilable.
 Used by `_DefIntegral` (Simpson's rule) and `sample`; eliminates per-step
-AST allocation and environment lookup.
+AST allocation and environment lookup. `compile(e, vars, env)` and `compileMatrix(m, vars, env)`
+are the multi-variable forms over a positional `Array[Double]` (F_0058), built from the **same
+table** rather than a second one, so a function added to it reaches all three.
 
 **A new carrier type must earn its place** — a domain gets a `_Value` or a wrapper of its own
 only when something must *read* a value as one. A vector field is an n×1 `_Matrix`; a

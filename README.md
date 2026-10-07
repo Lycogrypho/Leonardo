@@ -65,7 +65,7 @@ Full detail for every entry below is in the [feature reference](https://lycogryp
 
 - **Clean API** — no global state. `Environment` is immutable and `withBinding` returns a copy, so evaluation is safe to share across threads.
 
-- **Performance** — rounding happens only at display time, so no precision is lost mid-computation; free-variable sets are cached per node, and `derive`/`simplify` are memoised behind bounded thread-safe caches. Definite integrals compile the integrand to a `Double => Double` closure where they can.
+- **Performance** — rounding happens only at display time, so no precision is lost mid-computation; free-variable sets are cached per node, and `derive`/`simplify` are memoised behind bounded thread-safe caches. Definite integrals compile the integrand to a `Double => Double` closure where they can, and the same compiler turns a model or a Jacobian over several variables into a closure for code that evaluates it thousands of times.
 
 - **Domains** — each is a package that imports `core`, never the reverse:
 
