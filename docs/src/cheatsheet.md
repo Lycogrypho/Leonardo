@@ -240,6 +240,9 @@ mean(x)  variance(x)  stddev(x)      sample or distribution; sample variance is
 pvariance(x)  pstddev(x)             population forms, dividing by n
 covariance(x, y)  correlation(x, y)  two-sample statistics
 regress(X, y)                        least squares by QR; no intercept column added
+rls(theta, P, phi, y, lambda)        one recursive-least-squares update -> [[theta', P']]
+                                     theta n x m, P n x n, phi n x 1, y m x 1 (or a number),
+                                     lambda in (0, 1]; use  theta, P := rls(theta, P, ...)
 ttest(sample, mu)                    two-sided one-sample t-test p-value
 confint(sample, level)               confidence interval for the mean, as [[lo, hi]]
 chisqtest(obs, exp)                  Pearson goodness-of-fit p-value

@@ -123,6 +123,14 @@ For a command-by-command listing of the REPL see the [cheat sheet](cheatsheet.md
   squares via `regress(X, y)`, solved by QR rather than the normal equations so the
   condition number is never squared; and an inference tier — `ttest`, `confint`,
   `chisqtest` — so `ttest(sample, 5) < 0.05` reads the way statistics is actually written.
+  **Recursive least squares**, `rls(theta, P, phi, y, lambda)`, updates an estimate one
+  observation at a time with a forgetting factor `λ ∈ (0, 1]`: state in, state out, returned as
+  `[[theta', P']]` so `theta, P := rls(theta, P, phi, y, 0.98)` carries it from one update to the
+  next. It is exactly exponentially weighted least squares — at `λ = 1` from a large initial `P` it
+  agrees with `regress`, and below 1 it tracks a drifting parameter. Several outputs update at once
+  (`theta` `n×m`, `y` `m×1`), `P` is **symmetrised explicitly** each step since floating point lets
+  the triangles drift apart over thousands of updates, exact input stays exact, and a factor
+  outside `(0, 1]`, disagreeing shapes or a non-positive `λ + φᵀPφ` leave the call unevaluated.
 
 - **Optimization**: The symbolic half first — what a numeric library cannot do.
   `stationary(f, x, y)` lists every point where the gradient vanishes, solving the nonlinear

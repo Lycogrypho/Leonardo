@@ -88,6 +88,7 @@ object Parser extends JavaTokenParsers:
                                                          // NOT "sub" (Decision B): too plausible a
                                                          // variable name to tax
     "mpcMatrices",                                                                          // F_0055 MPC prediction
+    "rls",                                                                                  // F_0057 recursive least squares
     "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
                                                          // library function with no grammar
@@ -575,6 +576,9 @@ object Parser extends JavaTokenParsers:
     "covariance("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _PairStatistic(PairStatKind.Covariance, a, b) }  |
     "correlation(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _PairStatistic(PairStatKind.Correlation, a, b) } |
     "regress("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Regress(a, b) }            |
+    // F_0057: one recursive-least-squares update, state in and state out as [[theta', P']].
+    "rls(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) <~ ")" ^^ { case t ~ p ~ f ~ y ~ l => _Rls(t, p, f, y, l) }                          |
     "ttest("       ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.TTest, a, b) }     |
     "confint("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ConfInt, a, b) }   |
     "chisqtest("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ChiSqTest, a, b) } |

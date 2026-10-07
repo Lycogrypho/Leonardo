@@ -1569,6 +1569,17 @@ package "statistics" <<Rectangle>> {
     }
     class "_Regress" <<case>> [[developer.html]]
 
+    class "Rls" <<object>> [[developer.html]] {
+        __ F_0057: rls(theta, P, phi, y, lambda) __
+        state in, state out -> [[theta', P']]
+        one algorithm over a Field: rational or Double
+        P symmetrised explicitly each update
+        declines lambda outside (0, 1], bad shapes,
+          lambda + phi'P phi <= 0
+    }
+    class "_Rls" <<case>> [[developer.html]]
+    "_Rls" ..> "Rls"
+
     class "_Test" <<case>> [[developer.html]] {
         + kind: TestKind   (ttest / confint / chisqtest)
         p-value as 2*cdf(-|t|), never 2*(1-cdf(|t|))
