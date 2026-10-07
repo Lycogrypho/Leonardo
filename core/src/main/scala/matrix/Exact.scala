@@ -51,9 +51,7 @@ def exactCells(m: _Matrix): Option[Vector[_Rational]] =
  *  @param m the symbolic matrix
  *  @return the dense matrix, or `None` if any cell is not a real number
  */
-def denseOf(m: _Matrix): Option[_MatrixValue] =
-  val ds = m.elems.collect { case _Number(d) => d }
-  if ds.size == m.elems.size then Some(_MatrixValue(m.rows, m.cols, ds.toArray)) else None
+def denseOf(m: _Matrix): Option[_MatrixValue] = _MatrixValue.ofEvaluated(Left(m))
 
 /** Row-major cells as rows, for the elimination kernels. */
 private def rowsOf(cells: Vector[_Rational], rows: Int, cols: Int): Vector[Vector[_Rational]] =

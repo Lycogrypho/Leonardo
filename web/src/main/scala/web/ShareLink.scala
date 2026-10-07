@@ -3,6 +3,7 @@ package web
 
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.global
+import scala.util.control.NonFatal
 
 /** Encodes a session into the page's URL fragment, and reads one back.
  *
@@ -52,7 +53,7 @@ object ShareLink:
       // A hand-edited or truncated fragment makes decodeURIComponent throw a URIError; a
       // malformed link must leave the page usable rather than failing to start.
       try Option(decodeComponent(body.substring(Key.length))).filter(_.nonEmpty)
-      catch case _: Throwable => None
+      catch case NonFatal(_) => None
 
   /** `decodeURIComponent`, which is a JavaScript global rather than anything in the JDK. It is
    *  the authority this module's encoder is checked against, and is deliberately not

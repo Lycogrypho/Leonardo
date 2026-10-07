@@ -267,6 +267,25 @@ class ControlTest extends AnyFlatSpec:
     assert(observable(parse("[[1, 0], [0, 2]]"), parse("[[0.001, 0]]")).contains(false))
   }
 
+  "the state-space tests" should "accept an exact matrix, demoting it as the rest of the library does" in
+  {
+    // F_0080: an exact literal stays a symbolic _Matrix of rationals, and this file's private
+    // reader accepted only a dense value -- so controllable/observable/c2dExact answered None for
+    // a perfectly good plant typed in exact mode, while ode and regress accepted the same matrix.
+    def exact(input: String): _Expression =
+      val r = Parser.parse(input, exact = Some(30))
+      assert(r.successful, s"parse failed for \"$input\": $r")
+      r.get
+    val a = exact("[[0, 1], [-2, -3]]")
+    assert(a.eval(new Environment()).isLeft, "premise: an exact matrix does not collapse to dense")
+    assert(controllable(a, exact("[[0], [1/3]]")).contains(true))
+    assert(controllable(exact("[[1, 0], [0, 2]]"), exact("[[1], [0]]")).contains(false))
+    assert(observable(a, exact("[[1, 0]]")).contains(true))
+    val (ad, _) = c2dExact(exact("[[0, 1], [0, 0]]"), exact("[[0], [1]]"), 0.5)
+      .getOrElse(fail("expected an exact plant to discretise"))
+    assert(math.abs(ad(0, 1) - 0.5) < 1e-12)
+  }
+
   // --- slice 6: discrete time (needs 6.33 and 6.39) ---
 
   "c2d by Tustin" should "substitute s = (2/Ts)*(z-1)/(z+1)" in

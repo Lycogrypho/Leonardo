@@ -26,11 +26,28 @@ private def hasDerivative(e: _Expression): Boolean = e match
   case other          => other.children.exists(hasDerivative)
 
 
+/** `f, f', f'', …` — each derivative **simplified before the next is taken** (F_0077).
+ *
+ *  [[deriveN]] folds [[derive]] with no simplification between steps, so the `k`-th derivative
+ *  of a composite carries every product-rule term of every earlier step and grows
+ *  exponentially: `taylor(tan(x), x, 0, 10)` did not finish in 20 s, which left
+ *  [[MaxTaylorOrder]] unreachable by orders of magnitude.  Simplifying each step keeps the tree
+ *  near its true size.  Lazy, so a series that aborts early differentiates no further.
+ *  `deriveN` itself is unchanged: its result is public API whose shape callers may rely on.
+ *
+ *  @param e the expression
+ *  @param v the differentiation variable
+ *  @return the derivatives of every order, starting with `e` itself
+ */
+private def simplifiedDerivatives(e: _Expression, v: _Variable): LazyList[_Expression] =
+  LazyList.iterate(e)(d => simplifyFully(derive(d, v)))
+
+
 /** Expands `e` as a [[https://en.wikipedia.org/wiki/Taylor_series Taylor polynomial]] in `v` about `point`, to and including order `order`.
  *
- *  `Σ(k = 0 to order) f⁽ᵏ⁾(point) / k! · (v − point)ᵏ`, built by folding
- *  [[deriveN]] (which is memoised, so the k-th derivative reuses the work of the
- *  (k−1)-th) and instantiating each coefficient at `point` with [[substitute]].  The
+ *  `Σ(k = 0 to order) f⁽ᵏ⁾(point) / k! · (v − point)ᵏ`, built from
+ *  [[simplifiedDerivatives]] (each derivative simplified before the next, so the k-th reuses
+ *  the (k−1)-th at its true size) and instantiating each coefficient at `point` with [[substitute]].  The
  *  result is run through [[simplifyFully]], which collapses the `k = 0` term's
  *  `(v − point)⁰` to `1` and folds the constant coefficients.
  *
@@ -52,9 +69,10 @@ def taylorSeries(
   else
     // foldLeft over an Option accumulator: the first underivable coefficient aborts the
     // whole series rather than yielding a polynomial with a _Derivative inside it.
+    val ds = simplifiedDerivatives(e, v)
     val terms = (0 to order).foldLeft(Option(Vector.empty[_Expression])) { (acc, k) =>
       acc.flatMap { built =>
-        val dk = deriveN(e, v, k)
+        val dk = ds(k)
         Option.when(!hasDerivative(dk)) {
           val atPoint = substitute(dk, Map(v.variable -> point))
           val shifted = Sum(v, Product(_Number(-1), point))
@@ -217,9 +235,10 @@ private def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =
 private def laurentCoefficients(
     g: _Expression, v: _Variable, point: _Expression, order: Int, env: Environment
 ): Option[Vector[_Expression]] =
+  val ds = simplifiedDerivatives(g, v)
   (0 to order).foldLeft(Option(Vector.empty[_Expression])) { (acc, k) =>
     acc.flatMap { built =>
-      val dk = deriveN(g, v, k)
+      val dk = ds(k)
       if hasDerivative(dk) then None
       else
         val c = simplifyFully(
@@ -335,9 +354,10 @@ def fourierSeries(
 private def maclaurinCoefficients(
     e: _Expression, v: _Variable, upTo: Int, env: Environment
 ): Option[Vector[Double]] =
+  val ds = simplifiedDerivatives(e, v)
   (0 to upTo).foldLeft(Option(Vector.empty[Double])) { (acc, k) =>
     acc.flatMap { built =>
-      val dk = deriveN(e, v, k)
+      val dk = ds(k)
       if hasDerivative(dk) then None
       else
         val atZero = substitute(dk, Map(v.variable -> _Number(0)))

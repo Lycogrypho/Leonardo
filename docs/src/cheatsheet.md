@@ -28,7 +28,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000) |
 | `simplify <expr>` | Structural simplification; also reduces any derivative, integral, limit or transform in the expression. Definitions are expanded, numeric bindings are not |
-| `expand <expr>` | Distribute products over sums; same preparation as `simplify` |
+| `expand <expr>` | Distribute products over sums and collect like terms; same preparation as `simplify`. Past 500 terms the product is left as written, with a note |
 | `eval <expr>` | Evaluate substituting current bindings |
 | `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts, max 100 000) |
 | `truth <expr>` | Truth table over the expression's free variables |

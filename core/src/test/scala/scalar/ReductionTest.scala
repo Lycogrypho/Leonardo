@@ -83,6 +83,25 @@ class ReductionTest extends AnyFlatSpec:
     assert(evalOf(s"sum(k, k, 1, $MaxTabulateTerms)").isRight)
   }
 
+  it should "count the terms without overflowing, so a huge range is refused too (F_0079)" in
+  {
+    // `h - l + 1` in Int wrapped to -1 here, which passed the cap and asked for 2^32 terms.
+    val huge = s"sum(k, k, ${-Int.MaxValue}, ${Int.MaxValue})"
+    assert(evalOf(huge).isLeft)
+    assert(evalOf(s"tabulate(k, k, ${-Int.MaxValue}, ${Int.MaxValue})").isLeft)
+  }
+
+  "rangeRefusal" should "say why a numeric range declines, and stay silent otherwise (F_0079)" in
+  {
+    val env = new Environment()
+    def why(lo: String, hi: String) = rangeRefusal(Parser.parse(lo).get, Parser.parse(hi).get, env)
+    assert(why("1", s"${MaxTabulateTerms + 1}").exists(_.contains(s"${MaxTabulateTerms + 1} terms exceed the limit of $MaxTabulateTerms")))
+    assert(why(s"${-Int.MaxValue}", s"${Int.MaxValue}").exists(_.contains("4294967295 terms")))
+    assert(why("1", "2.5").exists(_.contains("whole numbers")))
+    assert(why("1", s"$MaxTabulateTerms").isEmpty, "a range at the cap is not a refusal")
+    assert(why("1", "n").isEmpty, "a symbolic bound is an answer, not a refusal")
+  }
+
   "the index" should "be a binder: outside children, and carried through rebuild" in
   {
     // What "binder" means here, checked against what the project actually does rather than

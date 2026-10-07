@@ -167,3 +167,82 @@ class ExpandTest extends AnyFlatSpec:
     val expr = _Heaviside(Power(Sum(x, _Number(1)), _Number(2))).expand()
     assert(math.abs(evalNum(expr, "x" -> -1.0) - 1.0) < 1e-5)
   }
+
+  // --- F_0076: like terms fold while expanding, and the work is bounded ---
+
+  /** The terms of a left-spine sum, counted without recursion. */
+  private def termsOf(e: _Expression): Vector[_Expression] =
+    Iterator.unfold(Option(e))(_.map {
+      case Sum(l, r) => (r, Some(l))
+      case last      => (last, None)
+    }).toVector.reverse
+
+  private def parse(s: String): _Expression = parser.Parser.parse(s).get
+
+  "expand((a+b)^20)" should "be the 21 binomial terms, not 2^20 products" in
+  {
+    val (r, why) = expandReporting(parse("(a+b)^20"))
+    assert(why.isEmpty)
+    assert(termsOf(r).size == 21)
+    // The coefficients ARE the binomial row: a = b = 1 sums them to 2^20, a = 1, b = -1 to 0.
+    assert(math.abs(evalNum(r, "a" -> 1.0, "b" -> 1.0) - math.pow(2, 20)) < 1e-6)
+    assert(math.abs(evalNum(r, "a" -> 1.0, "b" -> -1.0)) < 1e-6)
+    assert(termsOf(r).contains(Product(_Number(184756), Product(Power(_Variable("a"), _Number(10)),
+                                                                 Power(_Variable("b"), _Number(10))))))
+  }
+
+  it should "fold x + x and cancel what cancels" in
+  {
+    assert(Sum(x, x).expand() == Product(_Number(2), x))
+    assert(parse("(x + 1)*(x - 1) - x^2").expand() == _Number(-1))
+    assert(parse("(x+1)^20*(x-1)^20").expand() == parse("(x^2 - 1)^20").expand())
+  }
+
+  it should "keep the order terms and factors first appear in" in
+  {
+    // ((x^2 + 2x) + 1), the spelling the REPL's help text shows.
+    assert(parse("(x + 1)^2").expand().toString == "(((x ^ 2.0) + (2.0 * x)) + 1.0)")
+    assert(parse("y*(x + z)").expand() == Sum(Product(y, x), Product(y, z)))
+  }
+
+  it should "stay exact on exact input" in
+  {
+    val r = parser.Parser.parse("(x + 1/3)^2", exact = Some(30)).get.expand()
+    assert(_Rational.containsExact(r))
+    assert(!r.toString.contains("0.333"), s"an exact coefficient was demoted: $r")
+    r.eval(new Environment().withBinding("x", _Rational(1))) match
+      case Right(q: _Rational) => assert(q == _Rational(16).divide(_Rational(9)).getOrElse(fail("16/9")))
+      case other               => fail(s"expected the exact 16/9, got $other")
+  }
+
+  it should "distribute a matrix leaf in order, without folding" in
+  {
+    // Matrix multiplication does not commute, so M*N + N*M must not become 2*M*N.
+    val m = _MatrixValue(2, 2, Array(1.0, 2.0, 3.0, 4.0))
+    val n = _MatrixValue(2, 2, Array(0.0, 1.0, 1.0, 0.0))
+    val r = Product(Sum(m, n), Sum(m, n)).expand()
+    def summands(e: _Expression): Vector[_Expression] = e match
+      case Sum(a, b) => summands(a) ++ summands(b)
+      case other     => Vector(other)
+    assert(summands(r) == Vector(Product(m, m), Product(m, n), Product(n, m), Product(n, n)))
+    assert(r.eval(new Environment()) == Product(Sum(m, n), Sum(m, n)).eval(new Environment()))
+  }
+
+  "an expansion past the size budget" should "be refused, left as written, with the reason" in
+  {
+    // (a+b+c+d)^20 has C(23, 3) = 1771 terms, past MaxExpandTerms.
+    val (r, why) = expandReporting(parse("(a+b+c+d)^20"))
+    assert(why.exists(_.contains(s"more than the limit of $MaxExpandTerms")), s"reason: $why")
+    r match
+      case Power(base, _Number(20.0)) => assert(termsOf(base).size == 4)
+      case other                      => fail(s"expected the power left as written, got $other")
+    // Everything under the budget still answers, with no reason attached.
+    assert(expandReporting(parse("(a+b+c)^20"))._2.isEmpty)
+  }
+
+  "a product past the work budget" should "be refused before any term is built" in
+  {
+    val wide = (1 to 600).map(i => s"x$i").mkString("(", " + ", ")")
+    val (_, why) = expandReporting(parse(s"$wide * $wide"))
+    assert(why.exists(_.contains(s"600 by 600 terms exceeds the limit of $MaxExpandWork")), s"reason: $why")
+  }

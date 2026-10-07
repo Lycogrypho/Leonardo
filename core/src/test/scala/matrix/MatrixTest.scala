@@ -291,7 +291,8 @@ class MatrixTest extends AnyFlatSpec:
   "expand" should "distribute inside matrix elements" in
   {
     val m = literal(1, 1, Product(x, Sum(y, _Number(1))))
-    assert(expand(m) == literal(1, 1, Sum(Product(x, y), Product(x, _Number(1)))))
+    // x*1 folds to x while expanding (F_0076).
+    assert(expand(m) == literal(1, 1, Sum(Product(x, y), x)))
   }
 
   "derive of a MatSum" should "distribute over both operands (linearity)" in

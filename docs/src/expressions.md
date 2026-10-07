@@ -117,7 +117,10 @@ simplify(Ln(Exp(x))).toString
 
 ## Expansion
 
-`expand` distributes multiplication over addition and expands integer powers of sums:
+`expand` distributes multiplication over addition, expands integer powers of sums up to the
+20th, and collects like terms as it goes, so `(a + b)^20` is 21 terms. The terms keep the order
+they first appear in. A product whose expansion would pass 500 terms is left as written rather
+than built; at the REPL a note says so:
 
 ```scala mdoc
 val a = _Variable("a")

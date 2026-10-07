@@ -3,6 +3,7 @@ package web
 
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.global
+import scala.util.control.NonFatal
 
 /** Hands a [[PlotSpec]] document to Plotly — the impure half of the plotting facade.
  *
@@ -62,7 +63,7 @@ object Plot:
       val pending = global.Plotly.Plots.resize(container)
       if js.typeOf(pending.`catch`) == "function" then
         pending.`catch`(((_: js.Any) => ()): js.Function1[js.Any, Unit])
-    catch case _: Throwable => ()
+    catch case NonFatal(_) => ()
 
   /** Empties a container, so a failed plot does not leave the previous figure standing beside
    *  a message describing a different one.
@@ -70,5 +71,5 @@ object Plot:
   def clear(container: js.Dynamic): Unit =
     if available then
       try global.Plotly.purge(container)
-      catch case _: Throwable => ()
+      catch case NonFatal(_) => ()
     container.innerHTML = ""

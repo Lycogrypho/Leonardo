@@ -227,10 +227,6 @@ private def realRoots(e: _Expression, u: _Variable): Option[Vector[Double]] =
         }
     }
 
-/** `Some` of every value when all are `Some`, else `None`. */
-private[optimize] def sequence[A](xs: List[Option[A]]): Option[List[A]] =
-  xs.foldRight(Option(List.empty[A]))((x, acc) => for a <- x; as <- acc yield a :: as)
-
 
 /** Sample values given to free parameters when a symbolic candidate is verified numerically.
  *

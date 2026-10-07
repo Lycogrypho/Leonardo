@@ -185,6 +185,7 @@ package "core" {
         + apply(rows, cols, data) : defensive copy
         + identity(n): _MatrixValue
         + unvec(v, rows, cols): Option[_MatrixValue]
+        ~ ofEvaluated(r): Option[_MatrixValue]  (F_0080: the one dense reader; exact demotes)
     }
 
     class "Environment" <<data>> [[expressions.html]] {
@@ -452,7 +453,8 @@ package "scalar" {
         memoized (Memo)
     }
     class "Expand" <<utility>> [[expressions.html]] {
-        + expand(e): _Expression
+        + expand(e): _Expression  (like terms folded; F_0076)
+        + MaxExpandTerms / MaxExpandWork
     }
     class "Normalize" <<utility>> [[equations.html]] {
         + collect(e, v): Option[Vector]
@@ -604,7 +606,7 @@ package "scalar" {
     "_FourierSeries" ..> "Series" : fourierSeries() at eval
     "_Pade"          ..> "Series" : padeApproximant() at eval
     "_Laurent"       ..> "Series" : regularise + Taylor at eval
-    "Series"   ..> "Derive"   : deriveN() coefficients
+    "Series"   ..> "Derive"   : derive(), simplified per step
     "Derive"   ..> "Memo"
     "Simplify" ..> "Memo"
     "Factorial / MultiFactorial" ..> "SpecialFunctions" : Double kernels

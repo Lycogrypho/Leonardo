@@ -3,6 +3,7 @@ package web
 
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.global
+import scala.util.control.NonFatal
 
 /** Hands LaTeX to the vendored MathLive renderer — the impure half of the `latex` toggle
  *  (issue F_0016 step 5).
@@ -57,4 +58,4 @@ object MathRender:
       try
         block.innerHTML = global.leonardoLatexToMarkup(latex).asInstanceOf[String]
         true
-      catch case _: Throwable => false
+      catch case NonFatal(_) => false

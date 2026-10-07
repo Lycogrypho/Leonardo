@@ -58,16 +58,14 @@ private final class RationalField(policy: GcdPolicy) extends Field[_Rational]:
 /** Row-major rows of a small matrix. */
 private type Rows[T] = Vector[Vector[T]]
 
-/** `Some` of every value when none is missing. */
-private def sequence[A](xs: Vector[Option[A]]): Option[Vector[A]] =
-  xs.foldRight(Option(Vector.empty[A]))((o, acc) => for v <- acc; a <- o yield a +: v)
-
 /** The update itself, generic in the field; `None` when the denominator is not positive. */
 private def rlsStep[T](f: Field[T], theta: Rows[T], p: Rows[T], phi: Vector[T], y: Vector[T],
                        lambda: T): Option[(Rows[T], Rows[T])] =
   def dot(a: Vector[T], b: Vector[T]): T = a.lazyZip(b).map(f.times).reduce(f.plus)
   def matrix(n: Int)(cell: (Int, Int) => Option[T]): Option[Rows[T]] =
-    sequence(Vector.tabulate(n)(i => sequence(Vector.tabulate(n)(j => cell(i, j)))))
+    // Explicit type arguments: against the expected `Rows[T]`, inference reads the alias itself
+    // as the collection constructor (`CC := Rows`, `A := T`) and fails.
+    sequence[Vector[T], Vector](Vector.tabulate(n)(i => sequence(Vector.tabulate(n)(j => cell(i, j)))))
   val n    = phi.size
   val pPhi = p.map(row => dot(row, phi))                                  // P·φ
   val phiP = Vector.tabulate(n)(j => dot(phi, p.map(_(j))))               // φᵀ·P

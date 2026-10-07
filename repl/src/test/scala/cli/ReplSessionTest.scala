@@ -190,7 +190,8 @@ class ReplSessionTest extends AnyFlatSpec:
     s.execute("A := [[x]]")
     s.execute("B := [[x + 1]]")
     s.execute("C := A * B")
-    assert(s.execute("expand C") == "[[((x * x) + (x * 1.0))]]")
+    // Like terms fold while expanding since F_0076: x*x is x^2 and x*1 is x.
+    assert(s.execute("expand C") == "[[((x ^ 2.0) + x)]]")
   }
 
   "simplify of a transpose definition" should "execute the transposition" in

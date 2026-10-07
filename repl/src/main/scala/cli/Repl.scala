@@ -293,8 +293,10 @@ final class Session:
       withLatex(r)(symmetricSpelling(r).getOrElse(r.toString))
     }
     case s"expand $rest"        => withParsed(rest) { e =>
-      val r = expand(prepared(e))
-      withLatex(r)(r.toString)
+      // A product past expand's budgets stays as written (F_0076); the reason is appended as
+      // a note, which -- like every note -- withholds the LaTeX channel (F_0020).
+      val (r, refusal) = expandReporting(prepared(e))
+      refusal.fold(withLatex(r)(r.toString))(why => s"$r\n  note: $why")
     }
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
@@ -861,6 +863,10 @@ final class Session:
       // the active set as information, which is what an experimenter at the prompt wants of it.
       case (q: _QP, Left(_))  => q.detailed(env).left.toOption.map(why => s"qp declined: ${describeQp(why)}")
       case (q: _QP, Right(_)) => q.detailed(env).toOption.map(r => activeConstraints(r.active))
+      // F_0079: a reduction or tabulation that declined on its range says so, instead of
+      // echoing the call back with no hint that a cap or a non-whole bound was the reason.
+      case (r: _Reduction, Left(_: _Reduction)) => rangeRefusal(r.lo, r.hi, env).map(w => s"${r.kind.word} declined: $w")
+      case (t: _Tabulate, Left(_: _Tabulate))   => rangeRefusal(t.lo, t.hi, env).map(w => s"tabulate declined: $w")
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
@@ -1579,6 +1585,7 @@ object Session:
          |  simplify C          (C := A * B) executes the multiplication, simplifies each cell""".stripMargin,
     "expand" ->
       """|Distribute products over sums; expand integer powers via the binomial theorem.
+         |Like terms are collected as it goes; past 500 terms a product is left as written.
          |Matrix algebra is carried out first.
          |  expand x * (y + z)  -> ((x * y) + (x * z))
          |  expand (x + 1)^2    -> (((x ^ 2.0) + (2.0 * x)) + 1.0)""".stripMargin,

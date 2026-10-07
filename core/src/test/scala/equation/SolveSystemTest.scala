@@ -75,6 +75,42 @@ class SolveSystemTest extends AnyFlatSpec:
     assert(solveSystem(List(eq1, eq2), List(x, y)).isEmpty)
   }
 
+  // F_0075: the pivot test is relative to the matrix, so a change of units moves nothing.
+  "the same system in units 1e-13 smaller" should "solve exactly as the unit-scale one does" in
+  {
+    def system(k: Double) = List(
+      _Equation(Sum(Product(_Number(k), x), Product(_Number(k), y)), _Number(2 * k)),
+      _Equation(Sum(Product(_Number(k), x), Product(_Number(-k), y)), _Number(0)))
+    for k <- Seq(1.0, 1e-13, 1e-20, 1e13) do
+      solveSystem(system(k), List(x, y)) match
+        case None    => fail(s"declined at scale $k")
+        case Some(s) =>
+          assert(math.abs(solEq(s, x) - 1.0) < 1e-9, s"x at scale $k")
+          assert(math.abs(solEq(s, y) - 1.0) < 1e-9, s"y at scale $k")
+  }
+
+  "a genuinely singular system" should "still decline at every scale" in
+  {
+    for k <- Seq(1.0, 1e-13, 1e13) do
+      val eq1 = _Equation(Sum(Product(_Number(k), x), Product(_Number(k), y)), _Number(k))
+      val eq2 = _Equation(Sum(Product(_Number(2 * k), x), Product(_Number(2 * k), y)), _Number(2 * k))
+      assert(solveSystem(List(eq1, eq2), List(x, y)).isEmpty, s"scale $k")
+    val zero = _Equation(Product(_Number(0), x), _Number(0))
+    assert(solveSystem(List(zero), List(x)).isEmpty, "the all-zero matrix")
+  }
+
+  "a system mixing scales" should "be judged by its largest entry, not its smallest" in
+  {
+    // Rows of size 1 and 1e-14: the second pivot is tiny only because its row is; the
+    // matrix is diagonal and perfectly conditioned per row, yet below 1e-12 absolutely.
+    val eq1 = _Equation(x, _Number(3))
+    val eq2 = _Equation(Product(_Number(1e-14), y), _Number(2e-14))
+    // Relative to the largest entry (1), a 1e-14 pivot IS near-singular: this is the
+    // one case where the relative rule declines, by design -- the matrix has condition
+    // number 1e14, and an answer here would be numerically meaningless at precision 5.
+    assert(solveSystem(List(eq1, eq2), List(x, y)).isEmpty)
+  }
+
   "a system whose back-substitution overflows" should "give None (non-finite guard)" in
   {
     // Pivot 1e-11 passes the 1e-12 singularity threshold, but x = 1e300 / 1e-11

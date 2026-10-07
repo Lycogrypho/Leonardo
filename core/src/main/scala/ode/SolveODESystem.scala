@@ -85,12 +85,8 @@ private def linearSystemShape(rhs: _Expression,
 
 /** Evaluates `e` to a dense matrix: a `_MatrixValue`, or a symbolic matrix whose every cell is
  *  a number — the shape an **exact** matrix keeps, demoted here as `expm` demotes it anyway. */
-private def denseOf(e: _Expression, env: Environment): Option[_MatrixValue] = e.eval(env) match
-  case Right(m: _MatrixValue) => Some(m)
-  case Left(m: _MatrixShaped) =>
-    val cells = m.children.collect { case _Number(d) => d }
-    if cells.size == m.rows * m.cols then Some(_MatrixValue(m.rows, m.cols, cells.toArray)) else None
-  case _ => None
+private def denseOf(e: _Expression, env: Environment): Option[_MatrixValue] =
+  _MatrixValue.ofEvaluated(e.eval(env))
 
 /** Evaluates `e` to a finite `Double`, or `None`. */
 private def finiteNumber(e: _Expression, env: Environment): Option[Double] = e.eval(env) match

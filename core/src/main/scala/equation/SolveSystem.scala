@@ -20,8 +20,11 @@ import scala.util.boundary, boundary.break
  *  The constant term `b_i` is `-(lhs_i - rhs_i evaluated with all v_j = 0)`.
  *
  *  **Dense path** (all `A_ij` and `b_i` fold to `_Number` in `env`): Gaussian
- *  elimination with partial pivoting on `Double` arrays; returns `None` when the
- *  pivot drops below `1e-12` (singular or near-singular).
+ *  elimination with partial pivoting on `Double` arrays; returns `None` when a pivot
+ *  drops below `PivotTolerance` **times the largest entry of `A`** (singular or
+ *  near-singular). Relative, not absolute (F_0075): an absolute `1e-12` made the verdict
+ *  depend on the units of the coefficients, declining `1e-13*x + 1e-13*y = 2e-13` while
+ *  solving the same system scaled to `x + y = 2` -- the 2.11 rule.
  *
  *  **Symbolic path** (some coefficient or constant stays symbolic): row reduction
  *  using `Sum`/`Product`/`Ratio`/`_Expression` arithmetic with `simplifyFully` at
@@ -104,6 +107,14 @@ private def allOpt[A](xs: Iterable[Option[A]]): Option[Vector[A]] =
   if flat.size == seq.size then Some(flat) else None
 
 
+/** The pivot threshold of [[gaussDense]], as a fraction of the largest entry of `A`.
+ *
+ *  Relative on purpose (F_0075): a pivot is "zero" only compared with the matrix it came
+ *  from, so scaling every coefficient by `k` -- a change of units -- cannot move the verdict
+ *  (the 2.11 rule, and `_MatrixValue.CholeskyTolerance`'s arrangement). `1e-12` keeps the
+ *  previous threshold for a matrix of unit scale, where every existing test lives. */
+private val PivotTolerance: Double = 1e-12
+
 /** Gaussian elimination with partial pivoting on `Double` arrays.
  *
  *  Solves `A * x = b` in-place on an augmented `[A|b]` matrix.
@@ -113,17 +124,21 @@ private def allOpt[A](xs: Iterable[Option[A]]): Option[Vector[A]] =
  *  @param A the n-by-n coefficient matrix (as a vector of rows)
  *  @param b the right-hand-side vector of length n
  *  @return `Some(solution vector)` on success; `None` when any pivot is near-zero
+ *          relative to the largest entry of `A`, or `A` is all zeros
  */
 private def gaussDense(A: Vector[Vector[Double]], b: Vector[Double]): Option[Vector[Double]] =
   val n   = A.size
   val aug = Array.tabulate(n)(i => A(i).toArray :+ b(i))
+  val scale = A.iterator.flatten.foldLeft(0.0)((m, v) => math.max(m, math.abs(v)))
+  val tol   = PivotTolerance * scale
 
   boundary:
+    if scale == 0.0 || scale.isNaN || scale.isInfinite then break(None)
     for pivot <- 0 until n do
       // Partial pivoting: swap the row with the largest absolute value in this column
       val maxRow = (pivot until n).maxBy(r => math.abs(aug(r)(pivot)))
       val tmp = aug(pivot); aug(pivot) = aug(maxRow); aug(maxRow) = tmp
-      if math.abs(aug(pivot)(pivot)) < 1e-12 then break(None)
+      if !(math.abs(aug(pivot)(pivot)) > tol) then break(None)
       for row <- pivot + 1 until n do
         val factor = aug(row)(pivot) / aug(pivot)(pivot)
         for col <- pivot to n do aug(row)(col) -= factor * aug(pivot)(col)

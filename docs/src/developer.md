@@ -443,7 +443,7 @@ They do not form a class or object hierarchy — they are imported where needed:
 | `Derive.scala` | `derive(e, v)`, `deriveN(e, v, n)`, `derive(e, v1, v2, ...)` |
 | `Integrate.scala` | `integrate(e, v)` (dispatcher; tiers in `IntegrateParts`/`IntegrateRational`/`IntegrateSubstitution`) |
 | `Simplify.scala` | `simplify(e)`, `simplifyFully(e)` |
-| `Expand.scala` | `expand(e)` |
+| `Expand.scala` | `expand(e)` — over a term map, like terms folded; budgets `MaxExpandTerms`, `MaxExpandWork` |
 | `Normalize.scala` | `collect(e, v)`, `normalize(e, v)` |
 | `Analysis.scala` | `dependsOn(e, v)` |
 | `Substitute.scala` | `substitute(e, definitions)` |

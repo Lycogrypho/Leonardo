@@ -123,7 +123,7 @@ case class _Regress(x: _Expression, y: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _Regress(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (denseOf(x.eval(env)), denseOf(y.eval(env))) match
+    (_MatrixValue.ofEvaluated(x.eval(env)), _MatrixValue.ofEvaluated(y.eval(env))) match
       case (Some(xm), Some(ym)) =>
         leastSquares(xm, ym).map(Right(_)).getOrElse(Left(this))
       case _ => Left(_Regress(x.eval(env).toExpression, y.eval(env).toExpression))
@@ -166,19 +166,6 @@ case class _Test(kind: TestKind, a: _Expression, b: _Expression) extends _Expres
       case TestKind.ChiSqTest => chiSquaredTest(ra, rb, env)
     result.getOrElse(Left(_Test(kind, ra.toExpression, rb.toExpression)))
 
-
-/** Reads an evaluated operand as a dense matrix, demoting an exact one.
- *
- *  Regression and the tests are `Double` algorithms — QR iteration and the cdf kernels are
- *  not exact whatever their input — so an exact matrix demotes here rather than losing the
- *  operation, the pattern the exact tier established for the decompositions.
- */
-private def denseOf(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
-  case Right(mv: _MatrixValue) => Some(mv)
-  case Left(m: _Matrix) =>
-    val ds = m.elems.collect { case _Number(d) => d }
-    Option.when(ds.size == m.elems.size && ds.nonEmpty)(_MatrixValue(m.rows, m.cols, ds.toArray))
-  case _ => None
 
 /** A plain number from an evaluated operand. */
 private def numberOf(r: Either[_Expression, _Value]): Option[Double] = r match

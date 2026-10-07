@@ -24,11 +24,11 @@ import matrix.*
 def stateSpace(a: _Expression, b: _Expression, c: _Expression, d: _Expression): _Expression =
   _Matrix(1, 4, Vector(a, b, c, d))
 
-/** Reduces an expression to a dense matrix value, or `None`. */
+/** Reduces an expression to a dense matrix value, or `None`; an exact matrix demotes (F_0080 —
+ *  it was declined, so `controllable` refused an exact literal the rest of the library accepts).
+ *  The environment is empty because these functions take none: bind by substituting first. */
 private def denseOf(e: _Expression): Option[_MatrixValue] =
-  e.eval(new Environment()) match
-    case Right(m: _MatrixValue) => Some(m)
-    case _                      => None
+  _MatrixValue.ofEvaluated(e.eval(new Environment()))
 
 /** Controllability matrix `[B, A*B, A^2*B, …, A^(n-1)*B]`, joined by the shared block assembly
  *  (F_0055) — the private concatenation this file used to carry was a second definition of

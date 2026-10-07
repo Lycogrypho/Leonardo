@@ -188,10 +188,8 @@ case class _QP(h: _Expression, f: _Expression, a: _Expression, b: _Expression,
 /** A numeric matrix, dense or exact (demoted, the `lu` precedent); a number is `1×1`. */
 private def numericMatrix(e: _Expression, env: Environment): Option[_MatrixValue] =
   e.eval(env) match
-    case Right(m: _MatrixValue) => Some(m)
-    case Right(_Number(d))      => Some(_MatrixValue(1, 1, Array(d)))
-    case Left(m: _Matrix)       => matrix.denseOf(m)
-    case _                      => None
+    case Right(_Number(d)) => Some(_MatrixValue(1, 1, Array(d)))
+    case r                 => _MatrixValue.ofEvaluated(r)
 
 /** A constraint group: `Some(None)` for the absent `0`/`0`, `Some(Some((A, b)))` for a matrix
  *  with `n` columns and a matching right-hand side, `None` when neither. */
@@ -223,12 +221,6 @@ private def pointsResult(points: Option[List[SolutionPoint]], vars: Vector[_Vari
 /** Reads a numeric `n×1` column (or `1×n` row, or a number when `n = 1`), infinite entries
  *  allowed — they are how an absent bound is written. */
 private def columnOf(e: _Expression, n: Int, env: Environment): Option[Vector[Double]] =
-  e.eval(env) match
-    case Right(m: _MatrixValue) if m.rows * m.cols == n && (m.rows == 1 || m.cols == 1) =>
-      Some(m.toVector)
-    case Right(_Number(d)) if n == 1 => Some(Vector(d))
-    case Left(_Matrix(rows, cols, cells)) if rows * cols == n && (rows == 1 || cols == 1) =>
-      sequence(cells.toList.map(c => c.eval(env) match
-        case Right(_Number(d)) => Some(d)
-        case _                 => None)).map(_.toVector)
-    case _ => None
+  numericMatrix(e, env).collect {
+    case m if m.rows * m.cols == n && (m.rows == 1 || m.cols == 1) => m.toVector
+  }

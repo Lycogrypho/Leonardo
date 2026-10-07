@@ -111,6 +111,26 @@ object _MatrixValue:
         j += 1
       Some(new _MatrixValue(rows, cols, out))
 
+  /** Reads an evaluated operand as a dense matrix: a `_MatrixValue` as it is, or a symbolic
+   *  matrix whose every cell is a real number.
+   *
+   *  The one reader of that fact (F_0080); four private copies used to disagree about it.  An
+   *  **exact** matrix stays symbolic — `_Matrix.eval` does not collapse rational cells — so it
+   *  is accepted here and **demoted**, through the widening `_Number` extractor: every caller is
+   *  a `Double` algorithm (`expm`, QR, the cdf kernels), and the alternative is losing the
+   *  operation rather than its exactness, the precedent `lu`/`qr`/`eigen` set.  Needs only the
+   *  `core` shape trait, so every layer can use it.
+   *
+   *  @param r the evaluated operand
+   *  @return the dense matrix, or `None` for a scalar, a non-matrix, or a non-numeric cell
+   */
+  private[leonardo] def ofEvaluated(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
+    case Right(m: _MatrixValue) => Some(m)
+    case Left(m: _MatrixShaped) =>
+      val cells = m.children.collect { case _Number(d) => d }
+      Option.when(cells.size == m.rows * m.cols)(new _MatrixValue(m.rows, m.cols, cells.toArray))
+    case _ => None
+
 
 /** Dense, fully-reduced matrix value: a row-major `Array[Double]`, not `n²` [[_Number]] nodes.
  *
@@ -457,7 +477,17 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
     if rows != cols || !isFinite || scale == 0.0 || !symmetric then None
     else
       val l = new Array[Double](n * n)
-      def dot(i: Int, j: Int, upTo: Int): Double = (0 until upTo).foldLeft(0.0)((s, k) => s + l(i * n + k) * l(j * n + k))
+      // The O(n³) inner product, as a `while` loop like this file's other kernels: a `foldLeft`
+      // over an index range boxes a `Double` per step, which F_0053 measured at ~8x and F_0081
+      // measured here (see `Done.md`).
+      def dot(i: Int, j: Int, upTo: Int): Double =
+        var s = 0.0
+        var k = 0
+        val (ri, rj) = (i * n, j * n)
+        while k < upTo do
+          s += l(ri + k) * l(rj + k)
+          k += 1
+        s
       // Column by column: the pivot first, then the entries below it.  `forall` stops at the
       // first non-positive pivot, which is the whole refusal.
       val positive = (0 until n).forall { j =>

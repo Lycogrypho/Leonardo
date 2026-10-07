@@ -101,8 +101,10 @@ at(tabulate(fib(k), k, 0, 10), 1, 11)  -> 55              rows are 1-based
 
 The result is an ordinary matrix, so indexing with `at`, tuple assignment, the matrix
 operations and `:save` all work on it unchanged. `k` is a binder — it belongs to the
-`tabulate` and is never substituted from outside. The number of terms is capped, so a
-mistyped bound declines rather than building an unbounded row.
+`tabulate` and is never substituted from outside. The number of terms is capped at 1000, so a
+mistyped bound declines rather than building an unbounded row, and the REPL says so in a note
+(`note: tabulate declined: 1001 terms exceed the limit of 1000`) rather than echoing the call
+back silently.
 
 ## `sum` and `product` — the terms folded
 
@@ -123,3 +125,9 @@ separately. **An exact term stays exact** — under `exact on`, `sum(1/k, k, 1, 
 not a decimal. **Symbolic terms expand**: `sum(k*x, k, 1, 3)` becomes `x + 2x + 3x`, which
 `simplify` then collects to `6x`. And **an empty range is the identity** — `sum(…, k, 1, 0)`
 is `0` and the empty product is `1` — so a base case reads correctly instead of declining.
+
+The same 1000-term cap applies, with the same note. A product that **overflows** is a
+different matter: `product(k, k, 1, 171)` answers `inf`, the floating-point arithmetic's own
+answer (`1e308 * 10` is `inf` too), while `fact(171)` declines, because the factorial kernel
+knows `171!` is beyond a `Double` and says so rather than computing it. Under `exact on` both
+give the exact integer.

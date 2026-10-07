@@ -3,6 +3,7 @@ package cli
 
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.global
+import scala.util.control.NonFatal
 
 /** Where `:save` and `:load` put a session — **the Scala.js implementation** (F_0003 phase 2).
  *
@@ -63,4 +64,4 @@ private[cli] object SessionIO:
         // A quota failure is the realistic one: browsers cap localStorage at a few megabytes
         // per origin, and it surfaces as a thrown exception rather than a false return.
         try { s.setItem(Prefix + name, text); Right(()) }
-        catch case e: Throwable => Left(Option(e.getMessage).getOrElse("storage write refused"))
+        catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse("storage write refused"))

@@ -159,8 +159,32 @@ private def indexRange(lo: _Expression, hi: _Expression, env: Environment): Opti
   for
     l <- indexOf(lo, env)
     h <- indexOf(hi, env)
-    if (h - l + 1) <= MaxTabulateTerms
+    // In Long (F_0079): two Int bounds near opposite ends overflow `h - l + 1` to a negative
+    // count, which then passed the cap and asked for four billion terms.
+    if h.toLong - l + 1 <= MaxTabulateTerms
   yield (l, h)
+
+/** Why a `sum`, `product` or `tabulate` over `lo..hi` declines on account of its range, or
+ *  `None` when the range is not the reason (F_0079, the F_0052 Decision A mechanism: a reason
+ *  at the Scala level, which the REPL appends as a note).
+ *
+ *  A **symbolic** bound is not a refusal -- `sum(f, k, 1, n)` staying symbolic is the answer --
+ *  so only numeric bounds are judged: one that is not whole, or a range longer than the cap.
+ *
+ *  @param lo  the lower bound
+ *  @param hi  the upper bound
+ *  @param env the environment the bounds are evaluated in
+ *  @return the reason in prose, or `None`
+ */
+private[leonardo] def rangeRefusal(lo: _Expression, hi: _Expression, env: Environment): Option[String] =
+  (lo.eval(env), hi.eval(env)) match
+    case (Right(_Number(a)), Right(_Number(b))) =>
+      (indexOf(lo, env), indexOf(hi, env)) match
+        case (Some(l), Some(h)) if h.toLong - l + 1 > MaxTabulateTerms =>
+          Some(s"${h.toLong - l + 1} terms exceed the limit of $MaxTabulateTerms")
+        case (Some(_), Some(_)) => None
+        case _ => Some(s"the bounds must be whole numbers, got ${_Number.render(a)} and ${_Number.render(b)}")
+    case _ => None
 
 /** Evaluates `e` at each index in `[l, h]`, with `v` bound to that index.
  *
