@@ -457,3 +457,47 @@ class SeriesTest extends AnyFlatSpec:
     assert(reparsed.successful, s"did not re-parse: ${e.toString}")
     assert(reparsed.get == e, s"round-trip changed it: ${reparsed.get}")
   }
+
+  // --- F_0077: the derivative budget bounds the work, and every decline says why ---
+
+  /** The reason a node declined, failing when it did not. */
+  private def why(r: Either[String, _Expression]): String = r match
+    case Left(reason) => reason
+    case Right(s)     => fail(s"expected a refusal, got a series: $s")
+
+  "a series whose derivatives outgrow the budget" should "decline quickly, naming the order" in
+  {
+    // exp(sin(x)): the order-9 derivative has ~248 000 nodes and the order-10 one ~1.4 million,
+    // so order 12 used to run past 10 s (and past 20 s at order 12 in the audit's probe).
+    val started = System.nanoTime
+    val reason  = why(taylorDetailed(parse("exp(sin(x))"), x, _Number(0), 12))
+    val seconds = (System.nanoTime - started) / 1e9
+    assert(reason.matches(s"the derivative of order \\d+ has more than $MaxDerivativeNodes nodes"), reason)
+    assert(seconds < 15, s"the budget did not bound the work: $seconds s")
+    assert(taylorSeries(parse("exp(sin(x))"), x, _Number(0), 12).isEmpty)
+  }
+
+  it should "still answer, correctly, within the budget" in
+  {
+    val s = taylorSeries(parse("exp(sin(x))"), x, _Number(0), 8)
+      .getOrElse(fail("order 8 is within the budget"))
+    // The truncation error at x = 0.1 is O(0.1^9).
+    assertClose(valueAt(s, 0.1), math.exp(math.sin(0.1)), 1e-9, "exp(sin(0.1)):")
+  }
+
+  it should "bound pade and laurent too, through the same derivatives" in
+  {
+    assert(why(padeDetailed(parse("exp(sin(x))"), x, 6, 6, env)).contains("nodes"))
+    assert(why(laurentDetailed(parse("exp(sin(x))/x"), x, _Number(0), 1, 12, env)).contains("nodes"))
+  }
+
+  "each series decline" should "carry its reason" in
+  {
+    // derive has no rule for digamma's derivative (it would need trigamma).
+    assert(why(taylorDetailed(parse("digamma(x)"), x, _Number(1), 2)) == "no derivative rule applies at order 1")
+    assert(why(_Taylor(Sin(x), x, _Number(0), _Number(25)).detailed(env)) == orderRange)
+    // 1 + x^2: c1 = 0 makes the [1/1] system 0 * q1 = -1, which has no solution.
+    assert(why(padeDetailed(parse("1 + x^2"), x, 1, 1, env)) == "no [1/1] approximant exists: its linear system is singular")
+    // An essential singularity has no finite principal part to clear.
+    assert(why(laurentDetailed(parse("exp(1/x)"), x, _Number(0), 2, 2, env)).contains("could not be cleared"))
+  }

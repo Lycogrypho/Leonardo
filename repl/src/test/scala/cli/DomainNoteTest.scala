@@ -59,6 +59,17 @@ class DomainNoteTest extends AnyFlatSpec:
     assert(!out.contains("note:"), s"no diagnostic expected, got: $out")
   }
 
+  // F_0077: a series whose derivatives outgrow the budget declines and says why.
+  "a series past the derivative budget" should "decline with a note instead of hanging" in
+  {
+    val s = session
+    val over = s.execute("taylor(exp(sin(x)), x, 0, 12)")
+    assert(over.contains("note: taylor declined: the derivative of order"), over)
+    assert(s.lastLatex.isEmpty, "a note is prose the formula does not carry")
+    assert(s.execute("pade(1 + x^2, x, 1, 1)").contains("note: pade declined: no [1/1] approximant exists"))
+    assert(!s.execute("taylor(exp(x), x, 0, 4)").contains("note:"))
+  }
+
   // F_0076: an expansion past its budget stays as written and says why.
   "an expansion past the term budget" should "be left as written with a note" in
   {

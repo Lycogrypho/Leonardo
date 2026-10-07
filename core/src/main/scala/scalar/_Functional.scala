@@ -188,14 +188,19 @@ case class _Taylor(e: _Expression, v: _Variable, point: _Expression, n: _Express
   override def rebuild(c: List[_Expression]): _Expression = _Taylor(c.head, v, c(1), c(2))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
+    detailed(env).fold(_ => Left(this), _.eval(env))
+
+  /** The series, or why there is none — what the REPL's note reads (F_0077, F_0052 Decision A).
+   *  @param env the evaluation environment
+   *  @return the unevaluated series, or the reason it was declined
+   */
+  private[leonardo] def detailed(env: Environment): Either[String, _Expression] =
     n.eval(env) match
       case Right(_Number(d)) if d.isWhole && d >= 0 && d <= MaxTaylorOrder =>
         // point is NOT required to reduce: expanding about a symbolic centre is
         // meaningful, so it is passed through as it stands.
-        taylorSeries(e, v, point, d.toInt) match
-          case Some(series) => series.eval(env)
-          case None         => Left(this)
-      case _ => Left(this)
+        taylorDetailed(e, v, point, d.toInt)
+      case _ => Left(orderRange)
 
 /** Truncated Fourier series of `e` in `v` over one period centred on zero:
  *  `fourierSeries(e, v, period, n)`.
@@ -257,13 +262,17 @@ case class _Pade(e: _Expression, v: _Variable, m: _Expression, n: _Expression)
   override def rebuild(c: List[_Expression]): _Expression = _Pade(c.head, v, c(1), c(2))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
+    detailed(env).fold(_ => Left(this), _.eval(env))
+
+  /** The approximant, or why there is none — what the REPL's note reads (F_0077).
+   *  @param env the evaluation environment
+   *  @return the unevaluated approximant, or the reason it was declined
+   */
+  private[leonardo] def detailed(env: Environment): Either[String, _Expression] =
     (m.eval(env), n.eval(env)) match
-      case (Right(_Number(a)), Right(_Number(b)))
-          if a.isWhole && b.isWhole && a >= 0 && b >= 0 && a + b <= MaxTaylorOrder =>
-        padeApproximant(e, v, a.toInt, b.toInt, env) match
-          case Some(r) => r.eval(env)
-          case None    => Left(this)
-      case _ => Left(this)
+      case (Right(_Number(a)), Right(_Number(b))) if a.isWhole && b.isWhole =>
+        padeDetailed(e, v, a.toInt, b.toInt, env)
+      case _ => Left(s"the degrees must be whole numbers summing to at most $MaxTaylorOrder")
 
 /** AST node for `laurent(e, v, point, m, n)`.
  *
@@ -299,17 +308,23 @@ case class _Laurent(e: _Expression, v: _Variable, point: _Expression,
     else _Laurent(c.head, v, c(1), None, c(2))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
+    detailed(env).fold(_ => Left(this), _.eval(env))
+
+  /** The series, or why there is none — what the REPL's note reads (F_0077).
+   *  @param env the evaluation environment
+   *  @return the unevaluated series, or the reason it was declined
+   */
+  private[leonardo] def detailed(env: Environment): Either[String, _Expression] =
     val order = m match
       case Some(me) => me.eval(env) match
-        case Right(_Number(d)) if d.isWhole && d >= 0 => Some(d.toInt)
-        case _                                        => None
-      case None => detectedOrder(env)
-    (order, n.eval(env)) match
-      case (Some(mm), Right(_Number(nn))) if nn.isWhole && nn >= 0 =>
-        laurentSeries(e, v, point, mm, nn.toInt, env) match
-          case Some(r) => r.eval(env)
-          case None    => Left(this)
-      case _ => Left(this)
+        case Right(_Number(d)) if d.isWhole && d >= 0 => Right(d.toInt)
+        case _                                        => Left("the pole order must be a whole number")
+      case None => detectedOrder(env).toRight(s"the pole order at $point could not be determined")
+    order.flatMap { mm =>
+      n.eval(env) match
+        case Right(_Number(nn)) if nn.isWhole && nn >= 0 => laurentDetailed(e, v, point, mm, nn.toInt, env)
+        case _                                           => Left(orderRange)
+    }
 
   /** The pole order at `point`, from the singularity classifier. */
   private def detectedOrder(env: Environment): Option[Int] =

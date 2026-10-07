@@ -407,9 +407,12 @@ different operation from `fourier(e, t, w)`, the Fourier *transform*.  Coefficie
 not chopped: a term that vanishes analytically returns at the integrator noise floor.
 
 `maclaurin(e, v, n)` is sugar for `taylor(e, v, 0, n)`.  The expansion variable stays
-free in the result, so binding it evaluates the polynomial.  Order is capped at 20;
-an expression whose derivative stays symbolic (`Gamma`, `fact`) returns unevaluated
-rather than a bogus series.
+free in the result, so binding it evaluates the polynomial.  Order is capped at 20,
+and each derivative at 250 000 nodes: a composite function's derivatives grow fast, so
+`taylor(exp(sin(x)), x, 0, 12)` declines, with a note naming the order, rather than
+running for minutes.  An expression whose derivative stays symbolic (`digamma`) returns
+unevaluated rather than a bogus series.  `taylor`, `laurent` and `pade` all say why they
+declined.
 
 ---
 ## Equations & solving

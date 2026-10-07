@@ -589,6 +589,8 @@ package "scalar" {
         + taylorSeries / maclaurinSeries(e,v,a,n)
         + fourierSeries(e,v,T,n,env)   (numeric)
         + padeApproximant(e,v,m,n,env)
+        + MaxDerivativeNodes  (F_0077: bounds the work)
+        ~ taylor/laurent/padeDetailed: Either[reason, series]
     }
     class "Sample" <<utility>> [[calculus.html]] {
         + sample(e, v, lo, hi, n, env): Vector[(Double,Double)]

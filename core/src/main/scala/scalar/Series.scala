@@ -6,9 +6,9 @@ import core.*
 
 /** Highest Taylor order [[taylorSeries]] will expand.
  *
- *  Matches `Expand`'s integer-power cap of 20 and exists for the same reason: the work
- *  grows with the order (each term needs one more differentiation), and a runaway order
- *  should give up rather than hang.  Beyond the cap the `_Taylor` node stays symbolic.
+ *  Matches `Expand`'s integer-power cap of 20.  **It does not bound the work on its own** —
+ *  a composite function's derivatives grow exponentially with the order — which is what
+ *  [[MaxDerivativeNodes]] is for (F_0077).  Beyond the cap the `_Taylor` node stays symbolic.
  */
 val MaxTaylorOrder: Int = 20
 
@@ -26,28 +26,74 @@ private def hasDerivative(e: _Expression): Boolean = e match
   case other          => other.children.exists(hasDerivative)
 
 
-/** `f, f', f'', …` — each derivative **simplified before the next is taken** (F_0077).
+/** The most nodes one derivative inside a series may have (F_0077).
+ *
+ *  **The order cap does not bound the work; this does.**  The `k`-th derivative of a composite
+ *  function grows by a factor of 2 to 8.5 per order even simplified, so `MaxTaylorOrder = 20`
+ *  was unreachable for `exp(sin(x))` by orders of magnitude.  Measured (JVM): time follows the
+ *  node count at about 0.2 µs per node, and one step multiplies it by at most ~8.5 — so at this
+ *  budget a refused step costs about 0.7 s and an accepted series well under that.  Raising it
+ *  buys roughly one order per factor of 6 and costs as much time; F_0085's power-series engine
+ *  is what lifts it for real.  A derivative past it makes the series decline with a reason.
+ */
+val MaxDerivativeNodes: Int = 250000
+
+/** The raw (unsimplified) derivative's node budget: refused before `simplifyFully`, which is
+ *  the expensive half of a step. */
+private val MaxRawDerivativeNodes: Int = 10 * MaxDerivativeNodes
+
+/** `f, f', f'', …` within [[MaxDerivativeNodes]], each **simplified before the next is taken**;
+ *  an element past the budget, and every one after it, is the reason.
  *
  *  [[deriveN]] folds [[derive]] with no simplification between steps, so the `k`-th derivative
- *  of a composite carries every product-rule term of every earlier step and grows
- *  exponentially: `taylor(tan(x), x, 0, 10)` did not finish in 20 s, which left
- *  [[MaxTaylorOrder]] unreachable by orders of magnitude.  Simplifying each step keeps the tree
- *  near its true size.  Lazy, so a series that aborts early differentiates no further.
- *  `deriveN` itself is unchanged: its result is public API whose shape callers may rely on.
- *
- *  @param e the expression
- *  @param v the differentiation variable
- *  @return the derivatives of every order, starting with `e` itself
+ *  of a composite carries every product-rule term of every earlier step.  Simplifying each step
+ *  gains a factor of 1 to 8 (F_0077, measured) but leaves the growth exponential — `simplify`
+ *  does no common-factor cancellation — which is why the budget exists.  Lazy, so a series that
+ *  aborts early differentiates no further.  `deriveN` itself is unchanged: its result is public
+ *  API whose shape callers may rely on.
  */
-private def simplifiedDerivatives(e: _Expression, v: _Variable): LazyList[_Expression] =
-  LazyList.iterate(e)(d => simplifyFully(derive(d, v)))
+private def boundedDerivatives(e: _Expression, v: _Variable): LazyList[Either[String, _Expression]] =
+  def tooLarge(k: Int) = s"the derivative of order $k has more than $MaxDerivativeNodes nodes"
+  LazyList.iterate((Right(e): Either[String, _Expression], 0)) { (prev, k) =>
+    val next = prev.flatMap { d =>
+      val raw = derive(d, v)
+      if nodeCountUpTo(raw, MaxRawDerivativeNodes) > MaxRawDerivativeNodes then Left(tooLarge(k + 1))
+      else
+        val s = simplifyFully(raw)
+        Either.cond(nodeCountUpTo(s, MaxDerivativeNodes) <= MaxDerivativeNodes, s, tooLarge(k + 1))
+    }
+    (next, k + 1)
+  }.map(_._1)
+
+/** The derivatives of orders `0 .. order`, or why they cannot all be had: the size budget, or
+ *  an order at which `derive` has no rule (a series carrying a `_Derivative` is worse than none). */
+private def seriesDerivatives(e: _Expression, v: _Variable, order: Int): Either[String, Vector[_Expression]] =
+  @annotation.tailrec
+  def go(ds: LazyList[Either[String, _Expression]], k: Int, built: Vector[_Expression]): Either[String, Vector[_Expression]] =
+    if k > order then Right(built)
+    else ds.head match
+      case Left(why)                   => Left(why)
+      case Right(d) if hasDerivative(d) => Left(s"no derivative rule applies at order $k")
+      case Right(d)                    => go(ds.tail, k + 1, built :+ d)
+  go(boundedDerivatives(e, v), 0, Vector.empty)
+
+/** The node count of `e`, counted no further than `limit + 1`, so counting costs at most the
+ *  budget it checks.  Iterative: a derivative is a tree, but a long one must not recurse. */
+private[scalar] def nodeCountUpTo(e: _Expression, limit: Int): Int =
+  @annotation.tailrec
+  def go(pending: List[_Expression], n: Int): Int =
+    if n > limit then n
+    else pending match
+      case Nil          => n
+      case head :: rest => go(head.children ::: rest, n + 1)
+  go(List(e), 0)
 
 
 /** Expands `e` as a [[https://en.wikipedia.org/wiki/Taylor_series Taylor polynomial]] in `v` about `point`, to and including order `order`.
  *
  *  `Σ(k = 0 to order) f⁽ᵏ⁾(point) / k! · (v − point)ᵏ`, built from
- *  [[simplifiedDerivatives]] (each derivative simplified before the next, so the k-th reuses
- *  the (k−1)-th at its true size) and instantiating each coefficient at `point` with [[substitute]].  The
+ *  derivatives each simplified before the next and held within [[MaxDerivativeNodes]], and
+ *  instantiating each coefficient at `point` with [[substitute]].  The
  *  result is run through [[simplifyFully]], which collapses the `k = 0` term's
  *  `(v − point)⁰` to `1` and folds the constant coefficients.
  *
@@ -59,30 +105,43 @@ private def simplifiedDerivatives(e: _Expression, v: _Variable): LazyList[_Expre
  *               binder in the `_Derivative` sense
  *  @param point the centre of the expansion
  *  @param order the highest power retained; must be in `0 .. MaxTaylorOrder`
- *  @return the truncated series, or `None` when the order is out of range or some
- *          coefficient could not be differentiated
+ *  @return the truncated series, or `None` when the order is out of range, some
+ *          coefficient could not be differentiated, or a derivative exceeds
+ *          [[MaxDerivativeNodes]] (`taylorDetailed` says which)
  */
 def taylorSeries(
     e: _Expression, v: _Variable, point: _Expression, order: Int
 ): Option[_Expression] =
-  if order < 0 || order > MaxTaylorOrder then None
+  taylorDetailed(e, v, point, order).toOption
+
+/** [[taylorSeries]], with the reason when there is no series (F_0052 Decision A).
+ *
+ *  @param e     the expression to expand
+ *  @param v     the expansion variable
+ *  @param point the centre of the expansion
+ *  @param order the highest power retained
+ *  @return the truncated series, or why it was declined
+ */
+private[leonardo] def taylorDetailed(
+    e: _Expression, v: _Variable, point: _Expression, order: Int
+): Either[String, _Expression] =
+  if order < 0 || order > MaxTaylorOrder then Left(orderRange)
   else
-    // foldLeft over an Option accumulator: the first underivable coefficient aborts the
-    // whole series rather than yielding a polynomial with a _Derivative inside it.
-    val ds = simplifiedDerivatives(e, v)
-    val terms = (0 to order).foldLeft(Option(Vector.empty[_Expression])) { (acc, k) =>
-      acc.flatMap { built =>
-        val dk = ds(k)
-        Option.when(!hasDerivative(dk)) {
-          val atPoint = substitute(dk, Map(v.variable -> point))
-          val shifted = Sum(v, Product(_Number(-1), point))
-          built :+ Product(
-            Ratio(atPoint, _Number(factorialOf(k.toDouble).getOrElse(Double.NaN))),
-            Power(shifted, _Number(k)))
-        }
+    // The first underivable or oversized derivative aborts the whole series rather than
+    // yielding a polynomial with a _Derivative inside it, or a hung session.
+    seriesDerivatives(e, v, order).map { ds =>
+      val shifted = Sum(v, Product(_Number(-1), point))
+      val terms = ds.zipWithIndex.map { (dk, k) =>
+        Product(
+          Ratio(substitute(dk, Map(v.variable -> point)),
+                _Number(factorialOf(k.toDouble).getOrElse(Double.NaN))),
+          Power(shifted, _Number(k))): _Expression
       }
+      simplifyFully(terms.reduceLeft(Sum.apply))
     }
-    terms.map(ts => simplifyFully(ts.reduceLeft(Sum.apply)))
+
+/** The reason for an order outside `0 .. MaxTaylorOrder`. */
+private[leonardo] val orderRange: String = s"the order must be a whole number from 0 to $MaxTaylorOrder"
 
 
 /** Expands `e` as a Maclaurin polynomial — the Taylor series about zero.
@@ -128,17 +187,35 @@ def maclaurinSeries(e: _Expression, v: _Variable, order: Int): Option[_Expressio
 def laurentSeries(
     e: _Expression, v: _Variable, point: _Expression, m: Int, n: Int, env: Environment
 ): Option[_Expression] =
-  if m < 0 || n < 0 || m + n > MaxTaylorOrder then None
+  laurentDetailed(e, v, point, m, n, env).toOption
+
+/** [[laurentSeries]], with the reason when there is no series (F_0052 Decision A).
+ *
+ *  @param e     the expression to expand
+ *  @param v     the expansion variable
+ *  @param point the singularity
+ *  @param m     the pole order
+ *  @param n     the highest non-negative power retained
+ *  @param env   bindings, used to verify the coefficients are finite
+ *  @return the truncated Laurent series, or why it was declined
+ */
+private[leonardo] def laurentDetailed(
+    e: _Expression, v: _Variable, point: _Expression, m: Int, n: Int, env: Environment
+): Either[String, _Expression] =
+  if m < 0 || n < 0 || m + n > MaxTaylorOrder then
+    Left(s"the pole order and the order must be whole numbers summing to at most $MaxTaylorOrder")
   // A removable singularity has no principal part, so this *is* a Taylor series. Returning
   // it beats erroring: the caller asked the right question and there simply are no negative
   // powers.
-  else if m == 0 then taylorSeries(e, v, point, n)
+  else if m == 0 then taylorDetailed(e, v, point, n)
   else
     val shifted = simplifyFully(Sum(v, Product(_Number(-1), point)))
-    regularise(e, v, point, shifted, m, env).flatMap { (regular, effectiveM) =>
-      laurentCoefficients(regular, v, point, effectiveM + n, env)
-        .map(cs => simplifyFully(assembleLaurent(cs, shifted, effectiveM)))
-    }
+    regularise(e, v, point, shifted, m, env)
+      .toRight(s"the pole at $point could not be cleared from the denominator")
+      .flatMap { (regular, effectiveM) =>
+        laurentCoefficients(regular, v, point, effectiveM + n, env)
+          .map(cs => simplifyFully(assembleLaurent(cs, shifted, effectiveM)))
+      }
 
 /** Produces `g(v) = (v − a)^m · f(v)` **cancelled**, not merely multiplied out.
  *
@@ -234,17 +311,15 @@ private def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =
  */
 private def laurentCoefficients(
     g: _Expression, v: _Variable, point: _Expression, order: Int, env: Environment
-): Option[Vector[_Expression]] =
-  val ds = simplifiedDerivatives(g, v)
-  (0 to order).foldLeft(Option(Vector.empty[_Expression])) { (acc, k) =>
-    acc.flatMap { built =>
-      val dk = ds(k)
-      if hasDerivative(dk) then None
-      else
+): Either[String, Vector[_Expression]] =
+  seriesDerivatives(g, v, order).flatMap { ds =>
+    ds.zipWithIndex.foldLeft(Right(Vector.empty): Either[String, Vector[_Expression]]) { case (acc, (dk, k)) =>
+      acc.flatMap { built =>
         val c = simplifyFully(
           Ratio(substitute(dk, Map(v.variable -> point)),
                 _Number(factorialOf(k.toDouble).getOrElse(Double.NaN))))
-        Option.when(isFiniteCoefficient(c, env))(built :+ c)
+        Either.cond(isFiniteCoefficient(c, env), built :+ c, s"the coefficient of order $k is not finite")
+      }
     }
   }
 
@@ -353,17 +428,15 @@ def fourierSeries(
  */
 private def maclaurinCoefficients(
     e: _Expression, v: _Variable, upTo: Int, env: Environment
-): Option[Vector[Double]] =
-  val ds = simplifiedDerivatives(e, v)
-  (0 to upTo).foldLeft(Option(Vector.empty[Double])) { (acc, k) =>
-    acc.flatMap { built =>
-      val dk = ds(k)
-      if hasDerivative(dk) then None
-      else
+): Either[String, Vector[Double]] =
+  seriesDerivatives(e, v, upTo).flatMap { ds =>
+    ds.zipWithIndex.foldLeft(Right(Vector.empty): Either[String, Vector[Double]]) { case (acc, (dk, k)) =>
+      acc.flatMap { built =>
         val atZero = substitute(dk, Map(v.variable -> _Number(0)))
         (atZero.eval(env), factorialOf(k.toDouble)) match
-          case (Right(_Number(d)), Some(f)) if !d.isNaN && !d.isInfinite => Some(built :+ d / f)
-          case _                                                         => None
+          case (Right(_Number(d)), Some(f)) if !d.isNaN && !d.isInfinite => Right(built :+ d / f)
+          case _ => Left(s"the Maclaurin coefficient of order $k is not a finite number")
+      }
     }
   }
 
@@ -395,7 +468,22 @@ private def maclaurinCoefficients(
 def padeApproximant(
     e: _Expression, v: _Variable, m: Int, n: Int, env: Environment
 ): Option[_Expression] =
-  if m < 0 || n < 0 || m + n > MaxTaylorOrder then None
+  padeDetailed(e, v, m, n, env).toOption
+
+/** [[padeApproximant]], with the reason when there is no approximant (F_0052 Decision A).
+ *
+ *  @param e   the expression to approximate
+ *  @param v   the variable
+ *  @param m   the numerator degree
+ *  @param n   the denominator degree
+ *  @param env environment in which the coefficients must fold to numbers
+ *  @return the rational approximant, or why it was declined
+ */
+private[leonardo] def padeDetailed(
+    e: _Expression, v: _Variable, m: Int, n: Int, env: Environment
+): Either[String, _Expression] =
+  if m < 0 || n < 0 || m + n > MaxTaylorOrder then
+    Left(s"the degrees must be whole numbers summing to at most $MaxTaylorOrder")
   else
     maclaurinCoefficients(e, v, m + n, env).flatMap { coeffs =>
       def c(i: Int): Double = if i < 0 then 0.0 else coeffs(i)
@@ -410,7 +498,7 @@ def padeApproximant(
             .map(inv => inv.multiply(_MatrixValue(n, 1, rhs)).toVector)
             .filter(_.forall(d => !d.isNaN && !d.isInfinite))
 
-      denominator.map { q =>
+      denominator.toRight(s"no [$m/$n] approximant exists: its linear system is singular").map { q =>
         // p_k = c_k + sum over j of q_j * c_{k-j}
         val p = (0 to m).map(k => c(k) + (1 to math.min(k, n)).map(j => q(j - 1) * c(k - j)).sum)
         def poly(cs: Seq[Double], constant: Double): _Expression =
