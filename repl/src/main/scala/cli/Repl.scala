@@ -10,7 +10,7 @@ import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable,
 import latex.ToLatex
 import parser.Parser
 import optimize.{_Stationary, _Minimize, MinimizeFailure, MinimizeMethod, StationaryKind,
-                 classifyStationary, numericPoints}
+                 classifyStationary, numericPoints, _QP, QpFailure, QpConstraint}
 import ode.{_ODE, _ODESystem, _OdeStep, _OdeSolve, OdeFailure}
 
 import scala.util.control.NonFatal
@@ -857,6 +857,10 @@ final class Session:
       case (o: _ODE, Left(_))       => o.vectorDetail(env).flatMap(_.left.toOption).map(odeDeclined("ode"))
       case (s: _OdeStep, Left(_))   => s.detailed(env).left.toOption.map(odeDeclined("odeStep"))
       case (s: _OdeSolve, Left(_))  => s.detailed(env).left.toOption.map(odeDeclined("odeSolve"))
+      // F_0053 Decision C: a declined qp says why, a solved one says which constraints bind --
+      // the active set as information, which is what an experimenter at the prompt wants of it.
+      case (q: _QP, Left(_))  => q.detailed(env).left.toOption.map(why => s"qp declined: ${describeQp(why)}")
+      case (q: _QP, Right(_)) => q.detailed(env).toOption.map(r => activeConstraints(r.active))
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
@@ -890,6 +894,30 @@ final class Session:
       s"progress stopped with the gradient norm at ${_Number.render(g)}, above the precision's tolerance"
     case MinimizeFailure.MethodTakesNoBounds(m)         =>
       s"${MinimizeMethod.keyword(m)} takes no bounds; use pbfgs or gd"
+
+  /** A [[QpFailure]] in prose.  The residual is rendered in full, as gradient norms are. */
+  private def describeQp(why: QpFailure): String = why match
+    case QpFailure.InvalidInput(detail) => detail
+    case QpFailure.NotConvex            => "H has a negative eigenvalue, so the problem is not convex"
+    case QpFailure.NotStrictlyConvex    =>
+      "H is positive semidefinite but not definite: some direction costs nothing, and qp needs H positive definite"
+    case QpFailure.Infeasible           => "the constraints admit no point"
+    case QpFailure.MaxIterations(limit) => s"no optimum within $limit iterations"
+    case QpFailure.Uncertified(r)       =>
+      s"the final point failed the KKT check (relative residual ${_Number.render(r)})"
+
+  /** The active constraints in words, one-based: `active: rows 1 and 2 of A; z2 at its lower bound`. */
+  private def activeConstraints(active: Vector[QpConstraint]): String =
+    def list(xs: Seq[String]): String =
+      if xs.size <= 1 then xs.mkString else xs.init.mkString(", ") + " and " + xs.last
+    val rowsActive = active.collect { case QpConstraint.Row(k) => k }.sorted.map(k => (k + 1).toString)
+    val bounds = active.collect {
+      case QpConstraint.Lower(i) => (i, s"z${i + 1} at its lower bound")
+      case QpConstraint.Upper(i) => (i, s"z${i + 1} at its upper bound")
+    }.sortBy(_._1).map(_._2)
+    val parts = Option.when(rowsActive.nonEmpty)(
+                  (if rowsActive.size == 1 then "row " else "rows ") + list(rowsActive) + " of A").toList ++ bounds
+    if parts.isEmpty then "no constraint is active" else "active: " + parts.mkString("; ")
 
   /** An [[OdeFailure]] in prose, prefixed by the call that declined.  Times and differences are
    *  rendered in full, as `describeFailure` renders gradient norms. */

@@ -141,8 +141,13 @@ For a command-by-command listing of the REPL see the [cheat sheet](cheatsheet.md
   Karush–Kuhn–Tucker conditions in the language. A numeric `minimize` — gradient descent,
   Newton, BFGS and a projected BFGS for box constraints, each named explicitly — returns a
   point only after checking its gradient against the precision, and otherwise says why it
-  declined. Throughout, an answer that cannot be proved complete is not given: a list of
-  stationary points is read as *all* of them. See [Optimization](optimization.md).
+  declined. `qp(H, f, A, b, lb, ub)` (and an 8-argument form with equalities) minimises
+  `½ zᵀHz + fᵀz` under `A z ≤ b` and bounds by the Goldfarb–Idnani dual active-set method, for
+  `H` positive definite; the answer is KKT-certified, a decline says why (not convex,
+  infeasible, …), and a solve names its active constraints. The library form `qpSolve` returns
+  the active set as a warm start for the next problem. Throughout, an answer that cannot be
+  proved complete is not given: a list of stationary points is read as *all* of them. See
+  [Optimization](optimization.md).
 
 - **Probability**: Distributions are first-class values — `normal(0, 1)`, `binomial(10, 0.3)`,
   `poisson(4)` and friends bind to names like any other value. `pdf`, `cdf`, `prob` and

@@ -208,6 +208,46 @@ The same reason is available to a program as a `MinimizeFailure`:
 minimize(e("x^2 - y^2"), Vector(x, y), Vector(0.5, 0.5), None, MinimizeMethod.Newton, env)
 ```
 
+## Quadratic programming
+
+`qp(H, f, A, b, lb, ub)` minimises **`½ zᵀHz + fᵀz` subject to `A z ≤ b` and `lb ≤ z ≤ ub`**
+— the `½` and the `≤` stated first, because the literature writes both conventions and a
+silent choice would make every answer wrong for half its readers. `qp(H, f, A, b, Aeq, beq, lb,
+ub)` adds `Aeq z = beq`. A group that is absent is written `0` (the `kkt` convention), an absent
+bound `-inf` / `inf`, and a number for `lb` or `ub` applies to every variable. It is the problem
+a linear model-predictive controller solves every cycle.
+
+```scala mdoc:passthrough
+lesson.show("qp([[1, -1], [-1, 2]], [[-2], [-6]], [[1, 1], [-1, 2], [2, 1]], [[2], [2], [3]], 0, inf)")
+```
+
+The note names the constraints holding with equality at the answer — which input is saturated,
+which limit binds — the information an experimenter wants from the active set.
+
+The solver is the **Goldfarb–Idnani dual active-set method**: it starts from the unconstrained
+minimum, needs no feasible starting point, and finds infeasibility by itself. It requires `H`
+**positive definite** — every MPC Hessian `ΓᵀQΓ + R` with `R` definite is — and declines a
+merely semidefinite one rather than regularise it, which would solve a different problem. Like
+`minimize`, an answer is **certified**: the KKT conditions are checked, relative to the
+problem's scale, against the tolerance `=` uses, and a point that fails is not returned.
+
+```scala mdoc:passthrough
+lesson.show("qp(eye(2), [[0], [0]], [[1, 0], [-1, 0]], [[-1], [-1]], -inf, inf)")
+```
+
+A program calls `qpSolve`, which returns the active set with the answer; passing it back as
+`warm` for the next, nearly identical problem saves the iterations (never the answer, which is
+unique). That is how a control loop uses it; the REPL has no loop, so it does not offer it.
+
+```scala mdoc
+val h = _MatrixValue(2, 2, Array(1.0, -1.0, -1.0, 2.0))
+val a = Some((_MatrixValue(3, 2, Array(1.0, 1.0, -1.0, 2.0, 2.0, 1.0)), Vector(2.0, 2.0, 3.0)))
+val inf = Double.PositiveInfinity
+val first = qpSolve(h, Vector(-2.0, -6.0), a, None, Vector(0.0, 0.0), Vector(inf, inf), Set.empty, env)
+val next  = qpSolve(h, Vector(-2.1, -5.9), a, None, Vector(0.0, 0.0), Vector(inf, inf),
+                    first.toOption.fold(Set.empty[QpConstraint])(_.active.toSet), env)
+```
+
 ## Where to go next
 
 - The full grammar of every call is on the [cheat sheet](cheatsheet.md#optimization).

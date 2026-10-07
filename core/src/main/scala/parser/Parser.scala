@@ -14,7 +14,7 @@ import logic.*
 import domain.*
 import vector.*
 import control.*
-import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, MinimizeMethod}
+import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, MinimizeMethod}
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -131,6 +131,7 @@ object Parser extends JavaTokenParsers:
     "grad", "div", "curl", "laplacian", "jacobian", "hessian",  // vector calculus
     "odeStep", "odeSolve",                               // F_0051 public ODE step / trajectory;
                                                          // euler/rk4/rk45 are slot-matched only
+    "qp",                                                 // F_0053 quadratic programming
     "stationary", "convex", "lagrange", "kkt", "minimize",  // F_0010 optimization; the
                                                          // method words (gd, newton, bfgs,
                                                          // pbfgs) are NOT reserved: they are
@@ -812,7 +813,14 @@ object Parser extends JavaTokenParsers:
         ("," ~> minimizeMethod <~ ")") ^^ { m => (Option.empty[(_Expression, _Expression)], m) } |
         ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> minimizeMethod) <~ ")" ^^ {
           case lo ~ hi ~ m => (Some((lo, hi)), m) }
-      ) ^^ { case f ~ vs ~ x0 ~ ((b, m)) => _Minimize(f, vs, x0, b, m) }
+      ) ^^ { case f ~ vs ~ x0 ~ ((b, m)) => _Minimize(f, vs, x0, b, m) } |
+    // F_0053: qp(H, f, A, b, lb, ub) and qp(H, f, A, b, Aeq, beq, lb, ub). The two trailing
+    // arguments are optional rather than a second alternative, so the 6-argument form never
+    // matches first and chokes on the seventh.
+    "qp(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt(("," ~> guardedExpr) ~ ("," ~> guardedExpr)) <~ ")" ^^ {
+      case h ~ f ~ a ~ b ~ p5 ~ p6 ~ Some(p7 ~ p8) => _QP(h, f, a, b, Some((p5, p6)), p7, p8)
+      case h ~ f ~ a ~ b ~ p5 ~ p6 ~ None          => _QP(h, f, a, b, None, p5, p6) }
 
   /** A column of variable names, `[[x], [y]]` — `minimize`'s variable tuple. */
   private lazy val variableColumn: Parser[Vector[_Variable]] =

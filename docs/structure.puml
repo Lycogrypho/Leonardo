@@ -1513,6 +1513,18 @@ package "optimize" <<Rectangle>> {
         MaxMinimizeIterations = 2000 (measured)
     }
 
+    class "QP" <<utility>> [[optimization.html]] {
+        qpSolve(H, f, ineq, eq, lb, ub, warm, env)
+          min 1/2 z'Hz + f'z, A z <= b, Aeq z = beq, bounds
+        Goldfarb-Idnani dual active set; H positive DEFINITE
+        KKT-certified at 0.5*10^-precision, relative
+        Left(QpFailure) / Right(QpResult incl. active set)
+        MaxQpIterations 2000, MaxQpVariables 500 (measured)
+    }
+    enum "QpConstraint" <<data>> [[optimization.html]] {
+        Row(k) | Lower(i) | Upper(i)
+    }
+
     class "_Stationary" <<case>> [[optimization.html]]
     class "_Convex" <<case>> [[optimization.html]]
     class "_Lagrange" <<case>> [[optimization.html]]
@@ -1521,12 +1533,19 @@ package "optimize" <<Rectangle>> {
         detailed(env): Either[MinimizeFailure, Result]
         what the REPL queries to explain a decline
     }
+    class "_QP" <<case>> [[optimization.html]] {
+        qp(H, f, A, b[, Aeq, beq], lb, ub); 0 = absent group
+        detailed(env): REPL notes the decline or the active set
+    }
 
     "_Stationary" ..> "Stationary"
     "_Lagrange"   ..> "Stationary"
     "_Convex"     ..> "Convexity"
     "_KKT"        ..> "KKT"
     "_Minimize"   ..> "Minimize"
+    "_QP"         ..> "QP"
+    "QP"          ..> "QpConstraint" : active set = warm start
+    "QP"          ..> "_MatrixValue" : cholesky = convexity test
     "Stationary"  ..> "Elimination"
     "KKT"         ..> "Elimination"
     "Stationary"  ..> "_Hessian"    : one definition of the Hessian

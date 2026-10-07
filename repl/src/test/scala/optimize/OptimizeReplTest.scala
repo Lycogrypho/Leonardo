@@ -46,6 +46,28 @@ class OptimizeReplTest extends AnyFlatSpec:
     assert(bounded.contains("newton takes no bounds; use pbfgs or gd"), bounded)
   }
 
+  "qp" should "answer the minimiser and name the active constraints in a note (F_0053 Decision C)" in
+  {
+    val s   = session
+    val out = s.execute("qp([[1, -1], [-1, 2]], [[-2], [-6]], [[1, 1], [-1, 2], [2, 1]], [[2], [2], [3]], 0, inf)")
+    val lines = out.split("\n").toList
+    assert(lines.head == "[[0.66667], [1.33333]]", out)
+    assert(lines.exists(_.contains("note: active: rows 1 and 2 of A")), out)
+    assert(s.lastLatex.isEmpty)
+    assert(s.execute("qp(eye(2), [[0], [0]], 0, 0, [[1, 1]], [[1]], -inf, [[0.2], [inf]])")
+             .contains("note: active: z1 at its upper bound"))
+    assert(s.execute("qp(eye(2), [[-1], [-1]], 0, 0, -inf, inf)").contains("note: no constraint is active"))
+  }
+
+  it should "explain a decline" in
+  {
+    val s = session
+    assert(s.execute("qp([[1, 0], [0, -1]], [[0], [0]], 0, 0, -inf, inf)")
+             .contains("note: qp declined: H has a negative eigenvalue"))
+    assert(s.execute("qp(eye(2), [[0], [0]], [[1, 0], [-1, 0]], [[-1], [-1]], -inf, inf)")
+             .contains("note: qp declined: the constraints admit no point"))
+  }
+
   "convex, lagrange and kkt" should "answer at the prompt" in
   {
     val s = session

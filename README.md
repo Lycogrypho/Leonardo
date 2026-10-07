@@ -74,7 +74,7 @@ Full detail for every entry below is in the [feature reference](https://lycogryp
   - **Equations** — `solve` for a scalar or a *matrix* unknown (including the Sylvester and Lyapunov forms via Kronecker vectorization), inequalities whose answer is a union of intervals, and `solveSystem` for linear systems.
   - **Logic** — boolean, three-valued Kleene, symmetric ternary and fuzzy, all sharing one rule table: the classical truth tables fall out as the crisp special case rather than a separate code path.
   - **Probability and statistics** — distributions as first-class values with closed-form CDFs, a linearity rule table for `expect`/`variance`, descriptive statistics that stay exact, regression by QR and recursive least squares with forgetting, and Bayesian updating: Bayes' theorem over a finite set of hypotheses (exact on exact input) and conjugate posteriors for the Beta–Binomial, Gamma–Poisson and Normal–Normal pairs.
-  - **Optimization** — every stationary point of a function, solved symbolically and classified; convexity proved or refuted; Lagrange multipliers and the Karush–Kuhn–Tucker conditions; and a numeric `minimize` (gradient descent, Newton, BFGS, projected BFGS for bounds) that answers only with a certified point.
+  - **Optimization** — every stationary point of a function, solved symbolically and classified; convexity proved or refuted; Lagrange multipliers and the Karush–Kuhn–Tucker conditions; a numeric `minimize` (gradient descent, Newton, BFGS, projected BFGS for bounds) that answers only with a certified point; and `qp`, a convex quadratic-programming solver under linear constraints — the problem a model-predictive controller solves every cycle.
   - **Vector calculus** — `grad`, `div`, `curl`, `laplacian`, `jacobian`, `hessian` over an explicit ordered coordinate tuple, in Cartesian, cylindrical and both spherical conventions.
   - **Transforms and differential equations** — Laplace, Fourier, inverse Laplace and the one-sided z-transform over a symbolic rule table; first-order initial-value problems solved in closed form where possible and by Runge–Kutta otherwise, constant-coefficient linear systems by the matrix exponential, and time-varying or nonlinear systems by Runge-Kutta, certified by step doubling; the integrator is also public as a step and a trajectory.
   - **Control systems** — transfer functions as ordinary expressions rather than a carrier type: interconnection, poles and zeros, stability, step and impulse response, Bode and Nyquist, state space, discretisation by zero-order hold or Tustin, and the MPC prediction matrices.
@@ -248,16 +248,12 @@ listed roughly by effort-to-value:
 
 - **Number theory** — primes, `primepi`, continued fractions, modular arithmetic and the
   classical integer functions; the cheapest of the open domains and already half-specified.
-- **Optimization** — the symbolic half only: stationary points from `grad`, their
-  classification from `hessian`, and Lagrange multipliers.
 - **Operational research** — adopted in part rather than whole, taking the pieces that belong
   in a CAS and leaving general MILP solving outside it.
 - **Quaternions** — a fifth sibling of `_Number` on the established value pattern, with
   non-commutative multiplication as the design risk to be handled deliberately.
 - **Interval arithmetic** — `_Interval(lo, hi)` as a value, answering the question the exact
   tier cannot: how far a floating-point result can be trusted.
-- **Linear ODE systems** — `y' = A·y` solved in closed form as `e^(A·t)·y₀` through the
-  matrix exponential that now exists.
 - **Tensor algebra** — generalising the matrix domain to N dimensions, with contraction and
   Einstein summation.
 - **Graph plotting and visualization** — a user-facing interface for graphing functions and

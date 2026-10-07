@@ -135,6 +135,83 @@ case class _Minimize(f: _Expression, vars: Vector[_Variable], x0: _Expression,
       case Some((start, box)) => minimize(f, vars, start, box, method, env)
 
 
+/** `qp(H, f, A, b[, Aeq, beq], lb, ub)` — the convex quadratic program
+ *  `min ½ zᵀHz + fᵀz` subject to `A z ≤ b`, `Aeq z = beq`, `lb ≤ z ≤ ub` (F_0053).
+ *
+ *  **An absent group is `0`** (Decision A, the `kkt` precedent): `qp(H, f, 0, 0, lb, ub)` has no
+ *  inequalities. An absent bound is `-inf` / `inf`, and a number for `lb` or `ub` applies to
+ *  every variable, so `lb = 0` reads as "all non-negative". Evaluates to the `n×1` minimiser and
+ *  stays symbolic whenever [[qpSolve]] declines; the REPL appends why, or, on success, which
+ *  constraints are active (Decision C). The warm start is library API only.
+ *
+ *  @param h  the Hessian, symmetric positive definite
+ *  @param f  the linear term
+ *  @param a  the inequality matrix, or `0`
+ *  @param b  its right-hand side, or `0`
+ *  @param eq the equality matrix and right-hand side, when given
+ *  @param lb the lower bounds
+ *  @param ub the upper bounds
+ */
+case class _QP(h: _Expression, f: _Expression, a: _Expression, b: _Expression,
+               eq: Option[(_Expression, _Expression)], lb: _Expression, ub: _Expression) extends _Expression:
+  override def toString: String =
+    val es = eq.fold("")((p, q) => s", $p, $q")
+    s"qp($h, $f, $a, $b$es, $lb, $ub)"
+  override def children: List[_Expression] =
+    List(h, f, a, b) ++ eq.toList.flatMap((p, q) => List(p, q)) ++ List(lb, ub)
+  override def rebuild(c: List[_Expression]): _Expression =
+    if eq.isDefined then _QP(c.head, c(1), c(2), c(3), Some((c(4), c(5))), c(6), c(7))
+    else _QP(c.head, c(1), c(2), c(3), None, c(4), c(5))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    detailed(env).fold(_ => Left(this), r => Right(_MatrixValue(r.z.size, 1, r.z.toArray)))
+
+  /** The solver's full answer, or why there is none; what the REPL queries (F_0052 Decision A). */
+  def detailed(env: Environment): Either[QpFailure, QpResult] =
+    numericMatrix(h, env).filter(m => m.rows == m.cols) match
+      case None => Left(QpFailure.InvalidInput("H must be a square numeric matrix"))
+      case Some(hm) =>
+        val n = hm.rows
+        val read = for
+          fv <- columnOf(f, n, env).toRight(s"f must be a numeric column of $n entries")
+          in <- constraintGroup(a, b, n, env).toRight("A and b must be a numeric matrix with " +
+                  s"$n columns and a matching column, or 0 and 0 for none")
+          eg <- eq.fold(Right(None))((p, q) => constraintGroup(p, q, n, env).toRight("Aeq and beq must be " +
+                  s"a numeric matrix with $n columns and a matching column, or 0 and 0 for none"))
+          lo <- boundsOf(lb, n, env).toRight(s"lb must be a number or a column of $n entries")
+          hi <- boundsOf(ub, n, env).toRight(s"ub must be a number or a column of $n entries")
+        yield (fv, in, eg, lo, hi)
+        read match
+          case Left(detail) => Left(QpFailure.InvalidInput(detail))
+          case Right((fv, in, eg, lo, hi)) => qpSolve(hm, fv, in, eg, lo, hi, Set.empty, env)
+
+/** A numeric matrix, dense or exact (demoted, the `lu` precedent); a number is `1×1`. */
+private def numericMatrix(e: _Expression, env: Environment): Option[_MatrixValue] =
+  e.eval(env) match
+    case Right(m: _MatrixValue) => Some(m)
+    case Right(_Number(d))      => Some(_MatrixValue(1, 1, Array(d)))
+    case Left(m: _Matrix)       => matrix.denseOf(m)
+    case _                      => None
+
+/** A constraint group: `Some(None)` for the absent `0`/`0`, `Some(Some((A, b)))` for a matrix
+ *  with `n` columns and a matching right-hand side, `None` when neither. */
+private def constraintGroup(a: _Expression, b: _Expression, n: Int,
+                            env: Environment): Option[Option[(_MatrixValue, Vector[Double])]] =
+  (a.eval(env), b.eval(env)) match
+    case (Right(_Number(0.0)), Right(_Number(0.0))) => Some(None)
+    case _ =>
+      for
+        am <- numericMatrix(a, env).filter(_.cols == n)
+        bv <- columnOf(b, am.rows, env)
+      yield Some((am, bv))
+
+/** Bounds: a number applies to every variable, otherwise a column of `n` entries. */
+private def boundsOf(e: _Expression, n: Int, env: Environment): Option[Vector[Double]] =
+  e.eval(env) match
+    case Right(_Number(d)) => Some(Vector.fill(n)(d))
+    case _                 => columnOf(e, n, env)
+
+
 /** The answer shape shared by `stationary` and `lagrange`. */
 private def pointsResult(points: Option[List[SolutionPoint]], vars: Vector[_Variable],
                          self: _Expression): Either[_Expression, _Value] =

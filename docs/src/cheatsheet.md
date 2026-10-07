@@ -269,6 +269,12 @@ minimize(f, [[x], [y]], x0, m)       numeric minimiser as a column; m is gd, new
 minimize(f, [[x], [y]], x0, lb, ub, m)   with bounds (inf for none): pbfgs or gd
                                      a point is returned only if its gradient passes
                                      the precision's tolerance; else the REPL says why
+qp(H, f, A, b, lb, ub)               min 1/2 z'Hz + f'z  s.t. A z <= b, lb <= z <= ub;
+                                     H positive definite; 0 and 0 = no A, b;
+                                     -inf / inf = no bound; a number applies to every z
+qp(H, f, A, b, Aeq, beq, lb, ub)     the same with Aeq z = beq
+                                     the REPL names the active constraints, or says
+                                     why it declined (not convex, infeasible, ...)
 ```
 
 ---
