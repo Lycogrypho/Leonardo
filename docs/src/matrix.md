@@ -235,6 +235,52 @@ Parser.parse("chol([[1, 2], [2, 1]])").get.eval(env).toExpression.toString
 In exact mode the factor is computed over the rationals and stays exact; a pivot whose square
 root is irrational takes it at the working precision, as every irrational in the exact tier does.
 
+## Singular values: `svd`, `pinv`, `rank`, `cond`
+
+`svd(A)` returns the row `[[U, S, V]]` with `A = U·S·Vᵀ` — the
+[singular value decomposition](https://en.wikipedia.org/wiki/Singular_value_decomposition), the
+singular values on `S`'s diagonal, largest first. By default it is the **economy** form: with
+`k = min(m, n)`, `U` is `m×k`, `S` `k×k` and `V` `n×k`, everything a computation multiplies with.
+`svd(A, full)` completes `U` and `V` to square orthogonal matrices (and `S` to `m×n`), so the
+extra columns span the left null space and the null space; `full` is a word of that slot only,
+not a reserved name. Like `lu`, the factors bind by tuple assignment: `U, S, V := svd(A)`.
+
+```scala mdoc
+Parser.parse("svd([[3, 0], [4, 5]])").get.eval(env).toExpression.toString
+```
+
+The kernel is one-sided Jacobi, which works on `A`'s columns and never forms `AᵀA` (that would
+square the condition number), and its answer is **certified**: a decomposition that does not
+reconstruct `A` with orthonormal `U` and `V` stays unevaluated. An exact matrix is decomposed in
+`Double`, as `lu` and `qr` are; a symbolic one stays symbolic.
+
+Three answers are read off the singular values. `rank(A)` counts those above
+`0.5·10⁻ᵖ·σ_max` at session precision `p` — the tolerance of `=` applied to the spectrum, and
+**relative to the largest singular value**, so rescaling `A` never changes its rank;
+`rank(A, tol)` takes a tolerance in `[0, 1)`, relative in the same way. `pinv(A)` is the
+[Moore–Penrose pseudo-inverse](https://en.wikipedia.org/wiki/Moore%E2%80%93Penrose_inverse),
+inverting exactly the singular values `rank` counts, so a rank-deficient matrix is not amplified
+by rounding:
+
+```scala mdoc
+Parser.parse("rank([[1, 2], [2, 4]])").get.eval(env).toExpression.toString
+```
+
+```scala mdoc
+Parser.parse("pinv([[1, 2], [2, 4]])").get.eval(env).toExpression.toString
+```
+
+`cond(A)` is the 2-norm condition number `σ_max/σ_min`, and `inf` for a singular matrix. It
+takes a different cut-off from `rank`, on purpose: it reports how close to singular `A` is, so it
+stays finite until the smallest singular value is lost in rounding (`max(m, n)·ε·σ_max`).
+
+```scala mdoc
+Parser.parse("cond([[1, 0], [0, 0.001]])").get.eval(env).toExpression.toString
+```
+
+The decomposition is bounded by `max(m, n)·min(m, n)² ≤ 10⁷` — a 200×200 or a 1000×100 matrix —
+checked before any work; past it the call stays unevaluated and the REPL says why.
+
 ## Block matrices
 
 `hcat` and `vcat` join any number of blocks side by side and stacked, `blkdiag` puts them on the

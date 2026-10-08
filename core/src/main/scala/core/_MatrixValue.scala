@@ -79,6 +79,108 @@ object _MatrixValue:
          new _MatrixValue(n, m, Array.tabulate(n * m)(idx => e(idx / m, n + idx % m))))
       }
 
+  /** Machine epsilon for `Double`. */
+  private[leonardo] val Epsilon: Double = 2.220446049250313e-16
+
+  /** The most Jacobi sweeps [[_MatrixValue.svd]] runs before declining; convergence is
+   *  quadratic once the columns are nearly orthogonal, so a handful usually suffice. */
+  private[core] val SvdMaxSweeps: Int = 60
+
+  /** The most work [[_MatrixValue.svd]] attempts, as `max(m, n)·min(m, n)²` — the order of one
+   *  Jacobi sweep and of the certificate — checked before any is done (F_0061).
+   *
+   *  **Measured on Node, the slowest platform** (the F_0077 rule): a 200×200 matrix (`8·10⁶`)
+   *  takes a median of ~0.6 s there against 67 ms on the JVM, and a 1000×100 one (`10⁷`) ~0.45 s
+   *  against 53 ms. Uncapped, `svd(ones(2000))` — which a share link can carry — would hold a
+   *  browser for minutes with no way to interrupt it. The MPC demo's sizes (≤ ~200 rows) sit
+   *  inside the cap.
+   */
+  private[leonardo] val MaxSvdWork: Long = 10_000_000L
+
+  /** `max(m, n)·min(m, n)²`, the work measure [[MaxSvdWork]] bounds. */
+  private[leonardo] def svdWork(m: Int, n: Int): Long =
+    val (big, small) = (math.max(m, n).toLong, math.min(m, n).toLong)
+    big * small * small
+
+  /** How far an SVD may miss its own reconstruction and orthonormality, relative to `‖A‖`,
+   *  before it is declined rather than returned (X-02). */
+  private[core] val SvdCertificate: Double = 1e-10
+
+  /** Rotates two columns in place by the Jacobi rotation `(c, s)`. */
+  private[core] def rotate(a: Array[Double], b: Array[Double], c: Double, s: Double): Unit =
+    var i = 0
+    while i < a.length do
+      val (x, y) = (a(i), b(i))
+      a(i) = c * x - s * y
+      b(i) = s * x + c * y
+      i += 1
+
+  /** A matrix with the given columns, each of length `rows`. */
+  private[core] def fromColumns(cols: Vector[Array[Double]], rows: Int): _MatrixValue =
+    val k = cols.size
+    new _MatrixValue(rows, k, Array.tabulate(rows * k)(idx => cols(idx % k)(idx / k)))
+
+  /** `base` (orthonormal columns of length `dim`) extended to `want` orthonormal columns by
+   *  Gram–Schmidt against the standard basis, each candidate orthogonalised twice so the result
+   *  stays orthonormal to rounding; `None` only if the basis cannot be completed, which for an
+   *  orthonormal `base` does not happen. */
+  private[leonardo] def completeBasis(base: Vector[Array[Double]], dim: Int, want: Int): Option[Vector[Array[Double]]] =
+    // `while` loops over arrays, not folds over ranges: a fold boxes per step, which Node pays
+    // for heavily (the QP precedent) and this runs `dim` times over up to `dim` columns.
+    def orthogonalised(e: Array[Double], against: Vector[Array[Double]]): Array[Double] =
+      val x = e.clone
+      for _ <- 1 to 2; q <- against do
+        var dot = 0.0
+        var i   = 0
+        while i < dim do { dot += q(i) * x(i); i += 1 }
+        i = 0
+        while i < dim do { x(i) -= dot * q(i); i += 1 }
+      x
+    val completed = (0 until dim).foldLeft(base) { (acc, i) =>
+      if acc.size >= want then acc
+      else
+        val x    = orthogonalised(Array.tabulate(dim)(r => if r == i then 1.0 else 0.0), acc)
+        val norm = math.sqrt(x.map(y => y * y).sum)
+        if norm > 0.5 then acc :+ x.map(_ / norm) else acc
+    }
+    Option.when(completed.size >= want)(completed.take(want))
+
+  /** Whether `U·diag(σ)·Vᵀ` reconstructs `a` and `U`, `V` are orthonormal, all relative to `‖a‖`. */
+  private[core] def svdCertified(a: _MatrixValue, u: _MatrixValue, s: Vector[Double], v: _MatrixValue): Boolean =
+    // Array `while` loops throughout: the checks are O(m·n·k), the same order as the
+    // decomposition, and a boxed fold made them ten times its cost on Node (measured).
+    val (m, n, k) = (a.rows, a.cols, s.size)
+    val (ad, ud, vd) = (a.data, u.data, v.data)
+    val sv = s.toArray
+    var scale2 = 0.0
+    var err2   = 0.0
+    var i = 0
+    while i < m do
+      var j = 0
+      while j < n do
+        var r = -ad(i * n + j)
+        var l = 0
+        while l < k do { r += ud(i * k + l) * sv(l) * vd(j * k + l); l += 1 }
+        err2 += r * r
+        scale2 += ad(i * n + j) * ad(i * n + j)
+        j += 1
+      i += 1
+    def offOrthonormal(q: Array[Double], rows: Int, cols: Int): Double =
+      var worst = 0.0
+      var p = 0
+      while p < cols do
+        var r = p
+        while r < cols do
+          var dot = 0.0
+          var t   = 0
+          while t < rows do { dot += q(t * cols + p) * q(t * cols + r); t += 1 }
+          worst = math.max(worst, math.abs(dot - (if p == r then 1.0 else 0.0)))
+          r += 1
+        p += 1
+      worst
+    math.sqrt(err2) <= SvdCertificate * math.sqrt(scale2) &&
+      offOrthonormal(ud, u.rows, u.cols) <= SvdCertificate && offOrthonormal(vd, v.rows, v.cols) <= SvdCertificate
+
   /** n×n identity matrix — dense counterpart of the `matrix.IdentityMatrix` node.
    *  Used by the vectorized (Sylvester) solver tier for absent left/right coefficients.
    *  @param n side length; must be positive
@@ -798,6 +900,74 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         while k < m do { q(k * n + j) /= norm; k += 1 }
         j += 1
       Some((_MatrixValue(m, n, q), _MatrixValue(n, n, r)))
+
+  /** The [[https://en.wikipedia.org/wiki/Singular_value_decomposition singular value decomposition]] `A = U·diag(σ)·Vᵀ`, economy size (F_0061).
+   *
+   *  `U` is `m×k` and `V` is `n×k` with orthonormal columns, `k = min(m, n)`, and `σ` holds the
+   *  `k` singular values in descending order. **One-sided Jacobi** (Hestenes): column pairs are
+   *  rotated until every pair is orthogonal, so the singular values come from column norms and
+   *  small ones keep their relative accuracy — and `AᵀA` is never formed, which would square the
+   *  condition number (the 2.11 rule). A wide matrix is decomposed through its transpose. A
+   *  column whose singular value is numerically zero has no direction of its own, so `U` is
+   *  completed there by Gram–Schmidt against the standard basis.
+   *
+   *  **Certified** (X-02): the answer is returned only if `‖U·Σ·Vᵀ − A‖` and the departure of
+   *  `U` and `V` from orthonormality are below [[_MatrixValue.SvdCertificate]], relative to `‖A‖`.
+   *
+   *  @return `Some((U, σ, V))`, or `None` for a non-finite entry, non-convergence within
+   *          [[_MatrixValue.SvdMaxSweeps]] sweeps, or a failed certificate
+   */
+  def svd: Option[(_MatrixValue, Vector[Double], _MatrixValue)] =
+    if !isFinite || _MatrixValue.svdWork(rows, cols) > _MatrixValue.MaxSvdWork then None
+    else if rows < cols then transpose.svd.map((u, s, v) => (v, s, u))
+    else
+      val (m, n) = (rows, cols)
+      val w = Array.tabulate(n)(j => Array.tabulate(m)(i => data(i * n + j)))
+      val v = Array.tabulate(n)(j => Array.tabulate(n)(i => if i == j then 1.0 else 0.0))
+      // The orthogonality test is on the cosine of each pair's angle; rounding alone leaves a
+      // dot product of order m·ε between orthogonal columns, so the tolerance scales with m.
+      val tol = math.max(m, 1) * _MatrixValue.Epsilon
+      var sweep   = 0
+      var rotated = true
+      while rotated && sweep < _MatrixValue.SvdMaxSweeps do
+        rotated = false
+        var p = 0
+        while p < n - 1 do
+          var q = p + 1
+          while q < n do
+            val (wp, wq) = (w(p), w(q))
+            var alpha = 0.0
+            var beta  = 0.0
+            var gamma = 0.0
+            var i = 0
+            while i < m do
+              alpha += wp(i) * wp(i)
+              beta  += wq(i) * wq(i)
+              gamma += wp(i) * wq(i)
+              i += 1
+            if math.abs(gamma) > tol * math.sqrt(alpha * beta) then
+              rotated = true
+              val zeta = (beta - alpha) / (2 * gamma)
+              val t    = (if zeta >= 0 then 1.0 else -1.0) / (math.abs(zeta) + math.sqrt(1 + zeta * zeta))
+              val c    = 1 / math.sqrt(1 + t * t)
+              _MatrixValue.rotate(wp, wq, c, c * t)
+              _MatrixValue.rotate(v(p), v(q), c, c * t)
+            q += 1
+          p += 1
+        sweep += 1
+      if rotated then None
+      else
+        val sigma  = w.map(col => math.sqrt(col.map(x => x * x).sum))
+        val order  = (0 until n).sortBy(j => -sigma(j)).toVector
+        val sMax   = sigma(order.head)
+        val live   = order.filter(j => sigma(j) > 0 && sigma(j) > _MatrixValue.Epsilon * sMax)
+        val uCols  = live.map(j => w(j).map(_ / sigma(j)))
+        _MatrixValue.completeBasis(uCols, m, n).flatMap { us =>
+          val u     = _MatrixValue.fromColumns(us, m)
+          val vv    = _MatrixValue.fromColumns(order.map(j => v(j)), n)
+          val s     = order.map(j => sigma(j))
+          Option.when(_MatrixValue.svdCertified(this, u, s, vv))((u, s, vv))
+        }
 
   /** Matrix multiplication `this × that` (`this.cols` must equal `that.rows`).
    *

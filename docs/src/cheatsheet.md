@@ -697,6 +697,23 @@ chol([[1, 2], [2, 1]])          -> stays chol(...)   indefinite
 Stays unevaluated unless `A` is square, symmetric and positive definite — the refusal *is* the
 convexity test. Tolerances are relative to the largest entry; exact input stays exact.
 
+### Singular values
+
+```
+svd(A)                          -> [[U, S, V]], A = U·S·Vᵀ, economy (U m×k, S k×k, V n×k)
+svd(A, full)                    -> U m×m, S m×n, V n×n   `full` is a slot word, not reserved
+U, S, V := svd(A)               tuple binding
+rank([[1, 2], [2, 4]])          -> 1
+rank(A, 0.01)                   tolerance relative to the largest singular value, in [0, 1)
+pinv(A)                         -> V·S⁺·Uᵀ, = inv(A) for square non-singular A
+cond([[1, 0], [0, 0.001]])      -> 1000
+cond([[1, 2], [2, 4]])          -> inf
+```
+
+`rank` and `pinv` count a singular value as zero at or below `0.5·10⁻ᵖ·σ_max` (`p` = precision),
+so rescaling `A` never changes the answer; `cond` is `inf` only when `σ_min` is lost in rounding.
+Exact input demotes to `Double`; past `max(m, n)·min(m, n)² = 10⁷` the call stays unevaluated.
+
 ### Indexing decomposition results
 
 ```

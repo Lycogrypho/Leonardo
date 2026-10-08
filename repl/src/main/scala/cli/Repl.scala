@@ -880,6 +880,12 @@ final class Session:
       case (t: _Taylor, Left(_: _Taylor))   => t.detailed(env).left.toOption.map(w => s"taylor declined: $w")
       case (l: _Laurent, Left(_: _Laurent)) => l.detailed(env).left.toOption.map(w => s"laurent declined: $w")
       case (p: _Pade, Left(_: _Pade))       => p.detailed(env).left.toOption.map(w => s"pade declined: $w")
+      // F_0061: an SVD-based call on a real matrix that was refused -- past the work cap, a
+      // non-finite entry, no certified convergence, or a bad rank tolerance -- says which.
+      case (s: matrix._Svd, Left(_: matrix._Svd))   => s.declineReason(env).map(w => s"svd declined: $w")
+      case (p: matrix._PInv, Left(_: matrix._PInv)) => p.declineReason(env).map(w => s"pinv declined: $w")
+      case (r: matrix._Rank, Left(_: matrix._Rank)) => r.declineReason(env).map(w => s"rank declined: $w")
+      case (c: matrix._Cond, Left(_: matrix._Cond)) => c.declineReason(env).map(w => s"cond declined: $w")
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 

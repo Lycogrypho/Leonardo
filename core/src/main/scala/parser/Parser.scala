@@ -81,6 +81,8 @@ object Parser extends JavaTokenParsers:
     "pow", "transpose", "at", "det", "inv", "eye", "zeros", "lu", "qr", "eigen", "eig", "jordan", "step",  // functions
     "expm",                                                                                 // matrix exponential
     "chol",                                                                                 // F_0054 Cholesky factor
+    "svd", "pinv", "rank", "cond",                                                          // F_0061 singular values
+                                                         // (Decision C); `full` is a slot word
     "maximum", "minimum", "max", "min", "clamp", "softplus",                                // F_0056 order functions;
                                                          // the join and the reduction under two
                                                          // names each (Decision A, numpy style)
@@ -509,6 +511,14 @@ object Parser extends JavaTokenParsers:
     // functions that return a single matrix together, above those returning a row of them.
     "expm("   ~> guardedExpr <~ ")"                                       ^^ _MatrixExponential.apply      |
     "chol("   ~> guardedExpr <~ ")"                                       ^^ _Cholesky.apply               |
+    // F_0061 singular values.  `full` is a slot word, matched only here and not reserved
+    // (Decision A); the two-argument form is tried first or `svd(A` would match and choke on
+    // the comma.  `rank`'s tolerance is optional, relative to the largest singular value.
+    "svd("    ~> guardedExpr <~ ("," ~ "full" ~ ")")                     ^^ (a => _Svd(a, full = true))   |
+    "svd("    ~> guardedExpr <~ ")"                                       ^^ (a => _Svd(a))                |
+    "pinv("   ~> guardedExpr <~ ")"                                       ^^ _PInv.apply                   |
+    "rank("   ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")"             ^^ { case a ~ t => _Rank(a, t) } |
+    "cond("   ~> guardedExpr <~ ")"                                       ^^ _Cond.apply                   |
     // F_0055 block matrices.  The n-ary three take any number of blocks; `ones` follows the
     // `zeros` shape, its one-argument form the square matrix.
     "hcat("    ~> rep1sep(guardedExpr, ",") <~ ")"                        ^^ (bs => _HCat(bs))             |

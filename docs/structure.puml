@@ -800,6 +800,15 @@ package "matrix" {
         not square / symmetric / pos. definite → symbolic
     }
 
+    class "Svd" <<utility>> [[matrix.html]] {
+        __ F_0061: svd(A[, full]) → [[U, S, V]], pinv, rank, cond __
+        kernel: _MatrixValue.svd, one-sided Jacobi, certified
+        _Svd (economy | full) · _PInv (a _MatrixOperation)
+        _Rank, _Cond: scalar results
+        zero: σ ≤ 0.5·10^-p·σ_max (rank, pinv); cond: max(m,n)·ε
+        MaxSvdWork = max(m,n)·min(m,n)² ≤ 1e7 (Node-measured)
+    }
+
     class "BlockMatrix" <<utility>> [[matrix.html]] {
         __ F_0055: one assembly path for every carrier __
         cellGrid: operand -> grid of cells
@@ -1741,6 +1750,7 @@ package "parser" {
 "Parser" ..> "_JordanDecomposition" : jordan(A)
 "Parser" ..> "_MatrixExponential"  : expm(A)
 "Parser" ..> "_Cholesky"           : chol(A)
+"Parser" ..> "Svd"                 : svd pinv rank cond
 "Parser" ..> "BlockMatrix"         : hcat vcat blkdiag repmat kron submatrix
 "Parser" ..> "_Ones"               : ones(r, c)
 "Parser" ..> "Mpc"                 : mpcMatrices(...)
