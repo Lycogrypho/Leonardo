@@ -90,6 +90,7 @@ object Parser extends JavaTokenParsers:
                                                          // NOT "sub" (Decision B): too plausible a
                                                          // variable name to tax
     "mpcMatrices",                                                                          // F_0055 MPC prediction
+    "linearize",                                                                            // F_0059; `affine` is a slot word
     "rls",                                                                                  // F_0057 recursive least squares
     "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
@@ -589,6 +590,12 @@ object Parser extends JavaTokenParsers:
     // F_0055: the MPC prediction matrices, as the row [[Phi, Gamma]] (Decision D).
     "mpcMatrices(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
       ("," ~> guardedExpr) <~ ")" ^^ { case a ~ b ~ c ~ np ~ nc => _MpcMatrices(a, b, c, np, nc) }          |
+    // F_0059: linearize(F, G, x, u, x0, u0[, affine]) -> [[A, B, C, D]] (or with F0, G0). The
+    // state and input tuples are columns of names, minimize's form, or one bare name; `affine`
+    // is a slot word, not reserved (the `svd(A, full)` precedent).
+    "linearize(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> nameTuple) ~ ("," ~> nameTuple) ~
+      ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt("," ~> "affine") <~ ")" ^^ {
+      case f ~ g ~ x ~ u ~ x0 ~ u0 ~ aff => _Linearize(f, g, x, u, x0, u0, aff.isDefined) }                |
     // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
     // log(x) has with LogBase(x, 10).
     "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |
@@ -862,6 +869,10 @@ object Parser extends JavaTokenParsers:
   /** A column of variable names, `[[x], [y]]` — `minimize`'s variable tuple. */
   private lazy val variableColumn: Parser[Vector[_Variable]] =
     "[" ~> rep1sep("[" ~> variable <~ "]", ",") <~ "]" ^^ (_.toVector)
+
+  /** An ordered tuple of names written as a column, or one bare name (F_0059's `linearize`). */
+  private lazy val nameTuple: Parser[Vector[_Variable]] =
+    variableColumn | variable ^^ (v => Vector(v))
 
   /** How an ODE system's state is named (F_0051): a column of names, or one name. */
   private lazy val odeStateSpec: Parser[OdeState] =

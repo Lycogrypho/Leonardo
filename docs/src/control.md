@@ -196,6 +196,28 @@ than it sounds. Rank is decided by QR of the transposed controllability matrix, 
 the same plant with `B` in millivolts rather than volts came back *uncontrollable*. Scaling
 `B` cannot change which states the input can reach, and the tests pin that it does not.
 
+## Linearising a nonlinear model
+
+A grey-box plant `x' = F(x, u)`, `y = G(x, u)` reaches the linear machinery above through its
+[linearisation](https://en.wikipedia.org/wiki/Linearization) at an operating point.
+`linearize(F, G, x, u, x0, u0)` returns the state-space row `[[A, B, C, D]]` with
+`A = ∂F/∂x`, `B = ∂F/∂u`, `C = ∂G/∂x` and `D = ∂G/∂u` at `(x0, u0)`, so
+`A, B, C, D := linearize(…)` binds the four. Here the pendulum at rest:
+
+```scala mdoc
+tf("linearize([[x2], [-sin(x1) + u]], [[x1]], [[x1], [x2]], u, [[0], [0]], 0)").eval(env).toExpression.toString
+```
+
+The state and input names are an **ordered tuple** — a column of names, or one bare name — and
+the column order of `A` is the order given, never inferred. At a point that is not an
+equilibrium the model needs its offsets too: `linearize(…, affine)` appends `F0 = F(x0, u0)` and
+`G0 = G(x0, u0)`, giving `[[A, B, C, D, F0, G0]]` for `x' ≈ A·δx + B·δu + F0`. A point with a free
+parameter gives a symbolic linearisation, and exact input stays exact.
+
+It **declines rather than linearising where the model is not defined**: a point outside the
+domain of `F` or `G` (`ln` of a negative), and a value or derivative that is not a real number
+there (`abs(x)` has no derivative at `0`), each with the entry named.
+
 ## Prediction matrices for MPC
 
 A [model-predictive controller](https://en.wikipedia.org/wiki/Model_predictive_control) writes

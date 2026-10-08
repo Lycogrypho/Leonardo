@@ -924,6 +924,9 @@ final class Session:
       case (p: matrix._PInv, Left(_: matrix._PInv)) => p.declineReason(env).map(w => s"pinv declined: $w")
       case (r: matrix._Rank, Left(_: matrix._Rank)) => r.declineReason(env).map(w => s"rank declined: $w")
       case (c: matrix._Cond, Left(_: matrix._Cond)) => c.declineReason(env).map(w => s"cond declined: $w")
+      // F_0059: a linearisation refused at its operating point names the entry and the reason.
+      case (l: control._Linearize, Left(_: control._Linearize)) =>
+        l.detailed(env).left.toOption.map(w => s"linearize declined: ${describeLinearize(w)}")
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
@@ -957,6 +960,14 @@ final class Session:
       s"progress stopped with the gradient norm at ${_Number.render(g)}, above the precision's tolerance"
     case MinimizeFailure.MethodTakesNoBounds(m)         =>
       s"${MinimizeMethod.keyword(m)} takes no bounds; use pbfgs or gd"
+
+  /** A [[control.LinearizeFailure]] in prose. */
+  private def describeLinearize(why: control.LinearizeFailure): String = why match
+    case control.LinearizeFailure.InvalidInput(detail) => detail
+    case control.LinearizeFailure.OutsideDomain(what, v, c) =>
+      s"the operating point is outside the domain of $what — ${c.arg} ${describe(c.req)} (in ${v.variable})"
+    case control.LinearizeFailure.NotReal(what) =>
+      s"$what is not a real number at the operating point"
 
   /** A [[QpFailure]] in prose.  The residual is rendered in full, as gradient norms are. */
   private def describeQp(why: QpFailure): String = why match

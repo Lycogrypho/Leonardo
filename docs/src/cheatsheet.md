@@ -823,6 +823,9 @@ frequencyResponse(g, s, wMin, wMax, n, env)   Vector[(omega, dB, degrees)]
 nyquistSweep(g, s, wMin, wMax, n, env)    Vector[(real, imaginary)]   the same grid
 
 stateSpace(a, b, c, d)          1x4 _Matrix of matrices, the lu/qr/eig shape
+linearize(F, G, x, u, x0, u0)   [[A, B, C, D]] at (x0, u0); x, u ordered: [[x1], [x2]] or a name
+linearize(..., affine)          [[A, B, C, D, F0, G0]]  offsets for a non-equilibrium point
+                                (also at the prompt; a point outside the domain is declined)
 mpcMatrices(A, B, C, Np, Nc)    [[Phi, Gamma]]  Y = Phi*x + Gamma*U; last move HELD past Nc
                                 (also at the prompt; a number is a 1x1 matrix)
 controllable(a, b) / observable(a, c)     Option[Boolean]

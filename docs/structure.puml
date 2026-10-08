@@ -1476,7 +1476,17 @@ package "control" {
         a number is a 1x1 matrix; exact stays exact
     }
     "Mpc" ..> "BlockMatrix" : cellGrid / assembleBlocks
+
+    class "Linearize" <<object>> [[control.html]] {
+        __ F_0059: x' = F(x, u), y = G(x, u) at (x0, u0) __
+        linearize(F, G, x, u, x0, u0[, affine])
+          -> [[A, B, C, D]] (+ F0, G0)
+        x, u ORDERED tuples; one Jacobian definition
+        declines: outside domain, non-real entry
+    }
+    "Linearize" ..> "StateSpace" : stateSpace row
 }
+"Linearize" ..> "_Jacobian" : the four blocks
 
 ' ===================================================
 ' PACKAGE: optimize (imports core + scalar + matrix + equation + vector + logic) -- F_0010
@@ -1754,6 +1764,7 @@ package "parser" {
 "Parser" ..> "BlockMatrix"         : hcat vcat blkdiag repmat kron submatrix
 "Parser" ..> "_Ones"               : ones(r, c)
 "Parser" ..> "Mpc"                 : mpcMatrices(...)
+"Parser" ..> "Linearize"           : linearize(...)
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
