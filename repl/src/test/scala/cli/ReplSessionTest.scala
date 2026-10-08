@@ -516,6 +516,70 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(restored.execute("t and true") == original.execute("t and true"))
   }
 
+  // --- F_0090: each value reloads in the tier it was saved in, whatever the session's mode ---
+
+  "a Double binding saved in exact mode" should "reload as a Double, not as an exact rational" in
+  {
+    val original = session
+    original.execute("x := sin(1)")
+    original.execute("exact on")
+    // Before F_0090 the script wrote `exact on` first and `x` came back 1682941969615793/2000000000000000.
+    val restored = session
+    restored.load(original.script)
+    assert(restored.script == original.script)
+    assert(restored.execute("x + 1/3") == original.execute("x + 1/3"))
+    assert(!restored.execute("x").contains("/"))
+  }
+
+  "an exact binding saved with exact mode off" should "reload exact" in
+  {
+    val original = session
+    original.execute("exact on")
+    original.execute("r := 1/3")
+    original.execute("exact off")
+    val restored = session
+    restored.load(original.script)
+    assert(restored.script == original.script)
+    assert(restored.execute("r * 3") == original.execute("r * 3"))
+    assert(restored.execute("r") == original.execute("r"))
+  }
+
+  "dense matrix factors saved in exact mode" should "reload as dense bindings" in
+  {
+    val original = session
+    original.execute("exact on")
+    original.execute("U, S, V := svd([[3, 0], [4, 5]])")
+    original.execute("q := 1/7")
+    val restored = session
+    restored.load(original.script)
+    assert(restored.script == original.script)
+    assert(restored.execute("U * S * transpose(V)") == original.execute("U * S * transpose(V)"))
+  }
+
+  "a script with values of both tiers" should "load into a session already in exact mode and end in the saved mode" in
+  {
+    val original = session
+    original.execute("x := sin(1)")
+    original.execute("exact on")
+    original.execute("r := 1/3")
+    original.execute("exact off")
+    val restored = session
+    restored.execute("exact on")
+    restored.load(original.script)
+    assert(restored.script == original.script)
+    assert(restored.execute("exact").contains("off"))
+  }
+
+  "a session with no exact values" should "keep the script it always wrote" in
+  {
+    val s = session
+    s.execute("x := 2")
+    s.execute("f := x + 1")
+    val lines = s.script.linesIterator.toList
+    assert(lines.count(_.startsWith("exact ")) == 2, s.script)   // `exact precision` and `exact off`
+    assert(lines.indexOf("exact off") == lines.indexWhere(_.startsWith("x := ")) - 1, s.script)
+  }
+
   "an exact rational serialised as a POWER BASE" should "re-parse with its own precedence" in
   {
     // The position the bracketing guard exists for, and the only one that needs it. A `Ratio`

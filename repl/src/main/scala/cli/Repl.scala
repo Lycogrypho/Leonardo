@@ -401,19 +401,18 @@ final class Session:
     val atomic = text.nonEmpty && text.forall(c => c.isLetterOrDigit || c == '_' || c == '.')
     if atomic then text else s"($text)"
 
-  /** Shared line-builder for `script` (replayable) and `state` (human-readable).
+  /** The binding and definition lines, in name order, each formatted by the caller.
    *
-   *  `defFmt` is separate from `bindFmt` because the two callers want different things from a
-   *  **definition**: `script` must serialise it losslessly (F_0046) while `state` is a human
-   *  view and keeps display formatting.
+   *  `keep` selects which entries to write: `script` writes the two tiers in separate groups
+   *  (F_0090), `state` writes everything. The definition formatter is separate because the two
+   *  callers want different things from one: `script` serialises it losslessly (F_0046), `state`
+   *  is a human view and keeps display formatting.
    */
-  private def buildLines(headers: List[String],
-                         bindFmt: _Value => String,
-                         defFmt: _Expression => String): String =
-    (headers ++
-     bindings.toList.sortBy(_._1).map((k, v) => s"$k := ${bindFmt(v)}") ++
-     definitions.toList.sortBy(_._1).map((k, e) => s"$k := ${defFmt(e)}")
-    ).mkString("\n")
+  private def entryLines(bindFmt: _Value => String,
+                         defFmt: _Expression => String,
+                         keep: _Expression => Boolean = _ => true): List[String] =
+    bindings.toList.sortBy(_._1).collect { case (k, v) if keep(v) => s"$k := ${bindFmt(v)}" } ++
+    definitions.toList.sortBy(_._1).collect { case (k, e) if keep(e) => s"$k := ${defFmt(e)}" }
 
   /** Every session setting as a `(command, argument)` pair, in the order a script must
    *  replay them.
@@ -425,8 +424,10 @@ final class Session:
    *  `k -> v` *is* the command that restores it, so writing a new value back is
    *  `execute(s"$k $newValue")` with no per-setting knowledge.
    *
-   *  Order is load-bearing: `exact` must come after `exact precision` and before the
-   *  bindings, or a `:load` parses exact literals at the wrong precision, or not exactly.
+   *  Order is load-bearing: `exact precision` must come before any `exact` line, or a `:load`
+   *  parses exact literals at the wrong precision. **`script` does not write the `exact` pair
+   *  where this list has it** (F_0090): it writes `exact off` / `exact on` around the values of
+   *  each tier and the session's own mode last — see [[script]].
    */
   private def settingPairs: List[(String, String)] =
     List(
@@ -448,12 +449,30 @@ final class Session:
   def settings: List[(String, String)] = settingPairs
 
   /** Current session state serialized as a replayable script — one command per line,
-   *  precision first, then bindings and definitions in name order. Feeding this back
+   *  settings first, then bindings and definitions in name order. Feeding this back
    *  through `load` (or line by line through `execute`) reconstructs the session.
    *  Pure: this is what the REPL writes to a `:save` file.
+   *
+   *  **Each value is written under the mode it must be parsed in** (F_0090). Exact mode is a
+   *  parse-time decision, so one `exact` line before every value re-parsed them all in the
+   *  session's current mode: in exact mode a saved `Double` came back an exact rational, and with
+   *  it off a saved exact rational came back a `Double`. The entries are therefore written in two
+   *  groups — those with no exact value under `exact off`, those with one under `exact on`, an
+   *  empty group omitted — and the session's own mode last, when the groups did not end in it.
+   *  A session with no exact values writes exactly the script it always did. **The one case left
+   *  lossy** is a single definition holding values of both tiers (only `consolidate` in exact
+   *  mode over a `Double` binding builds one): it can be parsed in one mode only, and is written
+   *  under `exact on`.
    */
   def script: String =
-    buildLines(settingPairs.map((k, v) => s"$k $v"), serializeValue, serialized(_).toString)
+    val headers = settingPairs.collect { case (k, v) if k != "exact" => s"$k $v" }
+    val groups  = List(false, true)
+      .map(exact => exact -> entryLines(serializeValue, serialized(_).toString,
+                                        e => _Rational.containsExact(e) == exact))
+      .filter(_._2.nonEmpty)
+    val body    = groups.flatMap((exact, lines) => s"exact ${onOff(exact)}" :: lines)
+    val mode    = Option.unless(groups.lastOption.map(_._1).contains(exactMode))(s"exact ${onOff(exactMode)}")
+    (headers ++ body ++ mode).mkString("\n")
 
   /** Execute a whole script body (e.g. the contents of a `:load` file), returning the
    *  newline-joined non-empty outputs of its commands. Blank lines and `#` comments are
@@ -1463,7 +1482,7 @@ final class Session:
   /** Returns the current session state in human-readable form. */
   // Display formatting on both sides: this is the human-readable view, not the replayable one.
   private def state: String =
-    buildLines(List(s"precision = $precision"), _.toString, _.toString)
+    (s"precision = $precision" :: entryLines(_.toString, _.toString)).mkString("\n")
 
 /** Companion object: constants and IO helpers shared across the REPL entry point. */
 object Session:
