@@ -319,7 +319,10 @@ final class Session:
    *  `_Number` uses the raw `Double` (`d.toString`), not the display-rounded value, so
    *  no digits are lost regardless of session precision.  `_Bool` is written as the
    *  `true`/`false` literal and `_Truth.Unknown` as `unknown`, which the grammar parses
-   *  back (word-boundary guarded constants, like `pi`/`e`).
+   *  back (word-boundary guarded constants, like `pi`/`e`).  A dense matrix, a complex
+   *  number and a graded truth value are written cell by cell, part by part and degree by
+   *  degree at full precision (F_0088) — **never through `toString`**, which for all three is
+   *  the display form rounded at `DefaultPrecision`.
    */
   private def serializeValue(v: _Value): String = v match
     // Before the _Number arm: _Number is a widening extractor and would otherwise write a
@@ -333,6 +336,22 @@ final class Session:
     // A distribution serializes as the grammar call that rebuilds it -- toString is that
     // call, at full parameter precision, so a bound distribution survives :save/:load.
     case d: probability._Distribution => d.display(MaxPrecision)
+    // F_0088: the three value kinds whose `toString` is their DISPLAY form, rounded at
+    // DefaultPrecision -- so a saved matrix, complex number or fuzzy degree reloaded with five
+    // decimals and a shared link reproduced a session computing different numbers. Each is
+    // written in a grammar form whose every Double goes through _Number.render, the shortest
+    // text that re-parses to the same Double (and the JVM's form on both platforms, F_0003).
+    case m: _MatrixValue =>
+      (0 until m.rows).map { i =>
+        (0 until m.cols).map(j => _Number.render(m(i, j))).mkString("[", ", ", "]")
+      }.mkString("[", ", ", "]")
+    // `* i` written out, the magnitude unsigned: `re - b * i` re-parses through exact
+    // multiplications by 0 and 1, so both parts come back bit for bit.
+    case c: _Complex =>
+      val sign = if c.im < 0 then "-" else "+"
+      s"(${_Number.render(c.re)} $sign ${_Number.render(math.abs(c.im))} * i)"
+    // The degree itself decides `unknown`, not its rounding: 0.5000001 is not the midpoint.
+    case t: _Truth => if t.d == 0.5 then "unknown" else s"truth(${_Number.render(t.d)})"
     // _Number.render, not d.toString: a bare Double renders the JavaScript way under Scala.js
     // ("3" for "3.0"), and this is the `:save` path -- so a session saved in a browser would
     // not be byte-identical to the same session saved on the JVM (issue F_0003).

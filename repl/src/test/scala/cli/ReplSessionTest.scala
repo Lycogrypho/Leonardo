@@ -475,6 +475,47 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(restored.execute("f") == original.execute("f"))
   }
 
+  // --- F_0088: a matrix, complex or graded-truth VALUE must round-trip as exactly as a number ---
+  // Display rounds every one of them at five decimals, so the comparisons below go through
+  // `script` itself: two scripts that write each value at full precision are equal exactly
+  // when the values are.
+
+  "a matrix binding" should "round-trip at full precision, not at the display precision" in
+  {
+    val original = session
+    original.execute("A := [[1/3, 2], [pi, -1/7]]")
+    assert(original.script.contains("0.3333333333333333") && original.script.contains("3.141592653589793"),
+           s"expected full-precision cells in the script, got:\n${original.script}")
+    val restored = session
+    restored.load(original.script)
+    assert(restored.script == original.script)
+  }
+
+  "a complex binding" should "round-trip at full precision, whatever the sign of its parts" in
+  {
+    val original = session
+    original.execute("z := exp(i)")
+    original.execute("w := exp(-2i)/3")
+    original.execute("v := 2i/3")
+    assert(original.script.contains("0.5403023058681398"), s"got:\n${original.script}")
+    val restored = session
+    restored.load(original.script)
+    assert(restored.script == original.script)
+  }
+
+  "a graded truth binding" should "round-trip at full precision and stay a truth value" in
+  {
+    val original = session
+    original.execute("t := truth(1/3)")
+    original.execute("u := unknown")
+    assert(original.script.contains("truth(0.3333333333333333)") && original.script.contains("u := unknown"),
+           s"got:\n${original.script}")
+    val restored = session
+    restored.load(original.script)
+    assert(restored.script == original.script)
+    assert(restored.execute("t and true") == original.execute("t and true"))
+  }
+
   "an exact rational serialised as a POWER BASE" should "re-parse with its own precedence" in
   {
     // The position the bracketing guard exists for, and the only one that needs it. A `Ratio`

@@ -50,12 +50,12 @@ class SvdReplTest extends AnyFlatSpec:
 
   it should "round-trip a session holding the factors through script and load" in
   {
-    // Only the displayed factors are compared: a dense matrix binding is saved at display
-    // precision today, so a reconstruction from reloaded U and V is off in the fifth decimal
-    // -- a defect of :save for every matrix value, filed as F_0088, not of svd.
+    // Before F_0088 the factors were saved at display precision, and the reconstruction from
+    // the reloaded U and V came back as [[3.00002, 1.0E-5], [4.0, 5.00001]].
     val s = Session()
     s.execute("U, S, V := svd([[3, 0], [4, 5]])")
     val t = Session()
     t.load(s.script)
     for name <- List("U", "S", "V") do assert(t.execute(name) == s.execute(name), name)
+    assert(t.execute("U * S * transpose(V)") == s.execute("[[3, 0], [4, 5]]"))
   }
