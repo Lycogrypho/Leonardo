@@ -280,6 +280,27 @@ object Parser extends JavaTokenParsers:
         case _          => MatProduct(x, y)
       case (false, false) => Product(x, y)
 
+  /** Re-applies the parser's operator dispatch to a tree whose leaves have changed (F_0089).
+   *
+   *  The parser picks `MatSum`/`MatProduct`/`MatScale` over `Sum`/`Product` from the operands'
+   *  **shape**, which it can see only for literals. A definition substituted for a name after
+   *  parsing leaves the scalar node a name was given: an exact matrix is a `_Matrix` definition,
+   *  so `A * B` became `Product(_Matrix, _Matrix)`, which `scalar` cannot multiply — and once
+   *  inside a `MatScale` it was read as a scale factor, a wrong answer. This rebuilds every `+`
+   *  and `*` (negation is a `*`) through [[mkSum]] and [[mkMul]], bottom-up, so the result is the
+   *  tree the substituted text would have parsed to. It **evaluates nothing**: a name bound to a
+   *  dense matrix is still a name, so every answer that never involved a substituted matrix
+   *  literal is unchanged. `/` and `^` always build `Ratio`/`Power`, as they do when parsed.
+   *
+   *  @param e the expression after substitution
+   *  @return the same expression with matrix-shaped operands dispatched as the parser would
+   */
+  private[leonardo] def redispatch(e: _Expression): _Expression =
+    e.rebuild(e.children.map(redispatch)) match
+      case Sum(a, b) if isMatrixShaped(a) || isMatrixShaped(b)     => mkSum(a, b)
+      case Product(a, b) if isMatrixShaped(a) || isMatrixShaped(b) => mkMul(a, b)
+      case other                                                   => other
+
   /** The literal `-1` in whichever arithmetic tier is in force.
    *
    *  Subtraction is built as `a + (-1)·b`, so getting this wrong would quietly route
@@ -304,9 +325,14 @@ object Parser extends JavaTokenParsers:
       case Some(_) => _Rational(n)
       case None    => _Number(n)
 
-  /** Negates `e`, choosing `MatScale(-1, e)` when `e` is matrix-shaped. */
+  /** Negates `e`, choosing `MatScale(-1, e)` when `e` is matrix-shaped.
+   *
+   *  The `-1` is [[negOne]] in both arms: a bare `_Number(-1)` in the matrix arm demoted every
+   *  exact matrix difference typed as literals (`[[1/2]] - [[1/3]]` came back `Double`), the
+   *  numeric tier rule's commonest bug, found by F_0089's named-versus-literal comparison.
+   */
   private def mkNeg(e: _Expression): _Expression =
-    if isMatrixShaped(e) then MatScale(_Number(-1), e) else Product(negOne, e)
+    if isMatrixShaped(e) then MatScale(negOne, e) else Product(negOne, e)
 
   /** Applies `sign` to `e`, folding negation into leading numeric coefficients.
    *
@@ -321,6 +347,7 @@ object Parser extends JavaTokenParsers:
     case (Some("-"), Product(r: _Rational, rest)) => Product(r.negate, rest)
     case (Some("-"), _Number(n))                => _Number(-n)
     case (Some("-"), Product(_Number(k), rest)) => Product(_Number(-k), rest)
+    case (Some("-"), MatScale(r: _Rational, m)) => MatScale(r.negate, m)
     case (Some("-"), MatScale(_Number(k), m))   => MatScale(_Number(-k), m)
     case (Some("-"), _)                         => mkNeg(e)
     case _                                      => e

@@ -485,3 +485,26 @@ class MatrixTest extends AnyFlatSpec:
     assert(_MatrixValue.identity(2).multiply(a) == a)
     assert(a.multiply(_MatrixValue.identity(2)) == a)
   }
+
+  // --- F_0089: a scale factor that is really a matrix ---
+
+  "MatScale whose factor is an unevaluated product of matrices" should "stay unevaluated, not scale the cells" in
+  {
+    // What `A * B * transpose(B)` became once exact matrices were substituted for the names:
+    // the scale arm distributed `(A*B)` over B's cells, a matrix of the wrong shape and meaning.
+    val a = literal(2, 2, _Rational(1), _Rational(2), _Rational(3), _Rational(4))
+    val b = literal(2, 2, _Rational(1), _Rational(0), _Rational(0), _Rational(1))
+    val node = MatScale(Product(a, b), b)
+    node.eval(new Environment()) match
+      case Left(MatScale(_: Product, _)) => succeed
+      case other                        => fail(s"expected the node unevaluated, got $other")
+  }
+
+  it should "still scale by a free scalar, and by a sum or power of one" in
+  {
+    val m = literal(1, 2, _Number(1), _Number(2))
+    for k <- List[_Expression](x, Sum(x, y), Power(x, _Number(2)), Product(_Number(3), x)) do
+      MatScale(k, m).eval(new Environment()) match
+        case Left(r: _Matrix) => assert(r.rows == 1 && r.cols == 2, s"$k")
+        case other            => fail(s"$k: expected per-cell scaling, got $other")
+  }

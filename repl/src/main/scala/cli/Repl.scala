@@ -840,7 +840,7 @@ final class Session:
     resolveDerivativeBinders(e) match
       case Left(message) => message
       case Right(resolved) =>
-        val expanded = substitute(resolved, definitions)
+        val expanded = withDefinitions(resolved)
         val result   = expanded.eval(env)
         val shown    =
           if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
@@ -995,6 +995,18 @@ final class Session:
       case d: _DefIntegral => check(d.e, d.v, List(d.low_limit, d.up_limit), "integration limit")
       case _               => e.children.flatMap(findDomainViolation).headOption
 
+  /** The definitions substituted into `e`, operators re-dispatched as the parser would have
+   *  (F_0089).
+   *
+   *  Substitution can put a matrix literal where a name was — an exact matrix is stored as a
+   *  definition — and the scalar node the name was parsed into cannot multiply it.
+   *  `Parser.redispatch` rebuilds it as the node the substituted text would have parsed to,
+   *  evaluating nothing. The one step every path that substitutes and then evaluates shares;
+   *  `simplify`/`expand` reach the same answers through [[resolveMatrixOps]].
+   */
+  private def withDefinitions(e: _Expression): _Expression =
+    Parser.redispatch(substitute(e, definitions))
+
   /** Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes
    *  whose operands are matrix-shaped — a matrix literal, a matrix operation node, or
    *  a variable bound to a matrix value — are re-typed to the matrix operations and
@@ -1086,7 +1098,7 @@ final class Session:
     resolveDerivativeBinders(rhs) match
       case Left(message) => message
       case Right(resolved) =>
-        substitute(resolved, definitions).eval(emptyEnv) match
+        withDefinitions(resolved).eval(emptyEnv) match
           case Right(value) =>
             bindings = bindings + (name -> value)
             definitions = definitions - name
@@ -1143,7 +1155,7 @@ final class Session:
             resolveDerivativeBinders(rhs) match
               case Left(message) => message
               case Right(resolved) =>
-                substitute(resolved, definitions).eval(env) match
+                withDefinitions(resolved).eval(env) match
                   case Left(_Matrix(1, n, elems)) if n == names.size =>
                     names.zip(elems).map((name, elem) => assign(name, elem)).mkString("\n")
                   case Left(_Matrix(1, n, _)) =>
@@ -1302,7 +1314,7 @@ final class Session:
             if n < 1 || n > Session.MaxSampleCount then
               Left(s"$command: <n> must be between 1 and ${Session.MaxSampleCount}, got: $n")
             else parsed(exprStr.trim) { e =>
-              Right(Session.SweepArgs(substitute(e, definitions), exprStr.trim, varStr, lo, hi, n))
+              Right(Session.SweepArgs(withDefinitions(e), exprStr.trim, varStr, lo, hi, n))
             }
           case _ => Left(s"$command: <lo> and <hi> must be numbers")
       case _ => Left(s"usage: $command <expr> <var> <lo> <hi> [<n>]")

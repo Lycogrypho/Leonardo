@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package matrix
 
 import core.*
-import scalar.{Sum, Product, Ratio}
+import scalar.{Sum, Product, Ratio, Power}
 
 
 /** Marker trait for matrix-valued AST nodes.
@@ -63,6 +63,23 @@ private def collapse(m: _Matrix, orElse: _Expression): Either[_Expression, _Valu
   if m.elems.exists(_.isInstanceOf[_Rational]) then Left(m)
   else if numbers.size == m.elems.size then _MatrixValue(m.rows, m.cols, numbers.toArray).guarded(orElse)
   else Left(m)
+
+/** Whether an unevaluated scale factor may stand for a matrix (F_0089).
+ *
+ *  [[MatScale]] distributes a symbolic factor over the cells — right for a free scalar such as
+ *  `x * [[1, 2]]`, a **wrong answer** for an unreduced `Product` of two matrices, which an exact
+ *  matrix substituted for a name used to produce: `A * B * transpose(B)` came back as B with
+ *  `(A*B)` in its cells. A factor is matrix-valued when a matrix node sits in an arithmetic
+ *  position; a function, `det` or `at` of one is scalar and stops the search. A free name is
+ *  **not** treated as a matrix here: scaling by it is the documented reading (issue 1.2).
+ */
+private def mayBeMatrix(e: _Expression): Boolean = e match
+  case _: _MatrixShaped | _: _MatrixOperation | _: _MatrixValue => true
+  case Sum(a, b)     => mayBeMatrix(a) || mayBeMatrix(b)
+  case Product(a, b) => mayBeMatrix(a) || mayBeMatrix(b)
+  case Ratio(a, b)   => mayBeMatrix(a) || mayBeMatrix(b)
+  case p: Power      => p.children.headOption.exists(mayBeMatrix)   // the base
+  case _             => false
 
 /** Whether an evaluated operand is a real scalar — a `_Number` **or** an exact `_Rational`.
  *
@@ -275,9 +292,9 @@ case class MatScale(k: _Expression, m: _Expression) extends _MatrixOperation:
       case (Right(_Number(s)), Right(mv: _MatrixValue)) => mv.scale(s).guarded(this)
       case (rk, rm) if asLiteral(rk).isDefined          => reduceProduct(rk, rm, this)
       case (rk, rm) => asLiteral(rm) match
-        case Some(lit) =>
+        case Some(lit) if !mayBeMatrix(rk.toExpression) =>
           collapse(_Matrix(lit.rows, lit.cols, lit.elems.map(productOf(rk.toExpression, _))), this)
-        case None => Left(MatScale(rk.toExpression, rm.toExpression))
+        case _ => Left(MatScale(rk.toExpression, rm.toExpression))
 
 
 /** Matrix transpose: `(A^T)_ij = A_ji`.
