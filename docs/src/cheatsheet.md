@@ -28,7 +28,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000) |
 | `simplify <expr>` | Structural simplification; also reduces any derivative, integral, limit or transform in the expression. Definitions are expanded, numeric bindings are not |
-| `expand <expr>` | Distribute products over sums and collect like terms; same preparation as `simplify`. Past 500 terms the product is left as written, with a note |
+| `expand <expr>` | Distribute products over sums and collect like terms; same preparation as `simplify`. A product whose expansion would be deeper than 200 levels (about 200 terms) is left as written, with a note |
 | `eval <expr>` | Evaluate substituting current bindings |
 | `samples <expr> <v> <lo> <hi> [n]` | Sample function on a grid (default 200 pts, max 100 000) |
 | `truth <expr>` | Truth table over the expression's free variables |
@@ -408,7 +408,7 @@ not chopped: a term that vanishes analytically returns at the integrator noise f
 
 `maclaurin(e, v, n)` is sugar for `taylor(e, v, 0, n)`.  The expansion variable stays
 free in the result, so binding it evaluates the polynomial.  Order is capped at 20,
-and each derivative at 250 000 nodes: a composite function's derivatives grow fast, so
+and each derivative at 50 000 nodes: a composite function's derivatives grow fast, so
 `taylor(exp(sin(x)), x, 0, 12)` declines, with a note naming the order, rather than
 running for minutes.  An expression whose derivative stays symbolic (`digamma`) returns
 unevaluated rather than a bogus series.  `taylor`, `laurent` and `pade` all say why they

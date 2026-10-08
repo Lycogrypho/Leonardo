@@ -264,7 +264,23 @@ case class _Reduction(kind: ReduceKind, e: _Expression, v: _Variable,
         // immediately, so a numeric fold never builds the n-deep left spine a single
         // `reduce`-then-`eval` would -- and a depth bound has to hold on the shallowest
         // platform's stack, not the JVM's (the `Parser.MaxDepth` rule).
-        terms.reduce((acc, t) => combine(acc, t).eval(env).toExpression).eval(env)
+        terms.reduce((acc, t) => combine(acc, t).eval(env).toExpression).eval(env) match
+          // F_0078: symbolic terms build a spine as deep as there are terms, which the
+          // browser's `simplify` cannot walk past ~250 -- so a too-deep result is declined.
+          case Left(spine) if tooDeep(spine) => Left(this)
+          case result                        => result
+
+  /** Why this reduction stayed unevaluated, when its range or the depth of its symbolic
+   *  result is the reason (F_0079, F_0078); `None` for an ordinary symbolic answer.
+   *  @param env the evaluation environment
+   *  @return the reason in prose, or `None`
+   */
+  private[leonardo] def declineReason(env: Environment): Option[String] =
+    rangeRefusal(lo, hi, env).orElse(
+      indexRange(lo, hi, env).collect {
+        case (l, h) if l <= h && eval(env) == Left(this) =>
+          s"a symbolic ${kind.word} of ${h - l + 1} terms would be deeper than the limit of $MaxExpressionDepth"
+      })
 
   /** The two terms combined -- the one place this kind's operator is named. */
   private def combine(a: _Expression, b: _Expression): _Expression = kind match

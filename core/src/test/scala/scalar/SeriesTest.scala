@@ -467,22 +467,23 @@ class SeriesTest extends AnyFlatSpec:
 
   "a series whose derivatives outgrow the budget" should "decline quickly, naming the order" in
   {
-    // exp(sin(x)): the order-9 derivative has ~248 000 nodes and the order-10 one ~1.4 million,
-    // so order 12 used to run past 10 s (and past 20 s at order 12 in the audit's probe).
+    // exp(sin(x)): the order-8 derivative has ~48 600 nodes and the order-9 one ~248 000, so
+    // order 12 used to run past 20 s. This runs on Node too, where the refusal costs ~1 s: the
+    // bound below caught a JVM-only budget that left it at ~15 s there (F_0078).
     val started = System.nanoTime
     val reason  = why(taylorDetailed(parse("exp(sin(x))"), x, _Number(0), 12))
     val seconds = (System.nanoTime - started) / 1e9
     assert(reason.matches(s"the derivative of order \\d+ has more than $MaxDerivativeNodes nodes"), reason)
-    assert(seconds < 15, s"the budget did not bound the work: $seconds s")
+    assert(seconds < 8, s"the budget did not bound the work: $seconds s")
     assert(taylorSeries(parse("exp(sin(x))"), x, _Number(0), 12).isEmpty)
   }
 
   it should "still answer, correctly, within the budget" in
   {
-    val s = taylorSeries(parse("exp(sin(x))"), x, _Number(0), 8)
-      .getOrElse(fail("order 8 is within the budget"))
-    // The truncation error at x = 0.1 is O(0.1^9).
-    assertClose(valueAt(s, 0.1), math.exp(math.sin(0.1)), 1e-9, "exp(sin(0.1)):")
+    val s = taylorSeries(parse("exp(sin(x))"), x, _Number(0), 7)
+      .getOrElse(fail("order 7 is within the budget"))
+    // The truncation error at x = 0.1 is O(0.1^8).
+    assertClose(valueAt(s, 0.1), math.exp(math.sin(0.1)), 1e-8, "exp(sin(0.1)):")
   }
 
   it should "bound pade and laurent too, through the same derivatives" in

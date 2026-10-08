@@ -454,7 +454,7 @@ package "scalar" {
     }
     class "Expand" <<utility>> [[expressions.html]] {
         + expand(e): _Expression  (like terms folded; F_0076)
-        + MaxExpandTerms / MaxExpandWork
+        + MaxExpandWork; depth bounded by core.MaxExpressionDepth
     }
     class "Normalize" <<utility>> [[equations.html]] {
         + collect(e, v): Option[Vector]
@@ -1718,8 +1718,9 @@ package "parser" {
         + parse(str: String): ParseResult
         + ReservedWords: Set
         __ __
-        MaxDepth = 500
-        variable ::= [a-zA-Z][a-zA-Z0-9]*
+        MaxDepth = 200 (nesting)
+        refuses a tree deeper than core.MaxExpressionDepth = 200 (F_0078)
+        variable ::= [a-zA-Z][a-zA-Z0-9_]*
         exact mode: literal -> _Rational (Option[Int])
     }
 }

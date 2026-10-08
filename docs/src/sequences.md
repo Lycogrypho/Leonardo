@@ -126,7 +126,12 @@ not a decimal. **Symbolic terms expand**: `sum(k*x, k, 1, 3)` becomes `x + 2x + 
 `simplify` then collects to `6x`. And **an empty range is the identity** — `sum(…, k, 1, 0)`
 is `0` and the empty product is `1` — so a base case reads correctly instead of declining.
 
-The same 1000-term cap applies, with the same note. A product that **overflows** is a
+The same 1000-term cap applies, with the same note. **Symbolic terms are held to a tighter
+bound**: an expanded sum is as deep as it has terms, and the library accepts no expression
+deeper than 200 levels — the browser's `simplify` cannot walk much past 250 — so
+`sum(k*x, k, 1, 300)` declines with `note: sum declined: a symbolic sum of 300 terms would be
+deeper than the limit of 200`, while the numeric `sum(k, k, 1, 1000)`, which builds no such
+tree, still answers. A product that **overflows** is a
 different matter: `product(k, k, 1, 171)` answers `inf`, the floating-point arithmetic's own
 answer (`1e308 * 10` is `inf` too), while `fact(171)` declines, because the factorial kernel
 knows `171!` is beyond a `Double` and says so rather than computing it. Under `exact on` both

@@ -961,5 +961,12 @@ object Parser extends JavaTokenParsers:
   def parse(str: String, exact: Option[Int] = None): ParseResult[_Expression] =
     val previous = exactPrecision.get()
     exactPrecision.set(exact)
-    try parseAll(topLevel, str)
+    try parseAll(topLevel, str) match
+      // F_0078: depth, not nesting, is what the walkers' stack pays for -- a flat chain of
+      // terms is a deep tree that MaxDepth never sees. Refused here, with a message, rather
+      // than accepted to overflow `simplify` in the browser a step later.
+      case Success(e, next) if tooDeep(e) =>
+        Failure(s"expression is deeper than $MaxExpressionDepth levels (a sum or product of " +
+                s"that many terms is that deep)", next)
+      case other => other
     finally exactPrecision.set(previous)

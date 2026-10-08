@@ -500,8 +500,16 @@ final class Session:
           // The one funnel every parsed expression passes through, so F_0030's new-name note
           // needs no per-command opt-in and cannot miss a path someone adds later.
           introduce(result.get.freeVars)
-          try f(result.get)
-          catch case NonFatal(e) => Left(s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}")
+          // F_0078: the parser refuses a too-deep tree, but definitions compose after parsing --
+          // `a := x1 + ... + x150` then `a + y1 + ... + y150` is 300 deep once substituted, and
+          // that is the tree the walkers descend. Checked here, the one funnel, so no command
+          // can reach a walker with it.
+          if core.tooDeep(substitute(result.get, definitions)) then
+            Left(s"evaluation error: the expression is deeper than ${core.MaxExpressionDepth} levels " +
+                 "once its definitions are substituted")
+          else
+            try f(result.get)
+            catch case NonFatal(e) => Left(s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}")
         else
           val base = s"parse error: ${result.toString.linesIterator.next()}"
           // "g(x)"-style call syntax on a defined name is a common spelling of
@@ -865,7 +873,7 @@ final class Session:
       case (q: _QP, Right(_)) => q.detailed(env).toOption.map(r => activeConstraints(r.active))
       // F_0079: a reduction or tabulation that declined on its range says so, instead of
       // echoing the call back with no hint that a cap or a non-whole bound was the reason.
-      case (r: _Reduction, Left(_: _Reduction)) => rangeRefusal(r.lo, r.hi, env).map(w => s"${r.kind.word} declined: $w")
+      case (r: _Reduction, Left(_: _Reduction)) => r.declineReason(env).map(w => s"${r.kind.word} declined: $w")
       case (t: _Tabulate, Left(_: _Tabulate))   => rangeRefusal(t.lo, t.hi, env).map(w => s"tabulate declined: $w")
       // F_0077: a series that declined says why -- above all when a derivative outgrew
       // MaxDerivativeNodes, which used to be a hang rather than a refusal.
@@ -1590,7 +1598,8 @@ object Session:
          |  simplify C          (C := A * B) executes the multiplication, simplifies each cell""".stripMargin,
     "expand" ->
       """|Distribute products over sums; expand integer powers via the binomial theorem.
-         |Like terms are collected as it goes; past 500 terms a product is left as written.
+         |Like terms are collected as it goes; an expansion deeper than 200 levels (a sum is as
+         |deep as it has terms) is left as written.
          |Matrix algebra is carried out first.
          |  expand x * (y + z)  -> ((x * y) + (x * z))
          |  expand (x + 1)^2    -> (((x ^ 2.0) + (2.0 * x)) + 1.0)""".stripMargin,

@@ -478,7 +478,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `lhs = rhs` | Evaluate relation (true/false) |
 | `lhs == rhs` | Explicit equality check |
 | `simplify <expr>` | Structural simplification |
-| `expand <expr>` | Distribute products over sums and collect like terms (a product past 500 terms is left as written, with a note) |
+| `expand <expr>` | Distribute products over sums and collect like terms (a product whose expansion would be deeper than 200 levels, about 200 terms, is left as written, with a note) |
 | `eval <expr>` | Force numeric evaluation |
 | `samples e v lo hi [n]` | Sample function over range |
 | `truth <expr>` | Boolean truth table over the free variables |

@@ -30,13 +30,16 @@ private def hasDerivative(e: _Expression): Boolean = e match
  *
  *  **The order cap does not bound the work; this does.**  The `k`-th derivative of a composite
  *  function grows by a factor of 2 to 8.5 per order even simplified, so `MaxTaylorOrder = 20`
- *  was unreachable for `exp(sin(x))` by orders of magnitude.  Measured (JVM): time follows the
- *  node count at about 0.2 µs per node, and one step multiplies it by at most ~8.5 — so at this
- *  budget a refused step costs about 0.7 s and an accepted series well under that.  Raising it
- *  buys roughly one order per factor of 6 and costs as much time; F_0085's power-series engine
- *  is what lifts it for real.  A derivative past it makes the series decline with a reason.
+ *  was unreachable for `exp(sin(x))` by orders of magnitude.  **Set on the slowest platform**
+ *  (F_0078's rule, applied to time): a derivative step costs about 4 µs per node on Node against
+ *  0.2 µs on the JVM, and one step multiplies the count by up to ~8.5 — so at this budget the
+ *  worst refusal measured costs ~1.1 s in the browser and well under 0.1 s on the JVM.  F_0077
+ *  first set 250 000 from the JVM alone, which left a browser refusal at ~15 s — found when the
+ *  suite's timing test ran on Node.  Raising it buys roughly one order per factor of 6 and costs
+ *  as much time; F_0085's power-series engine is what lifts it for real.  A derivative past it
+ *  makes the series decline with a reason.
  */
-val MaxDerivativeNodes: Int = 250000
+val MaxDerivativeNodes: Int = 50000
 
 /** The raw (unsimplified) derivative's node budget: refused before `simplifyFully`, which is
  *  the expensive half of a step. */

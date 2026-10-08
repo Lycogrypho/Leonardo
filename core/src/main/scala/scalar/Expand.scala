@@ -6,20 +6,10 @@ import scala.collection.immutable.VectorMap
 import scala.collection.mutable
 
 
-/** The most terms an expansion inside [[expand]] may have (F_0076).
- *
- *  **Set by what can consume the result, not by what can build it.**  A sum is a left spine as
- *  deep as it has terms, and the recursive walkers overflow on it (F_0078) — so a longer
- *  expansion would be built only to crash whatever simplifies or prints it next.  **The
- *  shallowest platform decides** (the `Parser.MaxDepth` rule): measured on Node, `simplifyFully`
- *  and `derive` survive a 500-term sum and overflow at 1000, while the JVM survives 2000.
- *  Raise it if F_0078 makes the walkers iterative.  A refused product stays as written, its
- *  operands expanded, and [[expandReporting]] says why.
- */
-val MaxExpandTerms: Int = 500
-
 /** The most term pairs one multiplication inside [[expand]] may combine, checked **before** any
- *  is built (F_0076): it bounds the time where [[MaxExpandTerms]] bounds the size, since folding
+ *  is built (F_0076): it bounds the time where `core.MaxExpressionDepth` bounds the size — a
+ *  sum is a spine as deep as it has terms, so an expansion deeper than the walkers can descend
+ *  would be built only to crash whatever simplifies it next (F_0078) — since folding
  *  can make a large product small.  Measured, not round (the `MaxMatrixCells` rule): on the JVM
  *  a 447×447 product (2·10⁵ pairs) takes ~0.45 s and 1000×1000 ~1.5 s, and a browser is
  *  several times slower — so the bound sits near half a second where the page freezes while it
@@ -46,9 +36,9 @@ val MaxExpandPower: Int = 20
  *  told apart here — at the REPL `resolveMatrixOps` re-types such products before `expand`
  *  runs; a library caller expanding `A*B + B*A` over matrix-valued names should not.
  *
- *  Three guards: [[MaxExpandPower]], the size budget [[MaxExpandTerms]] and the work budget
- *  [[MaxExpandWork]].  A product past a budget is left undistributed; [[expandReporting]]
- *  returns the reason with the result.
+ *  Three guards: [[MaxExpandPower]], the work budget [[MaxExpandWork]] and the depth limit
+ *  `core.MaxExpressionDepth` every producer of expressions shares (F_0078).  A product past a
+ *  budget is left undistributed; [[expandReporting]] returns the reason with the result.
  *
  *  @param e the expression to expand
  *  @return the expanded expression
@@ -172,7 +162,9 @@ private def add(a: Poly, b: Poly): Poly =
   b.foreach((m, c) => out.updateWith(m)(old => Some(old.fold(c)(plus(_, c)))))
   VectorMap.from(out.filterNot((_, c) => isZero(c)))
 
-/** `a·b`, or `None` (and a recorded refusal) past [[MaxExpandWork]] or [[MaxExpandTerms]]. */
+/** `a·b`, or `None` (and a recorded refusal) past [[MaxExpandWork]] or when the result would
+ *  be deeper than `core.MaxExpressionDepth` — judged on the rendered form, since a sum's
+ *  depth is its term count plus its deepest term. */
 private def multiply(a: Poly, b: Poly)(using ctx: Expansion): Option[Poly] =
   if a.size.toLong * b.size > MaxExpandWork then
     ctx.refuse(s"a product of ${a.size} by ${b.size} terms exceeds the limit of $MaxExpandWork term pairs")
@@ -184,8 +176,8 @@ private def multiply(a: Poly, b: Poly)(using ctx: Expansion): Option[Poly] =
       val c = times(ca, cb)
       out.updateWith(m)(old => Some(old.fold(c)(plus(_, c))))
     val result = VectorMap.from(out.filterNot((_, c) => isZero(c)))
-    if result.size > MaxExpandTerms then
-      ctx.refuse(s"the expansion has ${result.size} terms, more than the limit of $MaxExpandTerms")
+    if tooDeep(render(result)) then
+      ctx.refuse(s"the expansion has ${result.size} terms, deeper than the limit of $MaxExpressionDepth levels")
       None
     else Some(result)
 
@@ -208,7 +200,7 @@ private def term(m: Monomial, c: _Value)(using ctx: Expansion): _Expression =
       case _            => Product(c, mono)
 
 /** The distribution `expand` always did, in operand order and without folding: for a product
- *  that does not commute.  Counted against the term budget like the folding path. */
+ *  that does not commute.  Held to the same work budget and depth limit as the folding path. */
 private def ordered(x: _Expression, y: _Expression)(using ctx: Expansion): _Expression =
   def terms(e: _Expression): Long = e match
     case Sum(a, b) => terms(a) + terms(b)
@@ -218,7 +210,12 @@ private def ordered(x: _Expression, y: _Expression)(using ctx: Expansion): _Expr
     case (p, Sum(q, r)) => Sum(go(p, q), go(p, r))
     case _              => Product(x, y)
   val (p, q) = (terms(x), terms(y))
-  if p * q > MaxExpandTerms then
-    ctx.refuse(s"the expansion has ${p * q} terms, more than the limit of $MaxExpandTerms")
+  if p * q > MaxExpandWork then
+    ctx.refuse(s"a product of $p by $q terms exceeds the limit of $MaxExpandWork term pairs")
     Product(x, y)
-  else go(x, y)
+  else
+    val distributed = go(x, y)
+    if tooDeep(distributed) then
+      ctx.refuse(s"the expansion has ${p * q} terms, deeper than the limit of $MaxExpressionDepth levels")
+      Product(x, y)
+    else distributed

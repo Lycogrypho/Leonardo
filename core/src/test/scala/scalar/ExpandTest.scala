@@ -230,19 +230,21 @@ class ExpandTest extends AnyFlatSpec:
 
   "an expansion past the size budget" should "be refused, left as written, with the reason" in
   {
-    // (a+b+c+d)^20 has C(23, 3) = 1771 terms, past MaxExpandTerms.
+    // (a+b+c+d)^20 has C(23, 3) = 1771 terms, far deeper than MaxExpressionDepth (F_0078).
     val (r, why) = expandReporting(parse("(a+b+c+d)^20"))
-    assert(why.exists(_.contains(s"more than the limit of $MaxExpandTerms")), s"reason: $why")
+    assert(why.exists(_.contains(s"deeper than the limit of $MaxExpressionDepth levels")), s"reason: $why")
     r match
       case Power(base, _Number(20.0)) => assert(termsOf(base).size == 4)
       case other                      => fail(s"expected the power left as written, got $other")
-    // Everything under the budget still answers, with no reason attached.
-    assert(expandReporting(parse("(a+b+c)^20"))._2.isEmpty)
+    // Everything under the limit still answers, with no reason attached: (a+b+c)^10 is 66 terms.
+    assert(expandReporting(parse("(a+b+c)^10"))._2.isEmpty)
   }
 
   "a product past the work budget" should "be refused before any term is built" in
   {
-    val wide = (1 to 600).map(i => s"x$i").mkString("(", " + ", ")")
-    val (_, why) = expandReporting(parse(s"$wide * $wide"))
+    // Built directly: the parser refuses a 600-term chain outright since F_0078, and a library
+    // caller can still hand expand one.
+    val wide = (2 to 600).foldLeft(_Variable("x1"): _Expression)((acc, i) => Sum(acc, _Variable(s"x$i")))
+    val (_, why) = expandReporting(Product(wide, wide))
     assert(why.exists(_.contains(s"600 by 600 terms exceeds the limit of $MaxExpandWork")), s"reason: $why")
   }

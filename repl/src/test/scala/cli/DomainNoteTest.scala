@@ -59,6 +59,30 @@ class DomainNoteTest extends AnyFlatSpec:
     assert(!out.contains("note:"), s"no diagnostic expected, got: $out")
   }
 
+  // F_0078: nothing deeper than MaxExpressionDepth reaches the walkers -- and, the decisive part,
+  // an expression AT the limit simplifies on the shallowest platform: this suite runs on Node.
+  "the depth limit" should "hold on every platform, and explain itself where it refuses" in
+  {
+    val s = session
+    // Fresh names, so no memoised walk shortens the recursion and flatters the measurement.
+    // Relative to the limit, so raising the constant past what Node's stack can walk fails here
+    // (checked by mutation: at 350 this test fails on Node with a RangeError).
+    val n    = core.MaxExpressionDepth - 10
+    val near = (1 to n).map(i => s"q$i").mkString(" + ")
+    val ok   = s.execute(s"simplify $near")
+    assert(!ok.contains("rror"), s"a $n-term sum must simplify on this platform: ${ok.take(120)}")
+    val viaSum = s.execute(s"simplify sum(k*u, k, 1, $n)")
+    assert(!viaSum.contains("rror"), viaSum.take(120))
+    val over = s.execute("sum(k*u, k, 1, 300)")
+    assert(over.contains("note: sum declined: a symbolic sum of 300 terms would be deeper"), over)
+    val typed = s.execute((1 to 300).map(i => s"r$i").mkString(" + "))
+    assert(typed.contains(s"deeper than ${core.MaxExpressionDepth} levels"), typed.take(200))
+    // Definitions compose after parsing: each line is shallow, the substituted tree is not.
+    s.execute("part := " + (1 to 150).map(i => s"p$i").mkString(" + "))
+    val composed = s.execute("simplify part + " + (1 to 150).map(i => s"o$i").mkString(" + "))
+    assert(composed.contains("deeper than") && composed.contains("once its definitions are substituted"), composed.take(200))
+  }
+
   // F_0077: a series whose derivatives outgrow the budget declines and says why.
   "a series past the derivative budget" should "decline with a note instead of hanging" in
   {
