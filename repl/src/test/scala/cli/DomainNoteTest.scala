@@ -87,7 +87,8 @@ class DomainNoteTest extends AnyFlatSpec:
   "a series past the derivative budget" should "decline with a note instead of hanging" in
   {
     val s = session
-    val over = s.execute("taylor(exp(sin(x)), x, 0, 12)")
+    // erf has no power-series recurrence (F_0085), so this one takes the derivative path.
+    val over = s.execute("taylor(erf(sin(x)), x, 0, 20)")
     assert(over.contains("note: taylor declined: the derivative of order"), over)
     assert(s.lastLatex.isEmpty, "a note is prose the formula does not carry")
     assert(s.execute("pade(1 + x^2, x, 1, 1)").contains("note: pade declined: no [1/1] approximant exists"))

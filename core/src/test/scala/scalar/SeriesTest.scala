@@ -467,29 +467,20 @@ class SeriesTest extends AnyFlatSpec:
 
   "a series whose derivatives outgrow the budget" should "decline quickly, naming the order" in
   {
-    // exp(sin(x)): the order-8 derivative has ~48 600 nodes and the order-9 one ~248 000, so
-    // order 12 used to run past 20 s. This runs on Node too, where the refusal costs ~1 s: the
-    // bound below caught a JVM-only budget that left it at ~15 s there (F_0078).
+    // erf has no recurrence in the power-series engine (F_0085), so erf(sin(x)) takes the
+    // derivative path, whose derivatives grow exponentially; the budget turns that into a quick
+    // refusal. This runs on Node too, where the bound below caught a JVM-only budget (F_0078).
     val started = System.nanoTime
-    val reason  = why(taylorDetailed(parse("exp(sin(x))"), x, _Number(0), 12))
+    val reason  = why(taylorDetailed(parse("erf(sin(x))"), x, _Number(0), 20))
     val seconds = (System.nanoTime - started) / 1e9
     assert(reason.matches(s"the derivative of order \\d+ has more than $MaxDerivativeNodes nodes"), reason)
     assert(seconds < 8, s"the budget did not bound the work: $seconds s")
-    assert(taylorSeries(parse("exp(sin(x))"), x, _Number(0), 12).isEmpty)
-  }
-
-  it should "still answer, correctly, within the budget" in
-  {
-    val s = taylorSeries(parse("exp(sin(x))"), x, _Number(0), 7)
-      .getOrElse(fail("order 7 is within the budget"))
-    // The truncation error at x = 0.1 is O(0.1^8).
-    assertClose(valueAt(s, 0.1), math.exp(math.sin(0.1)), 1e-8, "exp(sin(0.1)):")
   }
 
   it should "bound pade and laurent too, through the same derivatives" in
   {
-    assert(why(padeDetailed(parse("exp(sin(x))"), x, 6, 6, env)).contains("nodes"))
-    assert(why(laurentDetailed(parse("exp(sin(x))/x"), x, _Number(0), 1, 12, env)).contains("nodes"))
+    assert(why(padeDetailed(parse("erf(sin(x))"), x, 10, 10, env)).contains("nodes"))
+    assert(why(laurentDetailed(parse("erf(sin(x))/x"), x, _Number(0), 1, 19, env)).contains("nodes"))
   }
 
   "each series decline" should "carry its reason" in
@@ -501,4 +492,91 @@ class SeriesTest extends AnyFlatSpec:
     assert(why(padeDetailed(parse("1 + x^2"), x, 1, 1, env)) == "no [1/1] approximant exists: its linear system is singular")
     // An essential singularity has no finite principal part to clear.
     assert(why(laurentDetailed(parse("exp(1/x)"), x, _Number(0), 2, 2, env)).contains("could not be cleared"))
+  }
+
+  // --- F_0085: exact coefficients, and the power-series engine ---
+
+  /** Whether a numeric leaf anywhere in `e` is an inexact `_Number` (a `_Rational` is exact). */
+  private def hasInexact(e: _Expression): Boolean = e match
+    case _: _Rational => false
+    case _: _Number   => true
+    case other        => other.children.exists(hasInexact)
+
+  "the series of an exact expression" should "keep exact coefficients" in
+  {
+    // exp(x/2) about 0 is sum (1/2)^k/k! x^k; in exact mode every coefficient is rational. The
+    // divisor k! is a constant the algorithm invents, so it must be built in the input's tier.
+    val e = Parser.parse("exp(x/2)", exact = Some(30)).get
+    val s = taylorSeries(e, x, _Rational(0), 6).getOrElse(fail("exp(x/2) expands"))
+    assert(!hasInexact(s), s"a coefficient was demoted to a Double: $s")
+    s.eval(env.withBinding("x", _Rational(1))) match
+      case Right(q: _Rational) => assertClose(q.toDouble, (0 to 6).map(k => math.pow(0.5, k) / (1 to k).product).sum, 1e-15)
+      case other               => fail(s"expected an exact value, got $other")
+  }
+
+  /** The five families whose order the derivative budget cut, with their true values. */
+  private val families: Seq[(String, Double => Double)] = Seq(
+    "exp(sin(x))"    -> (t => math.exp(math.sin(t))),
+    "tan(x)"         -> (t => math.tan(t)),
+    "1/(1 + x^2)"    -> (t => 1 / (1 + t * t)),
+    "sin(x)*cos(x)"  -> (t => math.sin(t) * math.cos(t)),
+    "ln(1 + exp(x))" -> (t => math.log(1 + math.exp(t))))
+
+  "the power-series engine" should "agree with the derivative path wherever both answer" in
+  {
+    // The two routes are independent definitions of one thing, so they are checked against each
+    // other coefficient by coefficient (numerically -- the shapes differ).
+    for (src, _) <- families do
+      val e  = parse(src)
+      val ds = seriesDerivatives(e, x, 6).getOrElse(fail(s"$src: the derivative path declined"))
+      val cs = powerSeries(e, x, _Number(0), 6).getOrElse(fail(s"$src: the engine declined"))
+      for k <- 0 to 6 do
+        val viaDerivative = valueAt(Ratio(substitute(ds(k), Map("x" -> _Number(0))), _Number((1 to k).product)), 0)
+        assertClose(valueAt(cs(k), 0), viaDerivative, 1e-12, s"$src, coefficient $k:")
+  }
+
+  it should "reach order 20 on every family the budget cut, quickly" in
+  {
+    val started = System.nanoTime
+    for (src, f) <- families do
+      val s = taylorSeries(parse(src), x, _Number(0), 20).getOrElse(fail(s"$src declined at order 20"))
+      // Truncation error at 0.1 is O(0.1^21) for every family here (all radii exceed 0.1).
+      assertClose(valueAt(s, 0.1), f(0.1), 1e-14, s"$src at 0.1:")
+    val seconds = (System.nanoTime - started) / 1e9
+    assert(seconds < 8, s"order 20 on five families took $seconds s")
+  }
+
+  it should "expand the inverse functions by integrating their derivatives" in
+  {
+    val cases: Seq[(String, Double, Double => Double)] = Seq(
+      ("atan(x)", 0, math.atan), ("asin(x)", 0, math.asin), ("acos(x)", 0, math.acos),
+      ("asinh(x)", 0, t => math.log(t + math.sqrt(t * t + 1))),
+      ("atanh(x)", 0, t => 0.5 * math.log((1 + t) / (1 - t))),
+      ("acosh(x)", 2, t => math.log(t + math.sqrt(t * t - 1))))
+    for (src, a, f) <- cases do
+      val s = taylorSeries(parse(src), x, _Number(a), 12).getOrElse(fail(s"$src declined"))
+      assertClose(valueAt(s, a + 0.1), f(a + 0.1), 1e-11, s"$src near $a:")
+  }
+
+  it should "keep a free parameter and a symbolic centre symbolic" in
+  {
+    val withParameter = taylorSeries(parse("exp(a*x)"), x, _Number(0), 8).getOrElse(fail("exp(a*x)"))
+    val atA = withParameter.eval(env.withBinding("a", _Number(0.3)).withBinding("x", _Number(0.2)))
+    atA match
+      case Right(_Number(d)) => assertClose(d, math.exp(0.06), 1e-14)
+      case other             => fail(s"did not fold once a was bound: $other")
+    val aboutC = taylorSeries(parse("sin(x)"), x, _Variable("c"), 6).getOrElse(fail("sin about c"))
+    aboutC.eval(env.withBinding("c", _Number(0.4)).withBinding("x", _Number(0.5))) match
+      case Right(_Number(d)) => assertClose(d, math.sin(0.5), 1e-9)
+      case other             => fail(s"did not fold once c was bound: $other")
+  }
+
+  it should "send only the uncovered subtree down the derivative path" in
+  {
+    // erf has no recurrence; exp does. The product is still exact to its order.
+    // Order 8: erf's own derivatives still grow, so its fallback meets the budget by order 12.
+    val s = taylorSeries(parse("erf(x)*exp(x)"), x, _Number(0), 8).getOrElse(fail("erf(x)*exp(x)"))
+    val erf01 = 0.1124629160182849 // erf(0.1)
+    // The truncation error at 0.1 is ~4e-12 (the order-9 term), measured.
+    assertClose(valueAt(s, 0.1), erf01 * math.exp(0.1), 1e-11)
   }

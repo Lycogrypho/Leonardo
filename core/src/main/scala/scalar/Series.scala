@@ -35,9 +35,10 @@ private def hasDerivative(e: _Expression): Boolean = e match
  *  0.2 µs on the JVM, and one step multiplies the count by up to ~8.5 — so at this budget the
  *  worst refusal measured costs ~1.1 s in the browser and well under 0.1 s on the JVM.  F_0077
  *  first set 250 000 from the JVM alone, which left a browser refusal at ~15 s — found when the
- *  suite's timing test ran on Node.  Raising it buys roughly one order per factor of 6 and costs
- *  as much time; F_0085's power-series engine is what lifts it for real.  A derivative past it
- *  makes the series decline with a reason.
+ *  suite's timing test ran on Node.  Since F_0085 it bounds only the **fallback**: the
+ *  power-series engine computes every covered function without differentiating, and only a
+ *  subexpression it does not cover (`erf`, the special functions) pays this cost.  A derivative
+ *  past it makes the series decline with a reason.
  */
 val MaxDerivativeNodes: Int = 50000
 
@@ -70,7 +71,7 @@ private def boundedDerivatives(e: _Expression, v: _Variable): LazyList[Either[St
 
 /** The derivatives of orders `0 .. order`, or why they cannot all be had: the size budget, or
  *  an order at which `derive` has no rule (a series carrying a `_Derivative` is worse than none). */
-private def seriesDerivatives(e: _Expression, v: _Variable, order: Int): Either[String, Vector[_Expression]] =
+private[scalar] def seriesDerivatives(e: _Expression, v: _Variable, order: Int): Either[String, Vector[_Expression]] =
   @annotation.tailrec
   def go(ds: LazyList[Either[String, _Expression]], k: Int, built: Vector[_Expression]): Either[String, Vector[_Expression]] =
     if k > order then Right(built)
@@ -95,8 +96,9 @@ private[scalar] def nodeCountUpTo(e: _Expression, limit: Int): Int =
 /** Expands `e` as a [[https://en.wikipedia.org/wiki/Taylor_series Taylor polynomial]] in `v` about `point`, to and including order `order`.
  *
  *  `Σ(k = 0 to order) f⁽ᵏ⁾(point) / k! · (v − point)ᵏ`, built from
- *  derivatives each simplified before the next and held within [[MaxDerivativeNodes]], and
- *  instantiating each coefficient at `point` with [[substitute]].  The
+ *  truncated power-series arithmetic (`powerSeries`, F_0085), the derivative path — each
+ *  derivative held within [[MaxDerivativeNodes]] — taken only for a subexpression the arithmetic
+ *  does not cover.  The
  *  result is run through [[simplifyFully]], which collapses the `k = 0` term's
  *  `(v − point)⁰` to `1` and folds the constant coefficients.
  *
@@ -130,16 +132,14 @@ private[leonardo] def taylorDetailed(
 ): Either[String, _Expression] =
   if order < 0 || order > MaxTaylorOrder then Left(orderRange)
   else
-    // The first underivable or oversized derivative aborts the whole series rather than
-    // yielding a polynomial with a _Derivative inside it, or a hung session.
-    seriesDerivatives(e, v, order).map { ds =>
-      val shifted = Sum(v, Product(_Number(-1), point))
-      val terms = ds.zipWithIndex.map { (dk, k) =>
-        Product(
-          Ratio(substitute(dk, Map(v.variable -> point)),
-                _Number(factorialOf(k.toDouble).getOrElse(Double.NaN))),
-          Power(shifted, _Number(k))): _Expression
-      }
+    // F_0085: the coefficients come from the power-series engine, which falls back to the
+    // derivative path (and its budget) only for a subtree it does not cover. The constants the
+    // assembly invents -- the -1 and each exponent -- are built in the input's tier.
+    val exact = _Rational.containsExact(e) || _Rational.containsExact(point)
+    def lit(k: Int): _Expression = if exact then _Rational(k) else _Number(k)
+    powerSeries(e, v, point, order).map { cs =>
+      val shifted = Sum(v, Product(lit(-1), point))
+      val terms = cs.zipWithIndex.map((c, k) => Product(c, Power(shifted, lit(k))): _Expression)
       simplifyFully(terms.reduceLeft(Sum.apply))
     }
 
@@ -315,15 +315,10 @@ private def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =
 private def laurentCoefficients(
     g: _Expression, v: _Variable, point: _Expression, order: Int, env: Environment
 ): Either[String, Vector[_Expression]] =
-  seriesDerivatives(g, v, order).flatMap { ds =>
-    ds.zipWithIndex.foldLeft(Right(Vector.empty): Either[String, Vector[_Expression]]) { case (acc, (dk, k)) =>
-      acc.flatMap { built =>
-        val c = simplifyFully(
-          Ratio(substitute(dk, Map(v.variable -> point)),
-                _Number(factorialOf(k.toDouble).getOrElse(Double.NaN))))
-        Either.cond(isFiniteCoefficient(c, env), built :+ c, s"the coefficient of order $k is not finite")
-      }
-    }
+  powerSeries(g, v, point, order).flatMap { cs =>
+    cs.zipWithIndex.collectFirst { case (c, k) if !isFiniteCoefficient(c, env) => k } match
+      case Some(k) => Left(s"the coefficient of order $k is not finite")
+      case None    => Right(cs)
   }
 
 /** Whether a coefficient is usable.
@@ -432,12 +427,11 @@ def fourierSeries(
 private def maclaurinCoefficients(
     e: _Expression, v: _Variable, upTo: Int, env: Environment
 ): Either[String, Vector[Double]] =
-  seriesDerivatives(e, v, upTo).flatMap { ds =>
-    ds.zipWithIndex.foldLeft(Right(Vector.empty): Either[String, Vector[Double]]) { case (acc, (dk, k)) =>
+  powerSeries(e, v, _Number(0), upTo).flatMap { cs =>
+    cs.zipWithIndex.foldLeft(Right(Vector.empty): Either[String, Vector[Double]]) { case (acc, (c, k)) =>
       acc.flatMap { built =>
-        val atZero = substitute(dk, Map(v.variable -> _Number(0)))
-        (atZero.eval(env), factorialOf(k.toDouble)) match
-          case (Right(_Number(d)), Some(f)) if !d.isNaN && !d.isInfinite => Right(built :+ d / f)
+        c.eval(env) match
+          case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Right(built :+ d)
           case _ => Left(s"the Maclaurin coefficient of order $k is not a finite number")
       }
     }
