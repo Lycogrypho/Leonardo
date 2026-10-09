@@ -26,6 +26,7 @@ package it.grypho.scala.leonardo
  *  | controllability | matrix products and `A^n` |
  *  | exact discretisation | `core._MatrixValue.expm` |
  *  | discrete time | `transform.zTransformOf` |
+ *  | ARX identification | `statistics.leastSquares` (QR), the `svd` numerical rank, `normaliseTf` |
  *
  *  **What it refuses matters as much as what it computes.**  A non-rational `G` — a dead-time
  *  `exp(-s*T)` — stays symbolic rather than being Padé-approximated, because approximating
@@ -34,7 +35,9 @@ package it.grypho.scala.leonardo
  *  `t = 0`.  A stability claim resting on a coefficient whose sign is undeterminable is
  *  refused, the boundary `equation.solveInequality` draws for the same reason.
  *
- *  Layering: `control` imports `core`, `scalar`, `matrix` and `transform`; it is a leaf, like
- *  `vector` and `cli`, so nothing imports it back.
+ *  Layering: `control` imports `core`, `scalar`, `matrix`, `transform`, `vector` (for
+ *  `linearize`'s Jacobians, F_0059) and `statistics` (for ARX's least squares, F_0060); it is a
+ *  leaf, like `cli`, so nothing imports it back — which is what keeps the `statistics` edge
+ *  acyclic.
  */
 package control

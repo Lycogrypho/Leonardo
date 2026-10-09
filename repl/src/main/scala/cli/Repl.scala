@@ -927,6 +927,16 @@ final class Session:
       // F_0059: a linearisation refused at its operating point names the entry and the reason.
       case (l: control._Linearize, Left(_: control._Linearize)) =>
         l.detailed(env).left.toOption.map(w => s"linearize declined: ${describeLinearize(w)}")
+      // F_0060: an identification or conversion refused says why -- above all when the data does
+      // not excite the model, where a fit would have been numbers about rounding, not the plant.
+      case (n: control._Arx, Left(_: control._Arx)) =>
+        n.detailed(env).left.toOption.map(w => s"arx declined: ${describeArx(w)}")
+      case (n: control._ArxRegressors, Left(_: control._ArxRegressors)) =>
+        n.detailed(env).left.toOption.map(w => s"arxRegressors declined: ${describeArx(w)}")
+      case (n: control._Arx2Tf, Left(_: control._Arx2Tf)) =>
+        n.detailed(env).left.toOption.map(w => s"arx2tf declined: ${describeArx(w)}")
+      case (n: control._Arx2Ss, Left(_: control._Arx2Ss)) =>
+        n.detailed(env).left.toOption.map(w => s"arx2ss declined: ${describeArx(w)}")
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
@@ -968,6 +978,20 @@ final class Session:
       s"the operating point is outside the domain of $what — ${c.arg} ${describe(c.req)} (in ${v.variable})"
     case control.LinearizeFailure.NotReal(what) =>
       s"$what is not a real number at the operating point"
+
+  /** A [[control.ArxFailure]] in prose. */
+  private def describeArx(why: control.ArxFailure): String = why match
+    case control.ArxFailure.InvalidOrders(detail) => detail
+    case control.ArxFailure.ShapeMismatch(detail) => detail
+    case control.ArxFailure.NotNumeric(what)      => what
+    case control.ArxFailure.TooShort(n, rows, cols) =>
+      s"the series is too short: $n samples give $rows equations for $cols coefficients"
+    case control.ArxFailure.NotExcited(rank, cols) =>
+      s"the data does not excite the model: the regressor matrix has numerical rank $rank of $cols"
+    case control.ArxFailure.TooLarge(rows, cols) =>
+      s"the regressor matrix would be ${rows}x$cols, past the size the library decomposes"
+    case control.ArxFailure.NoState =>
+      "a static gain (na = 0, nk = 0, nb = 1) has no state to realise"
 
   /** A [[QpFailure]] in prose.  The residual is rendered in full, as gradient norms are. */
   private def describeQp(why: QpFailure): String = why match

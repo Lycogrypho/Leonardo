@@ -1485,8 +1485,20 @@ package "control" {
         declines: outside domain, non-real entry
     }
     "Linearize" ..> "StateSpace" : stateSpace row
+
+    class "Arx" <<object>> [[control.html]] {
+        __ F_0060: y[k] = sum a_i y[k-i] + sum b_l u[k-nk-l+1] __
+        PREDICTOR sign (MATLAB's a is -a)
+        arx / arxRegressors / arx2tf / arx2ss
+        MISO: u m x N, b nb x m; nk explicit
+        declines: too short, not excited (svd rank)
+    }
+    "Arx" ..> "StateSpace" : stateSpace row
+    "Arx" ..> "TransferFunction" : normaliseTf
 }
 "Linearize" ..> "_Jacobian" : the four blocks
+"Arx" ..> "Regression" : leastSquares (QR)
+"Arx" ..> "Svd" : numerical rank
 
 ' ===================================================
 ' PACKAGE: optimize (imports core + scalar + matrix + equation + vector + logic) -- F_0010
@@ -1772,6 +1784,7 @@ package "parser" {
 "Parser" ..> "_Ones"               : ones(r, c)
 "Parser" ..> "Mpc"                 : mpcMatrices(...)
 "Parser" ..> "Linearize"           : linearize(...)
+"Parser" ..> "Arx"                 : arx / arxRegressors / arx2tf / arx2ss
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)

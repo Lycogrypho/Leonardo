@@ -237,6 +237,49 @@ moves beyond `Nc` set to zero, gives a different `Γ` for the same plant. A numb
 built from ordinary products and the block-matrix words (`hcat`, `vcat`, `blkdiag`, `kron`,
 `submatrix` — see [Matrices](matrix.md)), so exact input gives exact `Φ` and `Γ`.
 
+## Identifying a model from data (ARX)
+
+A black-box model can be learned from recorded inputs and outputs. An
+[ARX model](https://en.wikipedia.org/wiki/Autoregressive_model#Variants) is written here in the
+**predictor form**
+
+`y[k] = a₁·y[k−1] + … + a_na·y[k−na] + b₁·u[k−nk] + … + b_nb·u[k−nk−nb+1]`
+
+and **the sign of `a` is stated because it cannot be inferred**: MATLAB's `arx` writes
+`A(q) = 1 + a₁q⁻¹ + …`, so its coefficients are the negatives of these (`a_MATLAB = −a`). The
+predictor sign is the one every recurrence and regression in this library already uses.
+`arx(u, y, na, nb, nk)` fits `[[a, b]]` by least squares; here noise-free data from
+`y[k] = 0.8·y[k−1] + 0.5·u[k−1]`:
+
+```scala mdoc:silent
+val u = Vector.tabulate(40)(k => math.sin(0.7 * k) + ((k * 7919) % 11 - 5) / 5.0)
+val y = u.indices.foldLeft(Vector.empty[Double]) { (acc, k) =>
+  acc :+ (if k == 0 then 0.0 else 0.8 * acc(k - 1) + 0.5 * u(k - 1))
+}
+```
+
+```scala mdoc
+arx(_MatrixValue(1, 40, u.toArray), _MatrixValue(1, 40, y.toArray), 1, 1, 1, env)
+```
+
+`u` is `m×N` (a row per input) or `N×m`, so a plant with several inputs fits in one call and
+`b` comes back `nb×m`, a column per input; several outputs are one call per output. **The delay
+`nk` is an argument of the converters**, visible where it acts, so `b` holds exactly what was
+estimated: `arx2tf(a, b, nk, z)` gives the discrete transfer function, whose pole is the `0.8`
+above, and `arx2ss(a, b, nk)` a state-space row `[[A, B, C, D]]` (the observer canonical form).
+
+```scala mdoc
+arx2tf(Vector(0.8), Vector(Vector(0.5)), 1, z).map(_.map(_.toString))
+arx2tf(Vector(0.8), Vector(Vector(0.5)), 1, z).toOption.flatMap(gs => poles(gs.head, z))
+```
+
+**It declines data that does not excite the model** rather than fitting it. The regressor
+matrix must have full numerical rank at the session precision — the relative tolerance `rank`
+uses — before least squares is asked: QR alone answers a barely varying input with numbers
+that describe rounding, not the plant. A series too short for the orders declines too, and the
+REPL says which. With `na = 0` there is no `a`, and `arx` returns `0` in its place, the
+absent-group convention of `qp`.
+
 ## Discrete time
 
 Discretisation always names its method — the
@@ -316,6 +359,9 @@ Kronecker delta, which `core` has no node for.
 > feedback(1/(s*(s+2)), 1, s)
 > step(1/(s+1), s, t)
 > impulse(1/(s+1), s, t)
+> a, b := arx(u, y, 1, 1, 1)
+> arx2tf(a, b, 1, z)
+> A, B, C, D := arx2ss(a, b, 1)
 ```
 
 Note that `step` is **arity-overloaded**: `step(x)` is the

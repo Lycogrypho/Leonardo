@@ -91,6 +91,7 @@ object Parser extends JavaTokenParsers:
                                                          // variable name to tax
     "mpcMatrices",                                                                          // F_0055 MPC prediction
     "linearize",                                                                            // F_0059; `affine` is a slot word
+    "arx", "arxRegressors", "arx2tf", "arx2ss",                                           // F_0060 ARX identification
     "rls",                                                                                  // F_0057 recursive least squares
     "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
@@ -597,6 +598,17 @@ object Parser extends JavaTokenParsers:
     "linearize(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> nameTuple) ~ ("," ~> nameTuple) ~
       ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt("," ~> "affine") <~ ")" ^^ {
       case f ~ g ~ x ~ u ~ x0 ~ u0 ~ aff => _Linearize(f, g, x, u, x0, u0, aff.isDefined) }                |
+    // F_0060: ARX identification, predictor sign, several inputs and one output; the delay nk is
+    // an explicit argument of the converters (Decision B). "arx(" cannot match "arxRegressors("
+    // or "arx2tf(": the literal needs the parenthesis right after the name.
+    "arxRegressors(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) <~ ")" ^^ { case u ~ y ~ na ~ nb ~ nk => _ArxRegressors(u, y, na, nb, nk) }        |
+    "arx(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) <~ ")" ^^ { case u ~ y ~ na ~ nb ~ nk => _Arx(u, y, na, nb, nk) }                  |
+    "arx2tf(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> variable) <~ ")" ^^ {
+      case a ~ b ~ nk ~ z => _Arx2Tf(a, b, nk, z) }                                                       |
+    "arx2ss(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case a ~ b ~ nk => _Arx2Ss(a, b, nk) }                                                              |
     // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
     // log(x) has with LogBase(x, 10).
     "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |
