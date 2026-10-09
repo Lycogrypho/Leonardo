@@ -27,6 +27,7 @@ package it.grypho.scala.leonardo
  *  | exact discretisation | `core._MatrixValue.expm` |
  *  | discrete time | `transform.zTransformOf` |
  *  | ARX identification | `statistics.leastSquares` (QR), the `svd` numerical rank, `normaliseTf` |
+ *  | discrete simulation (`dlsim`) | the model row; a plain recursion over arrays |
  *
  *  **What it refuses matters as much as what it computes.**  A non-rational `G` — a dead-time
  *  `exp(-s*T)` — stays symbolic rather than being Padé-approximated, because approximating

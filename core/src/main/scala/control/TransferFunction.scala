@@ -58,7 +58,7 @@ def feedback(g: _Expression, h: _Expression, v: _Variable): _Expression =
  *  the failure mode this project refuses everywhere else. Every consumer of the coefficients
  *  goes through here so no two of them can disagree about what the poles are.
  */
-private def coeffsOf(e: _Expression, v: _Variable): Option[(Vector[Double], Vector[Double])] =
+private[control] def coeffsOf(e: _Expression, v: _Variable): Option[(Vector[Double], Vector[Double])] =
   rationalCoeffs(e, v).map((num, den) => cancelCommon(polyTrim(num), polyTrim(den)))
 
 /** Divides a common polynomial factor out of `num`/`den`.

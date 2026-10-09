@@ -798,6 +798,15 @@ parallel(g, h, s)               G + H
 feedback(g, h, s)               G/(1 + G·H)   NEGATIVE feedback; negate h for positive
 step(g, s, t)                   step response  = invlaplace(G/s, s, t)
 impulse(g, s, t)                impulse response = invlaplace(G, s, t)
+tfpoles(g, s)  tfzeros(g, s)    roots as a row, sorted; false for provably none.
+                                tfzeros, not zeros: zeros(r, c) is the zero matrix
+isStable(g, s)                  every pole strictly in the LEFT HALF-PLANE
+isStableDiscrete(g, z)          every pole strictly INSIDE THE UNIT CIRCLE
+stateSpace(A, B, C, D)          [[A, B, C, D]], the model row
+dlsim(sys, u, x0)               outputs p x N of x[k+1] = Ax + Bu, y = Cx + Du; u is m x N;
+                                x0 = 0 is rest, D = 0 no feedthrough
+dlsim(sys, u, x0, states)       [[Y, X]], X = x[0] .. x[N]: the LAST column continues a run
+c2d(g, s, z, Ts, zoh | tustin)  discretise; the method is always written
 ```
 
 `step` is arity-overloaded: `step(x)` is the Heaviside unit step, `step(G, s, t)` the response.
@@ -806,9 +815,15 @@ impulse(g, s, t)                impulse response = invlaplace(G, s, t)
 feedback(1/(s*(s+2)), 1, s)     -> 1/(s^2 + 2*s + 1)     common factor cancelled
 step(1/(s+1), s, t)             -> 1 - exp(-t)
 impulse(2/(s+3), s, t)          -> 2*exp(-3*t)
+tfpoles(1/(s^2 + 3*s + 2), s)   -> [[-2, -1]]
+isStable(1/(s^2 + 1), s)        -> false                 marginal is not stable
 ```
 
-Library API (`import it.grypho.scala.leonardo.control.*`):
+The analysis words read `G` with the session's bound parameters but never with a binding of
+the frequency variable itself. Where they cannot answer, the call stays as written with a note.
+
+Library API (`import it.grypho.scala.leonardo.control.*`; at the prompt `poles`/`zeros` are
+`tfpoles`/`tfzeros`):
 
 ```
 poles(g, s)      Option[Vector[_Value]]   denominator roots, in lowest terms

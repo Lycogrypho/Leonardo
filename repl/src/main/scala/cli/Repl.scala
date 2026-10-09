@@ -937,6 +937,15 @@ final class Session:
         n.detailed(env).left.toOption.map(w => s"arx2tf declined: ${describeArx(w)}")
       case (n: control._Arx2Ss, Left(_: control._Arx2Ss)) =>
         n.detailed(env).left.toOption.map(w => s"arx2ss declined: ${describeArx(w)}")
+      // F_0092: the control analysis at the prompt says why it could not answer.
+      case (n: control._TfPoles, Left(_: control._TfPoles)) => n.declineReason(env).map(w => s"tfpoles declined: $w")
+      case (n: control._TfZeros, Left(_: control._TfZeros)) => n.declineReason(env).map(w => s"tfzeros declined: $w")
+      case (n: control._IsStable, Left(_: control._IsStable)) =>
+        n.declineReason(env).map(w => s"${if n.discrete then "isStableDiscrete" else "isStable"} declined: $w")
+      case (n: control._C2d, Left(_: control._C2d)) => n.declineReason(env).map(w => s"c2d declined: $w")
+      // F_0064: a simulation refused names the shape, the size or the step it overflowed at.
+      case (n: control._Dlsim, Left(_: control._Dlsim)) =>
+        n.detailed(env).left.toOption.map(w => s"dlsim declined: ${describeSim(w)}")
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
@@ -978,6 +987,14 @@ final class Session:
       s"the operating point is outside the domain of $what — ${c.arg} ${describe(c.req)} (in ${v.variable})"
     case control.LinearizeFailure.NotReal(what) =>
       s"$what is not a real number at the operating point"
+
+  /** A [[control.SimFailure]] in prose. */
+  private def describeSim(why: control.SimFailure): String = why match
+    case control.SimFailure.ShapeMismatch(detail) => detail
+    case control.SimFailure.NotNumeric(what)      => what
+    case control.SimFailure.TooLarge(detail)      => detail
+    case control.SimFailure.Overflow(k)           =>
+      s"the simulation left the finite numbers at step $k: the model is unstable over this horizon"
 
   /** A [[control.ArxFailure]] in prose. */
   private def describeArx(why: control.ArxFailure): String = why match

@@ -280,6 +280,31 @@ that describe rounding, not the plant. A series too short for the orders decline
 REPL says which. With `na = 0` there is no `a`, and `arx` returns `0` in its place, the
 absent-group convention of `qp`.
 
+## Simulating a discrete model
+
+`dlsim(sys, u, x0)` runs `x[k+1] = A·x[k] + B·u[k]`, `y[k] = C·x[k] + D·u[k]` over the inputs
+`u` (`m×N`, column `k` is `u[k]`) from `x[0] = x0`, and returns the outputs `p×N` — the
+prediction-error metric a learned model is judged by. `sys` is the `[[A, B, C, D]]` row that
+`stateSpace`, `linearize` and `arx2ss` all build; `x0 = 0` starts from rest, and `D = 0` means no
+feedthrough. With the word `states` it returns `[[Y, X]]`, and `X` runs from `x[0]` to **`x[N]`**:
+the final state is the one a simulation continues from, so a long run splits into calls with no
+gap — where MATLAB's and scipy's `dlsim` stop at `x[N−1]`.
+
+The identity that ties the two halves of this page together: a plant discretised by the
+zero-order hold and driven by a unit step reproduces the continuous step response at the sample
+instants.
+
+```scala mdoc
+c2dExact(tf("[[0, 1], [-2, -3]]"), tf("[[0], [1]]"), 0.1).flatMap { (ad, bd) =>
+  dlsim(ad, bd, _MatrixValue(1, 2, Array(1.0, 0.0)), _MatrixValue(1, 1, Array(0.0)),
+        _MatrixValue(1, 5, Array.fill(5)(1.0)), _MatrixValue(2, 1, Array(0.0, 0.0))).toOption
+}.map(_._1.toVector)
+stepResponse(tf("1/(s^2 + 3*s + 2)"), s, t).eval(env.withBinding("t", _Number(0.4))).toExpression.toString
+```
+
+An unstable model run long enough leaves the finite numbers; `dlsim` then declines and names the
+step, rather than answering with a matrix of `Infinity`.
+
 ## Discrete time
 
 Discretisation always names its method — the
@@ -362,7 +387,21 @@ Kronecker delta, which `core` has no node for.
 > a, b := arx(u, y, 1, 1, 1)
 > arx2tf(a, b, 1, z)
 > A, B, C, D := arx2ss(a, b, 1)
+> tfpoles(1/(s^2 + 3*s + 2), s)
+> isStable(1/(s^2 + 3*s + 2), s)
+> isStableDiscrete(arx2tf(a, b, 1, z), z)
+> c2d(1/(s+1), s, z, 0.1, zoh)
+> A, B, C, D := stateSpace([[0, 1], [-2, -3]], [[0], [1]], [[1, 0]], [[0]])
+> Y, X := dlsim(arx2ss(a, b, 1), u, 0, states)
 ```
+
+The poles and zeros are **`tfpoles`/`tfzeros`** at the prompt, because `zeros(r, c)` already
+builds a zero matrix and `zeros(G, s)` could not be told from `zeros(3, n)`; in Scala they keep
+the names `poles`/`zeros` used above. The roots come back as a row sorted by real part, or
+`false` when there are provably none. Every analysis word reads `G` with the session's bound
+parameters but never with a binding of the frequency variable itself, and stays as written with
+a note when it cannot answer. The `c2d` method is a word in that slot only — `zoh` and `tustin`
+remain free as names.
 
 Note that `step` is **arity-overloaded**: `step(x)` is the
 [Heaviside unit step](https://en.wikipedia.org/wiki/Heaviside_step_function), while

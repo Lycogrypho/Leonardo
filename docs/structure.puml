@@ -1494,6 +1494,24 @@ package "control" {
         declines: too short, not excited (svd rank)
     }
     "Arx" ..> "StateSpace" : stateSpace row
+
+    class "_ControlAnalysis" <<case>> [[control.html]] {
+        __ F_0092: the analysis at the prompt __
+        tfpoles / tfzeros (zeros(r, c) is the zero matrix)
+        isStable / isStableDiscrete, c2d(..., zoh | tustin)
+        G read with bound parameters, NEVER the
+          frequency variable's own binding
+    }
+    "_ControlAnalysis" ..> "TransferFunction" : poles / zeros / isStable / coeffsOf
+    "_ControlAnalysis" ..> "Discretisation" : c2d
+
+    class "Dlsim" <<object>> [[control.html]] {
+        __ F_0064: x[k+1] = Ax + Bu, y = Cx + Du __
+        dlsim(sys, u, x0[, states]) -> Y or [[Y, X]]
+        X = x[0] .. x[N]: the final state continues a run
+        declines: shapes, size, overflow at step k
+    }
+    "Dlsim" ..> "StateSpace" : the [[A, B, C, D]] row
     "Arx" ..> "TransferFunction" : normaliseTf
 }
 "Linearize" ..> "_Jacobian" : the four blocks
@@ -1785,6 +1803,9 @@ package "parser" {
 "Parser" ..> "Mpc"                 : mpcMatrices(...)
 "Parser" ..> "Linearize"           : linearize(...)
 "Parser" ..> "Arx"                 : arx / arxRegressors / arx2tf / arx2ss
+"Parser" ..> "_ControlAnalysis"    : tfpoles / tfzeros / isStable(Discrete) / c2d
+"Parser" ..> "StateSpace"          : stateSpace(A, B, C, D) (sugar for the row)
+"Parser" ..> "Dlsim"               : dlsim(sys, u, x0[, states])
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)

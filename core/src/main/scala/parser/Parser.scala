@@ -92,6 +92,9 @@ object Parser extends JavaTokenParsers:
     "mpcMatrices",                                                                          // F_0055 MPC prediction
     "linearize",                                                                            // F_0059; `affine` is a slot word
     "arx", "arxRegressors", "arx2tf", "arx2ss",                                           // F_0060 ARX identification
+    "tfpoles", "tfzeros", "isStable", "isStableDiscrete", "stateSpace", "c2d",           // F_0092 control analysis;
+                                                         // `zoh`/`tustin` are slot words, NOT reserved
+    "dlsim",                                                                                // F_0064; `states` is a slot word
     "rls",                                                                                  // F_0057 recursive least squares
     "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
@@ -609,6 +612,24 @@ object Parser extends JavaTokenParsers:
       case a ~ b ~ nk ~ z => _Arx2Tf(a, b, nk, z) }                                                       |
     "arx2ss(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
       case a ~ b ~ nk => _Arx2Ss(a, b, nk) }                                                              |
+    // F_0092: the analysis functions at the prompt. tfpoles/tfzeros because zeros(r, c) is the
+    // zero-matrix constructor (Decision A); the predicates keep their Scala names (Decision B).
+    // "isStable(" cannot match "isStableDiscrete(": the literal needs the parenthesis next.
+    "tfpoles(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ { case g ~ v => _TfPoles(g, v) }               |
+    "tfzeros(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ { case g ~ v => _TfZeros(g, v) }               |
+    "isStable(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ { case g ~ v => _IsStable(g, v) }             |
+    "isStableDiscrete(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ {
+      case g ~ v => _IsStable(g, v, discrete = true) }                                                    |
+    // The model IS the 1x4 row, so stateSpace needs no node: the dfact -> mfact sugar precedent.
+    "stateSpace(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case a ~ b ~ c ~ d => stateSpace(a, b, c, d) }                                                       |
+    // The method is a slot word, always written, never reserved (the rk45 / pbfgs precedent).
+    "c2d(" ~> guardedExpr ~ ("," ~> variable) ~ ("," ~> variable) ~ ("," ~> guardedExpr) ~
+      ("," ~> ("zoh" ^^^ Zoh | "tustin" ^^^ Tustin)) <~ ")" ^^ {
+      case g ~ sv ~ zv ~ ts ~ m => _C2d(g, sv, zv, ts, m) }                                               |
+    // F_0064: dlsim(sys, u, x0[, states]); `states` is a slot word (the svd(A, full) precedent).
+    "dlsim(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt("," ~> "states") <~ ")" ^^ {
+      case sy ~ u ~ x0 ~ st => _Dlsim(sy, u, x0, st.isDefined) }                                          |
     // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
     // log(x) has with LogBase(x, 10).
     "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |
