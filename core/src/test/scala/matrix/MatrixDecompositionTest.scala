@@ -176,6 +176,37 @@ class MatrixDecompositionTest extends AnyFlatSpec:
     assert(dense(2, 2, 1, 2, 2, 4).qrDecompose.isEmpty)
   }
 
+  // --- F_0091: the rank test is relative, so the verdict cannot move with the units ---
+
+  "qrDecompose" should "decompose a full-rank matrix whatever units it is written in" in
+  {
+    // An absolute threshold refused this at 1e-15: the same data in smaller units.
+    val a = dense(3, 2, 1, 1, 1, 2, 1, 3)
+    for k <- Seq(1.0, 1e-10, 1e-15, 1e-20, 1e10, 1e20) do
+      val s = a.scale(k)
+      s.qrDecompose match
+        case None         => fail(s"declined at scale $k")
+        case Some((q, r)) => assert(approxEq(s, q.multiply(r), tol = 1e-12 * k), s"A = QR at scale $k")
+  }
+
+  it should "refuse a collinear matrix whatever units it is written in" in
+  {
+    // Second column = 3 x the first, as typed: rounding leaves a residue of a few ulps, which an
+    // absolute threshold read as independent once the entries were large -- and least squares
+    // then answered beta ~ 2e13. The verdict must be the same at every scale.
+    val a = dense(3, 2, 0.1, 0.3, 0.2, 0.6, 0.7, 2.1)
+    for k <- Seq(1.0, 1e3, 1e8, 1e-8, 1e-20) do
+      assert(a.scale(k).qrDecompose.isEmpty, s"decomposed a collinear matrix at scale $k")
+  }
+
+  it should "refuse a column that is a combination of two others, at any scale" in
+  {
+    // Third column = first + second, in decimals that do not round-trip exactly.
+    val a = dense(4, 3, 0.1, 0.7, 0.8, 0.2, 0.3, 0.5, 0.3, 1.1, 1.4, 0.9, 0.6, 1.5)
+    for k <- Seq(1.0, 1e5, 1e-5) do
+      assert(a.scale(k).qrDecompose.isEmpty, s"decomposed a dependent matrix at scale $k")
+  }
+
   // --- _QRDecomposition AST node ---
 
   "qr(A) AST node" should "evaluate to Left([[Q, R]]) for a dense matrix" in

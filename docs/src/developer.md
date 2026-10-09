@@ -949,6 +949,15 @@ Two checks to run on any numeric predicate, from these two cases together:
 - **Check whether an existing kernel already answers it.**  A decomposition that declines is
   often a predicate in disguise.
 
+**And then ask the first question of the kernel itself.**  The QR that 2.11 reached for declared
+a column dependent when its orthogonalised norm fell below an absolute `1e-14` — the same bug
+one level down, inherited by every caller (F_0091).  `controllable` was unit-invariant only for
+moderate factors; with `B` in units of `1e-15` it reported a controllable plant as not, and
+`regress` *answered* an exactly collinear design written in units of `1000` with coefficients
+near `2e13`.  The threshold is now relative to the largest column norm, at `10·max(m, n)·ε` —
+a factor measured on collinear-as-typed data rather than chosen.  Reusing a kernel moves the
+question; it does not settle it.
+
 ### Exact arithmetic — the rational tier (`core/_Rational.scala`)
 
 The counterpart of the section above.  Numerical stability is about rearranging a formula so

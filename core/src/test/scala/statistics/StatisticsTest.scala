@@ -153,6 +153,23 @@ class StatisticsTest extends AnyFlatSpec:
     assert(parse("regress([[1,2,3]], [[1]])").eval(env).isLeft)
   }
 
+  it should "give the same fit in any units, and refuse collinear data in any units (F_0091)" in
+  {
+    // Scaling X by k scales beta by 1/k; the fit itself must not move. An absolute rank
+    // threshold refused the well-conditioned design at k = 1e-15, and *answered* the collinear
+    // one at k = 1000 with beta ~ 2e13.
+    val x = dense(3, 2, 1, 1, 1, 2, 1, 3)
+    val y = dense(3, 1, 1, 2, 3.1)
+    val base = leastSquares(x, y).getOrElse(fail("declined at unit scale")).toVector
+    for k <- Seq(1e-15, 1e-20, 1e10) do
+      leastSquares(x.scale(k), y).map(_.toVector) match
+        case None    => fail(s"declined at scale $k")
+        case Some(b) => b.zip(base).foreach((bk, b1) => assert(math.abs(bk * k - b1) < 1e-9, s"scale $k"))
+    val collinear = dense(3, 2, 0.1, 0.3, 0.2, 0.6, 0.7, 2.1)
+    for k <- Seq(1.0, 1e3, 1e8) do
+      assert(leastSquares(collinear.scale(k), y).isEmpty, s"answered a collinear design at scale $k")
+  }
+
   // --- slice C: the two new distributions ---
 
   "the Student-t distribution" should "match reference values" in

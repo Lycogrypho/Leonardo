@@ -29,6 +29,19 @@ class EigenvalueTest extends AnyFlatSpec:
 
   // --- _MatrixValue.eigenDecompose ---
 
+  "eigenDecompose" should "answer a matrix written in small units (F_0091)" in
+  {
+    // The shifted QR steps went through qrDecompose's absolute rank test, which refused every
+    // shifted matrix once the entries were small: this 3x3 declined at 1e-13 and 1e-15. The
+    // spectrum of k*A is k times that of A, so compare relative to k.
+    val base = dense(3, 3, 4, 1, 0, 1, 3, 1, 0, 1, 2)
+    val expected = Vector(3 - math.sqrt(3), 3.0, 3 + math.sqrt(3))
+    for k <- Seq(1e-13, 1e-15, 1e-20) do
+      val got = eigenvalues(base.scale(k)).collect { case _Number(d) => d / k }.sorted
+      assert(got.size == 3, s"expected three real eigenvalues at scale $k")
+      got.zip(expected).foreach((g, e) => assert(math.abs(g - e) < 1e-9, s"scale $k: $g vs $e"))
+  }
+
   "eigenDecompose of a 1×1" should "return the single element" in
   {
     val a = dense(1, 1, 7.0)

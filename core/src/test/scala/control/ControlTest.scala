@@ -245,7 +245,7 @@ class ControlTest extends AnyFlatSpec:
     // a determinant scales like ||M||^(2n), so 1e-3 on a 2-state system lands the value at
     // 1e-12, under any fixed threshold, and reports a perfectly controllable plant as not.
     val a = parse("[[0, 1], [-2, -3]]")
-    for scale <- Seq("1", "0.001", "1000") do
+    for scale <- Seq("1", "0.001", "1000", "1e-15", "1e-20") do
       assert(controllable(a, parse(s"[[0], [$scale]]")).contains(true), s"B scaled by $scale")
   }
 

@@ -82,6 +82,20 @@ object _MatrixValue:
   /** Machine epsilon for `Double`. */
   private[leonardo] val Epsilon: Double = 2.220446049250313e-16
 
+  /** How many `max(m, n)·ε` a column's orthogonalised norm, relative to the largest original
+   *  column norm, may fall to before [[_MatrixValue.qrDecompose]] declares it dependent (F_0091).
+   *
+   *  **Relative, never absolute**: the test was `norm < 1e-14`, which refused a well-conditioned
+   *  design written in units of `1e-15` and *answered* an exactly collinear one written in units
+   *  of `1000` — least squares then returned `β ≈ 2e13` (the 2.11 / F_0075 rule, a third time).
+   *  **Measured** (2026-10-09, 400 collinear-as-typed decimal matrices per size): the residue of a
+   *  dependent column reached `0.89·m·ε` at `m = 3`, `0.27` at 10, `0.09` at 50, `0.04` at 200,
+   *  while the smallest independent one was `8.7e-6`. One `m·ε` — the `cond` cut-off — would
+   *  leave no margin at `m = 3`; ten leaves 11× there and 270× at `m = 200`, and is still nine
+   *  orders below an independent column.
+   */
+  private[core] val QrDependenceFactor: Double = 10.0
+
   /** The most Jacobi sweeps [[_MatrixValue.svd]] runs before declining; convergence is
    *  quadratic once the columns are nearly orthogonal, so a handful usually suffice. */
   private[core] val SvdMaxSweeps: Int = 60
@@ -868,7 +882,9 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
 
   /** [[https://en.wikipedia.org/wiki/QR_decomposition QR decomposition]] via modified [[https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process Gram-Schmidt]]: `A = Q·R` (`m ≥ n`).
    *  `Q` is `m × n` with orthonormal columns; `R` is `n × n` upper triangular.
-   *  `None` when `rows < cols` or the matrix is rank-deficient (a column reduces to zero norm).
+   *  `None` when `rows < cols` or the matrix is rank-deficient: a column whose orthogonalised
+   *  norm is at most `QrDependenceFactor·max(m, n)·ε` times the largest original column norm —
+   *  **relative**, so the verdict for `k·A` is the verdict for `A` (F_0091).
    *  @return `Some((Q, R))` or `None`
    */
   def qrDecompose: Option[(_MatrixValue, _MatrixValue)] =
@@ -878,6 +894,17 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       val n = cols
       val q = data.clone    // q[i*n+j] = row i, col j — will become Q
       val r = Array.fill(n * n)(0.0)
+      // The largest original column norm sets the scale of "numerically zero"; a zero matrix
+      // gives a zero threshold, and its first column's zero norm still declines.
+      var maxColNorm = 0.0
+      var c = 0
+      while c < n do
+        var s = 0.0
+        var k = 0
+        while k < m do { s += data(k * n + c) * data(k * n + c); k += 1 }
+        maxColNorm = math.max(maxColNorm, math.sqrt(s))
+        c += 1
+      val dependent = _MatrixValue.QrDependenceFactor * math.max(m, n) * _MatrixValue.Epsilon * maxColNorm
       var j = 0
       while j < n do
         // Modified Gram-Schmidt: orthogonalize column j against prior orthonormal columns.
@@ -894,7 +921,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         var k    = 0
         while k < m do { norm += q(k * n + j) * q(k * n + j); k += 1 }
         norm = math.sqrt(norm)
-        if norm < 1e-14 then return None   // rank-deficient
+        if norm <= dependent then return None   // rank-deficient
         r(j * n + j) = norm
         k = 0
         while k < m do { q(k * n + j) /= norm; k += 1 }
