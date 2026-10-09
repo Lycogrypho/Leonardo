@@ -1599,6 +1599,9 @@ package "statistics" <<Rectangle>> {
           forming X^T X squares the condition number
         refuses a rank-deficient design
         adds no intercept column
+        __ F_0062 __
+        ridgeLeastSquares: QR on [X; sqrt(lambda) I]
+        weightedLeastSquares: rows scaled by sqrt(w_i)
     }
 
     class "_Statistic" <<case>> [[developer.html]] {
@@ -1613,6 +1616,8 @@ package "statistics" <<Rectangle>> {
         + kind: PairStatKind   (covariance / correlation)
     }
     class "_Regress" <<case>> [[developer.html]]
+    class "_RidgeRegress" <<case>> [[developer.html]]
+    class "_WeightedRegress" <<case>> [[developer.html]]
 
     class "Rls" <<object>> [[developer.html]] {
         __ F_0057: rls(theta, P, phi, y, lambda) __
@@ -1646,6 +1651,8 @@ package "statistics" <<Rectangle>> {
     "_PairStatistic" ..> "Descriptive"
     "_PairStatistic" ..> "PairStatKind"
     "_Regress"       ..> "Regression"
+    "_RidgeRegress"  ..> "Regression"
+    "_WeightedRegress" ..> "Regression"
     "_Test"          ..> "Descriptive"
     "_Test"          ..> "TestKind"
     "_Statistic"     ..> "Moments" : distribution arg -> probability.Moments
@@ -1796,6 +1803,8 @@ package "parser" {
 "Parser" ..> "_Statistic"      : mean / variance / stddev (sample)
 "Parser" ..> "_PairStatistic"  : covariance / correlation
 "Parser" ..> "_Regress"        : regress(X, y)
+"Parser" ..> "_RidgeRegress"   : regress(X, y, lambda)
+"Parser" ..> "_WeightedRegress" : wregress(X, y, w)
 "Parser" ..> "_Test"           : ttest / confint / chisqtest
 "Parser" ..> "_Based"          : 0x.. / 0b.. / 0o.. / 0t.. literals
 "Parser" ..> "_VectorOperator" : grad / div / curl / laplacian / jacobian / hessian (6.24)

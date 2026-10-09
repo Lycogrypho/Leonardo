@@ -129,6 +129,52 @@ case class _Regress(x: _Expression, y: _Expression) extends _Expression:
       case _ => Left(_Regress(x.eval(env).toExpression, y.eval(env).toExpression))
 
 
+/** Ridge regression: `regress(X, y, lambda)`, minimising `‖Xβ − y‖² + λ‖β‖²` (F_0062).
+ *
+ *  The three-argument spelling of `regress`, as a node of its own rather than a third field on
+ *  [[_Regress]]: that is a published case class, and widening it would be a binary break for a
+ *  spelling. Solved by [[ridgeLeastSquares]] (augmented QR). Stays unevaluated for a `λ` that is
+ *  not a number `≥ 0`, and wherever `regress` would.
+ *
+ *  @param x      the design matrix
+ *  @param y      the response vector
+ *  @param lambda the penalty
+ */
+case class _RidgeRegress(x: _Expression, y: _Expression, lambda: _Expression) extends _Expression:
+  override def toString: String = s"regress($x, $y, $lambda)"
+  override def children: List[_Expression] = List(x, y, lambda)
+  override def rebuild(c: List[_Expression]): _Expression = _RidgeRegress(c.head, c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val (rx, ry, rl) = (x.eval(env), y.eval(env), lambda.eval(env))
+    (_MatrixValue.ofEvaluated(rx), _MatrixValue.ofEvaluated(ry), rl) match
+      case (Some(xm), Some(ym), Right(_Number(l))) =>
+        ridgeLeastSquares(xm, ym, l).map(Right(_)).getOrElse(Left(this))
+      case _ => Left(_RidgeRegress(rx.toExpression, ry.toExpression, rl.toExpression))
+
+
+/** Weighted least squares: `wregress(X, y, w)`, minimising `Σ wᵢ(xᵢβ − yᵢ)²` (F_0062).
+ *
+ *  Solved by [[weightedLeastSquares]] (row scaling by `√wᵢ`, then QR). Stays unevaluated for a
+ *  negative weight, a length mismatch, or a design the weights leave rank-deficient.
+ *
+ *  @param x the design matrix
+ *  @param y the response vector
+ *  @param w the weights, one per observation
+ */
+case class _WeightedRegress(x: _Expression, y: _Expression, w: _Expression) extends _Expression:
+  override def toString: String = s"wregress($x, $y, $w)"
+  override def children: List[_Expression] = List(x, y, w)
+  override def rebuild(c: List[_Expression]): _Expression = _WeightedRegress(c.head, c(1), c(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val (rx, ry, rw) = (x.eval(env), y.eval(env), w.eval(env))
+    (_MatrixValue.ofEvaluated(rx), _MatrixValue.ofEvaluated(ry), _MatrixValue.ofEvaluated(rw)) match
+      case (Some(xm), Some(ym), Some(wm)) =>
+        weightedLeastSquares(xm, ym, wm).map(Right(_)).getOrElse(Left(this))
+      case _ => Left(_WeightedRegress(rx.toExpression, ry.toExpression, rw.toExpression))
+
+
 /** The inference tests. */
 enum TestKind:
   /** `ttest(sample, mu0)` — two-sided one-sample t-test, returning the p-value. */ case TTest

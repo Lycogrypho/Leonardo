@@ -120,6 +120,7 @@ object Parser extends JavaTokenParsers:
                                                          // and Bayesian updating
     "mean", "pvariance", "stddev", "pstddev", "covariance", "correlation",  // descriptive statistics
     "regress", "ttest", "confint", "chisqtest",                // regression + inference
+    "wregress",                                                // F_0062 weighted least squares
     "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",  // analytic tier; lowercase-safe --
                                                          // none is a plausible variable
                                                          // name, unlike gamma/beta
@@ -620,7 +621,13 @@ object Parser extends JavaTokenParsers:
     "pstddev("     ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.PStdDev, e) }       |
     "covariance("  ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _PairStatistic(PairStatKind.Covariance, a, b) }  |
     "correlation(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _PairStatistic(PairStatKind.Correlation, a, b) } |
-    "regress("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Regress(a, b) }            |
+    // F_0062: the optional third argument is ridge's penalty -- an arity overload kept as an
+    // optional group, so the two-argument form never matches first and chokes on the comma.
+    "regress("     ~> guardedExpr ~ ("," ~> guardedExpr) ~ opt("," ~> guardedExpr) <~ ")" ^^ {
+      case a ~ b ~ None    => _Regress(a, b)
+      case a ~ b ~ Some(l) => _RidgeRegress(a, b, l) }                                                     |
+    "wregress("    ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case a ~ b ~ w => _WeightedRegress(a, b, w) }                                                         |
     // F_0057: one recursive-least-squares update, state in and state out as [[theta', P']].
     "rls(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
       ("," ~> guardedExpr) <~ ")" ^^ { case t ~ p ~ f ~ y ~ l => _Rls(t, p, f, y, l) }                          |

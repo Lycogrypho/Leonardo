@@ -34,16 +34,8 @@ import core.*
  *          design is rank-deficient (`qrDecompose` refuses it, so nonsense is not produced)
  */
 def leastSquares(x: _MatrixValue, y: _MatrixValue): Option[_MatrixValue] =
-  val n = x.rows
-  // Accept the response either way up: a sample is a vector, and which way a user writes it
-  // is not a meaningful distinction.
-  val yCol =
-    if y.rows == n && y.cols == 1 then Some(y)
-    else if y.rows == 1 && y.cols == n then Some(y.transpose)
-    else None
-
   for
-    yv       <- yCol
+    yv       <- columnOf(y, x.rows)
     if x.rows >= x.cols
     // `qrDecompose` returns None for a rank-deficient design, which is exactly the case
     // where a normal-equations solve would have returned confident nonsense.
@@ -53,6 +45,70 @@ def leastSquares(x: _MatrixValue, y: _MatrixValue): Option[_MatrixValue] =
     // the condition number was never squared.
     rInv     <- r.inverse
     beta     <- Option.when(rInv.cols == qty.rows)(rInv.multiply(qty))
+  yield beta
+
+/** A vector as an `n × 1` column, from either orientation: a sample is a vector, and which way
+ *  a user writes it is not a meaningful distinction. `None` when it does not have `n` entries. */
+private def columnOf(v: _MatrixValue, n: Int): Option[_MatrixValue] =
+  if v.rows == n && v.cols == 1 then Some(v)
+  else if v.rows == 1 && v.cols == n then Some(v.transpose)
+  else None
+
+/** Fits `y ≈ X·β` by [[https://en.wikipedia.org/wiki/Ridge_regression ridge regression]], minimising
+ *  `‖Xβ − y‖² + λ‖β‖²` (F_0062).
+ *
+ *  **Solved as the ordinary problem on the augmented design `[X; √λ·I]` against `[y; 0]`**, by
+ *  the same QR — never as `(XᵀX + λI)⁻¹Xᵀy`, which squares the condition number exactly as the
+ *  unregularised normal equations do, and for the same small `λ` that is meant to rescue a
+ *  nearly collinear design. `λ = 0` *is* [[leastSquares]], called directly so the two agree bit
+ *  for bit. For `λ > 0` the augmented design has full column rank whatever `X` is, so a
+ *  rank-deficient or wide `X` that ordinary regression declines is solved — which is what ridge
+ *  is for. No intercept is added, and the intercept column is penalised like any other.
+ *
+ *  @param x      the design matrix, `n × p`
+ *  @param y      the response, `n` entries either way up
+ *  @param lambda the penalty, `≥ 0`
+ *  @return the `p × 1` coefficients, or `None` for a negative or non-finite `λ`, a response of
+ *          the wrong length, or (at `λ = 0`) a rank-deficient design
+ */
+def ridgeLeastSquares(x: _MatrixValue, y: _MatrixValue, lambda: Double): Option[_MatrixValue] =
+  if !(lambda >= 0) || lambda.isInfinite then None
+  else if lambda == 0 then leastSquares(x, y)
+  else
+    val (n, p) = (x.rows, x.cols)
+    val s = math.sqrt(lambda)
+    columnOf(y, n).flatMap { yv =>
+      val xa = _MatrixValue(n + p, p, Array.tabulate((n + p) * p) { idx =>
+        val (i, j) = (idx / p, idx % p)
+        if i < n then x(i, j) else if i - n == j then s else 0.0
+      })
+      val ya = _MatrixValue(n + p, 1, Array.tabulate(n + p)(i => if i < n then yv(i, 0) else 0.0))
+      leastSquares(xa, ya)
+    }
+
+/** Fits `y ≈ X·β` by [[https://en.wikipedia.org/wiki/Weighted_least_squares weighted least squares]],
+ *  minimising `Σ wᵢ(xᵢβ − yᵢ)²` (F_0062).
+ *
+ *  **Row scaling by `√wᵢ`, then the same QR** — never `(XᵀWX)⁻¹XᵀWy`, for the condition-number
+ *  reason [[leastSquares]] states. Equal weights give the ordinary fit; a zero weight removes its
+ *  row, so a design left rank-deficient by zeros is declined as an ordinary one would be.
+ *
+ *  @param x the design matrix, `n × p`
+ *  @param y the response, `n` entries either way up
+ *  @param w the weights, `n` entries either way up, each `≥ 0` and finite
+ *  @return the `p × 1` coefficients, or `None` for a negative or non-finite weight, a length
+ *          mismatch, or a rank-deficient weighted design
+ */
+def weightedLeastSquares(x: _MatrixValue, y: _MatrixValue, w: _MatrixValue): Option[_MatrixValue] =
+  val (n, p) = (x.rows, x.cols)
+  for
+    yv <- columnOf(y, n)
+    wv <- columnOf(w, n)
+    if wv.toVector.forall(d => d >= 0 && !d.isInfinite)
+    root = wv.toVector.map(math.sqrt)
+    beta <- leastSquares(
+              _MatrixValue(n, p, Array.tabulate(n * p)(idx => root(idx / p) * x(idx / p, idx % p))),
+              _MatrixValue(n, 1, Array.tabulate(n)(i => root(i) * yv(i, 0))))
   yield beta
 
 /** The fitted values `X·β`.

@@ -240,6 +240,10 @@ mean(x)  variance(x)  stddev(x)      sample or distribution; sample variance is
 pvariance(x)  pstddev(x)             population forms, dividing by n
 covariance(x, y)  correlation(x, y)  two-sample statistics
 regress(X, y)                        least squares by QR; no intercept column added
+regress(X, y, lambda)                ridge: min |X b - y|^2 + lambda |b|^2, lambda >= 0;
+                                     by QR on [X; sqrt(lambda) I], never X'X
+wregress(X, y, w)                    weighted: min sum w_i (x_i b - y_i)^2, each w_i >= 0;
+                                     a zero weight drops its row
 rls(theta, P, phi, y, lambda)        one recursive-least-squares update -> [[theta', P']]
                                      theta n x m, P n x n, phi n x 1, y m x 1 (or a number),
                                      lambda in (0, 1]; use  theta, P := rls(theta, P, ...)

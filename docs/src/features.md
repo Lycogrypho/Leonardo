@@ -123,7 +123,10 @@ For a command-by-command listing of the REPL see the [cheat sheet](cheatsheet.md
 - **Statistics**: Descriptive statistics over samples (`mean`, `variance`, `stddev`,
   `covariance`, `correlation`) that stay *exact* when the sample is written exactly; least
   squares via `regress(X, y)`, solved by QR rather than the normal equations so the
-  condition number is never squared; and an inference tier — `ttest`, `confint`,
+  condition number is never squared — with a **ridge** form `regress(X, y, lambda)` and a
+  **weighted** one `wregress(X, y, w)`, both reduced to the same QR (on `[X; √λ·I]`, and on rows
+  scaled by `√wᵢ`) so neither squares it either; ridge solves the rank-deficient design ordinary
+  regression declines, and `λ = 0` is ordinary regression exactly; and an inference tier — `ttest`, `confint`,
   `chisqtest` — so `ttest(sample, 5) < 0.05` reads the way statistics is actually written.
   **Recursive least squares**, `rls(theta, P, phi, y, lambda)`, updates an estimate one
   observation at a time with a forgetting factor `λ ∈ (0, 1]`: state in, state out, returned as

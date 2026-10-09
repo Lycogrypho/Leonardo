@@ -273,3 +273,82 @@ class StatisticsTest extends AnyFlatSpec:
     for s <- List("mean(3)", "variance(x)", "covariance(3, 4)", "regress(3, 4)") do
       assert(parse(s).eval(env).isLeft, s"$s must stay symbolic")
   }
+
+  // --- F_0062: ridge and weighted least squares ---
+
+  private val X  = "[[1, 0.5], [1, 1.5], [1, 2.0], [1, 3.5], [1, 4.0], [1, 6.0]]"
+  private val Y  = "[[1.1], [2.9], [3.2], [6.1], [6.8], [10.3]]"
+  private def dense(rows: Int, cols: Int, xs: Double*) = _MatrixValue(rows, cols, xs.toArray)
+  private def mv(s: String): _MatrixValue = parse(s).eval(env) match
+    case Right(m: _MatrixValue) => m
+    case other                  => fail(s"$s: $other")
+  private def norm(v: Vector[Double]) = math.sqrt(v.map(x => x * x).sum)
+
+  "regress with a penalty" should "be ordinary regression exactly at lambda = 0" in
+  {
+    assert(matrix(s"regress($X, $Y, 0)") == matrix(s"regress($X, $Y)"))
+  }
+
+  it should "shrink the coefficients monotonically as lambda grows" in
+  {
+    val norms = List(0, 0.01, 0.1, 1, 10, 100, 1000).map(l => norm(matrix(s"regress($X, $Y, $l)")))
+    norms.zip(norms.tail).foreach((a, b) => assert(b < a, s"not decreasing: $norms"))
+  }
+
+  it should "agree with (XᵀX + λI)⁻¹Xᵀy on a well-conditioned design" in
+  {
+    val (x, y, l) = (mv(X), mv(Y), 0.7)
+    val normal = x.transpose.multiply(x).add(_MatrixValue.identity(2).scale(l)).inverse
+      .getOrElse(fail("singular")).multiply(x.transpose).multiply(y)
+    ridgeLeastSquares(x, y, l).getOrElse(fail("declined")).toVector.zip(normal.toVector)
+      .foreach((a, b) => assert(math.abs(a - b) < 1e-12, s"$a vs $b"))
+  }
+
+  it should "solve a rank-deficient design for lambda > 0, which ordinary regression declines" in
+  {
+    val rankOne = "[[1, 2], [2, 4], [3, 6]]"
+    assert(parse(s"regress($rankOne, [[1], [2], [3]])").eval(env).isLeft)
+    assert(matrix(s"regress($rankOne, [[1], [2], [3]], 0.1)").size == 2)
+  }
+
+  it should "decline a negative or symbolic penalty and a mismatched response" in
+  {
+    for s <- List(s"regress($X, $Y, -1)", s"regress($X, $Y, lam)", s"regress($X, [[1], [2]], 1)") do
+      assert(parse(s).eval(env).isLeft, s)
+  }
+
+  "wregress" should "match ordinary regression for equal weights" in
+  {
+    matrix(s"wregress($X, $Y, [[2.5], [2.5], [2.5], [2.5], [2.5], [2.5]])").zip(matrix(s"regress($X, $Y)"))
+      .foreach((a, b) => assert(math.abs(a - b) < 1e-12, s"$a vs $b"))
+  }
+
+  it should "agree with (XᵀWX)⁻¹XᵀWy, and drop a zero-weighted row" in
+  {
+    val (x, y) = (mv(X), mv(Y))
+    val w = dense(6, 1, 1, 2, 0.5, 3, 1, 0.25)
+    val wm = _MatrixValue(6, 6, Array.tabulate(36)(i => if i / 6 == i % 6 then w(i / 6, 0) else 0.0))
+    val normal = x.transpose.multiply(wm).multiply(x).inverse.getOrElse(fail("singular"))
+      .multiply(x.transpose).multiply(wm).multiply(y)
+    weightedLeastSquares(x, y, w).getOrElse(fail("declined")).toVector.zip(normal.toVector)
+      .foreach((a, b) => assert(math.abs(a - b) < 1e-12, s"$a vs $b"))
+    // A zero weight is the row removed.
+    val dropped = matrix("regress([[1, 0.5], [1, 1.5], [1, 3.5], [1, 4.0], [1, 6.0]], [[1.1], [2.9], [6.1], [6.8], [10.3]])")
+    matrix(s"wregress($X, $Y, [[1, 1, 0, 1, 1, 1]])").zip(dropped)
+      .foreach((a, b) => assert(math.abs(a - b) < 1e-12, s"$a vs $b"))
+  }
+
+  it should "decline a negative weight and a weight vector of the wrong length" in
+  {
+    for s <- List(s"wregress($X, $Y, [[1, 1, -1, 1, 1, 1]])", s"wregress($X, $Y, [[1, 1]])") do
+      assert(parse(s).eval(env).isLeft, s)
+  }
+
+  "the ridge and weighted forms" should "round-trip, and wregress be reserved" in
+  {
+    for s <- List("regress(X, y, 0.5)", "wregress(X, y, w)") do
+      val e = parse(s)
+      assert(parse(e.toString) == e, s"$s -> $e")
+    assert(parse("regress(X, y, 0.5)").isInstanceOf[_RidgeRegress])
+    assert(Parser.ReservedWords.contains("wregress"))
+  }
