@@ -366,7 +366,7 @@ input **unchanged** rather than a wrong or enormous answer:
 | `MaxNormalFormClauses` | `NormalForm.scala` | 1024 (checked *before* materialising) |
 | `MaxTruthTableVars` / `MaxKleeneTableVars` | `TruthTable.scala` | 16 / 10 |
 | `MaxSymbolicDim` | `_MatrixOperation.scala` | 6 |
-| `MaxDepth` | `Parser.scala` | 500 |
+| `MaxDepth` | `Parser.scala` | 200 (the shallowest platform, Node, decides) |
 
 Alongside the size caps sit **content** guards, which abort when a sub-result is not good
 enough to build on: `hasDerivative` in `Series.scala` refuses to emit a Taylor polynomial
