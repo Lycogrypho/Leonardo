@@ -54,7 +54,7 @@ enum MinimizeFailure:
   case HessianNotPositiveDefinite(iteration: Int)
   /** The objective kept decreasing without bound along a search direction. */
   case Unbounded
-  /** Progress stopped with a gradient norm above the precision's tolerance. */
+  /** Progress stopped short of the certificate; `gradientNorm` is what was left. */
   case Stalled(gradientNorm: Double)
   /** A method that takes no bounds was given bounds. */
   case MethodTakesNoBounds(method: MinimizeMethod)
@@ -64,7 +64,8 @@ enum MinimizeFailure:
  *  @param x            the point
  *  @param value        `f` there
  *  @param iterations   how many iterations the method took
- *  @param gradientNorm the certificate: `‖∇f‖∞`, projected under bounds
+ *  @param gradientNorm `‖∇f‖∞` there, projected under bounds — reported, not the certificate,
+ *                      which is the scale-free `stationarity` (F_0095)
  */
 case class MinimizeResult(x: Vector[Double], value: Double, iterations: Int, gradientNorm: Double)
 
@@ -85,12 +86,13 @@ val MaxMinimizeIterations: Int = 2000
  *  (F_0010 slice 5).
  *
  *  The gradient is the symbolic derivative, evaluated at each iterate; Newton also uses the
- *  symbolic Hessian.  **Two tolerances, deliberately**: the iteration runs until the gradient
- *  is negligible relative to `f` (`1e-10`) or progress stops, and the answer is then
- *  **certified** against the precision's tolerance `0.5·10^-precision` — the one `=` uses
- *  (X-02).  So a well-conditioned problem is answered far more accurately than the certificate
- *  demands, and an answer is never returned that fails it.  Under bounds the certificate is
- *  the *projected* gradient, which is zero at a constrained minimum where the gradient is not.
+ *  symbolic Hessian.  **Two tolerances on one measure, deliberately**: the iteration runs until
+ *  `stationarity` is below `1e-10` or progress stops, and the answer is then **certified**
+ *  against the precision's tolerance `0.5·10^-precision` — the number `=` uses (X-02).  So a
+ *  well-conditioned problem is answered far more accurately than the certificate demands, and
+ *  an answer is never returned that fails it.  The measure is a pure number, so the verdict
+ *  does not depend on the units of `f` or of any variable (F_0095).  Under bounds it reads the
+ *  *projected* gradient, which is zero at a constrained minimum where the gradient is not.
  *
  *  @param f      the objective
  *  @param vars   the variables, in the order of `x0`
@@ -134,7 +136,7 @@ private final class Problem(f: _Expression, vars: Vector[_Variable], env: Enviro
   private val gradient: Vector[_Expression] = vars.map(v => simplifyFully(derive(f, v)))
   private lazy val hessian: Option[Vector[_Expression]] = hessianCells(f, vars, env)
 
-  /** The certificate tolerance: the one `=` uses. */
+  /** The certificate's bound on `stationarity`: the number `=` uses. */
   val tolerance: Double = 0.5 * math.pow(10, -env.precision)
 
   private def bound(x: Vector[Double]): Environment =
@@ -161,25 +163,57 @@ private def dot(a: Vector[Double], b: Vector[Double]): Double = a.lazyZip(b).map
 private def axpy(a: Double, x: Vector[Double], y: Vector[Double]): Vector[Double] = x.lazyZip(y).map(a * _ + _)
 private def normInf(a: Vector[Double]): Double = a.map(math.abs).maxOption.getOrElse(0.0)
 
-/** The tight stopping test: the gradient negligible relative to the objective's size. */
-private def converged(g: Double, fx: Double): Boolean = g <= 1e-10 * math.max(1.0, math.abs(fx))
+/** How far `x` is from stationary, as a pure number (F_0095): the first-order change the
+ *  gradient still predicts over the displacement from the start, relative to the decrease
+ *  achieved, `Σ |gᵢ|·|xᵢ − x0ᵢ| / (f(x0) − f(x))`.
+ *
+ *  It is about 1 while `f` still behaves linearly along the path and falls to 0 at a stationary
+ *  point; on a quadratic reached from a distance `D` it is `2ε/D` for an error `ε`, so the
+ *  certificate asks for the minimiser to a relative accuracy of the distance travelled.  **It
+ *  is invariant under `f → k·f + c` and under rescaling or translating any variable**, which an
+ *  absolute bound on `‖∇f‖` is not: that one certified the *starting point* of
+ *  `1e-10·(x − 3)²`, whose gradient there is already below `5·10⁻⁶`, and could refuse a
+ *  function in large units at its minimum (the units bug of 2.11, F_0075 and F_0091).  The
+ *  relative-gradient test of the references (Dennis–Schnabel) needs a typical size of `x` and of
+ *  `f` from the caller, and `max(1, |x|)` in place of one is itself a claim about the units;
+ *  here both scales are *measured* — a displacement is in the units of `x` and a decrease in
+ *  those of `f`, whatever they are.
+ *
+ *  A direction the gradient still points along with no displacement, or a point with no
+ *  decrease, has no scale to be judged on and is not stationary (`∞`), unless the gradient
+ *  vanishes exactly.  The price, accepted: a start already at the minimiser to rounding, whose
+ *  gradient is noise rather than zero, may decline instead of being answered.
+ */
+private def stationarity(g: Vector[Double], x: Vector[Double], x0: Vector[Double],
+                         f0: Double, fx: Double): Double =
+  val decrease = f0 - fx
+  val moved    = g.indices.map(i => math.abs(x(i) - x0(i)))
+  if g.forall(_ == 0.0) then 0.0
+  else if !(decrease > 0.0) || g.indices.exists(i => g(i) != 0.0 && moved(i) == 0.0) then
+    Double.PositiveInfinity
+  else g.indices.map(i => math.abs(g(i)) * moved(i)).sum / decrease
+
+/** The tight stopping target on `stationarity`: far below any precision's certificate. */
+private val Target: Double = 1e-10
 
 /** The value below which the objective is taken to be unbounded — far beyond any value a
  *  bounded problem posed in this language reaches, and still well inside `Double`'s range. */
 private val UnboundedBelow: Double = -1e100
 
-/** Answers `x` if its gradient passes the certificate, else the stall it is. */
-private def certify(p: Problem, x: Vector[Double], fx: Double, g: Double,
+/** Answers `x` if its `stationarity` `s` passes the certificate, else the stall it is.
+ *  `g` is the (projected) gradient, reported beside the answer. */
+private def certify(p: Problem, s: Double, x: Vector[Double], fx: Double, g: Vector[Double],
                     k: Int): Either[MinimizeFailure, MinimizeResult] =
-  if g <= p.tolerance then Right(MinimizeResult(x, fx, k, g))
-  else Left(MinimizeFailure.Stalled(g))
+  if s <= p.tolerance then Right(MinimizeResult(x, fx, k, normInf(g)))
+  else Left(MinimizeFailure.Stalled(normInf(g)))
 
 /** At the iteration cap: the certificate still decides.  The tight test is a target, not the
  *  contract — a point that passes the precision's certificate is answered however it was
  *  reached, and one that does not is the iteration limit. */
-private def atCap(p: Problem, x: Vector[Double], fx: Double, g: Double): Either[MinimizeFailure, MinimizeResult] =
-  if g <= p.tolerance then Right(MinimizeResult(x, fx, MaxMinimizeIterations, g))
-  else Left(MinimizeFailure.MaxIterations(MaxMinimizeIterations, g))
+private def atCap(p: Problem, s: Double, x: Vector[Double], fx: Double,
+                  g: Vector[Double]): Either[MinimizeFailure, MinimizeResult] =
+  if s <= p.tolerance then Right(MinimizeResult(x, fx, MaxMinimizeIterations, normInf(g)))
+  else Left(MinimizeFailure.MaxIterations(MaxMinimizeIterations, normInf(g)))
 
 /** Whether the step made no measurable progress, in the point and in the value. */
 private def stagnant(x: Vector[Double], xn: Vector[Double], fx: Double, fn: Double): Boolean =
@@ -189,24 +223,28 @@ private def stagnant(x: Vector[Double], xn: Vector[Double], fx: Double, fn: Doub
 
 /** Newton's method with a backtracking line search from the full step. */
 private def newton(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, MinimizeResult] =
-  @annotation.tailrec
-  def loop(x: Vector[Double], fx: Double, k: Int): Either[MinimizeFailure, MinimizeResult] =
-    p.grad(x) match
-      case None => Left(MinimizeFailure.NotEvaluable)
-      case Some(g) =>
-        val gn = normInf(g)
-        if converged(gn, fx) then certify(p, x, fx, gn, k)
-        else if k >= MaxMinimizeIterations then atCap(p, x, fx, gn)
-        else p.hess(x).flatMap(h => choleskySolve(h, p.n, g)) match
-          case None => Left(MinimizeFailure.HessianNotPositiveDefinite(k))
-          case Some(step) =>
-            val d = step.map(-_)
-            armijo(p, x, fx, g, d, x => x) match
-              case Left(fail)      => Left(fail(k))
-              case Right((xn, fn)) =>
-                if stagnant(x, xn, fx, fn) then certify(p, xn, fn, gn, k + 1)
-                else loop(xn, fn, k + 1)
-  p.value(x0).fold(Left(MinimizeFailure.NotEvaluable))(f0 => loop(x0, f0, 0))
+  def run(f0: Double): Either[MinimizeFailure, MinimizeResult] =
+    @annotation.tailrec
+    def loop(x: Vector[Double], fx: Double, k: Int): Either[MinimizeFailure, MinimizeResult] =
+      p.grad(x) match
+        case None => Left(MinimizeFailure.NotEvaluable)
+        case Some(g) =>
+          val s = stationarity(g, x, x0, f0, fx)
+          if s <= Target then certify(p, s, x, fx, g, k)
+          else if k >= MaxMinimizeIterations then atCap(p, s, x, fx, g)
+          else p.hess(x).flatMap(h => choleskySolve(h, p.n, g)) match
+            case None => Left(MinimizeFailure.HessianNotPositiveDefinite(k))
+            case Some(step) =>
+              val d = step.map(-_)
+              armijo(p, x, fx, g, d, x => x) match
+                case Left(fail)      => Left(fail(k))
+                case Right((xn, fn)) =>
+                  if !stagnant(x, xn, fx, fn) then loop(xn, fn, k + 1)
+                  else p.grad(xn) match
+                    case None     => Left(MinimizeFailure.NotEvaluable)
+                    case Some(gn) => certify(p, stationarity(gn, xn, x0, f0, fn), xn, fn, gn, k + 1)
+    loop(x0, f0, 0)
+  p.value(x0).fold(Left(MinimizeFailure.NotEvaluable))(run)
 
 /** BFGS on the inverse Hessian, with the strong-Wolfe line search that keeps it positive
  *  definite (`sᵀy > 0` is exactly the curvature condition). */
@@ -216,10 +254,10 @@ private def bfgs(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Minimi
 
   @annotation.tailrec
   def loop(x: Vector[Double], fx: Double, g: Vector[Double], h: Vector[Vector[Double]],
-           k: Int): Either[MinimizeFailure, MinimizeResult] =
-    val gn = normInf(g)
-    if converged(gn, fx) then certify(p, x, fx, gn, k)
-    else if k >= MaxMinimizeIterations then atCap(p, x, fx, gn)
+           k: Int, f0: Double): Either[MinimizeFailure, MinimizeResult] =
+    val st = stationarity(g, x, x0, f0, fx)
+    if st <= Target then certify(p, st, x, fx, g, k)
+    else if k >= MaxMinimizeIterations then atCap(p, st, x, fx, g)
     else
       val d0 = h.map(row => -dot(row, g))
       // A direction that does not descend means the approximation has gone bad: restart it.
@@ -227,7 +265,7 @@ private def bfgs(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Minimi
       wolfe(p, x, fx, g, d) match
         case Left(fail) => Left(fail(k))
         case Right((alpha, xn, fn, gnew)) =>
-          if stagnant(x, xn, fx, fn) then certify(p, xn, fn, normInf(gnew), k + 1)
+          if stagnant(x, xn, fx, fn) then certify(p, stationarity(gnew, xn, x0, f0, fn), xn, fn, gnew, k + 1)
           else
             val s  = d.map(_ * alpha)
             val y  = gnew.lazyZip(g).map(_ - _)
@@ -239,11 +277,11 @@ private def bfgs(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Minimi
                 // (Nocedal & Wright 6.20), which spares a poorly scaled start most of its cost.
                 val h0 = if k == 0 then hk.map(_.map(_ * sy / dot(y, y))) else hk
                 bfgsUpdate(h0, s, y, sy)
-            loop(xn, fn, gnew, hn, k + 1)
+            loop(xn, fn, gnew, hn, k + 1, f0)
 
   (for f0 <- p.value(x0); g0 <- p.grad(x0) yield (f0, g0)) match
     case None           => Left(MinimizeFailure.NotEvaluable)
-    case Some((f0, g0)) => loop(x0, f0, g0, identity, 0)
+    case Some((f0, g0)) => loop(x0, f0, g0, identity, 0, f0)
 
 /** `H' = (I − ρsyᵀ) H (I − ρysᵀ) + ρssᵀ`, `ρ = 1/sᵀy`. */
 private def bfgsUpdate(h: Vector[Vector[Double]], s: Vector[Double], y: Vector[Double],
@@ -266,18 +304,25 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
   val n = p.n
   def clamp(x: Vector[Double]): Vector[Double] =
     Vector.tabulate(n)(i => math.min(hi(i), math.max(lo(i), x(i))))
-  def projGrad(x: Vector[Double], g: Vector[Double]): Double =
-    normInf(clamp(x.lazyZip(g).map(_ - _)).lazyZip(x).map(_ - _))
+  /** Whether coordinate `i` sits on a bound with the gradient pushing it outward. */
+  def isActive(x: Vector[Double], g: Vector[Double], i: Int): Boolean =
+    (x(i) <= lo(i) && g(i) > 0) || (x(i) >= hi(i) && g(i) < 0)
+  /** The projected gradient, component by component: zero where a coordinate is active.  It
+   *  was `‖P(x − ∇f) − x‖∞`, which subtracts a gradient from a point and so mixes their units
+   *  (F_0095): whether `x − ∇f` crosses a bound depends on the scale of `f`. */
+  def projected(x: Vector[Double], g: Vector[Double]): Vector[Double] =
+    Vector.tabulate(n)(i => if isActive(x, g, i) then 0.0 else g(i))
   def identity: Vector[Vector[Double]] = Vector.tabulate(n, n)((i, j) => if i == j then 1.0 else 0.0)
 
   @annotation.tailrec
   def loop(x: Vector[Double], fx: Double, g: Vector[Double], h: Vector[Vector[Double]],
-           k: Int): Either[MinimizeFailure, MinimizeResult] =
-    val pg = projGrad(x, g)
-    if converged(pg, fx) then certify(p, x, fx, pg, k)
-    else if k >= MaxMinimizeIterations then atCap(p, x, fx, pg)
+           k: Int, x0: Vector[Double], f0: Double): Either[MinimizeFailure, MinimizeResult] =
+    val pg = projected(x, g)
+    val st = stationarity(pg, x, x0, f0, fx)
+    if st <= Target then certify(p, st, x, fx, pg, k)
+    else if k >= MaxMinimizeIterations then atCap(p, st, x, fx, pg)
     else
-      val active = Vector.tabulate(n)(i => (x(i) <= lo(i) && g(i) > 0) || (x(i) >= hi(i) && g(i) < 0))
+      val active = Vector.tabulate(n)(i => isActive(x, g, i))
       val raw =
         if quasiNewton then Vector.tabulate(n)(i =>
           if active(i) then 0.0 else -(0 until n).filterNot(active).map(j => h(i)(j) * g(j)).sum)
@@ -291,7 +336,9 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
           p.grad(xn) match
             case None => Left(MinimizeFailure.NotEvaluable)
             case Some(gnew) =>
-              if stagnant(x, xn, fx, fn) then certify(p, xn, fn, projGrad(xn, gnew), k + 1)
+              if stagnant(x, xn, fx, fn) then
+                val pgn = projected(xn, gnew)
+                certify(p, stationarity(pgn, xn, x0, f0, fn), xn, fn, pgn, k + 1)
               else
                 // The update sees the FREE coordinates only.  An active coordinate does not move
                 // (s = 0 there) while its gradient still changes, and feeding that y into the
@@ -305,12 +352,13 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
                 val hn =
                   if !quasiNewton || sy <= 1e-12 * math.sqrt(dot(s, s) * dot(y, y)) then hk
                   else bfgsUpdate(if k == 0 then hk.map(_.map(_ * sy / dot(y, y))) else hk, s, y, sy)
-                loop(xn, fn, gnew, hn, k + 1)
+                loop(xn, fn, gnew, hn, k + 1, x0, f0)
 
+  // The certificate measures from the clamped start, the first point the iteration is at.
   val start = clamp(x0)
   (for f0 <- p.value(start); g0 <- p.grad(start) yield (f0, g0)) match
     case None           => Left(MinimizeFailure.NotEvaluable)
-    case Some((f0, g0)) => loop(start, f0, g0, identity, 0)
+    case Some((f0, g0)) => loop(start, f0, g0, identity, 0, start, f0)
 
 
 /** The line-search constants: sufficient decrease and (for Wolfe) curvature. */

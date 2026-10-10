@@ -16,15 +16,18 @@ package it.grypho.scala.leonardo
  *  those conditions produce — `equation.solveSystem` is linear-only, which was the survey
  *  finding that shaped the whole entry.
  *
- *  A modest numeric tier, [[minimize]], covers what has no closed form: gradient descent,
- *  Newton, BFGS and a projected BFGS for box constraints, each named explicitly, and each
- *  **declining** rather than returning a point it could not certify.  Large-scale numerical
- *  optimization is out of scope, and exact linear programming belongs to F_0011.
+ *  A modest numeric tier covers what has no closed form: [[minimize]] (gradient descent,
+ *  Newton, BFGS and a projected BFGS for box constraints, each named explicitly), [[qpSolve]]
+ *  for convex quadratic programs (F_0053), and [[lsqfit]] / [[curveFit]] for nonlinear least
+ *  squares (F_0063) — each **declining** rather than returning a point it could not certify.
+ *  Large-scale numerical optimization is out of scope, and exact linear programming belongs to
+ *  F_0011.
  *
  *  **Refusal is the common thread.**  A list of stationary points is read as *all* of them,
  *  so an incomplete list is a confident wrong answer; the solver declines when it cannot
  *  prove completeness.  `convex` answers `false` only with a witness.  `minimize` checks a
- *  gradient certificate before answering.
+ *  scale-free stationarity certificate (F_0095), `qp` the KKT conditions and `lsqfit` the
+ *  cosine between the residual and each Jacobian column, all before answering.
  *
  *  Layering: imports `core`, `scalar`, `matrix`, `equation`, `vector` and `logic`, and
  *  nothing imports it except `parser` (and, later, F_0066's SQP).

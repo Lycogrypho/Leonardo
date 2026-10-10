@@ -186,7 +186,7 @@ case class _QP(h: _Expression, f: _Expression, a: _Expression, b: _Expression,
           case Right((fv, in, eg, lo, hi)) => qpSolve(hm, fv, in, eg, lo, hi, Set.empty, env)
 
 /** A numeric matrix, dense or exact (demoted, the `lu` precedent); a number is `1×1`. */
-private def numericMatrix(e: _Expression, env: Environment): Option[_MatrixValue] =
+private[optimize] def numericMatrix(e: _Expression, env: Environment): Option[_MatrixValue] =
   e.eval(env) match
     case Right(_Number(d)) => Some(_MatrixValue(1, 1, Array(d)))
     case r                 => _MatrixValue.ofEvaluated(r)
@@ -204,7 +204,7 @@ private def constraintGroup(a: _Expression, b: _Expression, n: Int,
       yield Some((am, bv))
 
 /** Bounds: a number applies to every variable, otherwise a column of `n` entries. */
-private def boundsOf(e: _Expression, n: Int, env: Environment): Option[Vector[Double]] =
+private[optimize] def boundsOf(e: _Expression, n: Int, env: Environment): Option[Vector[Double]] =
   e.eval(env) match
     case Right(_Number(d)) => Some(Vector.fill(n)(d))
     case _                 => columnOf(e, n, env)
@@ -220,7 +220,7 @@ private def pointsResult(points: Option[List[SolutionPoint]], vars: Vector[_Vari
 
 /** Reads a numeric `n×1` column (or `1×n` row, or a number when `n = 1`), infinite entries
  *  allowed — they are how an absent bound is written. */
-private def columnOf(e: _Expression, n: Int, env: Environment): Option[Vector[Double]] =
+private[optimize] def columnOf(e: _Expression, n: Int, env: Environment): Option[Vector[Double]] =
   numericMatrix(e, env).collect {
     case m if m.rows * m.cols == n && (m.rows == 1 || m.cols == 1) => m.toVector
   }

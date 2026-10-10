@@ -1562,8 +1562,8 @@ package "optimize" <<Rectangle>> {
     class "Minimize" <<utility>> [[optimization.html]] {
         gd | newton | bfgs | pbfgs -- ALWAYS named
         pbfgs = PROJECTED BFGS, not L-BFGS-B (R_0069)
-        answer only if the (projected) gradient passes
-          0.5*10^-precision; else Left(MinimizeFailure)
+        answer only if stationarity = sum|g_i||x_i - x0_i| / (f(x0) - f(x))
+          passes 0.5*10^-precision (scale-free, F_0095); else Left(MinimizeFailure)
         MaxMinimizeIterations = 2000 (measured)
     }
 
@@ -1579,6 +1579,16 @@ package "optimize" <<Rectangle>> {
         Row(k) | Lower(i) | Upper(i)
     }
 
+    class "LeastSquares" <<utility>> [[optimization.html]] {
+        lsqfit(r, params, p0, bounds, env)
+        curveFit(model, t, tdata, ydata, params, p0, bounds, env)
+        Levenberg-Marquardt, More scaling, QR of [J/D; sqrt(lambda) I]
+        certified: cosine |Jj'r| <= tol |Jj||r|, or an exact fit
+        rank-deficient J declines (NotIdentifiable)
+        Left(LsqFailure) / Right(LsqResult incl. covariance)
+        MaxLsqIterations 100, MaxLsqWork m*n^2 4e5 (measured)
+    }
+
     class "_Stationary" <<case>> [[optimization.html]]
     class "_Convex" <<case>> [[optimization.html]]
     class "_Lagrange" <<case>> [[optimization.html]]
@@ -1591,6 +1601,12 @@ package "optimize" <<Rectangle>> {
         qp(H, f, A, b[, Aeq, beq], lb, ub); 0 = absent group
         detailed(env): REPL notes the decline or the active set
     }
+    class "_LsqFit" <<case>> [[optimization.html]] {
+        lsqfit(r, [[a], [b]], p0[, lb, ub][, cov])
+    }
+    class "_CurveFit" <<case>> [[optimization.html]] {
+        lsqfit(f, t, T, Y, [[a], [b]], p0[, lb, ub][, cov])
+    }
 
     "_Stationary" ..> "Stationary"
     "_Lagrange"   ..> "Stationary"
@@ -1598,6 +1614,9 @@ package "optimize" <<Rectangle>> {
     "_KKT"        ..> "KKT"
     "_Minimize"   ..> "Minimize"
     "_QP"         ..> "QP"
+    "_LsqFit"     ..> "LeastSquares"
+    "_CurveFit"   ..> "LeastSquares"
+    "LeastSquares" ..> "_Jacobian"  : one definition of the Jacobian
     "QP"          ..> "QpConstraint" : active set = warm start
     "QP"          ..> "_MatrixValue" : cholesky = convexity test
     "Stationary"  ..> "Elimination"

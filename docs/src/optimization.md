@@ -193,8 +193,12 @@ Bounds are two more columns before the method, with `inf` where there is none:
 run("minimize((1 - x)^2 + 100*(y - x^2)^2, [[x], [y]], [[-1.2], [1]], [[-inf], [-inf]], [[0.5], [inf]], pbfgs)")
 ```
 
-**An answer is certified.** The iteration runs until the gradient is negligible, and the point
-is then checked against the tolerance `=` uses at the current precision — under bounds, the
+**An answer is certified.** The iteration runs until the point is stationary to a tight target,
+and it is then checked against the tolerance `=` uses at the current precision. Stationarity is
+measured as a **pure number** — the change the gradient still predicts over the distance
+travelled, relative to the decrease achieved — so the verdict does not depend on the units of
+`f` or of any variable: `1e-10*(x - 3)^2` and `1e10*(x - 3)^2` are answered alike, where a bound
+on the gradient's size would certify the first at its starting point. Under bounds it reads the
 *projected* gradient, which vanishes at a constrained minimum where the gradient does not. A
 point that fails is not returned. Instead the call stays symbolic, and the REPL says why:
 
@@ -247,6 +251,48 @@ val first = qpSolve(h, Vector(-2.0, -6.0), a, None, Vector(0.0, 0.0), Vector(inf
 val next  = qpSolve(h, Vector(-2.1, -5.9), a, None, Vector(0.0, 0.0), Vector(inf, inf),
                     first.toOption.fold(Set.empty[QpConstraint])(_.active.toSet), env)
 ```
+
+## Nonlinear least squares
+
+`lsqfit` finds the parameters that make a model fit data best — the ones minimising the sum of
+squared residuals `‖r(p)‖²`. The **curve-fit form** takes the model, its independent variable,
+the data and the parameters as a column of names with a starting point:
+
+```scala mdoc:passthrough
+lesson.show("T := transpose(tabulate(k, k, 0, 10))",
+            "Y := transpose(tabulate(2*exp(-0.5*k), k, 0, 10))",
+            "lsqfit(a*exp(b*t), t, T, Y, [[a], [b]], [[1], [0]])")
+```
+
+The **residual form** takes the residual column itself, for a fit that is not one curve through
+one data set. Over data it is written cell by cell, because `Y - a*exp(b*T)` with `T` a column
+stays an unevaluated product:
+
+```scala mdoc:passthrough
+lesson.show("lsqfit(transpose(tabulate(at(Y, k, 1) - a*exp(b*at(T, k, 1)), k, 1, 11)), [[a], [b]], [[1], [0]])")
+```
+
+Bounds are two more arguments (`-inf`/`inf` for none, a number applying to every parameter),
+and the trailing word `cov` answers the row `[[p, C]]` with the covariance
+`C = σ²·(RᵀR)⁻¹`, `σ² = ‖r‖²/(m − n)`, for tuple assignment. There is none — `false` in its
+place — when there are as many residuals as parameters, or when a bound is active, since the
+linearised approximation it rests on does not hold at a boundary.
+
+**How it is solved, and when it answers.** Levenberg–Marquardt, each step solved by QR of the
+augmented Jacobian — never `JᵀJ`, which squares the condition number — and scaled by the
+Jacobian's column norms, so the iteration is the same whatever units a parameter is written in.
+A point is answered only if every Jacobian column is orthogonal to the residual within the
+precision's tolerance (a cosine, so the test has no units either), or the residual is at the
+rounding level of an exact fit. A far start that stalls is declined, never answered; so is a
+fit whose parameters are not **identifiable** — a residual that depends on `a + b` only has a
+whole line of minimisers, and any one point would be arbitrary:
+
+```scala mdoc:passthrough
+lesson.show("lsqfit((a + b)*t, t, T, Y, [[a], [b]], [[1], [1]])")
+```
+
+A program calls `curveFit` or `lsqfit`, whose `LsqResult` carries the iterations, the residual
+norm, the covariance and which parameters a bound holds.
 
 ## Where to go next
 

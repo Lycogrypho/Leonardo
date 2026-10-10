@@ -14,7 +14,7 @@ import logic.*
 import domain.*
 import vector.*
 import control.*
-import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, MinimizeMethod}
+import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, MinimizeMethod, _LsqFit, _CurveFit}
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -140,6 +140,8 @@ object Parser extends JavaTokenParsers:
     "odeStep", "odeSolve",                               // F_0051 public ODE step / trajectory;
                                                          // euler/rk4/rk45 are slot-matched only
     "qp",                                                 // F_0053 quadratic programming
+    "lsqfit",                                             // F_0063 nonlinear least squares;
+                                                         // `cov` is a slot word, NOT reserved
     "stationary", "convex", "lagrange", "kkt", "minimize",  // F_0010 optimization; the
                                                          // method words (gd, newton, bfgs,
                                                          // pbfgs) are NOT reserved: they are
@@ -904,7 +906,23 @@ object Parser extends JavaTokenParsers:
     "qp(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
       ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt(("," ~> guardedExpr) ~ ("," ~> guardedExpr)) <~ ")" ^^ {
       case h ~ f ~ a ~ b ~ p5 ~ p6 ~ Some(p7 ~ p8) => _QP(h, f, a, b, Some((p5, p6)), p7, p8)
-      case h ~ f ~ a ~ b ~ p5 ~ p6 ~ None          => _QP(h, f, a, b, None, p5, p6) }
+      case h ~ f ~ a ~ b ~ p5 ~ p6 ~ None          => _QP(h, f, a, b, None, p5, p6) } |
+    // F_0063: lsqfit in two forms, told apart by the second argument -- a COLUMN of parameter
+    // names (the residual form) or one bare name, the independent variable (the curve-fit form,
+    // Decision D). A bare name cannot start with `[`, so the two never overlap.
+    "lsqfit(" ~> guardedExpr ~ ("," ~> variableColumn) ~ ("," ~> guardedExpr) ~ lsqTail ^^ {
+      case r ~ ps ~ p0 ~ ((b, c)) => _LsqFit(r, ps, p0, b, c) } |
+    "lsqfit(" ~> guardedExpr ~ ("," ~> variable) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> variableColumn) ~ ("," ~> guardedExpr) ~ lsqTail ^^ {
+      case f ~ tv ~ td ~ yd ~ ps ~ p0 ~ ((b, c)) => _CurveFit(f, tv, td, yd, ps, p0, b, c) }
+
+  /** `lsqfit`'s optional bounds and `cov`, closing the call (F_0063).  `cov` alone is tried
+   *  FIRST, or it would parse as a variable in the lower-bound slot (the `minimize` method rule). */
+  private lazy val lsqTail: Parser[(Option[(_Expression, _Expression)], Boolean)] =
+    ("," ~> "cov" <~ ")") ^^^ ((Option.empty[(_Expression, _Expression)], true)) |
+    (("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt("," ~> "cov") <~ ")") ^^ {
+      case lo ~ hi ~ c => (Some((lo, hi)), c.isDefined) } |
+    ")" ^^^ ((Option.empty[(_Expression, _Expression)], false))
 
   /** A column of variable names, `[[x], [y]]` — `minimize`'s variable tuple. */
   private lazy val variableColumn: Parser[Vector[_Variable]] =

@@ -10,7 +10,8 @@ import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable,
 import latex.ToLatex
 import parser.Parser
 import optimize.{_Stationary, _Minimize, MinimizeFailure, MinimizeMethod, StationaryKind,
-                 classifyStationary, numericPoints, _QP, QpFailure, QpConstraint}
+                 classifyStationary, numericPoints, _QP, QpFailure, QpConstraint,
+                 _LsqFit, _CurveFit, LsqFailure, LsqResult}
 import ode.{_ODE, _ODESystem, _OdeStep, _OdeSolve, OdeFailure}
 
 import scala.util.control.NonFatal
@@ -909,6 +910,12 @@ final class Session:
       // the active set as information, which is what an experimenter at the prompt wants of it.
       case (q: _QP, Left(_))  => q.detailed(env).left.toOption.map(why => s"qp declined: ${describeQp(why)}")
       case (q: _QP, Right(_)) => q.detailed(env).toOption.map(r => activeConstraints(r.active))
+      // F_0063: a fit says how it got there -- iterations, residual, what a bound held -- or why
+      // it declined; the success note re-runs the solve, as qp's does.
+      case (l: _LsqFit, Left(_: _LsqFit)) => l.detailed(env).left.toOption.map(w => s"lsqfit declined: ${describeLsq(w)}")
+      case (l: _LsqFit, _)                => l.detailed(env).toOption.map(fitNote(l.params, _))
+      case (c: _CurveFit, Left(_: _CurveFit)) => c.detailed(env).left.toOption.map(w => s"lsqfit declined: ${describeLsq(w)}")
+      case (c: _CurveFit, _)                  => c.detailed(env).toOption.map(fitNote(c.params, _))
       // F_0079: a reduction or tabulation that declined on its range says so, instead of
       // echoing the call back with no hint that a cap or a non-whole bound was the reason.
       case (r: _Reduction, Left(_: _Reduction)) => r.declineReason(env).map(w => s"${r.kind.word} declined: $w")
@@ -979,6 +986,26 @@ final class Session:
       s"progress stopped with the gradient norm at ${_Number.render(g)}, above the precision's tolerance"
     case MinimizeFailure.MethodTakesNoBounds(m)         =>
       s"${MinimizeMethod.keyword(m)} takes no bounds; use pbfgs or gd"
+
+  /** A successful fit in prose: the iterations, the residual, and why a covariance is absent. */
+  private def fitNote(params: Vector[_Variable], r: LsqResult): String =
+    val held = r.active.map(params(_).variable)
+    val base = s"lsqfit: ${r.iterations} iterations, residual norm ${_Number.render(r.residualNorm)}"
+    if held.nonEmpty then s"$base; ${held.mkString(", ")} held at a bound, so no covariance"
+    else if r.covariance.isEmpty then s"$base; no covariance: as many residuals as parameters"
+    else base
+
+  /** An [[LsqFailure]] in prose.  The cosine is rendered in full, like a gradient norm. */
+  private def describeLsq(why: LsqFailure): String = why match
+    case LsqFailure.InvalidInput(detail) => detail
+    case LsqFailure.NotEvaluable         => "the residual or its Jacobian is not a real number at the starting point"
+    case LsqFailure.NotIdentifiable(rank, n) =>
+      s"the parameters are not identifiable: the Jacobian has numerical rank $rank of $n at the solution, so the minimiser is not unique"
+    case LsqFailure.MaxIterations(limit, c) =>
+      s"the iteration limit ($limit) was reached with the residual's cosine to the Jacobian at ${_Number.render(c)}, above the precision's tolerance"
+    case LsqFailure.Stalled(c) =>
+      s"progress stopped with the residual's cosine to the Jacobian at ${_Number.render(c)}, above the precision's tolerance"
+    case LsqFailure.TooLarge(m, n) => s"$m residuals in $n parameters exceed the work cap"
 
   /** A [[control.LinearizeFailure]] in prose. */
   private def describeLinearize(why: control.LinearizeFailure): String = why match

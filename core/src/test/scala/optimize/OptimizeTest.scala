@@ -281,6 +281,55 @@ class OptimizeTest extends AnyFlatSpec:
     assert(parse(s"minimize($rosenbrock, [[x], [y]], [[-1.2], [1]], gd)").eval(env).isLeft)
   }
 
+  // --- F_0095: the certificate does not depend on the units ---
+
+  /** Minimises `f` in `x` with every method; an answer must be `expected` (relative `1e-5`), a
+   *  decline is allowed.  @return which methods answered */
+  private def answersOrDeclines(f: String, x0: Double, expected: Double,
+                                b: Option[(Vector[Double], Vector[Double])] = None): Map[MinimizeMethod, Boolean] =
+    MinimizeMethod.values.toList.filter(m => b.isEmpty || m == MinimizeMethod.GradientDescent ||
+                                             m == MinimizeMethod.ProjectedBFGS).map { m =>
+      m -> (minimize(parse(f), vars("x"), Vector(x0), b, m, env) match
+        case Right(r) =>
+          assert(abs(r.x.head - expected) <= 1e-5 * abs(expected),
+                 s"$m answered ${r.x.head} for $f, whose minimum is $expected")
+          true
+        case Left(_) => false)
+    }.toMap
+
+  "minimize's certificate" should "give the same verdict whatever the units of f (F_0095)" in
+  {
+    for k <- List("1e-10", "1e-5", "1", "1e5", "1e10") do
+      val answered = answersOrDeclines(s"$k*(x - 3)^2", 0.0, 3.0)
+      assert(answered(MinimizeMethod.BFGS) && answered(MinimizeMethod.Newton), s"k = $k: $answered")
+  }
+
+  it should "give the same verdict whatever the units of a variable (F_0095)" in
+  {
+    assert(answersOrDeclines("(x/1e6 - 3)^2", 0.0, 3e6)(MinimizeMethod.BFGS))
+    assert(answersOrDeclines("(1e6*x - 3)^2", 0.0, 3e-6)(MinimizeMethod.BFGS))
+  }
+
+  it should "not be loosened by a constant added to f (F_0095)" in
+  {
+    assert(answersOrDeclines("1e10 + (x - 3)^2", 1.0, 3.0)(MinimizeMethod.BFGS))
+  }
+
+  it should "certify a constrained minimum whatever the units (F_0095)" in
+  {
+    val bounds = Some((Vector(Double.NegativeInfinity), Vector(2.0)))
+    for k <- List("1e-10", "1", "1e10") do
+      assert(answersOrDeclines(s"$k*(x - 3)^2", 0.0, 2.0, bounds)(MinimizeMethod.ProjectedBFGS), s"k = $k")
+  }
+
+  it should "not certify the starting point of a function in small units (F_0095)" in
+  {
+    // The entry's probe: the gradient at 0 is 6e-10, under the old absolute certificate.
+    parse("minimize(1e-10*(x - 3)^2, [[x]], [[0]], gd)").eval(env) match
+      case Right(m: _MatrixValue) => assert(abs(m.toVector.head - 3) <= 3e-5, s"answered $m")
+      case _                      => succeed
+  }
+
   // --- the language ---
 
   "the optimization nodes" should "round-trip through toString" in

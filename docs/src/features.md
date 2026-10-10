@@ -160,7 +160,11 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   `½ zᵀHz + fᵀz` under `A z ≤ b` and bounds by the Goldfarb–Idnani dual active-set method, for
   `H` positive definite; the answer is KKT-certified, a decline says why (not convex,
   infeasible, …), and a solve names its active constraints. The library form `qpSolve` returns
-  the active set as a warm start for the next problem. Throughout, an answer that cannot be
+  the active set as a warm start for the next problem. `lsqfit` is nonlinear least squares — a
+  model fitted to data columns (`lsqfit(a*exp(b*t), t, T, Y, [[a], [b]], p0)`) or a residual
+  column minimised — by scaled Levenberg–Marquardt over QR, with optional bounds and, on `cov`,
+  the covariance; it answers only a certified fit and declines one whose parameters are not
+  identifiable. Throughout, an answer that cannot be
   proved complete is not given: a list of stationary points is read as *all* of them. See
   [Optimization](optimization.md).
 

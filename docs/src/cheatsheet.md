@@ -271,14 +271,24 @@ kkt(f, g, h, x, y)                   the KKT conditions of: minimise f, g <= 0, 
 minimize(f, [[x], [y]], x0, m)       numeric minimiser as a column; m is gd, newton,
                                      bfgs or pbfgs, always named
 minimize(f, [[x], [y]], x0, lb, ub, m)   with bounds (inf for none): pbfgs or gd
-                                     a point is returned only if its gradient passes
-                                     the precision's tolerance; else the REPL says why
+                                     a point is returned only if it passes a stationarity
+                                     test independent of the units, at the precision's
+                                     tolerance; else the REPL says why
 qp(H, f, A, b, lb, ub)               min 1/2 z'Hz + f'z  s.t. A z <= b, lb <= z <= ub;
                                      H positive definite; 0 and 0 = no A, b;
                                      -inf / inf = no bound; a number applies to every z
 qp(H, f, A, b, Aeq, beq, lb, ub)     the same with Aeq z = beq
                                      the REPL names the active constraints, or says
                                      why it declined (not convex, infeasible, ...)
+lsqfit(f, t, T, Y, [[a], [b]], p0)   least squares: fit f(t; a, b) to data columns T, Y
+lsqfit(r, [[a], [b]], p0)            least squares over a residual column r (m x 1);
+                                     over data: transpose(tabulate(at(Y,k,1) - ..., k, 1, m))
+... , lb, ub)  ... , cov)            bounds (inf for none, a number applies to all);
+                                     cov answers [[p, C]], C = false when m = n or a
+                                     bound is active; cov is not reserved
+                                     answered only if certified (scale-free cosine test);
+                                     declined if not identifiable; caps m*n^2 <= 400000,
+                                     100 iterations
 ```
 
 ---
