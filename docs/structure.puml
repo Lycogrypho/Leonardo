@@ -1777,7 +1777,38 @@ package "probability" <<Rectangle>> {
         outside the table -> stays symbolic
     }
 
+    class "_Draw" <<case>> [[features.html]] {
+        draw(dist, n, seed[, offset]): n x 1 column (F_0067)
+        by INVERSION through quantileOf: no family
+          needs a sampler of its own
+        the seed is the state; offset continues a stream
+    }
+
+    class "_Prbs" <<case>> [[features.html]] {
+        prbs(order, n, seed): n x 1 column of +-1
+        Fibonacci LFSR, primitive polynomial per order
+        orders 2..20, each verified over a full period
+    }
+
+    class "Sampling" <<utility>> [[features.html]] {
+        + drawSamples(d, n, seed, offset): Either
+        + prbsSequence(order, n, seed): Either
+        SplitMix64, the library's own: never
+          scala.util.Random (the DoubleRender rule)
+        seed HASHED into the counter, never a position
+        MaxDrawCount = 100 000   MaxPrbsLength = 10^6
+    }
+
+    enum "SamplingFailure" <<data>> [[features.html]] {
+        NotADistribution  InvalidInteger
+        InvalidCount  InvalidOrder  Undefined
+    }
+
     "_Distribution"      ..|> "_Value"
+    "_Draw"              ..>  "Sampling"
+    "_Prbs"              ..>  "Sampling"
+    "Sampling"           ..>  "_Distribution"   : quantileOf, one uniform per draw
+    "Sampling"           ..>  "SamplingFailure"
     "_Distribution"      ..>  "DistKind"
     "_DistributionOf"    ..>  "_Distribution" : eval
     "_DistributionQuery" ..>  "_Distribution" : pdf/cdf/quantile

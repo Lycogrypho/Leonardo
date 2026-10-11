@@ -953,6 +953,11 @@ final class Session:
       // F_0064: a simulation refused names the shape, the size or the step it overflowed at.
       case (n: control._Dlsim, Left(_: control._Dlsim)) =>
         n.detailed(env).left.toOption.map(w => s"dlsim declined: ${describeSim(w)}")
+      // F_0067: a draw or a PRBS that could not answer names the argument at fault.
+      case (n: probability._Draw, Left(_: probability._Draw)) =>
+        n.detailed(env).left.toOption.map(w => s"draw declined: ${describeSampling(w)}")
+      case (n: probability._Prbs, Left(_: probability._Prbs)) =>
+        n.detailed(env).left.toOption.map(w => s"prbs declined: ${describeSampling(w)}")
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
@@ -1022,6 +1027,20 @@ final class Session:
     case control.SimFailure.TooLarge(detail)      => detail
     case control.SimFailure.Overflow(k)           =>
       s"the simulation left the finite numbers at step $k: the model is unstable over this horizon"
+
+  /** A [[probability.SamplingFailure]] in prose. */
+  private def describeSampling(why: probability.SamplingFailure): String = why match
+    case probability.SamplingFailure.NotADistribution => "the first argument is not a distribution with numeric parameters"
+    case probability.SamplingFailure.InvalidInteger(what) =>
+      s"$what must be a whole number of at most 2^53 in size${if what == "the offset" then ", and not negative" else ""}"
+    case probability.SamplingFailure.InvalidCount(n, cap) =>
+      s"the count must be a whole number from 1 to $cap${notThis(n)}"
+    case probability.SamplingFailure.InvalidOrder(o) =>
+      s"the order must be a whole number from ${probability.MinPrbsOrder} to ${probability.MaxPrbsOrder}${notThis(o)}"
+    case probability.SamplingFailure.Undefined(i) => s"the inverse cdf has no value for draw $i"
+
+  /** `", not v"` for a number that was given, nothing for one that was not a number at all. */
+  private def notThis(v: Double): String = if v.isNaN then "" else s", not ${_Number.render(v)}"
 
   /** A [[control.ArxFailure]] in prose. */
   private def describeArx(why: control.ArxFailure): String = why match

@@ -3,9 +3,9 @@ package it.grypho.scala.leonardo
 /** Probability distributions as first-class values, with expectation and variance as
  *  functionals over them.
  *
- *  Imports `core` + `scalar`; nothing imports this except the parser and, later, the
- *  inference half of `statistics`.  In particular `probability` must never import
- *  `statistics` — the dependency runs the other way.
+ *  Imports `core` + `scalar`; imported by the parser, by `statistics` (its inference half) and by
+ *  the REPL (the sampling notes).  In particular `probability` must never import `statistics` —
+ *  the dependency runs the other way.
  *
  *  **A distribution is a `core._Value`.**  It is a concrete, fully-reduced object a user
  *  binds to a name, exactly like a matrix or a truth value.  That sounds expensive after
@@ -23,5 +23,13 @@ package it.grypho.scala.leonardo
  *  functions of their parameters — `Uniform(a,b).mean = (a+b)/2` — so they stay exact in the
  *  exact tier.  The pdf and cdf of the continuous ones are transcendental and degrade to
  *  `Double`, like every other transcendental in the library.
+ *
+ *  **Sampling is inversion** (F_0067).  [[drawSamples]] turns each uniform of the library's own
+ *  seeded generator into a draw through the same `quantileOf` the `quantile` query uses, so a
+ *  family is drawable the moment it has a cdf, and `draw` and `quantile` cannot disagree.  The
+ *  generator is never the platform's: a seed gives the same uniforms on the JVM and in the
+ *  browser, bit for bit, and the same continuous draws to rounding.  [[prbsSequence]], the
+ *  maximal-length binary sequence identification uses as an input, lives beside it because it
+ *  is the other seeded sequence a simulation asks for.
  */
 package probability

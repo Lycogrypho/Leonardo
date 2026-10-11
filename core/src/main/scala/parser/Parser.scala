@@ -118,6 +118,7 @@ object Parser extends JavaTokenParsers:
     "normal", "uniform", "exponential", "binomial", "poisson",  // distributions
     "pdf", "cdf", "prob", "quantile", "expect", "variance",     // queries + moments
     "studentt", "chisq",                                       // t / chi-squared distributions
+    "draw", "prbs",                                            // F_0067 seeded sampling and PRBS
     "betadist", "gammadist", "bayes", "posterior",             // F_0050: the conjugate families
                                                          // (betadist/gammadist, because beta
                                                          // and gamma stay free as variables)
@@ -677,6 +678,13 @@ object Parser extends JavaTokenParsers:
     "bayes("       ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case p ~ _ ~ l => _Bayes(p, l) }                                   |
     "posterior("   ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case p ~ _ ~ l ~ _ ~ d => _Posterior(p, l, d) }                                                                                |
+    // F_0067: seeded draws by inversion (the optional fourth argument is the offset into the
+    // stream, Decision B -- an optional group, so the three-argument form never chokes on a
+    // comma) and a maximal-length PRBS. Both answer an n x 1 column (Decision A).
+    "draw("        ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt("," ~> guardedExpr) <~ ")" ^^ {
+      case d ~ n ~ s ~ o => _Draw(d, n, s, o) }                                                                                     |
+    "prbs("        ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case o ~ n ~ s => _Prbs(o, n, s) }                                                                                            |
     // The two distribution families the inference tier needs.
     "studentt("    ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.StudentT, List(a)) }   |
     "chisq("       ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.ChiSquared, List(a)) } |    "pdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Pdf, d, List(x)) }      |

@@ -232,6 +232,19 @@ posterior(prior, lik, data)          conjugate update; the likelihood is the fam
                                      anything outside the table stays symbolic
 ```
 
+### Seeded sampling and PRBS
+
+```
+draw(d, n, seed)                     n draws from a distribution, an n x 1 column, by
+                                     inverting its cdf; 1 <= n <= 100000; same seed, same
+                                     numbers on JVM and browser (continuous: to rounding)
+draw(d, n, seed, offset)             the same stream from its offset-th draw on:
+                                     draw(d, 3, s, 5) = draws 6..8 of draw(d, 8, s)
+prbs(order, n, seed)                 maximal-length binary sequence of +1/-1, an n x 1
+                                     column; order 2..20, period 2^order - 1 with one more
+                                     +1 than -1; the seed picks the phase; n <= 1000000
+```
+
 ### Descriptive statistics and inference
 
 ```

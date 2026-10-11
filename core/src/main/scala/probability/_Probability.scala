@@ -160,8 +160,11 @@ case class _Variance(e: _Expression, x: Option[_Variable]) extends _Expression:
  *  @param d the distribution
  *  @param p the probability, in `(0, 1)`
  *  @return the smallest `x` with `cdf(x) ≥ p`, or `None` outside `(0, 1)`
+ *
+ *  Package-visible since F_0067: `draw` samples by inverting the cdf through this same function,
+ *  so `quantile` and `draw` cannot disagree about where a probability falls.
  */
-private def quantileOf(d: _Distribution, p: Double): Option[Double] =
+private[probability] def quantileOf(d: _Distribution, p: Double): Option[Double] =
   if p.isNaN || p <= 0.0 || p >= 1.0 then None
   else
     val centre = d.mean.getOrElse(0.0)

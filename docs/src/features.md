@@ -191,6 +191,17 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   general posterior has no closed form and would need numerical integration or sampling, and
   a confident approximation is exactly what the library declines to return.
 
+  **Seeded sampling.** `draw(dist, n, seed)` returns `n` draws from any distribution as an `n×1`
+  column, by inverting its cdf — so every family, discrete or continuous, can be sampled with no
+  sampler of its own. The generator is the library's own (SplitMix64), never the platform's, so
+  the same seed gives the same numbers on the JVM and in the browser: bit for bit for the
+  underlying stream, and to rounding for a continuous draw, whose cdf goes through each
+  platform's own `exp`. The seed *is* the state — nothing is remembered between calls — and an
+  optional fourth argument continues a stream: `draw(d, 3, s, 5)` is draws 6 to 8 of the stream
+  `draw(d, 8, s)` produces. `prbs(order, n, seed)` is a maximal-length pseudo-random binary
+  sequence of `±1` for orders 2 to 20, period `2ⁿ − 1` with one more `+1` than `−1` per period —
+  the excitation signal system identification wants; the seed picks the phase.
+
 - **Precision Control**: Configurable display precision for numeric results, kept separate
   from the exact tier's *working* precision — showing five decimals of a value computed to
   thirty is the normal case, and conflating the two would make raising display precision
