@@ -202,7 +202,9 @@ What stays symbolic, by design:
   `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`, `abs` and powers.
 
 Comparisons answer `true` or `false` only when the relation holds for every pair of points, and
-`unknown` otherwise: `[1, 3] < [2, 4]` is `unknown`.
+`unknown` otherwise: `[1, 3] < [2, 4]` is `unknown`. Beside a value that has no real bounds — a
+complex number, a matrix, a truth value — a relation is not a question about points at all, so
+`[1, 2] = 2i` stays as written rather than being answered `unknown`.
 
 Interval endpoints written in exact mode are exact rationals, combined exactly and bounded
 through arbitrary-precision arithmetic where an operation leaves the rationals. An interval is

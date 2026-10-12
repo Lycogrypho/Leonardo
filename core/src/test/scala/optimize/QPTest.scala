@@ -165,6 +165,26 @@ class QPTest extends AnyFlatSpec:
       case other                  => fail(s"$other")
   }
 
+  it should "not certify a point that violates a bound below unit scale (F_0102)" in {
+    // min ½x² − 1e-11·x on x ≥ 2e-11: the unconstrained minimum 1e-11 violates the bound by
+    // half, and the answer is the bound itself. Against `1 +` floors the violation read as 1e-11.
+    qpSolve(mv(Seq(Seq(1.0))), Vector(-1e-11), None, None, Vector(2e-11), Vector(Inf), Set.empty, env) match
+      case Right(r) =>
+        assert(math.abs(r.z.head - 2e-11) <= 1e-9 * 2e-11, r.z)
+        assert(r.active == Vector(QpConstraint.Lower(0)), r.active)
+      case Left(why) => fail(s"declined: $why")
+    // The acceptance problem with every variable in units of 1e-12 (z = 1e-12·z'): same active
+    // set, same point in the new units.
+    val s = 1e-12
+    qpSolve(mv(Seq(Seq(1 / (s * s), -1 / (s * s)), Seq(-1 / (s * s), 2 / (s * s)))), Vector(-2 / s, -6 / s),
+            Some((mv(Seq(Seq(1 / s, 1 / s), Seq(-1 / s, 2 / s), Seq(2 / s, 1 / s))), Vector(2.0, 2, 3))),
+            None, Vector(0.0, 0), Vector(Inf, Inf), Set.empty, env) match
+      case Right(r) =>
+        assert(r.z.zip(Seq(2.0 / 3 * s, 4.0 / 3 * s)).forall((p, q) => math.abs(p - q) <= 1e-9 * math.abs(q)), r.z)
+        assert(r.active.toSet == Set(QpConstraint.Row(0), QpConstraint.Row(1)))
+      case Left(why) => fail(s"scaled acceptance declined: $why")
+  }
+
   it should "round-trip both forms and reserve its name" in {
     for s <- Seq(acceptance, "qp(eye(2), [[0], [0]], 0, 0, [[1, 1]], [[1]], -inf, inf)") do
       val e = parse(s)

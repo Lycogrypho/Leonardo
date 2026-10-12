@@ -82,11 +82,13 @@ case class _Comparison(lhs: _Expression, op: CompareOp, rhs: _Expression) extend
 
   /** An ordering with an interval operand (F_0008): `true` or `false` when the relation holds
    *  for every pair of points or for none, `unknown` when it depends on the points —
-   *  `[1, 3] < [2, 4]` is neither.  `None` when no operand is an interval. */
+   *  `[1, 3] < [2, 4]` is neither.  `None` when no operand is an interval, or when the other
+   *  has no real bounds (a complex number, a matrix): that relation is not a question about
+   *  points, so it stays symbolic below rather than being answered `unknown` (F_0101). */
   private def intervalOrder(op: CompareOp, lhs: _Expression, rhs: _Expression,
                             env: Environment): Option[Either[_Expression, _Value]] =
     (lhs.eval(env), rhs.eval(env)) match
-      case (Right(a), Right(b)) if a.isInstanceOf[_Interval] || b.isInstanceOf[_Interval] =>
+      case (Right(a), Right(b)) if _Interval.comparable(a, b) =>
         val tolerance = 0.5 * math.pow(10, -env.precision)
         val verdict = op match
           case CompareOp.Lt => _Interval.below(a, b, strict = true, tolerance)

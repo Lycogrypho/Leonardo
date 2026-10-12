@@ -109,6 +109,18 @@ class DiscretisationTest extends AnyFlatSpec:
     assert(close(at(gd, 1.0), 1.0 / 5), "DC gain matched")
   }
 
+  "a response equivalence" should "decline a plant its z-table cannot close, never leak a fresh name (F_0103)" in {
+    // The sampled response of a complex pole pair is e^(an)·cos(bn) and e^(an)·sin(bn), which
+    // the z-table has no entry for; linearity transformed the other terms and left a
+    // ztrans(…, __n1, z) inside a Sum, which the top-node test did not see.
+    for m <- Seq(Zoh, Foh, ImpulseInvariant) do
+      c2d(parse("1/(s^2 + 2*s + 5)"), s, z, 0.1, m) match
+        case None     => ()
+        case Some(gd) =>
+          assert(!gd.toString.contains("__"), s"$m leaked a fresh variable: $gd")
+          at(gd, 2.0)
+  }
+
   "prewarped Tustin" should "match the continuous frequency response exactly at the prewarp frequency" in {
     val (ts, w) = (0.5, 1.0)
     val g  = parse("1/(s + 1)")

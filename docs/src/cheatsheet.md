@@ -864,7 +864,8 @@ dlsim(sys, u, x0)               outputs p x N of x[k+1] = Ax + Bu, y = Cx + Du; 
 dlsim(sys, u, x0, states)       [[Y, X]], X = x[0] .. x[N]: the LAST column continues a run
 c2d(g, s, z, Ts, method)        discretise; the method is always written: zoh, tustin,
                                 foh, impulse (aliases!), matched, forward (can make a
-                                stable plant unstable), backward
+                                stable plant unstable), backward; zoh, foh and impulse
+                                decline a complex pole pair (no z-table entry)
 c2d(g, s, z, Ts, tustin, w)     Tustin prewarped to match exactly at w rad/s
 dare(A, B, Q, R)                the STABILISING P of AᵀPA − P − AᵀPB(R+BᵀPB)⁻¹BᵀPA + Q = 0;
                                 R sym. pos. definite, Q sym. pos. semidefinite; n <= 200

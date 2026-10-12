@@ -142,9 +142,13 @@ private def feasiblePoint(n: Int, ineq: Option[(_MatrixValue, Vector[Double])], 
 private final case class QpRow(normal: Array[Double], rhs: Double, id: Option[QpConstraint]):
   def isEquality: Boolean = id.isEmpty
   def slack(z: Array[Double]): Double = dotA(normal, z) - rhs
-  /** The size a slack is measured against: the constraint's own scale at `z`. */
-  def scale(z: Array[Double]): Double = 1.0 + math.abs(rhs) + absSum * normInfA(z)
-  private lazy val absSum: Double = normal.map(math.abs).sum
+  /** `Σ|nᵢ|`, the normal's size in the units a slack is measured in. */
+  lazy val absSum: Double = normal.map(math.abs).sum
+
+/** `a / b`, reading `0 / 0` as 0: a quantity whose terms are all zero is exactly zero (the
+ *  `Nlp` convention).  A non-zero `a` over a zero `b` is infinite, with `a`'s sign. */
+private def qpRelative(a: Double, b: Double): Double =
+  if a == 0.0 then 0.0 else a / b
 
 // The three kernels below are the solver's inner loops, written as `while` loops over arrays the
 // way `_MatrixValue`'s kernels are: a `foldLeft` over an index range boxes a `Double` per step,
@@ -183,6 +187,38 @@ private def combine(base: Array[Double], cs: Vector[Double], vs: Vector[Array[Do
 
 /** A validated problem: `H` checked, every constraint rewritten as a [[QpRow]]. */
 private final case class QpProblem(n: Int, h: _MatrixValue, f: Array[Double], rows: Vector[QpRow]):
+
+  /** The size of the problem's variables, read from its own data (F_0102): each constraint's
+   *  `|rhs|/‖n‖∞` and, where `H` has an entry, `‖f‖∞/max|Hᵢⱼ|`.  Both are in the units of `z`,
+   *  so a scale built from them moves with the variables.  It replaced a `1 +` floor in every
+   *  relative test, which was a claim about those units: below unit scale it let a point
+   *  violating a bound by half be certified. */
+  lazy val zScale: Double =
+    val maxH    = h.toVector.map(math.abs).maxOption.getOrElse(0.0)
+    val fromH   = if maxH > 0.0 then normInfA(f) / maxH else 0.0
+    val fromRows = rows.map(r => normInfA(r.normal)).zip(rows).collect { case (s, r) if s > 0.0 => math.abs(r.rhs) / s }
+    (fromRows :+ fromH).max
+
+  /** The size a slack of `r` is measured against at `z`: the constraint's terms, `|rhs| +
+   *  Σ|nᵢ|·max(‖z‖∞, zScale)` — scale-free, with no floor (F_0102). */
+  def rowScale(r: QpRow, z: Array[Double]): Double =
+    math.abs(r.rhs) + r.absSum * math.max(normInfA(z), zScale)
+
+  /** The size of the gradient `Hz + f` at `z`, from its terms: `‖f‖∞ + maxᵢ Σⱼ|Hᵢⱼ zⱼ|`.  The
+   *  terms rather than `‖Hz‖` itself, which cancels to nothing where `z` lies near `H`'s null
+   *  space while its rounding does not. */
+  def gradientScale(z: Array[Double]): Double =
+    var m = 0.0
+    var i = 0
+    while i < n do
+      var s = 0.0
+      var j = 0
+      while j < n do
+        s += math.abs(h(i, j) * z(j))
+        j += 1
+      m = math.max(m, s)
+      i += 1
+    normInfA(f) + m
 
   /** `H⁻¹`, through the Cholesky factor; `H` not positive definite is the failure. */
   def inverseHessian: Either[QpFailure, Array[Array[Double]]] =
@@ -312,7 +348,7 @@ private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precis
       case Some((x, act1, u)) =>
         // A dependent equality was skipped above; it must still hold, or there is no point at all.
         val broken = skipped.exists(p => rows(p).isEquality &&
-                                         math.abs(rows(p).slack(x)) > certTol * rows(p).scale(x))
+                                         math.abs(rows(p).slack(x)) > certTol * prob.rowScale(rows(p), x))
         if broken then Left(QpFailure.Infeasible) else Right(State(x, act1, u, 0))
 
   def solve(warm: Set[QpConstraint]): Either[QpFailure, QpResult] = start(warm).flatMap(outer)
@@ -322,7 +358,7 @@ private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precis
     if s.iters > MaxQpIterations then Left(QpFailure.MaxIterations(MaxQpIterations))
     else
       val candidates = rows.indices.filterNot(s.act.contains).filterNot(rows(_).isEquality)
-        .map(j => (rows(j).slack(s.x) / rows(j).scale(s.x), j))
+        .map(j => (qpRelative(rows(j).slack(s.x), prob.rowScale(rows(j), s.x)), j))
         .filter(_._1 < -iterTol)
       if candidates.isEmpty then certify(s)
       else step(s, candidates.min._2, 0.0) match
@@ -355,27 +391,36 @@ private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precis
 
 
 /** The KKT certificate both QP methods answer through (X-02): stationarity, primal and dual
- *  feasibility and complementarity, each relative to the problem's scale (the 2.11 units rule),
- *  against `certTol`; the answer only when every part passes.  `act` are row indices and `u`
- *  their multipliers in the rows' `n·z ≥ rhs` convention, stationarity being `∇ = Σ uₐ nₐ`. */
+ *  feasibility and complementarity, each relative to the problem's own magnitudes (the 2.11
+ *  units rule, in `Nlp.kktResidual`'s shape), against `certTol`; the answer only when every
+ *  part passes.  `act` are row indices and `u` their multipliers in the rows' `n·z ≥ rhs`
+ *  convention, stationarity being `∇ = Σ uₐ nₐ`.
+ *
+ *  **No part carries a `1 +` floor** (F_0102): each did until 2026-10-12, a claim about the
+ *  problem's units under which `min ½x² − 1e-11·x` on `x ≥ 2e-11` was certified at the
+ *  unconstrained `1e-11`.  Stationarity and the multipliers are measured against the gradient's
+ *  terms and the active normals' pull; a slack against its row's terms at the problem's scale
+ *  ([[QpProblem.rowScale]]); a quantity whose terms are all zero reads as zero. */
 private def qpCertificate(prob: QpProblem, x: Array[Double], act: Vector[Int], u: Vector[Double],
                           iters: Int, certTol: Double): Either[QpFailure, QpResult] =
   import prob.{n, rows}
   val hx = Array.tabulate(n)(i => (0 until n).foldLeft(0.0)((acc, j) => acc + prob.h(i, j) * x(j)))
   val grad = Array.tabulate(n)(i => hx(i) + prob.f(i))
   val pull = Array.tabulate(n)(i => act.indices.foldLeft(0.0)((acc, a) => acc + u(a) * rows(act(a)).normal(i)))
-  val uMax = u.map(math.abs).maxOption.getOrElse(0.0)
-  val stationarity =
-    normInfA(Array.tabulate(n)(i => grad(i) - pull(i))) /
-      (1.0 + normInfA(prob.f) + normInfA(hx) + act.indices.map(a => math.abs(u(a)) * normInfA(rows(act(a)).normal)).sum)
+  val weight = act.indices.map(a => math.abs(u(a)) * normInfA(rows(act(a)).normal))
+  val gScale = prob.gradientScale(x) + weight.sum
+  val stationarity = qpRelative(normInfA(Array.tabulate(n)(i => grad(i) - pull(i))), gScale)
   val primal = rows.map { r =>
     val sl = r.slack(x)
-    (if r.isEquality then math.abs(sl) else math.max(0.0, -sl)) / r.scale(x)
+    qpRelative(if r.isEquality then math.abs(sl) else math.max(0.0, -sl), prob.rowScale(r, x))
   }.maxOption.getOrElse(0.0)
-  val dual = act.indices.filterNot(a => rows(act(a)).isEquality)
-    .map(a => math.max(0.0, -u(a))).maxOption.getOrElse(0.0) / (1.0 + uMax)
-  val complementarity = act.indices.filterNot(a => rows(act(a)).isEquality)
-    .map(a => math.abs(u(a) * rows(act(a)).slack(x)) / (rows(act(a)).scale(x) * (1.0 + uMax)))
+  val inequalities = act.indices.filterNot(a => rows(act(a)).isEquality)
+  val dual = inequalities
+    .map(a => if u(a) < 0.0 then qpRelative(weight(a), gScale) else 0.0).maxOption.getOrElse(0.0)
+  // Small when either the multiplier or the slack is negligible on its own scale.
+  val complementarity = inequalities
+    .map(a => math.min(qpRelative(weight(a), gScale),
+                       qpRelative(math.abs(rows(act(a)).slack(x)), prob.rowScale(rows(act(a)), x))))
     .maxOption.getOrElse(0.0)
   val residual = Seq(stationarity, primal, dual, complementarity).max
   if residual.isNaN || residual > certTol then Left(QpFailure.Uncertified(residual))
@@ -498,7 +543,7 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int):
   def solve(x0: Array[Double], warm: Set[QpConstraint]): Either[QpFailure, QpResult] =
     // The starting working set: every equality, then the warm rows, then the other inequalities
     // active at x0 -- each kept only if independent of those before it.
-    val active = rows.indices.filter(i => rows(i).isEquality || math.abs(rows(i).slack(x0)) <= iterTol * rows(i).scale(x0))
+    val active = rows.indices.filter(i => rows(i).isEquality || math.abs(rows(i).slack(x0)) <= iterTol * prob.rowScale(rows(i), x0))
     val order  = active.filter(rows(_).isEquality) ++ active.filter(i => rows(i).id.exists(warm.contains)) ++ active
     val w0 = order.distinct.foldLeft((Vector.empty[Int], Vector.empty[Array[Double]])) { case ((ws, basis), i) =>
       val grown = extend(basis, Seq(rows(i).normal))
@@ -514,12 +559,15 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int):
           blocking(x, d, w) match
             case None         => Left(QpFailure.Unbounded)
             case Some((t, j)) => loop(combine(x, Vector(t), Vector(d), 1.0), w :+ j, it + 1)
-        case Some(Move.Step(p)) if normInfA(p) <= iterTol * (1.0 + normInfA(x)) =>
+        // A step negligible beside the point and the problem's own scale, and a multiplier
+        // negative beyond the gradient's: both relative, with no `1 +` floor (F_0102).
+        case Some(Move.Step(p)) if normInfA(p) <= iterTol * math.max(normInfA(x), prob.zScale) =>
           multipliers(x, w) match
             case None => Left(QpFailure.Uncertified(Double.PositiveInfinity))
             case Some(u) =>
-              val scale = 1.0 + u.map(math.abs).maxOption.getOrElse(0.0)
-              w.indices.filter(a => !rows(w(a)).isEquality && u(a) < -iterTol * scale).minByOption(w(_)) match
+              val scale = prob.gradientScale(x)
+              val drop  = w.indices.filter(a => !rows(w(a)).isEquality && u(a) * normInfA(rows(w(a)).normal) < -iterTol * scale)
+              drop.minByOption(w(_)) match
                 case None    => qpCertificate(prob, x, w, u, it, certTol)
                 case Some(a) => loop(x, w.patch(a, Nil, 1), it + 1)
         case Some(Move.Step(p)) =>

@@ -168,6 +168,18 @@ class IntervalTest extends AnyFlatSpec:
       if c > 0 || d < 0 then check(s"[$a,$b] / [$c,$d]", Ratio(x, y).eval(env), p / q)
       check(s"[$a,$b]^3", Power(x, _Number(3)).eval(env), p * p * p)
       check(s"[$a,$b]^2", Power(x, _Number(2)).eval(env), p * p)
+      // F_0104: the kernels the sweep did not reach -- negative and fractional powers, tan away
+      // from its poles, and a logarithm to a base.
+      if a > 0 || b < 0 then
+        check(s"[$a,$b]^-1", Power(x, _Number(-1)).eval(env), 1 / p)
+        check(s"[$a,$b]^-2", Power(x, _Number(-2)).eval(env), 1 / (p * p))
+      if a >= 0 then
+        check(s"[$a,$b]^0.5", Power(x, _Number(0.5)).eval(env), math.sqrt(p))
+        check(s"[$a,$b]^(1/3)", Power(x, _Rational.of(1, 3).getOrElse(fail("1/3"))).eval(env), math.cbrt(p))
+      if a > 0 then
+        check(s"log([$a,$b], 2)", LogBase(x, _Number(2)).eval(env), math.log(p) / math.log(2))
+      if math.floor(a / math.Pi + 0.5) == math.floor(b / math.Pi + 0.5) then
+        check(s"tan([$a,$b])", Tg(x).eval(env), math.tan(p))
       for (name, f, ok) <- unary if ok((a, b)) do
         val node = Parser.parse(s"$name(t)").get
         check(s"$name([$a,$b])", node.eval(env.withBinding("t", x)), f(p))
@@ -185,4 +197,54 @@ class IntervalTest extends AnyFlatSpec:
     assert(value("[1, 2] = [5, 6]") == Right(_Bool(false)))
     assert(value("[1, 2] = [1, 2]") == Right(_Truth.Unknown), "two values in the same range need not be equal")
     assert(value("[1, 2] != [5, 6]") == Right(_Bool(true)))
+  }
+
+  it should "stay symbolic beside a value with no bounds, rather than answer unknown (F_0101)" in {
+    // A complex number, a matrix and a truth value have no real bounds: the relation is not a
+    // question about points of the interval at all, so it must not be answered `unknown`.
+    for s <- Seq("[1, 2] = 2i", "[1, 2] != 2i", "[1, 2] < [[1, 2]]", "[1, 2] = true", "[1, 2] >= 3i") do
+      assert(value(s).isLeft, s"$s: ${value(s)}")
+    assert(value("[1, 2] = 1.5") == Right(_Truth.Unknown), "a point inside is a genuine unknown")
+    assert(value("[1, 2] != 1.5") == Right(_Truth.Unknown))
+    assert(value("[3, 4] <= [1, 2]") == Right(_Bool(false)))
+    assert(value("[3, 4] >= [1, 2]") == Right(_Bool(true)))
+  }
+
+  // ── F_0104: the floating-point edges ──
+
+  private def bd(d: Double) = new java.math.BigDecimal(d)
+
+  "an exact fractional exponent on Double endpoints" should "bound outward however large or small the base" in {
+    // The exponent 1/3 has no Double; reading it once as the nearest one moves x^r by
+    // ln(x)·2e-17 relatively, tens of ulps at 1e±100 -- past a two-ulp pad.
+    val third = _Rational.of(1, 3).getOrElse(fail("1/3"))
+    for (lo, hi) <- Seq((1e100, 2e100), (1e-100, 2e-100), (3.0, 5.0)) do
+      Power(interval(lo, hi), third).eval(env) match
+        case Right(i: _Interval) =>
+          assert(bd(i.loDouble).pow(3).compareTo(bd(lo)) <= 0, s"[$lo, $hi]^(1/3): lower end ${i.loDouble} cubed exceeds $lo")
+          assert(bd(i.hiDouble).pow(3).compareTo(bd(hi)) >= 0, s"[$lo, $hi]^(1/3): upper end ${i.hiDouble} cubed is below $hi")
+        case other => fail(s"[$lo, $hi]^(1/3): $other")
+    // A negative exact exponent: x^(-1/3) is decreasing in x.
+    val minusThird = _Rational.of(-1, 3).getOrElse(fail("-1/3"))
+    Power(interval(1e100, 2e100), minusThird).eval(env) match
+      case Right(i: _Interval) =>
+        // lo ≤ (2e100)^(-1/3) ⇔ lo³·2e100 ≤ 1, and hi ≥ (1e100)^(-1/3) ⇔ hi³·1e100 ≥ 1.
+        assert(bd(i.loDouble).pow(3).multiply(bd(2e100)).compareTo(java.math.BigDecimal.ONE) <= 0, s"lower ${i.loDouble}")
+        assert(bd(i.hiDouble).pow(3).multiply(bd(1e100)).compareTo(java.math.BigDecimal.ONE) >= 0, s"upper ${i.hiDouble}")
+      case other => fail(s"x^(-1/3): $other")
+  }
+
+  "a product with a tiny factor, and a root at the top of the range" should "stay outward (F_0104: pinned)" in {
+    // |p| ≥ 1e-290 keeps every partial product of Dekker's split above the normal range, so
+    // the error term is exact even for a factor near 1e-300; these pin that it is.
+    for (a, b, k) <- Seq((1e-300, 2e-300, 1e10), (3e-300, 7e-300, 1.7e10), (1.1e-299, 1.3e-299, 3.3e9)) do
+      Product(interval(a, b), _Number(k)).eval(env) match
+        case Right(i: _Interval) =>
+          assert(bd(i.loDouble).compareTo(bd(a).multiply(bd(k))) <= 0, s"[$a, $b]*$k: lower ${i.loDouble}")
+          assert(bd(i.hiDouble).compareTo(bd(b).multiply(bd(k))) >= 0, s"[$a, $b]*$k: upper ${i.hiDouble}")
+        case other => fail(s"[$a, $b]*$k: $other")
+    Power(interval(1.0, Double.MaxValue), _Number(0.5)).eval(env) match
+      case Right(i: _Interval) =>
+        assert(bd(i.hiDouble).pow(2).compareTo(bd(Double.MaxValue)) >= 0, s"sqrt upper ${i.hiDouble}")
+      case other => fail(s"sqrt([1, max]): $other")
   }

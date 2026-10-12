@@ -168,8 +168,17 @@ private def sampledEquivalent(g: _Expression, s: _Variable, z: _Variable, ts: Do
     val nv      = freshVar(r.freeVars ++ Set(z.variable), "__n")
     val sampled = substitute(r, Map(tv.variable -> Product(_Number(ts), nv)))
     val xz      = transform.zTransformOf(simplifyFully(sampled), nv, z)
-    if xz.isInstanceOf[transform._ZTransform] then None
+    if containsZTransform(xz) then None
     else Some(normaliseTf(Product(factor, xz), z))
+
+/** Whether `e` still holds a [[transform._ZTransform]] anywhere.  `zTransformOf` applies
+ *  linearity term by term, so a term it cannot close stays as a node inside a `Sum` — a test of
+ *  the top node alone answered such a half-converted expression, carrying the fresh index
+ *  variable, for every plant with a complex pole pair (F_0103: the table has no
+ *  `e^(an)·cos(bn)` entry).  The `containsIntegral` rule. */
+private def containsZTransform(e: _Expression): Boolean = e match
+  case _: transform._ZTransform => true
+  case _                        => e.children.exists(containsZTransform)
 
 /** The ramp response `L⁻¹{G(s)/s²}`, for first-order hold; the inverse transform unchanged
  *  when it does not close, or when `G` is improper. */

@@ -163,7 +163,9 @@ object _Interval:
   private val Splitter = 134217729.0
   /** Below this magnitude a product may be subnormal, where the error terms are not exact. */
   private val Tiny = 1e-290
-  /** Above this magnitude the splitter may overflow. */
+  /** Above this magnitude the splitter may overflow, and so may the split's high-part product
+   *  when the product itself is this large: `ah·bh` can round past `Double.MaxValue` while `p`
+   *  does not (F_0104 — `sqrt([1, max])` lost its upper bound that way). */
   private val Huge = 1e290
 
   /** The rounding error of `s = a + b` (Knuth's TwoSum): `a + b = s + err` exactly. */
@@ -183,7 +185,7 @@ object _Interval:
    *  exactly, or `None` where over- or underflow makes the error terms inexact. */
   private def productError(a: Double, b: Double, p: Double): Option[Double] =
     if p == 0.0 && (a == 0.0 || b == 0.0) then Some(0.0)
-    else if math.abs(p) < Tiny || math.abs(a) > Huge || math.abs(b) > Huge then None
+    else if math.abs(p) < Tiny || math.abs(p) > Huge || math.abs(a) > Huge || math.abs(b) > Huge then None
     else
       def split(x: Double): (Double, Double) =
         val c = Splitter * x
@@ -376,14 +378,22 @@ object _Interval:
               for lo <- exactBound(f, a, env, down = true); hi <- exactBound(f, z, env, down = false); v <- make(E(lo, hi)) yield v
           case Right(_) => None
       case D(l, h) =>
-        val r = e match { case Left(q) => q.toDouble; case Right(d) => d }
-        if l < 0 || (r < 0 && l == 0) then None
-        else if r == 0.5 then make(D(sqrtBounds(l)._1, sqrtBounds(h)._2))
+        // An exact exponent has no Double, and reading it once as the nearest one moves x^r by
+        // ln(x)·δr relatively -- tens of ulps at 1e±100, past the two-ulp pad (F_0104). x^r is
+        // monotone in r (increasing for x > 1, decreasing for x < 1), so each end takes the
+        // exponent's rounding that moves it outward.
+        val (rDown, rUp) = e match
+          case Left(q)  => (toDoubleDown(q), toDoubleUp(q))
+          case Right(d) => (d, d)
+        val positive = e.fold(_.signum > 0, _ > 0)
+        if l < 0 || (!positive && l == 0) then None
+        else if rDown == 0.5 && rUp == 0.5 then make(D(sqrtBounds(l)._1, sqrtBounds(h)._2))
         else
-          def known(x: Double): Option[Double] = if x == 1.0 then Some(1.0) else if x == 0.0 && r > 0 then Some(0.0) else None
-          def lowAt(x: Double)  = known(x).getOrElse(math.max(0.0, down2(math.pow(x, r))))
-          def highAt(x: Double) = known(x).getOrElse(up2(math.pow(x, r)))
-          if r > 0 then make(D(lowAt(l), highAt(h))) else make(D(lowAt(h), highAt(l)))
+          def exponent(x: Double, low: Boolean): Double = if (x >= 1.0) == low then rDown else rUp
+          def known(x: Double): Option[Double] = if x == 1.0 then Some(1.0) else if x == 0.0 && positive then Some(0.0) else None
+          def lowAt(x: Double)  = known(x).getOrElse(math.max(0.0, down2(math.pow(x, exponent(x, low = true)))))
+          def highAt(x: Double) = known(x).getOrElse(up2(math.pow(x, exponent(x, low = false))))
+          if positive then make(D(lowAt(l), highAt(h))) else make(D(lowAt(h), highAt(l)))
 
   // ── exact bounds through spire ──
 
@@ -565,6 +575,17 @@ object _Interval:
           else
             if a2 <= b1 + tol then Some(true) else if a1 > b2 + tol then Some(false) else None
     }
+
+  /** Whether a relation between `a` and `b` is a question about points of an interval: one of
+   *  them is an interval and both have real bounds (F_0101).  A complex number, a matrix or a
+   *  truth value has none, so a relation with one is not decided here at all — it stays
+   *  symbolic, as it would without the interval, rather than being answered `unknown`.
+   *  [[below]] and [[equal]] answer `None` for both cases, so a caller asks this first.
+   *  @param a the left operand
+   *  @param b the right operand
+   *  @return whether [[below]] and [[equal]] apply
+   */
+  def comparable(a: _Value, b: _Value): Boolean = operands(a, b).isDefined
 
   /** Whether `a = b` for every pair of points (`Some(true)`), for none (`Some(false)`: the
    *  intervals are apart by more than `tol`), or neither (`None`, unknown). */

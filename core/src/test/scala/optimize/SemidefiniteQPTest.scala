@@ -81,6 +81,17 @@ class SemidefiniteQPTest extends AnyFlatSpec:
           assert((0 until m).forall(i => a(i).zip(r.z).map(_ * _).sum <= b(i) + 1e-7 * math.max(1.0, math.abs(b(i)))), s"trial $trial infeasible")
   }
 
+  it should "answer the same point when its variables are rescaled below unit scale (F_0102)" in {
+    // The mixed problem above with x = 1e-12·x': its answer (1, 2) becomes (1e-12, 2e-12).
+    // Against `1 +` floors every step of that size read as zero.
+    val s = 1e-12
+    qpSolve(mv(Seq(Seq(1 / (s * s), 0), Seq(0, 0))), Vector(-2 / s, -1 / s), Some((mv(Seq(Seq(1 / s, 1 / s))), Vector(3.0))),
+            None, Vector(0.0, 0), Vector(Inf, Inf), Set.empty, env) match
+      case Right(r) =>
+        assert(r.z.zip(Seq(1 * s, 2 * s)).forall((p, q) => math.abs(p - q) <= 1e-8 * math.abs(q)), r.z)
+      case Left(why) => fail(s"declined: $why")
+  }
+
   it should "leave the definite path to Goldfarb–Idnani: the acceptance problem is unchanged" in {
     val r = solved("qp([[1, -1], [-1, 2]], [[-2], [-6]], [[1, 1], [-1, 2], [2, 1]], [[2], [2], [3]], 0, inf)")
     assert(near(r.z, Seq(2.0 / 3, 4.0 / 3)))

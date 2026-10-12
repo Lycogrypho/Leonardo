@@ -435,6 +435,12 @@ A coefficient whose sign cannot be determined leaves stability undecided, rather
 isStable(tf("1/(s^2 + a*s + 1)"), s)
 ```
 
+The three response equivalences — `zoh`, `foh` and `impulse` — sample the plant's time response
+and z-transform it, and the z-transform table has no entry for a damped oscillation
+`e^(an)·cos(bn)`. **A plant with a complex pole pair is therefore declined by those three**, not
+answered in part: `tustin`, `matched` and the two Euler methods are substitutions and take it
+unchanged.
+
 Also absent, deliberately: `d2c` by zero-order hold (it needs a matrix logarithm), root-locus
 and margin *plots* (the numbers are here; plotting is not this library's job), and a discrete
 Kronecker delta, which `core` has no node for.
