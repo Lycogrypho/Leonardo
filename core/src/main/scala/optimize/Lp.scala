@@ -34,8 +34,11 @@ case class LpResult(x: Vector[_Value], objective: _Value, iterations: Int, activ
  *  **Measured on Node, the slowest platform**, random dense integer problems over four seeds:
  *  at 40 variables and 80 constraints 0.05–0.3 s on the JVM and 0.1–1.7 s on Node; at 50 × 100
  *  one seed took 1.2 s on the JVM and 7.4 s on Node.  Exact arithmetic's cost is the size the
- *  rationals grow to rather than the dimension, which is why [[MaxLpBits]] is the cap that
- *  bounds the time and these two only bound the work per pivot. */
+ *  rationals grow to rather than the dimension, which is why [[MaxLpBits]] was meant to bound
+ *  the time and these two only the work per pivot.  **Neither does, as F_0105 measured**: dense
+ *  integer problems at 40 × 80 with entries `0 … 9` and every cost negative take 25–217 pivots,
+ *  3–139 s on Node and 0.5–26 s on the JVM, and never reach [[MaxLpBits]]; F_0115 holds the
+ *  decision on a cap that bounds the time. */
 val MaxLpVariables: Int = 40
 
 /** The largest number of constraint rows (inequalities and equalities); see [[MaxLpVariables]]. */
@@ -46,7 +49,13 @@ val MaxLpConstraints: Int = 80
 val MaxLpPivots: Int = 20000
 
 /** The largest exact coefficient, in bits of numerator plus denominator, before [[lpSolve]]
- *  declines — the cap that actually bounds the time, since the dimension does not. */
+ *  declines — meant as the cap that bounds the time, since the dimension does not; it does not
+ *  bound it either (see [[MaxLpVariables]] and F_0115).
+ *
+ *  Measured on **every entry a pivot writes** (F_0105): the pivot row, each row it rewrites,
+ *  the right-hand sides and the reduced costs.  The input is not measured on its own: a large
+ *  coefficient costs nothing until a pivot combines it, and the first pivot that does is
+ *  measured. */
 val MaxLpBits: Int = 2048
 
 
@@ -203,24 +212,32 @@ private object Tableau:
     // recomputed: with rationals the recomputation was most of the time.
     var red: Array[Q] = Array.empty
 
-    /** One pivot.  Only the pivot row's non-zero columns change anywhere, and the slack and
-     *  artificial blocks keep most of a row zero, so only those are visited. */
+    // The widest coefficient written so far, in bits, against MaxLpBits.
     var widest = 0
     def bits(q: Q): Int = q.numerator.toBigInt.bitLength + q.denominator.toBigInt.bitLength
 
+    /** Records `q` in `widest` and returns it.  Every entry a pivot writes goes through here —
+     *  the pivot row, each row it rewrites, their right-hand sides and the reduced costs:
+     *  measuring the pivot row alone let a rewritten row pass the cap unseen until it pivoted
+     *  itself, if ever (F_0105). */
+    def written(q: Q): Q =
+      widest = math.max(widest, bits(q))
+      q
+
+    /** One pivot.  Only the pivot row's non-zero columns change anywhere, and the slack and
+     *  artificial blocks keep most of a row zero, so only those are visited. */
     def pivot(r: Int, col: Int): Unit =
       val p  = t(r)(col)
       val nz = (0 until width).filter(j => !t(r)(j).isZero).toArray
-      for j <- nz do t(r)(j) = t(r)(j) / p
-      widest = math.max(widest, nz.map(j => bits(t(r)(j))).maxOption.getOrElse(0))
-      rhs(r) = rhs(r) / p
+      for j <- nz do t(r)(j) = written(t(r)(j) / p)
+      rhs(r) = written(rhs(r) / p)
       for i <- 0 until m if i != r && !t(i)(col).isZero do
         val factor = t(i)(col)
-        for j <- nz do t(i)(j) = t(i)(j) - factor * t(r)(j)
-        rhs(i) = rhs(i) - factor * rhs(r)
+        for j <- nz do t(i)(j) = written(t(i)(j) - factor * t(r)(j))
+        rhs(i) = written(rhs(i) - factor * rhs(r))
       if red.nonEmpty && !red(col).isZero then
         val factor = red(col)
-        for j <- nz do red(j) = red(j) - factor * t(r)(j)
+        for j <- nz do red(j) = written(red(j) - factor * t(r)(j))
       basis(r) = col
       pivots += 1
 

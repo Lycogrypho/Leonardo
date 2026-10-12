@@ -81,6 +81,32 @@ class LpTest extends AnyFlatSpec:
     assert(solved(src, Some(30)).objective == _Rational.of(-7, 2).getOrElse(fail("-7/2")))
   }
 
+  it should "measure every coefficient against MaxLpBits, not the pivot row alone (F_0105)" in {
+    // min -x - y on x + y <= 1 and H x + H y <= 5H, H = 2^2100. The first pivot is on row 0,
+    // whose entries stay one bit wide; it rewrites row 1 to (0, 0, -H, 1 | 4H), past the cap.
+    // Measuring the pivot row only, the solver answered on coefficients it had declared too large.
+    val h   = _Rational(BigInt(2).pow(2100))
+    val one = _Rational(1)
+    val r = lpSolve(Vector(_Rational(-1), _Rational(-1)),
+                    Some((Vector(Vector(one, one), Vector(h, h)), Vector(one, _Rational(BigInt(5) * BigInt(2).pow(2100))))),
+                    None, Vector(_Rational(0), _Rational(0)), Vector(_Number(Double.PositiveInfinity), _Number(Double.PositiveInfinity)))
+    r match
+      case Left(LpFailure.TooLarge(bits)) => assert(bits > MaxLpBits, bits)
+      case other                          => fail(s"expected TooLarge, got $other")
+    // The same problem in unit scale is answered: the cap reads coefficients, not the shape.
+    assert(doubles(solved("lp([[-1], [-1]], [[1, 1], [1, 1]], [[1], [5]], 0, inf)").x).sum == 1.0)
+    // Growth, not input size: every input coefficient is under the cap (K = 2^1000, H = 2^1100),
+    // and the pivot row's widest entry is K. Pivoting on x + K y <= 1 rewrites H x + y <= 5H's
+    // y-coefficient to 1 - H K, about 2^2100.
+    val k = _Rational(BigInt(2).pow(1000))
+    val g = _Rational(BigInt(2).pow(1100))
+    lpSolve(Vector(_Rational(-1), _Rational(-1)),
+            Some((Vector(Vector(one, k), Vector(g, one)), Vector(one, _Rational(BigInt(5) * BigInt(2).pow(1100))))),
+            None, Vector(_Rational(0), _Rational(0)), Vector(_Number(Double.PositiveInfinity), _Number(Double.PositiveInfinity))) match
+      case Left(LpFailure.TooLarge(bits)) => assert(bits > MaxLpBits, bits)
+      case other                          => fail(s"expected TooLarge from a rewritten row, got $other")
+  }
+
   "the lp production" should "answer a column, round-trip, and reserve lp" in {
     val e = parse("lp([[-3], [-5]], [[1, 0], [0, 2], [3, 2]], [[4], [12], [18]], 0, inf)")
     e.eval(env) match
