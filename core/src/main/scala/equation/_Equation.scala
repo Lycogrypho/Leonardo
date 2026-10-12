@@ -41,6 +41,9 @@ private[equation] def compareSides(
       val equal = x.rows == y.rows && x.cols == y.cols &&
         x.toVector.zip(y.toVector).forall((a, b) => math.abs(a - b) <= tolerance)
       Right(_Bool(equal))
+    // F_0008: an interval side is equal for every pair of points, for none, or unknown.
+    case (Right(av: _Value), Right(bv: _Value)) if av.isInstanceOf[_Interval] || bv.isInstanceOf[_Interval] =>
+      Right(_Interval.equal(av, bv, tolerance).fold(_Truth.Unknown: _Value)(_Bool(_)))
     // Both sides are concrete: for-comprehension extracts (re,im) via _Complex.parts;
     // None on non-numeric values -> close = None -> stays symbolic. No double-call of parts.
     case (Right(av: _Value), Right(bv: _Value)) =>

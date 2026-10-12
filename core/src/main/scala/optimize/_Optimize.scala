@@ -185,6 +185,134 @@ case class _QP(h: _Expression, f: _Expression, a: _Expression, b: _Expression,
           case Left(detail) => Left(QpFailure.InvalidInput(detail))
           case Right((fv, in, eg, lo, hi)) => qpSolve(hm, fv, in, eg, lo, hi, Set.empty, env)
 
+/** `nlp(f, [[x], [y]], x0, g, h, method)` and `nlp(f, [[x], [y]], x0, g, h, lb, ub, method)` —
+ *  a KKT point of `min f` subject to `g ≤ 0`, `h = 0` and `lb ≤ x ≤ ub`, as an `n×1` column
+ *  (F_0066, MPC T3-02).
+ *
+ *  The variables are a column of names, the `minimize` shape; a constraint group is a column, one
+ *  expression, or `0` when absent (the `kkt` reading: a cell means `g ≤ 0` or `h = 0`, or is
+ *  written as a relation `l <= r`, `l >= r`, `l = r`); bounds are a number for every variable
+ *  or a column, `-inf`/`inf` for none (the `qp` reading). Declines — stays symbolic — whenever
+ *  [[nlpSolve]] does; the REPL appends why.
+ *
+ *  @param f      the objective
+ *  @param vars   the variables, in the order of `x0`
+ *  @param x0     the starting point: an `n×1` column, or a number when `n = 1`
+ *  @param g      the inequality group
+ *  @param h      the equality group
+ *  @param bounds the lower and upper bounds
+ *  @param method the method, always named
+ */
+case class _Nlp(f: _Expression, vars: Vector[_Variable], x0: _Expression, g: _Expression, h: _Expression,
+                bounds: Option[(_Expression, _Expression)], method: NlpMethod) extends _Expression:
+  override def toString: String =
+    val vs = vars.map(v => s"[${v.variable}]").mkString("[", ", ", "]")
+    val bs = bounds.fold("")((lo, hi) => s", $lo, $hi")
+    s"nlp($f, $vs, $x0, $g, $h$bs, ${NlpMethod.keyword(method)})"
+  override def children: List[_Expression] =
+    f :: x0 :: g :: h :: bounds.toList.flatMap((lo, hi) => List(lo, hi))
+  override def rebuild(c: List[_Expression]): _Expression =
+    _Nlp(c.head, vars, c(1), c(2), c(3), bounds.map(_ => (c(4), c(5))), method)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    detailed(env).fold(_ => Left(this), r => Right(_MatrixValue(r.x.size, 1, r.x.toArray)))
+
+  /** The solver's full answer, or why there is none; what the REPL queries (F_0052 Decision A). */
+  def detailed(env: Environment): Either[NlpFailure, NlpResult] =
+    val n = vars.size
+    val read = for
+      start <- columnOf(x0, n, env).toRight(s"the starting point must be a numeric column of $n entries")
+      gs    <- Constraints.inequalities(g).toRight("the inequality group holds a strict inequality or an equation; " +
+                 "write each as an expression meaning <= 0, or as l <= r or l >= r")
+      hs    <- Constraints.equalities(h).toRight("the equality group holds an inequality")
+      box   <- bounds match
+                 case None           => Right(None)
+                 case Some((lo, hi)) =>
+                   (boundsOf(lo, n, env), boundsOf(hi, n, env)) match
+                     case (Some(l), Some(u)) => Right(Some((l, u)))
+                     case _                  => Left(s"each bound must be a number or a column of $n entries")
+    yield (start, gs, hs, box)
+    read match
+      case Left(detail) => Left(NlpFailure.InvalidInput(detail))
+      case Right((start, gs, hs, box)) => nlpSolve(f, vars, start, gs, hs, box, method, env)
+
+
+/** `lp(f, A, b[, Aeq, beq], lb, ub)` — the linear program `min fᵀx` subject to `A x ≤ b`,
+ *  `Aeq x = beq`, `lb ≤ x ≤ ub`, solved **exactly** (F_0011).
+ *
+ *  `qp`'s shape without the Hessian: an absent group is `0`, an absent bound `-inf` / `inf`, a
+ *  number for `lb` or `ub` applies to every variable.  Answers the minimiser as a column —
+ *  exact cells when every coefficient was exact — and stays as written when [[lpSolve]]
+ *  declines; the REPL appends why, or the optimal value and the active constraints.
+ *
+ *  @param f  the cost vector
+ *  @param a  the inequality matrix, or `0`
+ *  @param b  its right-hand side, or `0`
+ *  @param eq the equality matrix and right-hand side, when given
+ *  @param lb the lower bounds
+ *  @param ub the upper bounds
+ */
+case class _LP(f: _Expression, a: _Expression, b: _Expression, eq: Option[(_Expression, _Expression)],
+               lb: _Expression, ub: _Expression) extends _Expression:
+  override def toString: String =
+    val es = eq.fold("")((p, q) => s", $p, $q")
+    s"lp($f, $a, $b$es, $lb, $ub)"
+  override def children: List[_Expression] =
+    List(f, a, b) ++ eq.toList.flatMap((p, q) => List(p, q)) ++ List(lb, ub)
+  override def rebuild(c: List[_Expression]): _Expression =
+    if eq.isDefined then _LP(c.head, c(1), c(2), Some((c(3), c(4))), c(5), c(6))
+    else _LP(c.head, c(1), c(2), None, c(3), c(4))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    detailed(env).fold(_ => Left(this), r => _Matrix(r.x.size, 1, r.x).eval(env))
+
+  /** The solver's full answer, or why there is none; what the REPL queries. */
+  def detailed(env: Environment): Either[LpFailure, LpResult] =
+    def column(e: _Expression): Option[Vector[_Value]] =
+      valueCells(e, env).collect { case (r, c, cells) if r == 1 || c == 1 => cells }
+    def group(m: _Expression, rhs: _Expression, n: Int): Option[Option[(Vector[Vector[_Value]], Vector[_Value])]] =
+      (m.eval(env), rhs.eval(env)) match
+        case (Right(_Number(0.0)), Right(_Number(0.0))) => Some(None)
+        case _ =>
+          for
+            (rows, cols, cells) <- valueCells(m, env)
+            if cols == n
+            bs <- column(rhs)
+            if bs.size == rows
+          yield Some((cells.grouped(n).toVector, bs))
+    def bounds(e: _Expression, n: Int): Option[Vector[_Value]] =
+      valueCells(e, env) match
+        case Some((1, 1, Vector(v))) => Some(Vector.fill(n)(v))
+        case _                       => column(e).filter(_.size == n)
+    column(f) match
+      case None => Left(LpFailure.InvalidInput("f must be a numeric column"))
+      case Some(fv) =>
+        val n = fv.size
+        val read = for
+          in <- group(a, b, n).toRight(s"A and b must be a numeric matrix with $n columns and a matching column, or 0 and 0 for none")
+          eg <- eq.fold(Right(None))((p, q) => group(p, q, n).toRight(
+                  s"Aeq and beq must be a numeric matrix with $n columns and a matching column, or 0 and 0 for none"))
+          lo <- bounds(lb, n).toRight(s"lb must be a number or a column of $n entries")
+          hi <- bounds(ub, n).toRight(s"ub must be a number or a column of $n entries")
+        yield (in, eg, lo, hi)
+        read match
+          case Left(detail)              => Left(LpFailure.InvalidInput(detail))
+          case Right((in, eg, lo, hi)) => lpSolve(fv, in, eg, lo, hi)
+
+/** The cells of an evaluated operand as values, **keeping exactness**: a number is `1×1`, a dense
+ *  matrix reads as `Double`s, and a matrix with exact cells — which stays a symbolic `_Matrix` —
+ *  keeps its rationals, where [[numericMatrix]] would demote them. */
+private def valueCells(e: _Expression, env: Environment): Option[(Int, Int, Vector[_Value])] =
+  def number(x: _Expression): Option[_Value] = x match
+    case r: _Rational => Some(r)
+    case _Number(d)   => Some(_Number(d))
+    case _            => None
+  e.eval(env) match
+    case Right(m: _MatrixValue)  => Some((m.rows, m.cols, m.toVector.map(_Number(_))))
+    case Right(v)                => number(v).map(x => (1, 1, Vector(x)))
+    case Left(m: _MatrixShaped)  => sequence(m.children.map(number)).map(cs => (m.rows, m.cols, cs.toVector))
+    case _                       => None
+
 /** A numeric matrix, dense or exact (demoted, the `lu` precedent); a number is `1×1`. */
 private[optimize] def numericMatrix(e: _Expression, env: Environment): Option[_MatrixValue] =
   e.eval(env) match

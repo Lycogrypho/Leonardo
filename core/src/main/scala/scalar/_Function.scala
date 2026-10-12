@@ -141,6 +141,19 @@ abstract class _Function extends _Expression:
         _Rational.fromApproximation(d, env.workingPrecision).map(Right(_)).getOrElse(Left(this))
       case other => other
 
+  /** The image of an interval argument (F_0008), for the functions [[core._Interval.function]]
+   *  has a rule for; any other function, or an interval outside the domain, stays as written.
+   *
+   *  @param i   the interval argument
+   *  @param env supplies the working precision for an exact interval
+   *  @return the image interval, or `Left` of this node over `i`
+   */
+  protected def intervalImage(i: _Interval, env: Environment): Either[_Expression, _Value] =
+    val image = this match
+      case n: NamedFunction => _Interval.function(n.name, i, env)
+      case _                => None
+    image.map(Right(_)).getOrElse(Left(rebuild(List(i))))
+
   /** Applies this single-argument function element-wise over a symbolic matrix argument.
    *
    *  Rebuilds the matrix with this function wrapped around each cell and re-evaluates.
@@ -178,6 +191,7 @@ case class Exp(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, exp)
       case Right(c: _Complex) => _Complex.expc(c).map(Right(_)).getOrElse(Left(Exp(c)))
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Exp(other.toExpression))
 
 
@@ -213,6 +227,7 @@ case class Ln(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, log)
       case Right(c: _Complex) => _Complex.logc(c).map(Right(_)).getOrElse(Left(Ln(c)))
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Ln(other.toExpression))
 
 
@@ -240,6 +255,9 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
       // Symbolic matrix argument (any base): distribute log_base element-wise.
       case (Left(m: _MatrixShaped), rb) =>
         m.rebuild(m.children.map(el => LogBase(el, rb.toExpression))).eval(env)
+      // F_0008: an interval argument (or base), as ln(x) / ln(b) over rigorous bounds.
+      case (Right(ev: _Value), Right(bv: _Value)) if ev.isInstanceOf[_Interval] || bv.isInstanceOf[_Interval] =>
+        _Interval.logBase(ev, bv, env).map(Right(_)).getOrElse(Left(LogBase(ev, bv)))
       // Exact tier: two cases, not a guard -- the first catches an exact argument under
       // any base, so by the second the argument is known inexact and only the base is exact.
       case (Right(re: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(re.toDouble), bv), env)
@@ -276,6 +294,7 @@ case class Abs(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, abs)
       case Right(c: _Complex)      => Right(_Number(hypot(c.re, c.im)))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other                   => Left(Abs(other.toExpression))
 
 
@@ -301,6 +320,7 @@ case class Sin(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, sin)
       case Right(c: _Complex) => _Complex.sinc(c).map(Right(_)).getOrElse(Left(Sin(c)))
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Sin(other.toExpression))
 
 
@@ -326,6 +346,7 @@ case class Cos(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, cos)
       case Right(c: _Complex) => _Complex.cosc(c).map(Right(_)).getOrElse(Left(Cos(c)))
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Cos(other.toExpression))
 
 
@@ -356,6 +377,7 @@ case class Tg(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, tan)
       case Right(c: _Complex) => _Complex.tanc(c).map(Right(_)).getOrElse(Left(Tg(c)))
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Tg(other.toExpression))
 
 
@@ -384,6 +406,7 @@ case class Asin(e: _Expression) extends _Function with NamedFunction:
         if r.isNaN then Left(this) else Right(_Number(r))
       case Right(mv: _MatrixValue) => mapMatrix(mv, asin)
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Asin(other.toExpression))
 
 
@@ -411,6 +434,7 @@ case class Acos(e: _Expression) extends _Function with NamedFunction:
         if r.isNaN then Left(this) else Right(_Number(r))
       case Right(mv: _MatrixValue) => mapMatrix(mv, acos)
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Acos(other.toExpression))
 
 
@@ -436,6 +460,7 @@ case class Atan(e: _Expression) extends _Function with NamedFunction:
       case Right(_Number(x)) => Right(_Number(atan(x)))
       case Right(mv: _MatrixValue) => mapMatrix(mv, atan)
       case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other             => Left(Atan(other.toExpression))
 
 
@@ -467,6 +492,7 @@ case class Sinh(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, math.sinh)
       case Right(c: _Complex)      => _Complex.sinhc(c).map(Right(_)).getOrElse(Left(Sinh(c)))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other                   => Left(Sinh(other.toExpression))
 
 
@@ -483,6 +509,7 @@ case class Cosh(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, math.cosh)
       case Right(c: _Complex)      => _Complex.coshc(c).map(Right(_)).getOrElse(Left(Cosh(c)))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other                   => Left(Cosh(other.toExpression))
 
 
@@ -499,6 +526,7 @@ case class Tanh(e: _Expression) extends _Function with NamedFunction:
       case Right(mv: _MatrixValue) => mapMatrix(mv, math.tanh)
       case Right(c: _Complex)      => _Complex.tanhc(c).map(Right(_)).getOrElse(Left(Tanh(c)))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case Right(i: _Interval) => intervalImage(i, env)
       case other                   => Left(Tanh(other.toExpression))
 
 

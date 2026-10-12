@@ -236,6 +236,96 @@ case class _Rank(m: _Expression, tol: Option[_Expression] = None) extends _Expre
       case _ => svdDecline(m.eval(env))
 
 
+/** Which subspace a [[_NullSpace]] node asks for. */
+enum Subspace:
+  /** `nullspace(A)`: the null space, `{x : A·x = 0}`, spanned by the trailing columns of the full `V`. */
+  case Null
+  /** `orth(A)`: the range (column space), spanned by the leading columns of `U`. */
+  case Range
+
+object Subspace:
+  /** The grammar keyword for a subspace.
+   *  @param s the subspace
+   *  @return `nullspace` or `orth`
+   */
+  def keyword(s: Subspace): String = s match
+    case Null  => "nullspace"
+    case Range => "orth"
+
+/** An orthonormal basis of the null space or of the range of `a`, as columns (F_0087).
+ *
+ *  Both are read off **one** SVD at **one** rank, `numericalRank` at `relTol` — the definition
+ *  `rank` and `pinv` already share, so `cols(nullspace) = n − rank` and `cols(orth) = rank` hold
+ *  by construction rather than by agreement. The null space needs the **full** `V` (an `m < n`
+ *  matrix's economy `V` has only `m` columns); the range needs only the economy `U`.
+ *
+ *  @param a      the matrix
+ *  @param which  the subspace
+ *  @param relTol the tolerance relative to the largest singular value
+ *  @return `Some(Some(B))` for a basis `B`, `Some(None)` for the trivial subspace, `None` when the
+ *          decomposition declines
+ */
+private[leonardo] def subspaceBasis(a: _MatrixValue, which: Subspace, relTol: Double): Option[Option[_MatrixValue]] =
+  svdFactors(a, full = which == Subspace.Null).map { (u, s, v) =>
+    val sigma = (0 until math.min(s.rows, s.cols)).map(i => s(i, i)).toVector
+    val r     = numericalRank(sigma, relTol)
+    which match
+      case Subspace.Null  => Option.when(r < a.cols)(ofColumns(columnsOf(v).drop(r), a.cols))
+      case Subspace.Range => Option.when(r > 0)(ofColumns(columnsOf(u).take(r), a.rows))
+  }
+
+/** An orthonormal basis of the null space, `nullspace(A)`, or of the range, `orth(A)`, each with
+ *  `rank`'s optional relative tolerance (F_0087).
+ *
+ *  The answer is a matrix whose columns are the basis. **A trivial subspace answers `false`** —
+ *  the null space of a full-column-rank matrix, the range of the zero matrix — since a matrix
+ *  cannot have zero columns, and `false` is what `tfpoles` and `stationary` answer for provably
+ *  none. The zero matrix's null space is the whole space. The basis is unique only up to
+ *  rotation; its columns come from the SVD's `V` or `U`. An exact matrix demotes and a symbolic
+ *  one stays symbolic, the `rank` rules; a tolerance that is not a number in `[0, 1)` leaves the
+ *  call as written, with the reason in [[declineReason]].
+ *
+ *  It is the null-space method's `N` in `z = z₀ + N·w` for equality constraints, which is why it
+ *  was filed (F_0061 Decision A, for F_0074 and F_0066).
+ *
+ *  @param which the subspace
+ *  @param m     the matrix expression
+ *  @param tol   the optional relative tolerance
+ */
+case class _NullSpace(which: Subspace, m: _Expression, tol: Option[_Expression] = None) extends _Expression:
+  override def toString: String =
+    tol.fold(s"${Subspace.keyword(which)}($m)")(t => s"${Subspace.keyword(which)}($m, $t)")
+  override def children: List[_Expression] = m :: tol.toList
+  override def rebuild(c: List[_Expression]): _Expression = _NullSpace(which, c.head, c.tail.headOption)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val r  = m.eval(env)
+    val rt = tol.map(_.eval(env))
+    val relTol = rt match
+      case None                                       => Some(rankTolerance(env))
+      case Some(Right(_Number(t))) if t >= 0 && t < 1 => Some(t)
+      case _                                          => None
+    (for
+      t <- relTol
+      a <- _MatrixValue.ofEvaluated(r)
+      b <- subspaceBasis(a, which, t)
+    yield b) match
+      case Some(Some(b)) => Right(b)
+      case Some(None)    => Right(_Bool(false))
+      case None          => Left(unevaluated(r, this, _NullSpace(which, r.toExpression, rt.map(_.toExpression))))
+
+  /** Why this call stays unevaluated: a tolerance that is a number outside `[0, 1)`, or a real
+   *  matrix refused by the decomposition (see [[svdDecline]]).
+   *  @param env the evaluation environment
+   *  @return the reason, or `None`
+   */
+  def declineReason(env: Environment): Option[String] =
+    tol.map(_.eval(env)) match
+      case Some(Right(_Number(t))) if !(t >= 0 && t < 1) =>
+        Some("the tolerance must be a number in [0, 1), relative to the largest singular value")
+      case _ => svdDecline(m.eval(env))
+
+
 /** 2-norm condition number: `cond(A)`, `σ_max/σ_min` over the `min(m, n)` singular values
  *  (F_0061), `inf` for a numerically singular matrix.
  *

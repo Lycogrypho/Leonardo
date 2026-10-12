@@ -8,6 +8,10 @@ nav_order: 6
 # Matrices
 <div style="clear:both"></div>
 
+*Calling this from Scala? **[L11 — Matrices](lessons/l11.md)** shows the API's shape — the two
+carriers, the parser's structural dispatch, and decompositions that answer a row. This page is
+the reference.*
+
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.core.*
 import it.grypho.scala.leonardo.scalar.*
@@ -235,7 +239,7 @@ Parser.parse("chol([[1, 2], [2, 1]])").get.eval(env).toExpression.toString
 In exact mode the factor is computed over the rationals and stays exact; a pivot whose square
 root is irrational takes it at the working precision, as every irrational in the exact tier does.
 
-## Singular values: `svd`, `pinv`, `rank`, `cond`
+## Singular values: `svd`, `pinv`, `rank`, `cond`, `nullspace`, `orth`
 
 `svd(A)` returns the row `[[U, S, V]]` with `A = U·S·Vᵀ` — the
 [singular value decomposition](https://en.wikipedia.org/wiki/Singular_value_decomposition), the
@@ -276,6 +280,22 @@ stays finite until the smallest singular value is lost in rounding (`max(m, n)·
 
 ```scala mdoc
 Parser.parse("cond([[1, 0], [0, 0.001]])").get.eval(env).toExpression.toString
+```
+
+Two bases are read off the same decomposition, at the same rank. `nullspace(A)` returns an
+orthonormal basis of the null space `{x : A·x = 0}` as the columns of an `n×(n − rank)` matrix,
+and `orth(A)` an orthonormal basis of the range as an `m×rank` one; both take `rank`'s optional
+tolerance, so `cols(nullspace(A)) + cols(orth(A)) = n` always holds. A subspace with no basis —
+the null space of a full-column-rank matrix, the range of the zero matrix — answers `false`, since
+a matrix cannot have zero columns. A basis is unique only up to rotation, so check one by what it
+does, not by its entries:
+
+```scala mdoc
+Parser.parse("nullspace([[1, 2, 3], [2, 4, 6], [1, 0, 1]])").get.eval(env).toExpression.toString
+```
+
+```scala mdoc
+Parser.parse("nullspace([[1, 0], [0, 1]])").get.eval(env).toExpression.toString
 ```
 
 The decomposition is bounded by `max(m, n)·min(m, n)² ≤ 10⁷` — a 200×200 or a 1000×100 matrix —

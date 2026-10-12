@@ -11,7 +11,7 @@ import latex.ToLatex
 import parser.Parser
 import optimize.{_Stationary, _Minimize, MinimizeFailure, MinimizeMethod, StationaryKind,
                  classifyStationary, numericPoints, _QP, QpFailure, QpConstraint,
-                 _LsqFit, _CurveFit, LsqFailure, LsqResult}
+                 _LsqFit, _CurveFit, LsqFailure, LsqResult, _Nlp, NlpFailure, NlpResult, _LP, LpFailure}
 import ode.{_ODE, _ODESystem, _OdeStep, _OdeSolve, OdeFailure}
 
 import scala.util.control.NonFatal
@@ -353,6 +353,10 @@ final class Session:
       s"(${_Number.render(c.re)} $sign ${_Number.render(math.abs(c.im))} * i)"
     // The degree itself decides `unknown`, not its rounding: 0.5000001 is not the midpoint.
     case t: _Truth => if t.d == 0.5 then "unknown" else s"truth(${_Number.render(t.d)})"
+    // F_0008: the endpoints in full, never the outward-rounded display -- a reload must give
+    // back the same bounds, not wider ones. An exact interval is grouped under `exact on`
+    // (`_Rational.containsExact` sees inside it), so `[1/3, 1/2]` reloads exact.
+    case i: _Interval => s"[${serializeValue(i.lo)}, ${serializeValue(i.hi)}]"
     // _Number.render, not d.toString: a bare Double renders the JavaScript way under Scala.js
     // ("3" for "3.0"), and this is the `:save` path -- so a session saved in a browser would
     // not be byte-identical to the same session saved on the JVM (issue F_0003).
@@ -669,6 +673,8 @@ final class Session:
       case n: _Number      => Some(n.display(precision))
       case c: _Complex     => Some(c.display(precision))
       case t: _Truth       => Some(t.display(precision))
+      // F_0008: an interval displays rounded OUTWARD, so what is shown still contains it.
+      case i: _Interval    => Some(i.display(precision))
       case m: _MatrixValue =>
         Some(marked(renderMatrix(Vector.tabulate(m.rows, m.cols)((i, j) => _Number(m(i, j)).display(precision)), pretty)))
       case m: _Matrix      =>
@@ -910,6 +916,13 @@ final class Session:
       // the active set as information, which is what an experimenter at the prompt wants of it.
       case (q: _QP, Left(_))  => q.detailed(env).left.toOption.map(why => s"qp declined: ${describeQp(why)}")
       case (q: _QP, Right(_)) => q.detailed(env).toOption.map(r => activeConstraints(r.active))
+      // F_0011: a linear program says why it declined, or its optimal value and what binds.
+      case (l: _LP, Left(_: _LP)) => l.detailed(env).left.toOption.map(w => s"lp declined: ${describeLp(w)}")
+      case (l: _LP, _) =>
+        l.detailed(env).toOption.map(r => s"lp: optimal value ${formatExpression(r.objective, false)}; ${activeConstraints(r.active)}")
+      // F_0066: a nonlinear program says why it declined, or how it got there and what binds.
+      case (n: _Nlp, Left(_: _Nlp)) => n.detailed(env).left.toOption.map(w => s"nlp declined: ${describeNlp(w)}")
+      case (n: _Nlp, Right(_))      => n.detailed(env).toOption.map(nlpNote(n.vars, _))
       // F_0063: a fit says how it got there -- iterations, residual, what a bound held -- or why
       // it declined; the success note re-runs the solve, as qp's does.
       case (l: _LsqFit, Left(_: _LsqFit)) => l.detailed(env).left.toOption.map(w => s"lsqfit declined: ${describeLsq(w)}")
@@ -931,6 +944,8 @@ final class Session:
       case (p: matrix._PInv, Left(_: matrix._PInv)) => p.declineReason(env).map(w => s"pinv declined: $w")
       case (r: matrix._Rank, Left(_: matrix._Rank)) => r.declineReason(env).map(w => s"rank declined: $w")
       case (c: matrix._Cond, Left(_: matrix._Cond)) => c.declineReason(env).map(w => s"cond declined: $w")
+      case (n: matrix._NullSpace, Left(_: matrix._NullSpace)) =>
+        n.declineReason(env).map(w => s"${matrix.Subspace.keyword(n.which)} declined: $w")
       // F_0059: a linearisation refused at its operating point names the entry and the reason.
       case (l: control._Linearize, Left(_: control._Linearize)) =>
         l.detailed(env).left.toOption.map(w => s"linearize declined: ${describeLinearize(w)}")
@@ -953,6 +968,9 @@ final class Session:
       // F_0064: a simulation refused names the shape, the size or the step it overflowed at.
       case (n: control._Dlsim, Left(_: control._Dlsim)) =>
         n.detailed(env).left.toOption.map(w => s"dlsim declined: ${describeSim(w)}")
+      // F_0065: a Riccati-family call says why -- above all when no stabilising solution exists.
+      case (n: control._Riccati, Left(_: control._Riccati)) =>
+        n.detailed(env).left.toOption.map(w => s"${control.RiccatiKind.keyword(n.kind)} declined: ${describeRiccati(w)}")
       // F_0067: a draw or a PRBS that could not answer names the argument at fault.
       case (n: probability._Draw, Left(_: probability._Draw)) =>
         n.detailed(env).left.toOption.map(w => s"draw declined: ${describeSampling(w)}")
@@ -1028,6 +1046,19 @@ final class Session:
     case control.SimFailure.Overflow(k)           =>
       s"the simulation left the finite numbers at step $k: the model is unstable over this horizon"
 
+  /** A [[control.RiccatiFailure]] in prose. */
+  private def describeRiccati(why: control.RiccatiFailure): String = why match
+    case control.RiccatiFailure.ShapeMismatch(detail) => detail
+    case control.RiccatiFailure.NotNumeric(what)      => what
+    case control.RiccatiFailure.NotSymmetric(what)    => s"$what must be symmetric"
+    case control.RiccatiFailure.NotDefinite(what) =>
+      if what == "Q" || what == "Qw" then s"$what must be positive semidefinite" else s"$what must be positive definite"
+    case control.RiccatiFailure.NoStabilisingSolution =>
+      "no stabilising solution exists: (A, B) is not stabilisable, (A, Q^1/2) has an unobservable mode on the unit circle, or (for dlyap) A is not stable"
+    case control.RiccatiFailure.Uncertified(r) =>
+      s"the solution failed its residual certificate (relative residual ${_Number.render(r)})"
+    case control.RiccatiFailure.TooLarge(n) => s"the state dimension $n is past the cap of ${control.MaxRiccatiOrder}"
+
   /** A [[probability.SamplingFailure]] in prose. */
   private def describeSampling(why: probability.SamplingFailure): String = why match
     case probability.SamplingFailure.NotADistribution => "the first argument is not a distribution with numeric parameters"
@@ -1063,9 +1094,44 @@ final class Session:
     case QpFailure.NotStrictlyConvex    =>
       "H is positive semidefinite but not definite: some direction costs nothing, and qp needs H positive definite"
     case QpFailure.Infeasible           => "the constraints admit no point"
+    case QpFailure.Unbounded            =>
+      "the objective falls without bound along a direction H gives no curvature and no constraint blocks"
     case QpFailure.MaxIterations(limit) => s"no optimum within $limit iterations"
     case QpFailure.Uncertified(r)       =>
       s"the final point failed the KKT check (relative residual ${_Number.render(r)})"
+
+  /** An [[LpFailure]] in prose: the two verdicts the exact arithmetic proves, said as proofs. */
+  private def describeLp(why: LpFailure): String = why match
+    case LpFailure.InvalidInput(detail) => detail
+    case LpFailure.Infeasible           => "no point satisfies the constraints (proved: the arithmetic is exact)"
+    case LpFailure.Unbounded            => "the objective decreases without bound on the feasible set (proved)"
+    case LpFailure.MaxIterations(limit) => s"no optimum within $limit pivots"
+    case LpFailure.TooLarge(bits)       =>
+      s"an exact coefficient grew to $bits bits, past the cap: exact arithmetic does not round, it grows"
+
+  /** An [[NlpFailure]] in prose.  Residuals are rendered in full, as gradient norms are. */
+  private def describeNlp(why: NlpFailure): String = why match
+    case NlpFailure.InvalidInput(detail) => detail
+    case NlpFailure.NotEvaluable         => "the objective, a constraint or a derivative is not a real number at an iterate"
+    case NlpFailure.Infeasible(k)        =>
+      s"no feasible point was found (iteration $k); a local method cannot prove there is none, but gives no answer"
+    case NlpFailure.Subproblem(k, w)     => s"the quadratic subproblem at iteration $k declined: ${describeQp(w)}"
+    case NlpFailure.LineSearchFailed(k)  => s"the line search found no acceptable step at iteration $k"
+    case NlpFailure.MaxIterations(limit, r) =>
+      s"the iteration limit ($limit) was reached with the KKT residual at ${_Number.render(r)}"
+    case NlpFailure.Stalled(r)           =>
+      s"progress stopped with the KKT residual at ${_Number.render(r)}, above the precision's tolerance"
+
+  /** A solved nonlinear program in prose: the iterations, the binding inequalities (one-based)
+   *  with their multipliers, and the variables a bound holds. */
+  private def nlpNote(vars: Vector[_Variable], r: NlpResult): String =
+    val base = s"nlp: a KKT point after ${r.iterations} iterations"
+    val ineq =
+      if r.active.isEmpty then "no inequality is active"
+      else "active: inequality " + r.active.map(j =>
+        s"${j + 1} (multiplier ${formatExpression(_Number(r.inequalityMultipliers(j)), false)})").mkString(", ")
+    val held = Option.when(r.bounded.nonEmpty)(s"; ${r.bounded.map(vars(_).variable).mkString(", ")} held at a bound")
+    s"$base; $ineq${held.getOrElse("")}"
 
   /** The active constraints in words, one-based: `active: rows 1 and 2 of A; z2 at its lower bound`. */
   private def activeConstraints(active: Vector[QpConstraint]): String =

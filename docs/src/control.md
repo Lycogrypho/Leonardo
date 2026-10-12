@@ -305,6 +305,43 @@ stepResponse(tf("1/(s^2 + 3*s + 2)"), s, t).eval(env.withBinding("t", _Number(0.
 An unstable model run long enough leaves the finite numbers; `dlsim` then declines and names the
 step, rather than answering with a matrix of `Infinity`.
 
+## LQR and the Kalman filter
+
+`dare(A, B, Q, R)` solves the
+[discrete algebraic Riccati equation](https://en.wikipedia.org/wiki/Algebraic_Riccati_equation)
+`AᵀPA − P − AᵀPB(R + BᵀPB)⁻¹BᵀPA + Q = 0` for its **stabilising** solution, and
+`dlqr(A, B, Q, R)` returns `[[K, P]]`, the gain of the law **`u = −K·x`** that minimises
+`Σ xᵀQx + uᵀRu`. The sign is stated because the literature also writes `u = K·x`. The scalar
+case `A = B = Q = R = 1` gives the golden ratio:
+
+```scala mdoc
+tf("dlqr(1, 1, 1, 1)").eval(env).toExpression.toString
+```
+
+The solver is structure-preserving doubling, which needs only products and inverses. Its answer is
+**certified** twice: the equation's residual against the `=` tolerance, and the closed loop `A − B·K`
+proved stable. So a problem with no stabilising solution is refused, never answered with one that
+does not stabilise: `(A, B)` not stabilisable, or an unstable mode `Q` does not penalise. `R` must be
+symmetric positive definite and `Q` symmetric positive semidefinite. `dlyap(A, Q)` solves the Stein
+equation `A·X·Aᵀ − X + Q = 0` for a stable `A`.
+
+The Kalman filter is the same equation in its dual form. `kalmanGain(A, C, Qw, Rv)` returns
+`[[M, P]]`: the steady-state measurement-update gain and the a priori error covariance. The model is
+`x[k+1] = A·x + B·u + w`, `y = C·x + D·u + v`, with process noise `w ~ N(0, Qw)` and measurement noise
+`v ~ N(0, Rv)`. `kalmanStep(xhat, P, u, y, sys, Qw, Rv)` takes one **update, then predict** step on the
+model row and returns `[[xhat', P']]`, the prior for the next step, so its output is its next
+input. Here a constant state, believed to be `0` with variance `100`, is measured as `2.9` with
+unit noise; one step moves the estimate almost all the way to the measurement and shrinks
+the variance below one:
+
+```scala mdoc
+val one = tf("kalmanStep(0, 100, 0, 2.9, stateSpace(1, 0, 1, 0), 0, 1)").eval(env).toExpression
+one.toString
+```
+
+The covariance update is the Joseph form, which stays symmetric positive semidefinite under
+rounding where the textbook `(I − M·C)·P` does not.
+
 ## Discrete time
 
 Discretisation always names its method — the
@@ -330,6 +367,30 @@ val back = c2d(tf("2/(s+3)"), s, z, 0.05, Tustin).flatMap(d2c(_, z, s, 0.05, Tus
 back.map(_.toString)
 back.map(_.eval(env.withBinding("s", _Number(1.0))))    // 2/(1+3) = 0.5
 ```
+
+Five more methods cover the rest of the usual menu, each with its convention stated:
+
+| Method | Rule | Note |
+|---|---|---|
+| `Foh` | `(z − 1)²/(Ts·z) · Z{L⁻¹[G/s²]}`, the triangle hold | keeps the DC gain |
+| `ImpulseInvariant` | `Ts · Z{g(n·Ts)}` | **aliases**: faithful only well below `π/Ts`; needs no direct feedthrough |
+| `MatchedPoleZero` | roots mapped by `e^(s·Ts)`, all but one zero at infinity to `z = −1` | gain matched at low frequency, integrators included |
+| `ForwardEuler` | `s = (z − 1)/Ts` | **can make a stable plant unstable**: pole `p` goes to `1 + p·Ts` |
+| `BackwardEuler` | `s = (z − 1)/(Ts·z)` | keeps a stable plant stable |
+
+Prewarped Tustin is not a method of its own but Tustin with a frequency, `c2dPrewarped(G, s, z,
+Ts, w)`. It matches the continuous response *exactly* at `w`, where plain Tustin, which squeezes
+the whole frequency axis into the Nyquist band, puts a filter's corner somewhere else. Forward
+Euler shows its caveat on a fast pole:
+
+```scala mdoc
+c2d(tf("1/(s + 30)"), s, z, 0.1, ForwardEuler).flatMap(isStableDiscrete(_, z))
+c2d(tf("1/(s + 30)"), s, z, 0.1, BackwardEuler).flatMap(isStableDiscrete(_, z))
+```
+
+`d2c` inverts the three substitutions — Tustin, both Euler methods — and `d2cPrewarped` the
+prewarped one; the response equivalences and matched pole-zero would need a logarithm and are
+declined.
 
 Discrete stability is the **unit circle**, not the left half-plane — applying the continuous
 rule to a z-domain function inverts the answer rather than degrading it:
@@ -400,8 +461,10 @@ builds a zero matrix and `zeros(G, s)` could not be told from `zeros(3, n)`; in 
 the names `poles`/`zeros` used above. The roots come back as a row sorted by real part, or
 `false` when there are provably none. Every analysis word reads `G` with the session's bound
 parameters but never with a binding of the frequency variable itself, and stays as written with
-a note when it cannot answer. The `c2d` method is a word in that slot only — `zoh` and `tustin`
-remain free as names.
+a note when it cannot answer. The `c2d` method is a word in that slot only — `zoh`, `tustin`,
+`foh`, `impulse`, `matched`, `forward` and `backward` — and the first six stay free as names
+(`impulse` names the impulse response elsewhere). `tustin` may be followed by a prewarp
+frequency: `c2d(G, s, z, Ts, tustin, w)`.
 
 Note that `step` is **arity-overloaded**: `step(x)` is the
 [Heaviside unit step](https://en.wikipedia.org/wiki/Heaviside_step_function), while

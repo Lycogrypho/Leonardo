@@ -13,13 +13,15 @@
 # every sample renders as a paragraph with the fence markers showing, and no evaluated result
 # appears at all.  A preview built that way is misleading in exactly the places that matter.
 
-# THERE IS NO Gemfile.lock YET (issue 2.14, open half).  Every build therefore resolves
-# these ranges fresh, which means a malicious patch release inside `~> 4.3` would be
-# installed silently.  Dependabot tracks this directory (`.github/dependabot.yml`, bundler
-# ecosystem) but against a Gemfile alone it can only react to a release that falls OUTSIDE
-# the constraint.  When the lock lands it must be generated for `x86_64-linux` -- bundler
-# refuses a lock that does not list the runner's platform, so a Windows-generated one breaks
-# every Pages deploy.
+# THE LOCK IS COMMITTED (docs/Gemfile.lock, since 2026-09-15, closing issue 2.14), so every
+# Pages build installs exactly the gems it names, and Dependabot (`.github/dependabot.yml`,
+# bundler ecosystem) tracks the whole transitive closure, not just these ranges.
+#
+# REGENERATE IT ONLY THROUGH `.github/workflows/gemfile-lock.yml`, never with a local
+# `bundle lock`.  The workflow resolves on the Linux runner that consumes the lock, with the
+# `x86_64-linux` platform locked; bundler refuses a lock that does not list the runner's
+# platform, so a Windows-generated one breaks every Pages deploy.  The workflow uploads the
+# result as an artifact to commit by hand -- it deliberately holds no write permission.
 
 source "https://rubygems.org"
 

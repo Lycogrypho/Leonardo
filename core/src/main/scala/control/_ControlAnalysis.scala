@@ -118,28 +118,40 @@ case class _IsStable(g: _Expression, v: _Variable, discrete: Boolean = false) ex
     Option.when(verdict(env).isEmpty)(rootsDecline(resolved(g, v, env), v))
 
 
-/** `c2d(G, s, z, Ts, zoh | tustin)` — [[c2d]] at the prompt (F_0092). The method is a slot word,
- *  always written and **not reserved** (the `rk45`/`pbfgs` precedent), because the same plant
- *  discretised the two ways has different discrete poles.
- *  @param g      the continuous transfer function
- *  @param s      the continuous frequency variable
- *  @param z      the discrete variable of the result
- *  @param ts     the sample period, a positive number
- *  @param method [[Zoh]] or [[Tustin]] */
-case class _C2d(g: _Expression, s: _Variable, z: _Variable, ts: _Expression, method: DiscretisationMethod) extends _Expression:
+/** `c2d(G, s, z, Ts, method)` — [[c2d]] at the prompt (F_0092, F_0009). The method is a slot
+ *  word — `zoh`, `tustin`, `foh`, `impulse`, `matched`, `forward` or `backward` — always
+ *  written and **not reserved** (the `rk45`/`pbfgs` precedent), because the same plant
+ *  discretised two ways has different discrete poles.  `tustin` alone may be followed by a
+ *  prewarp frequency, [[c2dPrewarped]].
+ *  @param g       the continuous transfer function
+ *  @param s       the continuous frequency variable
+ *  @param z       the discrete variable of the result
+ *  @param ts      the sample period, a positive number
+ *  @param method  the method
+ *  @param prewarp the frequency Tustin is prewarped at, when given */
+case class _C2d(g: _Expression, s: _Variable, z: _Variable, ts: _Expression, method: DiscretisationMethod,
+                prewarp: Option[_Expression] = None) extends _Expression:
   override def toString: String =
-    s"c2d($g, $s, $z, $ts, ${if method == Zoh then "zoh" else "tustin"})"
-  override def children: List[_Expression] = List(g, ts)
-  override def rebuild(c: List[_Expression]): _Expression = _C2d(c.head, s, z, c(1), method)
+    s"c2d($g, $s, $z, $ts, ${DiscretisationMethod.keyword(method)}${prewarp.fold("")(w => s", $w")})"
+  override def children: List[_Expression] = List(g, ts) ++ prewarp.toList
+  override def rebuild(c: List[_Expression]): _Expression =
+    _C2d(c.head, s, z, c(1), method, prewarp.map(_ => c(2)))
 
-  /** The sample period, when it is a positive number. */
-  private def period(env: Environment): Option[Double] =
-    ts.eval(env) match
+  /** A positive finite number, when `e` evaluates to one. */
+  private def positive(e: _Expression, env: Environment): Option[Double] =
+    e.eval(env) match
       case Right(_Number(d)) if d > 0 && d.isFinite => Some(d)
       case _                                        => None
 
+  /** The discretisation, or `None`. */
+  private def converted(t: Double, env: Environment): Option[_Expression] =
+    val plant = resolved(g, s, env)
+    prewarp match
+      case None    => c2d(plant, s, z, t, method)
+      case Some(w) => positive(w, env).flatMap(c2dPrewarped(plant, s, z, t, _))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
-    period(env).flatMap(t => c2d(resolved(g, s, env), s, z, t, method)) match
+    positive(ts, env).flatMap(converted(_, env)) match
       case Some(v: _Value) => Right(v)
       case Some(e)         => Left(e)
       case None            => Left(this)
@@ -148,9 +160,16 @@ case class _C2d(g: _Expression, s: _Variable, z: _Variable, ts: _Expression, met
    *  @param env the evaluation environment
    *  @return the reason */
   def declineReason(env: Environment): Option[String] =
-    period(env) match
+    positive(ts, env) match
       case None => Some("the sample period must be a positive number")
       case Some(t) =>
-        Option.when(c2d(resolved(g, s, env), s, z, t, method).isEmpty)(
-          if method == Zoh then "the zero-order-hold equivalent did not close: it needs the inverse Laplace and z-transform tiers to handle the plant"
-          else "the Tustin substitution did not fold to a rational function of " + z.variable)
+        Option.when(converted(t, env).isEmpty)((method, prewarp) match
+          case (_, Some(_)) =>
+            "the prewarp frequency w must be a positive number with w*Ts/2 below pi/2, and the substitution must fold to a rational function of " + z.variable
+          case (Zoh, _) => "the zero-order-hold equivalent did not close: it needs the inverse Laplace and z-transform tiers to handle the plant"
+          case (Foh, _) => "the first-order-hold equivalent did not close: it needs the inverse Laplace and z-transform tiers to handle the plant"
+          case (ImpulseInvariant, _) =>
+            "impulse invariance needs a strictly proper plant (no direct feedthrough) whose impulse response the inverse Laplace and z-transform tiers can handle"
+          case (MatchedPoleZero, _) =>
+            "matched pole-zero needs a proper plant with numeric poles and zeros, and a gain that can be matched at low frequency"
+          case _ => s"the ${DiscretisationMethod.keyword(method)} substitution did not fold to a rational function of " + z.variable)

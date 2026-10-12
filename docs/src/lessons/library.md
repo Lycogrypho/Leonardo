@@ -33,10 +33,12 @@ a feel for the expression language before you embed it.
 | **[L8](l8.md)** | Embedding a `Session` | String in, string out — the bridge to the REPL |
 | **[L9](l9.md)** | Refusals | `Left`, `None`, and what "stays symbolic" obliges you to handle |
 | **[L10](l10.md)** | A small application, end to end | The payoff |
+| **[L11](l11.md)** | Matrices | Two carriers, structural dispatch, rows of results |
 
-*All ten are written. The [reference pages](../expressions.md) cover the domains this branch
-does not open — matrices, equations, logic, transforms, differential equations, statistics,
-vector calculus and control theory — in the same language these lessons teach.*
+*L1–L10 are the arc; later lessons each open one part of the API whose shape is not obvious
+from its reference page, matrices first. The [reference pages](../expressions.md) cover the
+other domains — equations, logic, transforms, differential equations, statistics, vector
+calculus and control theory — in the same language these lessons teach.*
 
 ## What this branch assumes
 

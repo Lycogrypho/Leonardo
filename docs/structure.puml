@@ -149,6 +149,18 @@ package "core" {
         toString: 0x.. / 0b.. / 0o.. / 0t.. / tobase(n,b)
     }
 
+    class "_Interval" <<value>> [[expressions.html]] {
+        __ F_0008: rigorous bounds, outward rounding __
+        + lo, hi: _Value  (both _Rational, or both _Number)
+        + of(lo, hi): _Value  (lo == hi -> the number)
+        fifth sibling of _Number, the first NOT widened:
+          every case _Number(x) misses it -> symbolic
+        Double: TwoSum / TwoProduct, 1 ulp only if inexact
+        transcendental: 2 ulps; exact: spire at workingPrecision
+        add / multiply / divide / power / function / logBase
+        below / equal -> Bool or unknown
+    }
+
     enum "LogicSemantics" <<data>> [[logic.html]] {
         MinMax        min / max            (default)
         Product       a*b / a+b-a*b
@@ -213,6 +225,7 @@ package "core" {
     "_Variable"    ..|> "_Expression"
     "_Rational"    ..|> "_Value"
     "_Based"       ..|> "_Value"
+    "_Interval"    ..|> "_Value"
     "_Rational"    ..>  "GcdPolicy"    : reduction policy per operation
     "_Rational"    ..>  "Environment"  : workingPrecision + rationalPolicy
     "Environment"  ..>  "LogicSemantics" : t-norm family field
@@ -503,10 +516,12 @@ package "scalar" {
         tie: the FIRST argument wins (derivative)
     }
     "MinMax" ..> "Domain" : kinks -> NonZero (a step's too)
-    class "Singularity" <<utility>> [[calculus.html]] {
+    class "singularitiesOf" <<utility>> [[calculus.html]] {
         ~ singularitiesOf(e, v, env): Option
         Removable | Pole(order)
         rational tier only
+        multiplicity from squareFreeFactors,
+        never by counting roots (issue 2.5)
     }
 
     ' -- Base-conversion AST nodes (issue 3.5; eval -> core._Based) --
@@ -521,6 +536,10 @@ package "scalar" {
     "_Balanced" --|> "_Expression"
     "_ToBase"   ..> "_Based" : eval -> based value
     "_Balanced" ..> "_Based" : eval -> balanced-ternary value
+    class "_IntervalOf" <<case>> [[expressions.html]] {
+        [lo, hi] literal; waits while an endpoint is symbolic
+    }
+    "_IntervalOf" ..> "_Interval" : eval
 
     ' -- Rewrite engine (issue 6.21) + integral table content (3.7/3.8) --
     class "_Pattern" <<case>> [[developer.html]] {
@@ -563,7 +582,7 @@ package "scalar" {
         lo / hi bounds, inclusivity
     }
     class "Singularity" <<data>> [[calculus.html]] {
-        location : Double
+        at : Double
         kind : SingularityKind
     }
     enum "Requirement" <<data>> [[calculus.html]] {
@@ -669,7 +688,8 @@ package "scalar" {
     "Domain"      ..> "Normalize"  : collect() constraint args
     "Domain"      ..> "Polynomial" : polyRoots() cut points
     "Domain"      ..> "Derive"     : differentiability
-    "Singularity" ..> "Polynomial" : polyRoots() pole locations
+    "singularitiesOf" ..> "Polynomial"  : squareFreeFactors / rootsOfSquareFree
+    "singularitiesOf" ..> "Singularity" : builds
 
     ' Functional nodes call algorithm modules at eval time
     "_Limit"       ..> "Limit"     : evalLimit() at eval
@@ -805,7 +825,9 @@ package "matrix" {
         kernel: _MatrixValue.svd, one-sided Jacobi, certified
         _Svd (economy | full) · _PInv (a _MatrixOperation)
         _Rank, _Cond: scalar results
-        zero: σ ≤ 0.5·10^-p·σ_max (rank, pinv); cond: max(m,n)·ε
+        __ F_0087: nullspace(A[, tol]) / orth(A[, tol]) __
+        _NullSpace(Subspace): bases at rank's rank; false if trivial
+        zero: σ ≤ 0.5·10^-p·σ_max (rank, pinv, nullspace, orth); cond: max(m,n)·ε
         MaxSvdWork = max(m,n)·min(m,n)² ≤ 1e7 (Node-measured)
     }
 
@@ -874,7 +896,7 @@ package "matrix" {
 }
 
 ' ===================================================
-' PACKAGE: transform - Laplace / Fourier / inverse Laplace (imports core + scalar)
+' PACKAGE: transform - Laplace / Fourier / inverse Laplace / z-transform (imports core + scalar)
 ' ===================================================
 package "transform" {
 
@@ -918,16 +940,56 @@ package "transform" {
         linearity, b/(s-a) -> b*e^{at}
         partial fractions (distinct roots)
         repeated + complex poles (complete the square)
-        __ deg D >= 3, distinct roots only __
-        companion-matrix root-finding (eigenDecompose)
-        residue partial fractions: real + conjugate pairs
+        __ deg D >= 3, repeated poles included (3.17) __
+        multiplicities from squareFreeFactors
+        numerators by undetermined coefficients
+        A/(s-r)^k -> A t^(k-1) e^(rt) / (k-1)!
+        repeated irreducible quadratic, k >= 3: declined
         __ second-shift __
         e^{-as}*F(s) -> u(t-a)*f(t-a)
+    }
+
+    ' -- The one-sided z-transform (6.33) --
+    class "_ZTransform" <<case>> [[calculus.html]] {
+        x : _Expression
+        n : _Variable   (binder)
+        z : _Variable   (free in the result)
+    }
+
+    class "_InverseZTransform" <<case>> [[calculus.html]] {
+        f : _Expression
+        z : _Variable   (binder)
+        n : _Variable   (free in the result)
+    }
+
+    class "ZTransform" <<utility>> [[calculus.html]] {
+        + zTransformOf(x, n, z): _Expression
+        constant -> c*z/(z-1), NOT the Laplace c/s
+        step, geometric a^n -> z/(z-a), exp(c*n),
+        sin / cos, linearity
+        n*x[n] -> -z dX/dz  (supplies n, n^2, n*a^n)
+        no Kronecker delta: core has no node for it
+    }
+
+    class "InverseZTransform" <<utility>> [[calculus.html]] {
+        + inverseZTransformOf(f, z, n): _Expression
+        decomposes X(z)/z, NOT X(z)
+        z/(z-r)^j -> binom(n, j-1) r^(n-j+1)
+        multiplicities from squareFreeFactors
+        complex poles: declined
     }
 
     "_Laplace"        --|> "_Functional"
     "_Fourier"        --|> "_Functional"
     "_InverseLaplace" --|> "_Functional"
+    "_ZTransform"        --|> "_Functional"
+    "_InverseZTransform" --|> "_Functional"
+    "_ZTransform"        ..> "ZTransform"        : zTransformOf() at eval
+    "_InverseZTransform" ..> "InverseZTransform" : inverseZTransformOf() at eval
+    "ZTransform"         ..> "Derive"            : -z dX/dz rule
+    "InverseZTransform"  ..> "Polynomial"        : squareFreeFactors
+    "InverseZTransform"  ..> "_MatrixValue"      : inverse() for the coefficients
+    "InverseZTransform"  ..> "Sequences"         : binom for repeated poles
 
     "_Laplace"                ..> "LaplaceTransform"        : laplaceOf() at eval
     "_Fourier"                ..> "FourierTransform"        : fourierOf() at eval
@@ -936,9 +998,9 @@ package "transform" {
     "FourierTransform"        ..> "Substitute"              : s -> i*w substitution
     "FourierTransform"        ..> "_Complex"                : imaginary unit i
     "InverseLaplaceTransform" ..> "Normalize"              : collect() poly coeffs
-    "InverseLaplaceTransform" ..> "Polynomial"             : polyRoots() / derivCoeffs()
+    "InverseLaplaceTransform" ..> "Polynomial"             : squareFreeFactors / rootsOfSquareFree
     "InverseLaplaceTransform" ..> "Simplify"               : simplifyFully() output
-    "InverseLaplaceTransform" ..> "_MatrixValue"           : eigenDecompose() root-finding
+    "InverseLaplaceTransform" ..> "_MatrixValue"           : inverse() for the coefficients
     "LaplaceTransform"        ..> "_Heaviside"             : matches step(t) / u(t-a)
     "InverseLaplaceTransform" ..> "_Heaviside"             : wraps result in u(t-a)
     "InverseLaplaceTransform" ..> "Substitute"             : t -> t-a shift substitution
@@ -1293,7 +1355,7 @@ package "domain" {
 
     "_Domain"         ..> "Domain"       : domainOf() analysis at eval
     "_Differentiable" ..> "Domain"       : differentiableDomainOf() at eval
-    "_Singularities"  ..> "Singularity"  : singularitiesOf() at eval
+    "_Singularities"  ..> "singularitiesOf" : at eval
     "_Domain"         ..> "domainRender" : DomainSet -> nodes
     "domainRender"    ..> "DomainSet"    : neutral input
     "domainRender"    ..> "_Comparison"  : rendered relation
@@ -1439,7 +1501,9 @@ package "control" {
     enum "DiscretisationMethod" <<data>> [[control.html]] {
         Zoh    -- what sampled-data hardware does
         Tustin -- bilinear, exactly invertible
-        ALWAYS an explicit argument: the two give
+        Foh, ImpulseInvariant, MatchedPoleZero,
+        ForwardEuler, BackwardEuler (F_0009)
+        ALWAYS an explicit argument: two methods give
         DIFFERENT discrete poles
     }
 
@@ -1451,8 +1515,11 @@ package "control" {
              freshVar, never literal names: a
              literal would capture a plant
              parameter of the same name (2.12)
-        d2c: Tustin only; a Zoh inverse needs a
-             matrix logarithm -> declined
+        Foh / impulse: ramp / impulse response, same route
+        matched: roots by e^(sTs), gain at low frequency
+        Euler: substitutions; c2dPrewarped: Tustin at w
+        d2c: Tustin and Euler; the rest would need a
+             logarithm -> declined
     }
 
     "_Series"          --|> "_Expression"
@@ -1461,9 +1528,9 @@ package "control" {
     "_StepResponse"    --|> "_Expression"
     "_ImpulseResponse" --|> "_Expression"
 
-    "TransferFunction" ..> "rationalCoeffs" : one fraction, then cancel
+    "TransferFunction" ..> "Polynomial"     : rationalCoeffs: one fraction, then cancel
     "_StepResponse"    ..> "InverseLaplaceTransform" : 3.17, re-spelled
-    "Discretisation"   ..> "ZTransform"     : 6.33 is the ZOH prerequisite
+    "Discretisation"   ..> "ZTransform"     : zTransformOf, the ZOH prerequisite (6.33)
     "Discretisation"   ..> "TransferFunction" : normaliseTf (single definition)
     "StateSpace"       ..> "_MatrixValue"   : expm (6.39)
     "StateSpace"       ..> "BlockMatrix"    : ctrb assembled, no private hcat
@@ -1498,7 +1565,7 @@ package "control" {
     class "_ControlAnalysis" <<case>> [[control.html]] {
         __ F_0092: the analysis at the prompt __
         tfpoles / tfzeros (zeros(r, c) is the zero matrix)
-        isStable / isStableDiscrete, c2d(..., zoh | tustin)
+        isStable / isStableDiscrete, c2d(..., method[, w])
         G read with bound parameters, NEVER the
           frequency variable's own binding
     }
@@ -1513,7 +1580,19 @@ package "control" {
     }
     "Dlsim" ..> "StateSpace" : the [[A, B, C, D]] row
     "Arx" ..> "TransferFunction" : normaliseTf
+
+    class "Riccati" <<object>> [[control.html]] {
+        __ F_0065: DARE, LQR, Lyapunov, Kalman __
+        dare / dlqr (u = -K x) / dlyap / kalmanGain
+        kalmanStep: update, then predict (Joseph form)
+        structure-preserving doubling, certified by
+          its residual; the STABILISING solution only
+        declines: not stabilisable / detectable, Q or R
+          not definite, shapes, n > 200
+    }
+    "Riccati" ..> "Dlsim" : matrixOperand / modelRow
 }
+"Riccati" ..> "_MatrixValue" : cholesky (definiteness), inverse
 "Linearize" ..> "_Jacobian" : the four blocks
 "Arx" ..> "Regression" : leastSquares (QR)
 "Arx" ..> "Svd" : numerical rank
@@ -1532,8 +1611,19 @@ package "optimize" <<Rectangle>> {
         3. linear, coefficient c in other unknowns:
            divide AND branch on c = 0 -- dividing
            alone silently drops those solutions
+        4. steps declined or none applies: a lex
+           Groebner basis, then the steps (F_0068)
+        an inexact root: withoutRounding first
         every candidate verified against the originals
         MaxEliminationSteps = 4000 (measured)
+    }
+
+    class "Groebner" <<utility>> [[optimization.html]] {
+        __ F_0068 __
+        groebnerBasis(eqs, unknowns, env): reduced, lex
+        Buchberger, EXACT rationals always (spire)
+        caps: basis 40, degree 24, 4096 bits, 2000 work
+        withoutRounding: drop rounding-level coefficients
     }
 
     class "Stationary" <<utility>> [[optimization.html]] {
@@ -1570,10 +1660,23 @@ package "optimize" <<Rectangle>> {
     class "QP" <<utility>> [[optimization.html]] {
         qpSolve(H, f, ineq, eq, lb, ub, warm, env)
           min 1/2 z'Hz + f'z, A z <= b, Aeq z = beq, bounds
-        Goldfarb-Idnani dual active set; H positive DEFINITE
+        Goldfarb-Idnani dual active set when H positive DEFINITE;
+        semidefinite H: primal active set from an lpSolve vertex (F_0074)
         KKT-certified at 0.5*10^-precision, relative
         Left(QpFailure) / Right(QpResult incl. active set)
+        QpResult.multipliers: QpMultipliers (F_0066)
         MaxQpIterations 2000, MaxQpVariables 500 (measured)
+    }
+
+    class "Nlp" <<utility>> [[optimization.html]] {
+        __ F_0066: min f, g <= 0, h = 0, bounds __
+        nlpSolve(f, vars, x0, g, h, bounds, method, env)
+        SQP: a qpSolve per step, damped BFGS (B stays
+          positive definite), l1 merit + second-order correction
+        AugLag: PHR, its own projected BFGS inside
+        ONE certificate: scale-free KKT residual; a LOCAL point
+        Left(NlpFailure) / Right(NlpResult incl. multipliers)
+        MaxNlpVariables 100, MaxNlpIterations 200 (measured)
     }
     enum "QpConstraint" <<data>> [[optimization.html]] {
         Row(k) | Lower(i) | Upper(i)
@@ -1607,6 +1710,21 @@ package "optimize" <<Rectangle>> {
     class "_CurveFit" <<case>> [[optimization.html]] {
         lsqfit(f, t, T, Y, [[a], [b]], p0[, lb, ub][, cov])
     }
+    class "Lp" <<utility>> [[optimization.html]] {
+        __ F_0011: exact linear programming __
+        lpSolve(f, A/b, Aeq/beq, lb, ub): Either[LpFailure, LpResult]
+        two-phase simplex over spire rationals, Bland's rule
+        slack basis where b >= 0; infeasible / unbounded PROVED
+        caps: 40 variables, 80 rows, 2048-bit coefficients (measured)
+    }
+    class "_LP" <<case>> [[optimization.html]] {
+        lp(f, A, b[, Aeq, beq], lb, ub); 0 = absent group
+    }
+    "_LP" ..> "Lp"
+    "Lp"  ..> "QpConstraint" : names the active set
+    class "_Nlp" <<case>> [[optimization.html]] {
+        nlp(f, [[x], [y]], x0, g, h[, lb, ub], sqp | auglag)
+    }
 
     "_Stationary" ..> "Stationary"
     "_Lagrange"   ..> "Stationary"
@@ -1616,6 +1734,10 @@ package "optimize" <<Rectangle>> {
     "_QP"         ..> "QP"
     "_LsqFit"     ..> "LeastSquares"
     "_CurveFit"   ..> "LeastSquares"
+    "_Nlp"        ..> "Nlp"
+    "Nlp"         ..> "QP"           : SQP subproblems, multipliers
+    "Nlp"         ..> "LeastSquares" : evaluator (compiled cells)
+    "Nlp"         ..> "_Jacobian"    : one definition of the Jacobian
     "LeastSquares" ..> "_Jacobian"  : one definition of the Jacobian
     "QP"          ..> "QpConstraint" : active set = warm start
     "QP"          ..> "_MatrixValue" : cholesky = convexity test
@@ -1624,6 +1746,7 @@ package "optimize" <<Rectangle>> {
     "Stationary"  ..> "_Hessian"    : one definition of the Hessian
     "Convexity"   ..> "_Hessian"
     "Elimination" ..> "Polynomial"  : rationalCoeffs, squareFreeFactors
+    "Elimination" ..> "Groebner"    : when the steps give up
     "KKT"         ..> "_Comparison" : the conditions are relations
 }
 
@@ -1847,7 +1970,7 @@ package "parser" {
 "Parser" ..> "_JordanDecomposition" : jordan(A)
 "Parser" ..> "_MatrixExponential"  : expm(A)
 "Parser" ..> "_Cholesky"           : chol(A)
-"Parser" ..> "Svd"                 : svd pinv rank cond
+"Parser" ..> "Svd"                 : svd pinv rank cond nullspace orth
 "Parser" ..> "BlockMatrix"         : hcat vcat blkdiag repmat kron submatrix
 "Parser" ..> "_Ones"               : ones(r, c)
 "Parser" ..> "Mpc"                 : mpcMatrices(...)
@@ -1856,6 +1979,7 @@ package "parser" {
 "Parser" ..> "_ControlAnalysis"    : tfpoles / tfzeros / isStable(Discrete) / c2d
 "Parser" ..> "StateSpace"          : stateSpace(A, B, C, D) (sugar for the row)
 "Parser" ..> "Dlsim"               : dlsim(sys, u, x0[, states])
+"Parser" ..> "Riccati"             : dare / dlqr / dlyap / kalmanGain / kalmanStep
 "Parser" ..> "_Laplace"        : laplace(e, t, s)
 "Parser" ..> "_Fourier"        : fourier(e, t, w)
 "Parser" ..> "_InverseLaplace" : invlaplace(f, s, t)
@@ -1891,6 +2015,7 @@ package "parser" {
 "Parser" ..> "_WeightedRegress" : wregress(X, y, w)
 "Parser" ..> "_Test"           : ttest / confint / chisqtest
 "Parser" ..> "_Based"          : 0x.. / 0b.. / 0o.. / 0t.. literals
+"Parser" ..> "_IntervalOf"     : [lo, hi] literal (after the matrix rule)
 "Parser" ..> "_VectorOperator" : grad / div / curl / laplacian / jacobian / hessian (6.24)
 "Parser" ..> "_Sequence"       : fib / lucas / pell / jacobsthal (6.28)
 "Parser" ..> "_Tabulate"       : tabulate(e, k, lo, hi)
@@ -1932,6 +2057,13 @@ package "tools" <<Rectangle>> {
         + offences(roots): Vector
         no .github file may spell scala-<version>
     }
+    class "CheckDocLinks" <<object>> [[developer.html]] {
+        + offences(roots): (Vector, Int)
+        every relative link and asset under docs/src
+        must resolve, in the right letter CASE
+        (mdoc only warns; Linux 404s a case slip)
+        the one guard NOT defaulting to GuardedRoots
+    }
     class "Files" <<utility>> [[developer.html]] {
         + GuardedRoots: Vector
         + rootsOrDefault(args): Vector
@@ -1949,6 +2081,7 @@ package "tools" <<Rectangle>> {
     "CheckCharset"      ..> "Files"
     "CheckActionPins"   ..> "Files"
     "CheckScalaVersion" ..> "Files"
+    "CheckDocLinks"     ..> "Files"
     "FixMojibake"       ..> "CheckCharset" : reads Forbidden,\nso the two cannot drift
 }
 

@@ -75,9 +75,27 @@ case class _Comparison(lhs: _Expression, op: CompareOp, rhs: _Expression) extend
         case Right(_Bool(b)) => Right(_Bool(!b))
         case other           => other
     case _ =>
-      ordering(lhs, rhs, env) match
-        case Some(c) => Right(_Bool(holds(op, c)))
-        case None    => Left(_Comparison(lhs.eval(env).toExpression, op, rhs.eval(env).toExpression))
+      intervalOrder(op, lhs, rhs, env).getOrElse(
+        ordering(lhs, rhs, env) match
+          case Some(c) => Right(_Bool(holds(op, c)))
+          case None    => Left(_Comparison(lhs.eval(env).toExpression, op, rhs.eval(env).toExpression)))
+
+  /** An ordering with an interval operand (F_0008): `true` or `false` when the relation holds
+   *  for every pair of points or for none, `unknown` when it depends on the points —
+   *  `[1, 3] < [2, 4]` is neither.  `None` when no operand is an interval. */
+  private def intervalOrder(op: CompareOp, lhs: _Expression, rhs: _Expression,
+                            env: Environment): Option[Either[_Expression, _Value]] =
+    (lhs.eval(env), rhs.eval(env)) match
+      case (Right(a), Right(b)) if a.isInstanceOf[_Interval] || b.isInstanceOf[_Interval] =>
+        val tolerance = 0.5 * math.pow(10, -env.precision)
+        val verdict = op match
+          case CompareOp.Lt => _Interval.below(a, b, strict = true, tolerance)
+          case CompareOp.Le => _Interval.below(a, b, strict = false, tolerance)
+          case CompareOp.Gt => _Interval.below(b, a, strict = true, tolerance)
+          case CompareOp.Ge => _Interval.below(b, a, strict = false, tolerance)
+          case CompareOp.Ne => _Interval.equal(a, b, tolerance).map(!_)
+        Some(Right(verdict.fold(_Truth.Unknown: _Value)(_Bool(_))))
+      case _ => None
 
   /** Whether `op` holds given a three-way comparison result. */
   private def holds(op: CompareOp, c: Int): Boolean = op match

@@ -80,6 +80,22 @@ L, U, P := lu(A)       tuple binding from a 1×n decomposition result
 | `inf` | +∞ |
 | `-inf` | −∞ |
 
+### Intervals
+
+```
+[lo, hi]                 a closed interval with RIGOROUS bounds (outward rounding);
+                         [a, a] is the number a; lo > hi stays as written
+[1, 2] * [-1, 3]         -> [-2.0, 6.0]       + - * / and integer/fractional powers
+[-2, 1]^2                -> [0.0, 4.0]        even power through zero starts at 0
+sin([0, pi])             -> [0.0, 1.0]        extrema inside are found
+[1, 2] - [1, 2]          -> [-1.0, 1.0]       NOT 0: occurrences are independent (correct)
+[1, 3] < [2, 4]          -> unknown           decided only if it holds for every pair of points
+```
+
+Covered functions: `exp ln log sin cos tan asin acos atan sinh cosh tanh abs`. A divisor
+containing 0, `tan` across a pole, a domain exceeded, or any other function: stays symbolic.
+In exact mode the endpoints are exact rationals. Displayed outward at the session precision.
+
 ---
 
 ## Mathematical functions
@@ -273,7 +289,9 @@ An answer that cannot be proved complete is not given: the call stays as written
 ```
 stationary(f, x, y)                  every point where grad f = 0, one row per point;
                                      false when provably none; the REPL classifies
-                                     each as minimum / maximum / saddle point
+                                     each as minimum / maximum / saddle point;
+                                     a coupled polynomial gradient goes through an exact
+                                     lexicographic Groebner basis (capped; past it, declined)
 convex(f, x, y)                      true (proved from every PRINCIPAL minor of the
                                      Hessian), false (with a witness), else symbolic
 lagrange(f, [[g1], [g2]], x, y)      stationary points of f on g1 = 0, g2 = 0;
@@ -288,7 +306,9 @@ minimize(f, [[x], [y]], x0, lb, ub, m)   with bounds (inf for none): pbfgs or gd
                                      test independent of the units, at the precision's
                                      tolerance; else the REPL says why
 qp(H, f, A, b, lb, ub)               min 1/2 z'Hz + f'z  s.t. A z <= b, lb <= z <= ub;
-                                     H positive definite; 0 and 0 = no A, b;
+                                     H positive semidefinite (definite: Goldfarb-Idnani;
+                                     singular: primal active set, H = 0 is an LP, and an
+                                     unbounded direction is reported); 0 and 0 = no A, b;
                                      -inf / inf = no bound; a number applies to every z
 qp(H, f, A, b, Aeq, beq, lb, ub)     the same with Aeq z = beq
                                      the REPL names the active constraints, or says
@@ -302,6 +322,17 @@ lsqfit(r, [[a], [b]], p0)            least squares over a residual column r (m x
                                      answered only if certified (scale-free cosine test);
                                      declined if not identifiable; caps m*n^2 <= 400000,
                                      100 iterations
+lp(f, A, b, lb, ub)                  min f'x  s.t. A x <= b, lb <= x <= ub, EXACT (simplex
+lp(f, A, b, Aeq, beq, lb, ub)        over the rationals, Bland's rule); infeasible and
+                                     unbounded are proved; 0 = absent group; caps 40
+                                     variables, 80 constraints, 2048-bit coefficients
+nlp(f, [[x], [y]], x0, g, h, m)      min f  s.t. g <= 0, h = 0, by m = sqp or auglag,
+                                     always named; g, h a column, one cell, or 0 = none;
+                                     a cell may be a relation (<=, >=, =), never strict
+nlp(f, [[x], [y]], x0, g, h, lb, ub, m)   with bounds (-inf / inf for none)
+                                     a LOCAL KKT point, certified (scale-free KKT residual);
+                                     the REPL names the binding inequalities and their
+                                     multipliers, or says why it declined
 ```
 
 ---
@@ -735,9 +766,11 @@ rank(A, 0.01)                   tolerance relative to the largest singular value
 pinv(A)                         -> V·S⁺·Uᵀ, = inv(A) for square non-singular A
 cond([[1, 0], [0, 0.001]])      -> 1000
 cond([[1, 2], [2, 4]])          -> inf
+nullspace(A)  nullspace(A, tol) orthonormal basis of {x : A·x = 0}, n×(n − rank); false if trivial
+orth(A)       orth(A, tol)      orthonormal basis of the range, m×rank; false for the zero matrix
 ```
 
-`rank` and `pinv` count a singular value as zero at or below `0.5·10⁻ᵖ·σ_max` (`p` = precision),
+`rank`, `pinv`, `nullspace` and `orth` count a singular value as zero at or below `0.5·10⁻ᵖ·σ_max` (`p` = precision),
 so rescaling `A` never changes the answer; `cond` is `inf` only when `σ_min` is lost in rounding.
 Exact input demotes to `Double`; past `max(m, n)·min(m, n)² = 10⁷` the call stays unevaluated.
 
@@ -829,8 +862,22 @@ stateSpace(A, B, C, D)          [[A, B, C, D]], the model row
 dlsim(sys, u, x0)               outputs p x N of x[k+1] = Ax + Bu, y = Cx + Du; u is m x N;
                                 x0 = 0 is rest, D = 0 no feedthrough
 dlsim(sys, u, x0, states)       [[Y, X]], X = x[0] .. x[N]: the LAST column continues a run
-c2d(g, s, z, Ts, zoh | tustin)  discretise; the method is always written
+c2d(g, s, z, Ts, method)        discretise; the method is always written: zoh, tustin,
+                                foh, impulse (aliases!), matched, forward (can make a
+                                stable plant unstable), backward
+c2d(g, s, z, Ts, tustin, w)     Tustin prewarped to match exactly at w rad/s
+dare(A, B, Q, R)                the STABILISING P of AᵀPA − P − AᵀPB(R+BᵀPB)⁻¹BᵀPA + Q = 0;
+                                R sym. pos. definite, Q sym. pos. semidefinite; n <= 200
+dlqr(A, B, Q, R)                [[K, P]], the law u = −K·x; A − B·K proved stable
+dlyap(A, Q)                     X with A·X·Aᵀ − X + Q = 0, A stable
+kalmanGain(A, C, Qw, Rv)        [[M, P]]: steady update gain, a priori covariance (dual DARE)
+kalmanStep(xhat, P, u, y, sys, Qw, Rv)
+                                [[xhat', P']]: update, then predict; the output is the next input
 ```
+
+`dare` and `dlqr` decline, saying why, when no stabilising solution exists: `(A, B)` not
+stabilisable, or an unstable mode `Q` does not penalise. Noise model for the filter:
+`x[k+1] = Ax + Bu + w`, `y = Cx + Du + v`, `w ~ N(0, Qw)`, `v ~ N(0, Rv)`.
 
 `step` is arity-overloaded: `step(x)` is the Heaviside unit step, `step(G, s, t)` the response.
 
@@ -880,8 +927,10 @@ arx2ss(a, b, nk)                [[A, B, C, D]]  observer canonical form; nk is a
                                 (all four also at the prompt)
 controllable(a, b) / observable(a, c)     Option[Boolean]
 c2dExact(a, b, ts)              (A_d, B_d) via expm of the block matrix; singular A is fine
-c2d(g, s, z, ts, Zoh | Tustin)  Option[_Expression]   method is never a hidden default
-d2c(g, z, s, ts, Tustin)        Option[_Expression]   Zoh is not invertible in closed form
+c2d(g, s, z, ts, method)        Option[_Expression]   method is never a hidden default
+c2dPrewarped(g, s, z, ts, w)    Option[_Expression]   Tustin matched exactly at w
+d2c(g, z, s, ts, method)        Option[_Expression]   Tustin and the Euler methods only
+d2cPrewarped(g, z, s, ts, w)    Option[_Expression]
 ```
 
 Marginal stability is **not** stability: poles on the imaginary axis give `false`. A

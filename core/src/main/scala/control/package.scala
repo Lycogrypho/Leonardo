@@ -28,6 +28,7 @@ package it.grypho.scala.leonardo
  *  | discrete time | `transform.zTransformOf` |
  *  | ARX identification | `statistics.leastSquares` (QR), the `svd` numerical rank, `normaliseTf` |
  *  | discrete simulation (`dlsim`) | the model row; a plain recursion over arrays |
+ *  | `dare` / `dlqr` / `dlyap` / Kalman filter | structure-preserving doubling, certified by its residual; `cholesky` as the definiteness test |
  *
  *  **What it refuses matters as much as what it computes.**  A non-rational `G` — a dead-time
  *  `exp(-s*T)` — stays symbolic rather than being Padé-approximated, because approximating

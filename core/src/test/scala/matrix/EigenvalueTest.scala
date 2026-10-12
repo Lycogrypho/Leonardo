@@ -42,6 +42,37 @@ class EigenvalueTest extends AnyFlatSpec:
       got.zip(expected).foreach((g, e) => assert(math.abs(g - e) < 1e-9, s"scale $k: $g vs $e"))
   }
 
+  it should "answer random dense matrices, complex pairs included (F_0100)" in
+  {
+    // The QR iteration deflated only a trailing 1x1, checked one sub-diagonal entry of a matrix
+    // it never reduced to Hessenberg form, and shifted a trailing complex pair by a real number
+    // that cannot split it -- so a dense matrix with a complex pair anywhere but the top was
+    // declined. Checked by the invariants every spectrum satisfies: the power sums
+    // sum(l^k) = tr(A^k) for k = 1..n determine the characteristic polynomial (Newton's
+    // identities), so they pin the spectrum without trusting any second eigensolver.
+    def parts(v: _Value): (Double, Double) = v match
+      case c: _Complex => (c.re, c.im)
+      case _Number(d)  => (d, 0.0)
+      case other       => fail(s"not a number: $other")
+    def cpow(z: (Double, Double), k: Int): (Double, Double) =
+      (1 to k).foldLeft((1.0, 0.0)) { case ((a, b), _) => (a * z._1 - b * z._2, a * z._2 + b * z._1) }
+    def trace(m: _MatrixValue): Double = (0 until m.rows).map(i => m(i, i)).sum
+    for n <- 2 to 10; seed <- 1L to 12L do
+      val rng  = new scala.util.Random(seed * 100 + n)
+      val a    = dense(n, n, Array.fill(n * n)(rng.nextDouble() * 3 - 1.5)*)
+      val eigs = a.eigenDecompose.getOrElse(fail(s"n = $n, seed = $seed: declined")).map(parts)
+      assert(eigs.size == n, s"n = $n, seed = $seed: ${eigs.size} eigenvalues")
+      val scale = math.sqrt(a.toVector.map(x => x * x).sum)
+      (1 to n).foldLeft(_MatrixValue.identity(n)) { (power, k) =>
+        val next = power.multiply(a)
+        val sums = eigs.map(cpow(_, k)).foldLeft((0.0, 0.0))((s, z) => (s._1 + z._1, s._2 + z._2))
+        val bound = 1e-9 * math.pow(math.max(1.0, scale), k) * n
+        assert(math.abs(sums._1 - trace(next)) <= bound, s"n = $n, seed = $seed: power sum $k")
+        assert(math.abs(sums._2) <= bound, s"n = $n, seed = $seed: imaginary power sum $k")
+        next
+      }
+  }
+
   "eigenDecompose of a 1×1" should "return the single element" in
   {
     val a = dense(1, 1, 7.0)

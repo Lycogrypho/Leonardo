@@ -25,12 +25,16 @@ enum QpFailure:
   case InvalidInput(detail: String)
   /** `H` has a negative eigenvalue: the problem is not convex. */
   case NotConvex
-  /** `H` is positive semidefinite but singular: some direction costs nothing, and the
-   *  Goldfarb–Idnani method needs `H` positive definite (F_0053 Decision B).  Not regularised —
+  /** `H` is positive semidefinite but singular, so the Goldfarb–Idnani method does not apply
+   *  (F_0053 Decision B).  **Since F_0074 `qpSolve` no longer answers with it**: it is the signal
+   *  that hands the problem to the primal active-set method instead.  Never regularised —
    *  `H + εI` would answer a different problem. */
   case NotStrictlyConvex
   /** The constraints admit no point. */
   case Infeasible
+  /** The objective falls without bound: a direction of zero curvature (a null direction of a
+   *  semidefinite `H`) along which the cost decreases and no constraint blocks (F_0074). */
+  case Unbounded
   /** No optimum within the iteration cap. */
   case MaxIterations(limit: Int)
   /** The final point failed the KKT certificate (X-02); `residual` is the relative residual. */
@@ -44,9 +48,24 @@ enum QpFailure:
  *  @param kktResidual the relative KKT residual the certificate measured, at most the tolerance
  *  @param active      the inequalities and bounds holding with equality — pass it back as
  *                     `warm` for the next, similar problem (X-04: state in, state out)
+ *  @param multipliers the Lagrange multipliers at `z` — what an SQP iteration built on this
+ *                     solver reads as its multiplier estimate (F_0066)
  */
 case class QpResult(z: Vector[Double], objective: Double, iterations: Int, kktResidual: Double,
-                    active: Vector[QpConstraint])
+                    active: Vector[QpConstraint], multipliers: QpMultipliers)
+
+/** The Lagrange multipliers at a QP's optimum (F_0066), in the convention of
+ *  `L = ½ zᵀHz + fᵀz + μᵀ(Az − b) + λᵀ(Aeq·z − beq) + νₗᵀ(lb − z) + νᵤᵀ(z − ub)`: an
+ *  inequality or bound multiplier is `≥ 0` and zero when its constraint is inactive, an equality
+ *  multiplier has either sign, and `Hz + f + Aᵀμ + Aeqᵀλ − νₗ + νᵤ = 0` at the optimum.
+ *
+ *  @param inequality one per row of `A`
+ *  @param equality   one per row of `Aeq`
+ *  @param lower      one per variable, for `lb`
+ *  @param upper      one per variable, for `ub`
+ */
+case class QpMultipliers(inequality: Vector[Double], equality: Vector[Double],
+                         lower: Vector[Double], upper: Vector[Double])
 
 /** The iteration cap: additions plus drops of active constraints.  Measured (F_0053, JVM, random
  *  problems with half the variables' worth of constraints active): 35 iterations at 50 variables
@@ -97,11 +116,26 @@ def qpSolve(h: _MatrixValue, f: Vector[Double],
             ineq: Option[(_MatrixValue, Vector[Double])], eq: Option[(_MatrixValue, Vector[Double])],
             lb: Vector[Double], ub: Vector[Double],
             warm: Set[QpConstraint], env: Environment): Either[QpFailure, QpResult] =
-  for
-    prob <- QpProblem.build(h, f, ineq, eq, lb, ub)
-    hinv <- prob.inverseHessian
-    res  <- QpSolver(prob, hinv, env.precision).solve(warm)
-  yield res
+  QpProblem.build(h, f, ineq, eq, lb, ub).flatMap { prob =>
+    prob.inverseHessian match
+      case Right(hinv) => QpSolver(prob, hinv, env.precision).solve(warm)
+      // F_0074: a semidefinite H goes to the primal active-set method, from an exact LP vertex.
+      case Left(QpFailure.NotStrictlyConvex) =>
+        feasiblePoint(f.size, ineq, eq, lb, ub).flatMap(PrimalActiveSet(prob, env.precision).solve(_, warm))
+      case Left(other) => Left(other)
+  }
+
+/** A point satisfying the constraints, from [[lpSolve]] with zero cost (F_0074): exact, so an
+ *  infeasible set is proved so.  An LP that declines for size is reported as the input it was. */
+private def feasiblePoint(n: Int, ineq: Option[(_MatrixValue, Vector[Double])], eq: Option[(_MatrixValue, Vector[Double])],
+                          lb: Vector[Double], ub: Vector[Double]): Either[QpFailure, Array[Double]] =
+  def group(g: Option[(_MatrixValue, Vector[Double])]) =
+    g.map((a, b) => (Vector.tabulate(a.rows)(i => Vector.tabulate(a.cols)(j => _Number(a(i, j)): _Value)), b.map(_Number(_): _Value)))
+  lpSolve(Vector.fill(n)(_Number(0.0)), group(ineq), group(eq), lb.map(_Number(_)), ub.map(_Number(_))) match
+    case Right(r) => Right(r.x.map { case _Number(d) => d; case _ => Double.NaN }.toArray)
+    case Left(LpFailure.Infeasible) => Left(QpFailure.Infeasible)
+    case Left(why) => Left(QpFailure.InvalidInput(
+      s"a semidefinite H starts from an exact LP feasible point, and that LP declined: $why"))
 
 
 /** One constraint row in the solver's form `n·z ≥ rhs`; `id` is `None` for an equality. */
@@ -317,28 +351,183 @@ private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precis
 
   /** The KKT certificate (X-02); the answer only when every part passes. */
   private def certify(s: State): Either[QpFailure, QpResult] =
-    val x = s.x
-    val hx = Array.tabulate(n)(i => (0 until n).foldLeft(0.0)((acc, j) => acc + prob.h(i, j) * x(j)))
-    val grad = Array.tabulate(n)(i => hx(i) + prob.f(i))
-    val pull = Array.tabulate(n)(i => s.act.indices.foldLeft(0.0)((acc, a) => acc + s.u(a) * rows(s.act(a)).normal(i)))
-    val uMax = s.u.map(math.abs).maxOption.getOrElse(0.0)
-    val stationarity =
-      normInfA(Array.tabulate(n)(i => grad(i) - pull(i))) /
-        (1.0 + normInfA(prob.f) + normInfA(hx) + s.act.indices.map(a => math.abs(s.u(a)) * normInfA(rows(s.act(a)).normal)).sum)
-    val primal = rows.map { r =>
-      val sl = r.slack(x)
-      (if r.isEquality then math.abs(sl) else math.max(0.0, -sl)) / r.scale(x)
-    }.maxOption.getOrElse(0.0)
-    val dual = s.act.indices.filterNot(a => rows(s.act(a)).isEquality)
-      .map(a => math.max(0.0, -s.u(a))).maxOption.getOrElse(0.0) / (1.0 + uMax)
-    val complementarity = s.act.indices.filterNot(a => rows(s.act(a)).isEquality)
-      .map(a => math.abs(s.u(a) * rows(s.act(a)).slack(x)) / (rows(s.act(a)).scale(x) * (1.0 + uMax)))
-      .maxOption.getOrElse(0.0)
-    val residual = Seq(stationarity, primal, dual, complementarity).max
-    if residual.isNaN || residual > certTol then Left(QpFailure.Uncertified(residual))
+    qpCertificate(prob, s.x, s.act, s.u, s.iters, certTol)
+
+
+/** The KKT certificate both QP methods answer through (X-02): stationarity, primal and dual
+ *  feasibility and complementarity, each relative to the problem's scale (the 2.11 units rule),
+ *  against `certTol`; the answer only when every part passes.  `act` are row indices and `u`
+ *  their multipliers in the rows' `n·z ≥ rhs` convention, stationarity being `∇ = Σ uₐ nₐ`. */
+private def qpCertificate(prob: QpProblem, x: Array[Double], act: Vector[Int], u: Vector[Double],
+                          iters: Int, certTol: Double): Either[QpFailure, QpResult] =
+  import prob.{n, rows}
+  val hx = Array.tabulate(n)(i => (0 until n).foldLeft(0.0)((acc, j) => acc + prob.h(i, j) * x(j)))
+  val grad = Array.tabulate(n)(i => hx(i) + prob.f(i))
+  val pull = Array.tabulate(n)(i => act.indices.foldLeft(0.0)((acc, a) => acc + u(a) * rows(act(a)).normal(i)))
+  val uMax = u.map(math.abs).maxOption.getOrElse(0.0)
+  val stationarity =
+    normInfA(Array.tabulate(n)(i => grad(i) - pull(i))) /
+      (1.0 + normInfA(prob.f) + normInfA(hx) + act.indices.map(a => math.abs(u(a)) * normInfA(rows(act(a)).normal)).sum)
+  val primal = rows.map { r =>
+    val sl = r.slack(x)
+    (if r.isEquality then math.abs(sl) else math.max(0.0, -sl)) / r.scale(x)
+  }.maxOption.getOrElse(0.0)
+  val dual = act.indices.filterNot(a => rows(act(a)).isEquality)
+    .map(a => math.max(0.0, -u(a))).maxOption.getOrElse(0.0) / (1.0 + uMax)
+  val complementarity = act.indices.filterNot(a => rows(act(a)).isEquality)
+    .map(a => math.abs(u(a) * rows(act(a)).slack(x)) / (rows(act(a)).scale(x) * (1.0 + uMax)))
+    .maxOption.getOrElse(0.0)
+  val residual = Seq(stationarity, primal, dual, complementarity).max
+  if residual.isNaN || residual > certTol then Left(QpFailure.Uncertified(residual))
+  else
+    val objective = 0.5 * dotA(x, hx) + dotA(prob.f, x)
+    Right(QpResult(x.toVector, objective, iters, residual, act.flatMap(rows(_).id), qpMultipliers(prob, act, u)))
+
+/** The active multipliers in [[QpMultipliers]]' convention. The rows are `n·z ≥ rhs` with
+ *  stationarity `∇ = Σ uₐ nₐ`: an inequality's normal is `−aₖ`, a lower bound's `eᵢ` and an
+ *  upper bound's `−eᵢ`, so their `u` is the multiplier as it stands; an equality is `a·z = b`
+ *  with normal `a`, so its multiplier is `−u`. The equality rows come first, in order. */
+private def qpMultipliers(prob: QpProblem, act: Vector[Int], u: Vector[Double]): QpMultipliers =
+  import prob.{n, rows}
+  val eqCount   = rows.count(_.isEquality)
+  val ineqCount = rows.count(_.id.exists { case QpConstraint.Row(_) => true; case _ => false })
+  val ineq  = Array.fill(ineqCount)(0.0)
+  val eqs   = Array.fill(eqCount)(0.0)
+  val lower = Array.fill(n)(0.0)
+  val upper = Array.fill(n)(0.0)
+  act.indices.foreach { a =>
+    val r = act(a)
+    rows(r).id match
+      case None                        => eqs(r) = -u(a)
+      case Some(QpConstraint.Row(k))   => ineq(k) = u(a)
+      case Some(QpConstraint.Lower(i)) => lower(i) = u(a)
+      case Some(QpConstraint.Upper(i)) => upper(i) = u(a)
+  }
+  QpMultipliers(ineq.toVector, eqs.toVector, lower.toVector, upper.toVector)
+
+/** The primal active-set method (Nocedal–Wright §16.3) for a positive **semi**definite `H`
+ *  (F_0074), from a feasible point.
+ *
+ *  Each iteration minimises the quadratic on the working set's face by the **null-space method**:
+ *  with `Z` an orthonormal basis of the face's directions, the reduced Hessian `ZᵀHZ` is only
+ *  semidefinite, so the reduced system is solved through its eigen-decomposition (the SVD of a
+ *  symmetric positive-semidefinite matrix).  A reduced gradient with a component along a null
+ *  direction gives a **ray** — zero curvature, falling cost — followed until a constraint blocks;
+ *  none blocking is `Unbounded`.  Otherwise the minimum-norm step is taken, cut by the first
+ *  blocking constraint, which joins the working set.  At a zero step the multipliers decide:
+ *  all non-negative is optimal (certified by the shared [[qpCertificate]]), otherwise the
+ *  lowest-index negative one leaves.  Lowest-index choices throughout, against cycling. */
+private final class PrimalActiveSet(prob: QpProblem, precision: Int):
+  import prob.{n, rows}
+
+  private val certTol = 0.5 * math.pow(10.0, -precision)
+  private val iterTol = math.max(1e-14, math.min(1e-10, certTol / 10))
+
+  private def hTimes(v: Array[Double]): Array[Double] =
+    Array.tabulate(n)(i => (0 until n).foldLeft(0.0)((acc, j) => acc + prob.h(i, j) * v(j)))
+  private def gradient(x: Array[Double]): Array[Double] =
+    val hx = hTimes(x)
+    Array.tabulate(n)(i => hx(i) + prob.f(i))
+
+  /** Gram–Schmidt (twice) of `vs` against `basis`, keeping each vector that adds a direction. */
+  private def extend(basis: Vector[Array[Double]], vs: Seq[Array[Double]]): Vector[Array[Double]] =
+    vs.foldLeft(basis) { (acc, v0) =>
+      val size = math.sqrt(dotA(v0, v0))
+      var v = v0.clone
+      for _ <- 0 until 2; b <- acc do v = combine(v, Vector(dotA(v, b)), Vector(b), -1.0)
+      val norm = math.sqrt(dotA(v, v))
+      if norm > 1e-9 * math.max(size, Double.MinPositiveValue) then acc :+ v.map(_ / norm) else acc
+    }
+
+  /** An orthonormal basis of the directions the working set leaves free. */
+  private def faceBasis(w: Vector[Int]): Vector[Array[Double]] =
+    val span = extend(Vector.empty, w.map(rows(_).normal))
+    extend(span, (0 until n).map(k => Array.tabulate(n)(i => if i == k then 1.0 else 0.0))).drop(span.size)
+
+  private enum Move:
+    case Step(p: Array[Double])
+    case Ray(d: Array[Double])
+
+  /** The move from `x` on the working set's face; `None` when the reduced system cannot be read. */
+  private def move(x: Array[Double], w: Vector[Int]): Option[Move] =
+    val g = gradient(x)
+    val z = faceBasis(w)
+    if z.isEmpty then Some(Move.Step(Array.fill(n)(0.0)))
     else
-      val objective = 0.5 * dotA(x, hx) + dotA(prob.f, x)
-      Right(QpResult(x.toVector, objective, s.iters, residual, s.act.flatMap(rows(_).id)))
+      val k  = z.size
+      val hz = z.map(hTimes)
+      val m  = _MatrixValue(k, k, Array.tabulate(k * k)(idx => dotA(z(idx / k), hz(idx % k))))
+      val r  = Array.tabulate(k)(j => dotA(z(j), g))
+      // A zero reduced Hessian (H = 0: a linear program) has every direction null; its
+      // decomposition is the identity, written directly, since the SVD's certificate is relative
+      // to the matrix's size and a zero matrix has none.
+      val decomposition =
+        if m.toVector.forall(_ == 0.0) then Some((Vector.fill(k)(0.0), _MatrixValue.identity(k)))
+        else m.svd.map((_, sigma, v) => (sigma, v))
+      decomposition.map { (sigma, v) =>
+        val top  = sigma.headOption.getOrElse(0.0)
+        val gNorm = math.sqrt(dotA(g, g))
+        val cols = sigma.indices.map(i => Array.tabulate(k)(row => v(row, i)))
+        val coef = cols.map(c => dotA(c, r))
+        val nul  = sigma.indices.filter(i => sigma(i) <= 1e-12 * top || top == 0.0)
+        val falling = nul.filter(i => math.abs(coef(i)) > 1e-10 * math.max(gNorm, Double.MinPositiveValue))
+        def lift(w: Array[Double]): Array[Double] = Array.tabulate(n)(i => (0 until k).foldLeft(0.0)((acc, j) => acc + z(j)(i) * w(j)))
+        if falling.nonEmpty then
+          Move.Ray(lift(falling.foldLeft(Array.fill(k)(0.0))((acc, i) => combine(acc, Vector(coef(i)), Vector(cols(i)), -1.0))))
+        else
+          val range = sigma.indices.filterNot(nul.contains)
+          Move.Step(lift(range.foldLeft(Array.fill(k)(0.0))((acc, i) => combine(acc, Vector(coef(i) / sigma(i)), Vector(cols(i)), -1.0))))
+      }
+
+  /** The working-set multipliers, `Nᵂᵀ u = ∇`, by the normal equations (the rows are independent). */
+  private def multipliers(x: Array[Double], w: Vector[Int]): Option[Vector[Double]] =
+    if w.isEmpty then Some(Vector.empty)
+    else
+      val g = gradient(x)
+      spdSolve(Vector.tabulate(w.size, w.size)((a, b) => dotA(rows(w(a)).normal, rows(w(b)).normal)),
+               w.map(i => dotA(rows(i).normal, g)))
+
+  /** The first inactive inequality a move along `d` reaches: `(step, row)`, lowest index on a tie. */
+  private def blocking(x: Array[Double], d: Array[Double], w: Vector[Int]): Option[(Double, Int)] =
+    rows.indices.filterNot(w.contains).filterNot(rows(_).isEquality).flatMap { i =>
+      val slope = dotA(rows(i).normal, d)
+      Option.when(slope < -iterTol * normInfA(rows(i).normal) * math.max(normInfA(d), Double.MinPositiveValue))(
+        (math.max(0.0, rows(i).slack(x)) / -slope, i))
+    }.minOption
+
+  def solve(x0: Array[Double], warm: Set[QpConstraint]): Either[QpFailure, QpResult] =
+    // The starting working set: every equality, then the warm rows, then the other inequalities
+    // active at x0 -- each kept only if independent of those before it.
+    val active = rows.indices.filter(i => rows(i).isEquality || math.abs(rows(i).slack(x0)) <= iterTol * rows(i).scale(x0))
+    val order  = active.filter(rows(_).isEquality) ++ active.filter(i => rows(i).id.exists(warm.contains)) ++ active
+    val w0 = order.distinct.foldLeft((Vector.empty[Int], Vector.empty[Array[Double]])) { case ((ws, basis), i) =>
+      val grown = extend(basis, Seq(rows(i).normal))
+      if grown.size > basis.size then (ws :+ i, grown) else (ws, basis)
+    }._1
+
+    @annotation.tailrec
+    def loop(x: Array[Double], w: Vector[Int], it: Int): Either[QpFailure, QpResult] =
+      if it > MaxQpIterations then Left(QpFailure.MaxIterations(MaxQpIterations))
+      else move(x, w) match
+        case None => Left(QpFailure.Uncertified(Double.PositiveInfinity))
+        case Some(Move.Ray(d)) =>
+          blocking(x, d, w) match
+            case None         => Left(QpFailure.Unbounded)
+            case Some((t, j)) => loop(combine(x, Vector(t), Vector(d), 1.0), w :+ j, it + 1)
+        case Some(Move.Step(p)) if normInfA(p) <= iterTol * (1.0 + normInfA(x)) =>
+          multipliers(x, w) match
+            case None => Left(QpFailure.Uncertified(Double.PositiveInfinity))
+            case Some(u) =>
+              val scale = 1.0 + u.map(math.abs).maxOption.getOrElse(0.0)
+              w.indices.filter(a => !rows(w(a)).isEquality && u(a) < -iterTol * scale).minByOption(w(_)) match
+                case None    => qpCertificate(prob, x, w, u, it, certTol)
+                case Some(a) => loop(x, w.patch(a, Nil, 1), it + 1)
+        case Some(Move.Step(p)) =>
+          blocking(x, p, w) match
+            case Some((t, j)) if t < 1.0 => loop(combine(x, Vector(t), Vector(p), 1.0), w :+ j, it + 1)
+            case _                       => loop(combine(x, Vector(1.0), Vector(p), 1.0), w, it + 1)
+
+    loop(x0, w0, 0)
 
 
 /** Solves `M u = rhs` for a small symmetric positive-definite `M` by Cholesky; `None` when a

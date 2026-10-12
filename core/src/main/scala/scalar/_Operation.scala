@@ -27,6 +27,11 @@ private def denseFromShaped(m: _MatrixShaped): Option[_MatrixValue] =
   if ds.size == m.children.size then Some(_MatrixValue(m.rows, m.cols, ds.toArray)) else None
 
 
+/** Whether either operand is an interval: the gate on the interval arms (F_0008). */
+private def eitherInterval(a: _Value, b: _Value): Boolean =
+  a.isInstanceOf[_Interval] || b.isInstanceOf[_Interval]
+
+
 /** Addition of two expressions: `a + b`.
  *
  *  Also evaluates concrete matrix operands via `_MatrixValue.add` (conforming dimensions)
@@ -52,6 +57,9 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
       case (Right(_Number(x)), Right(_Number(y))) => Right(_Number(x + y))
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
         if x.rows == y.rows && x.cols == y.cols then x.add(y).guarded(this) else Left(this)
+      // F_0008: an interval operand, outward-rounded; anything without bounds stays symbolic.
+      case (Right(av: _Value), Right(bv: _Value)) if eitherInterval(av, bv) =>
+        _Interval.add(av, bv, env).map(Right(_)).getOrElse(Left(Sum(av, bv)))
       // Both operands are concrete: try complex field addition; None → stay symbolic.
       case (Right(av: _Value), Right(bv: _Value)) =>
         _Complex.add(av, bv).map(Right(_)).getOrElse(Left(Sum(av, bv)))
@@ -92,6 +100,8 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
       // zero short-circuit for everything scalar or unreducible: 0 * e folds to 0
       case (Right(_Number(0.0)), _) | (_, Right(_Number(0.0))) => Right(_Number(0.0))
       case (Right(_Number(x)), Right(_Number(y)))           => Right(_Number(x * y))
+      case (Right(av: _Value), Right(bv: _Value)) if eitherInterval(av, bv) =>
+        _Interval.multiply(av, bv, env).map(Right(_)).getOrElse(Left(Product(av, bv)))
       // Both operands are concrete: try complex field multiplication; None → stay symbolic.
       case (Right(av: _Value), Right(bv: _Value)) =>
         _Complex.mul(av, bv).map(Right(_)).getOrElse(Left(Product(av, bv)))
@@ -145,6 +155,9 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
         (denseFromShaped(x), denseFromShaped(y).flatMap(_.inverse)) match
           case (Some(a), Some(bi)) if a.cols == bi.rows => a.multiply(bi).guarded(this)
           case _                                        => Left(this)
+      // An interval divisor containing zero is two rays, not an interval: stays symbolic.
+      case (Right(av: _Value), Right(bv: _Value)) if eitherInterval(av, bv) =>
+        _Interval.divide(av, bv, env).map(Right(_)).getOrElse(Left(Ratio(av, bv)))
       // Both operands are concrete: try complex field division; None on non-numeric or zero denominator.
       case (Right(av: _Value), Right(bv: _Value)) =>
         _Complex.div(av, bv).map(Right(_)).getOrElse(Left(Ratio(av, bv)))
@@ -200,6 +213,8 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       // Demoting is still much better than the alternative, which is losing `A^n` entirely.
       case (Left(m: _MatrixShaped), Right(_Number(e))) =>
         denseFromShaped(m).flatMap(mv => matrixPower(mv, e)).getOrElse(Left(this))
+      case (Right(bv: _Value), Right(ev: _Value)) if eitherInterval(bv, ev) =>
+        _Interval.power(bv, ev, env).map(Right(_)).getOrElse(Left(Power(bv, ev)))
       // Both operands are concrete: try principal complex power; None → stay symbolic.
       case (Right(bv: _Value), Right(ev: _Value)) =>
         _Complex.pow(bv, ev).map(Right(_)).getOrElse(Left(Power(bv, ev)))

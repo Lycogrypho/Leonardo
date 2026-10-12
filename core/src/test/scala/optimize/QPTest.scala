@@ -56,6 +56,9 @@ class QPTest extends AnyFlatSpec:
     assert(near(solved("qp(eye(2), [[0], [0]], 0, 0, [[1, 1]], [[1]], -inf, inf)").z, Seq(0.5, 0.5)))
     val r = solved("qp(eye(2), [[0], [0]], 0, 0, [[1, 1]], [[1]], -inf, [[0.2], [inf]])")
     assert(near(r.z, Seq(0.2, 0.8)) && r.active == Vector(QpConstraint.Upper(0)))
+    // F_0066: z + λ·(1, 1) + νᵤ·e₁ = 0 gives λ = −0.8 and νᵤ = 0.6; nothing else is active.
+    assert(near(r.multipliers.equality, Seq(-0.8)) && near(r.multipliers.upper, Seq(0.6, 0.0)), r.multipliers)
+    assert(r.multipliers.inequality.isEmpty && r.multipliers.lower == Vector(0.0, 0.0))
   }
 
   it should "decline lb > ub, contradictory rows and contradictory equalities as infeasible" in {
@@ -66,9 +69,12 @@ class QPTest extends AnyFlatSpec:
     assert(failure("qp(eye(2), [[0], [0]], 0, 0, [[1, 1], [2, 2]], [[1], [3]], -inf, inf)") == QpFailure.Infeasible)
   }
 
-  it should "decline an indefinite H as not convex and a singular one as not strictly convex" in {
+  it should "decline an indefinite H as not convex, and solve a singular one (F_0074)" in {
     assert(failure("qp([[1, 0], [0, -1]], [[0], [0]], 0, 0, -inf, inf)") == QpFailure.NotConvex)
-    assert(failure("qp([[1, 0], [0, 0]], [[0], [0]], 0, 0, -inf, inf)") == QpFailure.NotStrictlyConvex)
+    // Until F_0074 a semidefinite H was declined NotStrictlyConvex; the primal active-set method
+    // now answers it. min x²/2 has its minimum value 0 wherever x = 0, whatever y is.
+    val r = solved("qp([[1, 0], [0, 0]], [[0], [0]], 0, 0, -inf, inf)")
+    assert(math.abs(r.z.head) < 1e-12 && math.abs(r.objective) < 1e-12, r)
   }
 
   it should "survive degenerate constraints: a duplicate row, a scaled copy, a redundant one through the optimum" in {
@@ -104,6 +110,7 @@ class QPTest extends AnyFlatSpec:
         case Right(r)  =>
           assert(near(r.z, zs, 1e-7), s"trial $trial: ${r.z} vs $zs")
           assert(r.active.toSet == active.map(QpConstraint.Row(_)), s"trial $trial active set")
+          assert(near(r.multipliers.inequality, lambda, 1e-7), s"trial $trial multipliers (F_0066)")
   }
 
   it should "answer the same point when the problem is rescaled (the units rule)" in {

@@ -59,6 +59,21 @@ for `x` divides by `2y`, and the branch `y = 0` is the one that finds `(0, 0)` a
 run("stationary(x*y*(x + y - 3), x, y)")
 ```
 
+When every component of the gradient couples the unknowns non-linearly, no such step applies.
+The solver then computes a lexicographic
+[Gröbner basis](https://en.wikipedia.org/wiki/Gr%C3%B6bner_basis) of the same equations, in
+exact rational arithmetic. A lexicographic basis is triangular: one equation in the last unknown
+alone, the others bringing in one unknown at a time, which the steps above then finish. Here
+both components are cubic in `x` and `y`, and all nine points come back:
+
+```scala mdoc
+run("stationary(x^4 + y^4 + x^2*y^2 - 2*x^2 - 2*y^2, x, y)")
+```
+
+The basis is tried only where the steps give up, so it never changes an answer they give. It is
+capped in size, degree, coefficient length and work, because exact Buchberger's algorithm can
+grow without bound; past a cap the call declines.
+
 When the set of points cannot be listed — a whole line of them, or infinitely many — the call
 stays as it was written:
 
@@ -228,15 +243,21 @@ lesson.show("qp([[1, -1], [-1, 2]], [[-2], [-6]], [[1, 1], [-1, 2], [2, 1]], [[2
 The note names the constraints holding with equality at the answer — which input is saturated,
 which limit binds — the information an experimenter wants from the active set.
 
-The solver is the **Goldfarb–Idnani dual active-set method**: it starts from the unconstrained
-minimum, needs no feasible starting point, and finds infeasibility by itself. It requires `H`
-**positive definite** — every MPC Hessian `ΓᵀQΓ + R` with `R` definite is — and declines a
-merely semidefinite one rather than regularise it, which would solve a different problem. Like
-`minimize`, an answer is **certified**: the KKT conditions are checked, relative to the
-problem's scale, against the tolerance `=` uses, and a point that fails is not returned.
+For a **positive definite** `H` — every MPC Hessian `ΓᵀQΓ + R` with `R` definite — the solver
+is the **Goldfarb–Idnani dual active-set method**: it starts from the unconstrained minimum,
+needs no feasible starting point, and finds infeasibility by itself. A merely **semidefinite**
+`H`, where some direction costs nothing, goes to the **primal active-set method** instead. It
+starts from a feasible point found by the exact linear program below, and follows a direction
+of zero curvature until a constraint stops it, or reports the problem `Unbounded` when none
+does. `H = 0` is a linear program. Neither method regularises `H`, which would solve a
+different problem. Like `minimize`, an answer is **certified**: the KKT conditions are checked,
+relative to the problem's scale, against the tolerance `=` uses, and a point that fails is not
+returned.
 
 ```scala mdoc:passthrough
-lesson.show("qp(eye(2), [[0], [0]], [[1, 0], [-1, 0]], [[-1], [-1]], -inf, inf)")
+lesson.show("qp(eye(2), [[0], [0]], [[1, 0], [-1, 0]], [[-1], [-1]], -inf, inf)",
+            "qp([[1, 0], [0, 0]], [[-2], [-1]], [[1, 1]], [[3]], 0, inf)",
+            "qp([[1, 0], [0, 0]], [[0], [-1]], 0, 0, -inf, inf)")
 ```
 
 A program calls `qpSolve`, which returns the active set with the answer; passing it back as
@@ -293,6 +314,71 @@ lesson.show("lsqfit((a + b)*t, t, T, Y, [[a], [b]], [[1], [1]])")
 
 A program calls `curveFit` or `lsqfit`, whose `LsqResult` carries the iterations, the residual
 norm, the covariance and which parameters a bound holds.
+
+## Linear programming
+
+`lp(f, A, b, lb, ub)` minimises **`fᵀx` subject to `A x ≤ b` and `lb ≤ x ≤ ub`**, `qp`'s shape
+without the Hessian: an absent group is `0`, an absent bound `-inf` / `inf`, and `lp(f, A, b, Aeq,
+beq, lb, ub)` adds equalities. The note gives the optimal value and the binding constraints:
+
+```scala mdoc:passthrough
+lesson.show("lp([[-3], [-5]], [[1, 0], [0, 2], [3, 2]], [[4], [12], [18]], 0, inf)")
+```
+
+That is `max 3x + 5y`, written as a minimisation of its negative. **It is solved exactly**: the
+simplex method runs over the rationals, so every decision a floating-point simplex makes with a
+tolerance — is this reduced cost negative, is this ratio a tie — is made exactly. An infeasible
+or an unbounded problem is therefore *proved* so, not suspected; Bland's pivoting rule rules
+out cycling on a degenerate problem; and in exact mode the answer is exact:
+
+```scala mdoc:passthrough
+lesson.show("exact on", "lp([[-1], [-1]], [[3, 1], [1, 3]], [[1], [1]], 0, inf)", "exact off",
+            "lp(1, [[1], [-1]], [[1], [-2]], -inf, inf)")
+```
+
+The cost of exactness is the size the rationals grow to, so the call is capped at 40 variables,
+80 constraints and coefficients of 2048 bits; past those it declines and says so. When the
+optimum is not unique, the vertex Bland's rule reaches is returned. A program calls `lpSolve`,
+whose `LpResult` carries the value and the active set.
+
+## Constrained nonlinear programming
+
+`nlp(f, [[x], [y]], x0, g, h, method)` minimises `f` subject to **`g ≤ 0` and `h = 0`** — the
+`kkt` convention, minimisation with `g ≤ 0` — from the starting point `x0`. Each group is a
+column, one constraint, or `0` when there is none, and a cell may be written as a relation;
+`lb` and `ub` before the method add bounds. The method is always named. `sqp` is sequential
+quadratic programming: one `qp` per step on the constraints linearised at the current point. The
+other, `auglag`, is an augmented Lagrangian, minimising a penalised objective with multiplier
+estimates that improve each round. The acceptance problem of the MPC requirement, `min x + y` on
+the disc `x² + y² ≤ 2`:
+
+```scala mdoc:passthrough
+lesson.show("nlp(x + y, [[x], [y]], [[1], [0]], x^2 + y^2 <= 2, 0, sqp)")
+```
+
+The note names the inequality that binds and its multiplier `μ`, the sensitivity of the
+optimum to that constraint: `∇f + μ∇g = 0` there, with `μ ≥ 0`. Equalities and bounds combine:
+
+```scala mdoc:passthrough
+lesson.show("nlp(x^2 + 2*y^2, [[x], [y]], [[0], [0]], 0, x + y = 3, auglag)",
+            "nlp((1 - x)^2 + 100*(y - x^2)^2, [[x], [y]], [[-1.2], [1]], 0, 0, -inf, [[0.5], [inf]], sqp)")
+```
+
+**What is answered is a *local* KKT point**, as with `minimize`: on a non-convex problem the
+two methods, or two starting points, may stop at different ones. Either way the point is
+**certified** before it is returned: stationarity of the Lagrangian, feasibility, `μ ≥ 0` and
+complementarity, each measured against the terms it is made of, so the verdict does not change
+when the objective or a variable is rescaled. SQP keeps its Hessian positive definite by a
+damped BFGS update, so every subproblem is a `qp` the Goldfarb–Idnani solver accepts. A
+problem whose constraints admit no point is declined, not answered:
+
+```scala mdoc:passthrough
+lesson.show("nlp(x^2, [[x]], 0, [[x + 1], [1 - x]], 0, sqp)")
+```
+
+A program calls `nlpSolve`, whose `NlpResult` carries the multipliers of both groups and the
+active inequalities; `qpSolve`'s `QpResult` now carries its multipliers too, which is what
+the SQP iteration reads.
 
 ## Where to go next
 

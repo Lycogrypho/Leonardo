@@ -160,8 +160,12 @@ object _Rational:
    *  @param e the expression to inspect
    *  @return `true` when any node is a `_Rational`
    */
-  def containsExact(e: _Expression): Boolean =
-    e.isInstanceOf[_Rational] || e.children.exists(containsExact)
+  def containsExact(e: _Expression): Boolean = e match
+    case _: _Rational => true
+    // An exact interval is a leaf with exact endpoints (F_0008): `:save` groups it under
+    // `exact on`, or a reload would read its endpoints as Doubles.
+    case i: _Interval => i.isExact
+    case other        => other.children.exists(containsExact)
 
   /** An integer constant in the same tier as `like`.
    *

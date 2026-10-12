@@ -41,8 +41,18 @@ type SolutionPoint = Map[String, _Expression]
  *     for it on one branch, and on a second branch replaced by `c = 0` and the constant term
  *     `= 0`.  **The second branch is the point**: dividing by `c` silently drops every solution
  *     where `c` vanishes, and a stationary-point list is read as *all* of them.
+ *  4. **A branch the steps decline, or where none applies**, is handed to [[groebnerBasis]] when
+ *     its equations are polynomials with numeric coefficients (F_0068): a lexicographic basis of
+ *     the same ideal is triangular, which steps 1 and 2 then finish. It comes *after* the steps,
+ *     so every answer they give is unchanged; it reaches the genuinely coupled systems (every
+ *     equation non-linear in every unknown) and those where step 3's division led to rational
+ *     equations no step solves.
  *
- *  It **declines** — `None` — when no step applies, when a branch is left with free unknowns
+ *  Substituting an inexact root drops the coefficients it leaves at the rounding level of the
+ *  terms that cancelled ([[withoutRounding]]): read as values, they turn `0·x = 0` into `x = 0`
+ *  and lose the branch's points, which is how the first F_0068 test found five of nine.
+ *
+ *  It **declines** — `None` — when no step applies and no basis helps, when a branch is left with free unknowns
  *  and no equations (a continuum of solutions, which no list can hold), when a univariate
  *  equation's roots cannot be enumerated (a transcendental equation, or symbolic coefficients
  *  above degree one), and past [[MaxEliminationSteps]].  It never returns what it found so far
@@ -73,8 +83,9 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
   var steps     = 0
 
   // `None` = decline the whole problem; `Some(list)` = every solution of this branch.
+  // `basis` is set on the branch that is already a Gröbner basis, so it is never rebuilt.
   def go(eqs: List[_Expression], left: List[_Variable],
-         assigned: Map[String, _Expression]): Option[List[SolutionPoint]] =
+         assigned: Map[String, _Expression], basis: Boolean = false): Option[List[SolutionPoint]] =
     steps += 1
     if steps > MaxEliminationSteps then None
     else
@@ -92,12 +103,19 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
             // `simplify` does not perform, and would read as undecidable.
             def assign(u: _Variable, value: _Expression, used: _Expression): Option[List[SolutionPoint]] =
               val bind     = Map(u.variable -> value)
-              val nextEqs  = rest.filterNot(_ eq used).map(e => simplifyFully(substitute(e, bind)))
+              val still    = left.filterNot(_ == u).map(_.variable).toVector
+              // An inexact root leaves rounding where a coefficient vanishes exactly; read as a
+              // value it would lose this branch's points (F_0068, `withoutRounding`).
+              val cleaned  = (s: _Expression) => value match
+                case _: _Rational => s
+                case _Number(_)   => withoutRounding(s, still)
+                case _            => s
+              val nextEqs  = rest.filterNot(_ eq used).map(e => simplifyFully(cleaned(substitute(e, bind))))
               val nextAsg  = assigned.view.mapValues(v => simplifyFully(substitute(v, bind))).toMap +
                              (u.variable -> value)
               go(nextEqs, left.filterNot(_ == u), nextAsg)
 
-            linearConstantStep(rest, left).map((e, u, value) => assign(u, value, e))
+            val stepped = linearConstantStep(rest, left).map((e, u, value) => assign(u, value, e))
               .orElse(univariateStep(rest, left).map { (e, u, roots) =>
                 sequence(roots.toList.map(r => assign(u, _Number(r), e))).map(_.flatten)
               })
@@ -106,7 +124,18 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
                 val vanish  = go(c1 :: c0 :: rest.filterNot(_ == e), left, assigned)
                 for a <- divided; b <- vanish yield a ++ b
               })
-              .getOrElse(None)
+              .flatten
+            // The steps declined this branch, or none applied: the equations couple several
+            // unknowns non-linearly, or a division by a coefficient in the other unknowns led
+            // where no step goes (rational equations). A lexicographic Gröbner basis of the same
+            // ideal is triangular, which the steps then finish (F_0068). Tried only after the
+            // steps, so every answer they give is unchanged; a basis that does not help declines.
+            stepped.orElse {
+              if basis then None
+              else groebnerBasis(rest, left, env) match
+                case Some(g) if g.toSet != rest.toSet => go(g, left, assigned, basis = true)
+                case _                                => None
+            }
 
   go(prepared, unknowns, Map.empty).flatMap { candidates =>
     verified(candidates, prepared, unknowns, env, tolerance)
@@ -116,7 +145,7 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
 /** Values of parameters that are bound in `env`, so the solver sees numbers rather than names.
  *
  *  An unknown is never substituted, even when bound: it is what is being solved for. */
-private def boundParameters(eqs: List[_Expression], unknowns: Set[String],
+private[optimize] def boundParameters(eqs: List[_Expression], unknowns: Set[String],
                             env: Environment): Map[String, _Expression] =
   eqs.flatMap(_.freeVars).distinct.filterNot(unknowns.contains)
     .flatMap(n => env.get(n).collect { case v @ _Number(_) => n -> (v: _Expression) }).toMap

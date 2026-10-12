@@ -174,8 +174,14 @@ renderers. MIT licence, reproduced as its terms require:
 VENDORED: svg-pan-zoom v3.6.1 (docs/src/js/svg-pan-zoom.min.js)
 
 Used only by the documentation site to make the architecture diagram zoomable;
-it is not part of the published library artifacts. BSD 2-Clause licence,
-reproduced as its terms require:
+it is not part of the published library artifacts.
+
+  SHA-256: F463710320089C61D0F57CEC2B886C02DE04E21EB92EBD22EAA327FDF0A6B7C6
+  Source:  https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js
+           (identical to https://raw.githubusercontent.com/bumbu/svg-pan-zoom/3.6.1/dist/svg-pan-zoom.min.js,
+           29768 bytes; both checked 2026-10-11)
+
+BSD 2-Clause licence, reproduced as its terms require:
 
   Copyright 2009-2010 Andrea Leofreddi <a.leofreddi@vleo.net>
   All rights reserved.

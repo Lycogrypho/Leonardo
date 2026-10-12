@@ -36,6 +36,271 @@ object _MatrixValue:
    */
   private[core] val CholeskyTolerance: Double = 1e-12
 
+  /** Iterations [[_MatrixValue.eigenDecompose]] allows per eigenvalue before declining, with an
+   *  exceptional shift every tenth. The Francis iteration converges quadratically, so a typical
+   *  eigenvalue takes two to four; the cap only stops a pathological cycle.
+   */
+  private val MaxEigenIterations = 60
+
+  /** `|a|` carrying the sign of `b`, `+` for `b = 0` (Fortran's `SIGN`, which the EISPACK
+   *  routines below are written in terms of — `math.copySign` differs at `b = -0.0`). */
+  private def sign(a: Double, b: Double): Double = if b >= 0.0 then math.abs(a) else -math.abs(a)
+
+  /** A 1-based `(n+1)×(n+1)` copy of a row-major `n×n` array: the EISPACK routines below are
+   *  transcribed in their own indexing, since an off-by-one in a bulge chase is invisible until
+   *  some matrix fails to converge. Row and column 0 are unused. */
+  private def oneBased(n: Int, data: Array[Double]): Array[Array[Double]] =
+    val a = Array.ofDim[Double](n + 1, n + 1)
+    var i = 1
+    while i <= n do
+      var j = 1
+      while j <= n do
+        a(i)(j) = data((i - 1) * n + (j - 1))
+        j += 1
+      i += 1
+    a
+
+  /** Balancing (EISPACK `balanc`): a diagonal similarity by powers of two that brings each row
+   *  and its column to comparable norms. Exact in binary, so the spectrum is untouched, while the
+   *  rounding the QR iteration makes is relative to a better-scaled matrix. */
+  private def balance(a: Array[Array[Double]], n: Int): Unit =
+    val radix = 2.0
+    val sqrdx = radix * radix
+    var done  = false
+    while !done do
+      done = true
+      var i = 1
+      while i <= n do
+        var r = 0.0
+        var c = 0.0
+        var j = 1
+        while j <= n do
+          if j != i then
+            c += math.abs(a(j)(i))
+            r += math.abs(a(i)(j))
+          j += 1
+        if c != 0.0 && r != 0.0 then
+          val s = c + r
+          var f = 1.0
+          var g = r / radix
+          while c < g do
+            f *= radix
+            c *= sqrdx
+          g = r * radix
+          while c > g do
+            f /= radix
+            c /= sqrdx
+          if (c + r) / f < 0.95 * s then
+            done = false
+            g = 1.0 / f
+            j = 1
+            while j <= n do
+              a(i)(j) *= g
+              a(j)(i) *= f
+              j += 1
+        i += 1
+
+  /** Reduction to upper Hessenberg form by stabilised elimination (EISPACK `elmhes`), a
+   *  similarity. Hessenberg form is what makes one sub-diagonal entry a valid deflation test,
+   *  and the QR iteration preserves it. The multipliers the routine leaves below the
+   *  sub-diagonal are cleared: they are not part of the reduced matrix. */
+  private def hessenberg(a: Array[Array[Double]], n: Int): Unit =
+    var m = 2
+    while m < n do
+      var x = 0.0
+      var i = m
+      var j = m
+      while j <= n do
+        if math.abs(a(j)(m - 1)) > math.abs(x) then
+          x = a(j)(m - 1)
+          i = j
+        j += 1
+      if i != m then
+        j = m - 1
+        while j <= n do
+          val t = a(i)(j); a(i)(j) = a(m)(j); a(m)(j) = t
+          j += 1
+        j = 1
+        while j <= n do
+          val t = a(j)(i); a(j)(i) = a(j)(m); a(j)(m) = t
+          j += 1
+      if x != 0.0 then
+        i = m + 1
+        while i <= n do
+          val y = a(i)(m - 1) / x
+          if y != 0.0 then
+            a(i)(m - 1) = y
+            j = m
+            while j <= n do
+              a(i)(j) -= y * a(m)(j)
+              j += 1
+            j = 1
+            while j <= n do
+              a(j)(m) += y * a(j)(i)
+              j += 1
+          i += 1
+      m += 1
+    var i = 3
+    while i <= n do
+      var j = 1
+      while j <= i - 2 do
+        a(i)(j) = 0.0
+        j += 1
+      i += 1
+
+  /** The eigenvalues of an upper Hessenberg matrix by the Francis double-shift QR iteration
+   *  (EISPACK `hqr`): deflation wherever a sub-diagonal entry becomes negligible, a trailing
+   *  1×1 or 2×2 block solved directly, and an implicit double shift that splits a complex pair
+   *  in real arithmetic. Destroys `a`. Eigenvalues are returned in deflation order, bottom up,
+   *  a pair larger-first (real) or `+im` first (complex); `None` past
+   *  [[MaxEigenIterations]] for one eigenvalue. */
+  private def hqr(a: Array[Array[Double]], n: Int): Option[Vector[_Value]] =
+    val eps   = math.ulp(1.0)
+    var anorm = 0.0
+    var i0 = 1
+    while i0 <= n do
+      var j = math.max(i0 - 1, 1)
+      while j <= n do
+        anorm += math.abs(a(i0)(j))
+        j += 1
+      i0 += 1
+    val eigs   = scala.collection.mutable.ArrayBuffer[_Value]()
+    var nn     = n
+    var t      = 0.0
+    var failed = false
+    while nn >= 1 && !failed do
+      var its   = 0
+      var l     = nn
+      var again = true
+      while again && !failed do
+        // The lowest negligible sub-diagonal entry above row nn splits off the active block l..nn.
+        l = nn
+        var split = false
+        while l >= 2 && !split do
+          var s = math.abs(a(l - 1)(l - 1)) + math.abs(a(l)(l))
+          if s == 0.0 then s = anorm
+          if math.abs(a(l)(l - 1)) <= eps * s then
+            a(l)(l - 1) = 0.0
+            split = true
+          else l -= 1
+        var x = a(nn)(nn)
+        if l == nn then
+          eigs += _Number(x + t)
+          nn -= 1
+        else
+          var y = a(nn - 1)(nn - 1)
+          var w = a(nn)(nn - 1) * a(nn - 1)(nn)
+          if l == nn - 1 then
+            val p = 0.5 * (y - x)
+            val q = p * p + w
+            val r = math.sqrt(math.abs(q))
+            x += t
+            if q >= 0.0 then
+              val z  = p + sign(r, p)
+              val e1 = x + z
+              val e2 = if z != 0.0 then x - w / z else e1
+              eigs += _Number(math.max(e1, e2))
+              eigs += _Number(math.min(e1, e2))
+            else
+              eigs += _Complex.of(x + p, r)
+              eigs += _Complex.of(x + p, -r)
+            nn -= 2
+          else if its == MaxEigenIterations then failed = true
+          else
+            if its > 0 && its % 10 == 0 then
+              // Exceptional shift: breaks a cycle the standard shifts can fall into.
+              t += x
+              var i = 1
+              while i <= nn do
+                a(i)(i) -= x
+                i += 1
+              val s = math.abs(a(nn)(nn - 1)) + math.abs(a(nn - 1)(nn - 2))
+              x = 0.75 * s
+              y = x
+              w = -0.4375 * s * s
+            its += 1
+            // Look for two consecutive small sub-diagonal entries, where the bulge can start.
+            var m = nn - 2
+            var p = 0.0
+            var q = 0.0
+            var r = 0.0
+            var z = 0.0
+            var s = 0.0
+            var found = false
+            while !found do
+              z = a(m)(m)
+              r = x - z
+              s = y - z
+              p = (r * s - w) / a(m + 1)(m) + a(m)(m + 1)
+              q = a(m + 1)(m + 1) - z - r - s
+              r = a(m + 2)(m + 1)
+              s = math.abs(p) + math.abs(q) + math.abs(r)
+              p /= s
+              q /= s
+              r /= s
+              if m == l then found = true
+              else
+                val u = math.abs(a(m)(m - 1)) * (math.abs(q) + math.abs(r))
+                val v = math.abs(p) * (math.abs(a(m - 1)(m - 1)) + math.abs(z) + math.abs(a(m + 1)(m + 1)))
+                if u <= eps * v then found = true else m -= 1
+            var i = m + 2
+            while i <= nn do
+              a(i)(i - 2) = 0.0
+              if i != m + 2 then a(i)(i - 3) = 0.0
+              i += 1
+            // The double-shift step: chase the bulge down with 3×3 Householder reflections.
+            var k = m
+            while k <= nn - 1 do
+              if k != m then
+                p = a(k)(k - 1)
+                q = a(k + 1)(k - 1)
+                r = if k != nn - 1 then a(k + 2)(k - 1) else 0.0
+                x = math.abs(p) + math.abs(q) + math.abs(r)
+                if x != 0.0 then
+                  p /= x
+                  q /= x
+                  r /= x
+              s = sign(math.sqrt(p * p + q * q + r * r), p)
+              if s != 0.0 then
+                if k == m then
+                  if l != m then a(k)(k - 1) = -a(k)(k - 1)
+                else a(k)(k - 1) = -s * x
+                p += s
+                x = p / s
+                y = q / s
+                z = r / s
+                q /= p
+                r /= p
+                var j = k
+                while j <= nn do
+                  p = a(k)(j) + q * a(k + 1)(j)
+                  if k != nn - 1 then
+                    p += r * a(k + 2)(j)
+                    a(k + 2)(j) -= p * z
+                  a(k + 1)(j) -= p * y
+                  a(k)(j) -= p * x
+                  j += 1
+                val mmin = math.min(nn, k + 3)
+                var i2 = l
+                while i2 <= mmin do
+                  p = x * a(i2)(k) + y * a(i2)(k + 1)
+                  if k != nn - 1 then
+                    p += z * a(i2)(k + 2)
+                    a(i2)(k + 2) -= p * r
+                  a(i2)(k + 1) -= p * q
+                  a(i2)(k) -= p
+                  i2 += 1
+              k += 1
+        again = l < nn - 1
+    Option.when(!failed && eigs.size == n)(eigs.toVector)
+
+  /** The eigenvalues of a row-major `n×n` array: balance, reduce, iterate (F_0100). */
+  private[core] def eigenvaluesOf(n: Int, data: Array[Double]): Option[Vector[_Value]] =
+    val a = oneBased(n, data)
+    balance(a, n)
+    hessenberg(a, n)
+    hqr(a, n)
+
   /** Coefficients of the degree-13 Padé approximant to `e^x`, indexed `b(0) … b(13)`.
    *
    *  Tabulated rather than derived: they are the numerators of a fixed rational approximant,
@@ -617,111 +882,25 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       }
       Option.when(positive)(new _MatrixValue(n, n, l))
 
-  /** Eigenvalue decomposition via [[https://en.wikipedia.org/wiki/QR_algorithm QR iteration]] with Wilkinson shifts.
-   *  Returns the `n` eigenvalues as [[_Number]] (real) or [[_Complex]] (conjugate pairs
-   *  from 2×2 blocks).  `None` for non-square matrices or non-convergence within 300·n steps.
+  /** Eigenvalues by the [[https://en.wikipedia.org/wiki/QR_algorithm Francis double-shift QR iteration]]:
+   *  the matrix is balanced, reduced to upper Hessenberg form, and iterated with implicit
+   *  double shifts (EISPACK `balanc`, `elmhes`, `hqr`). Returns the `n` eigenvalues as
+   *  [[_Number]] (real) or [[_Complex]] (a conjugate pair, `+im` first).
    *
-   *  Algorithm: shrinking active sub-matrix; deflation when the sub-diagonal drops below
-   *  tolerance; Wilkinson shift QR step otherwise; 2×2 blocks solved analytically.  A tiny
-   *  perturbation breaks rank deficiency when the shift hits an exact eigenvalue.
-   *  @return `Some(eigenvalues)` in deflation order, `None` for non-square or non-convergent
+   *  **It was a full-matrix QR iteration with a single real shift until F_0100**, and declined
+   *  most random dense matrices from `n = 3`: it deflated only a trailing `1×1`, tested one
+   *  sub-diagonal entry of a matrix it never reduced to Hessenberg form (so the test did not
+   *  say the last row was split off), and shifted a trailing complex pair by its real part,
+   *  which cannot split it. The double shift splits the pair in real arithmetic, and a
+   *  deflation may happen at any sub-diagonal entry. Every test is relative to the entries it
+   *  compares, so `k·A` gives `k` times the spectrum (the F_0091 rule).
+   *  @return `Some(eigenvalues)` in deflation order, bottom up; `None` for a non-square or
+   *          non-finite matrix, or no convergence within 60 iterations for one eigenvalue
    */
   def eigenDecompose: Option[Vector[_Value]] =
-    if rows != cols then None
-    else
-      val n = rows
-      if n == 1 then return Some(Vector(_Number(data(0))))
-      val tol     = 1e-12
-      val maxIter = 300 * n
-      val eigs    = scala.collection.mutable.ArrayBuffer[_Value]()
-
-      // Active sub-matrix: sz×sz, row-major in aArr(0 .. sz*sz-1).
-      // Replaced entirely on every deflation.
-      var sz   = n
-      var aArr = data.clone
-
-      @inline def aGet(r: Int, c: Int): Double = aArr(r * sz + c)
-
-      def shiftedMatrix(shift: Double): _MatrixValue =
-        val out = new Array[Double](sz * sz)
-        var k = 0
-        while k < sz * sz do
-          out(k) = aArr(k) - (if k / sz == k % sz then shift else 0.0)
-          k += 1
-        new _MatrixValue(sz, sz, out)
-
-      var iters = 0
-
-      while sz > 0 && iters < maxIter do
-        iters += 1
-        sz match
-          case 1 =>
-            eigs += _Number(aGet(0, 0))
-            sz = 0
-          case 2 =>
-            val tr   = aGet(0, 0) + aGet(1, 1)
-            val det  = aGet(0, 0) * aGet(1, 1) - aGet(0, 1) * aGet(1, 0)
-            val disc = tr * tr - 4 * det
-            if disc >= 0 then
-              eigs += _Number((tr + math.sqrt(disc)) / 2)
-              eigs += _Number((tr - math.sqrt(disc)) / 2)
-            else
-              val re = tr / 2
-              val im = math.sqrt(-disc) / 2
-              eigs += _Complex.of(re, im)
-              eigs += _Complex.of(re, -im)
-            sz = 0
-          case _ =>
-            val offDiag = math.abs(aGet(sz - 1, sz - 2))
-            val diagSum = math.abs(aGet(sz - 2, sz - 2)) + math.abs(aGet(sz - 1, sz - 1))
-            if offDiag <= tol * diagSum then
-              eigs += _Number(aGet(sz - 1, sz - 1))
-              val szNew  = sz - 1
-              val newArr = new Array[Double](szNew * szNew)
-              var r = 0
-              while r < szNew do
-                var c = 0
-                while c < szNew do
-                  newArr(r * szNew + c) = aArr(r * sz + c)
-                  c += 1
-                r += 1
-              sz   = szNew
-              aArr = newArr
-            else
-              // Wilkinson shift: eigenvalue of bottom-right 2×2 closest to a[sz-1,sz-1].
-              val b00   = aGet(sz - 2, sz - 2)
-              val b01   = aGet(sz - 2, sz - 1)
-              val b10   = aGet(sz - 1, sz - 2)
-              val b11   = aGet(sz - 1, sz - 1)
-              val tr2   = b00 + b11
-              val det2  = b00 * b11 - b01 * b10
-              val disc2 = tr2 * tr2 - 4 * det2
-              val shift =
-                if disc2 >= 0 then
-                  val e1 = (tr2 + math.sqrt(disc2)) / 2
-                  val e2 = (tr2 - math.sqrt(disc2)) / 2
-                  if math.abs(e1 - b11) <= math.abs(e2 - b11) then e1 else e2
-                else
-                  tr2 / 2   // complex pair: shift to centre avoids rank deficiency
-
-              val qrResult = shiftedMatrix(shift).qrDecompose.orElse {
-                // Shift hit an eigenvalue exactly; tiny perturbation breaks rank deficiency.
-                val eps = 1e-10 * (1.0 + math.abs(shift))
-                shiftedMatrix(shift + eps).qrDecompose
-              }
-              qrResult match
-                case None => return None
-                case Some((q, r)) =>
-                  val rq = r.multiply(q)
-                  var row = 0
-                  while row < sz do
-                    var col = 0
-                    while col < sz do
-                      aArr(row * sz + col) = rq(row, col) + (if row == col then shift else 0.0)
-                      col += 1
-                    row += 1
-
-      if sz == 0 && eigs.size == n then Some(eigs.toVector) else None
+    if rows != cols || !isFinite then None
+    else if rows == 1 then Some(Vector(_Number(data(0))))
+    else _MatrixValue.eigenvaluesOf(rows, data)
 
   // Null vector of a real n×n matrix b via RREF + back-substitution.
   // Assumes b has rank n-1; returns the normalised null vector, or None when the
@@ -972,10 +1151,18 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
               beta  += wq(i) * wq(i)
               gamma += wp(i) * wq(i)
               i += 1
-            if math.abs(gamma) > tol * math.sqrt(alpha * beta) then
+            // Two floating-point floors, both reached by a rank-deficient matrix, whose dead column
+            // the sweep drives towards zero geometrically (F_0099):
+            //  - ζ grows past 1e154 and ζ² overflows, so √(1 + ζ²) made the tangent 1/∞ = 0 and
+            //    the rotation the identity -- hence hypot(1, ζ);
+            //  - the column's squared norm underflows to exactly 0 while γ is still a non-zero
+            //    subnormal, so the cosine test read |γ| > 0 forever. A column whose squared norm
+            //    is zero has no direction left to rotate: the pair counts as converged.
+            // Either way the sweep repeated a no-op until SvdMaxSweeps and the SVD declined.
+            if alpha > 0 && beta > 0 && math.abs(gamma) > tol * math.sqrt(alpha) * math.sqrt(beta) then
               rotated = true
               val zeta = (beta - alpha) / (2 * gamma)
-              val t    = (if zeta >= 0 then 1.0 else -1.0) / (math.abs(zeta) + math.sqrt(1 + zeta * zeta))
+              val t    = (if zeta >= 0 then 1.0 else -1.0) / (math.abs(zeta) + math.hypot(1.0, zeta))
               val c    = 1 / math.sqrt(1 + t * t)
               _MatrixValue.rotate(wp, wq, c, c * t)
               _MatrixValue.rotate(v(p), v(q), c, c * t)

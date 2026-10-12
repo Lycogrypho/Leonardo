@@ -14,7 +14,7 @@ import logic.*
 import domain.*
 import vector.*
 import control.*
-import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, MinimizeMethod, _LsqFit, _CurveFit}
+import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, MinimizeMethod, _LsqFit, _CurveFit, _Nlp, NlpMethod, _LP}
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -82,6 +82,7 @@ object Parser extends JavaTokenParsers:
     "expm",                                                                                 // matrix exponential
     "chol",                                                                                 // F_0054 Cholesky factor
     "svd", "pinv", "rank", "cond",                                                          // F_0061 singular values
+    "nullspace", "orth",                                                                    // F_0087 subspace bases
                                                          // (Decision C); `full` is a slot word
     "maximum", "minimum", "max", "min", "clamp", "softplus",                                // F_0056 order functions;
                                                          // the join and the reduction under two
@@ -95,6 +96,7 @@ object Parser extends JavaTokenParsers:
     "tfpoles", "tfzeros", "isStable", "isStableDiscrete", "stateSpace", "c2d",           // F_0092 control analysis;
                                                          // `zoh`/`tustin` are slot words, NOT reserved
     "dlsim",                                                                                // F_0064; `states` is a slot word
+    "dare", "dlqr", "dlyap", "kalmanGain", "kalmanStep",                                    // F_0065 Riccati / LQR / Kalman
     "rls",                                                                                  // F_0057 recursive least squares
     "series", "parallel", "feedback", "impulse",                                            // control theory
                                                          // NOT "routh": `routhTable` is a
@@ -141,6 +143,9 @@ object Parser extends JavaTokenParsers:
     "odeStep", "odeSolve",                               // F_0051 public ODE step / trajectory;
                                                          // euler/rk4/rk45 are slot-matched only
     "qp",                                                 // F_0053 quadratic programming
+    "lp",                                                 // F_0011 exact linear programming
+    "nlp",                                                // F_0066 nonlinear programming; the
+                                                         // methods sqp/auglag are slot words
     "lsqfit",                                             // F_0063 nonlinear least squares;
                                                          // `cov` is a slot word, NOT reserved
     "stationary", "convex", "lagrange", "kkt", "minimize",  // F_0010 optimization; the
@@ -492,8 +497,15 @@ object Parser extends JavaTokenParsers:
       case b ~ None    => b
     }
 
-  /** A grammar factor: function, functional, matrix literal, value, or parenthesised expression. */
-  lazy val factor: Parser[_Expression] = function | functional | matrixLiteral | value | "(" ~> guardedExpr <~ ")"
+  /** A grammar factor: function, functional, matrix literal, interval literal, value, or
+   *  parenthesised expression.  The interval `[lo, hi]` (F_0008) comes after the matrix, whose
+   *  rows are bracketed again, so `[[1, 2]]` is still a matrix. */
+  lazy val factor: Parser[_Expression] =
+    function | functional | matrixLiteral | intervalLiteral | value | "(" ~> guardedExpr <~ ")"
+
+  /** An interval literal: `[lo, hi]` (F_0008). */
+  lazy val intervalLiteral: Parser[_Expression] =
+    "[" ~> guardedExpr ~ ("," ~> guardedExpr) <~ "]" ^^ { case lo ~ hi => _IntervalOf(lo, hi) }
 
   /** A matrix literal: `[[a, b], [c, d]]`.  All rows must have the same length. */
   lazy val matrixLiteral: Parser[_Expression] =
@@ -555,6 +567,9 @@ object Parser extends JavaTokenParsers:
     "pinv("   ~> guardedExpr <~ ")"                                       ^^ _PInv.apply                   |
     "rank("   ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")"             ^^ { case a ~ t => _Rank(a, t) } |
     "cond("   ~> guardedExpr <~ ")"                                       ^^ _Cond.apply                   |
+    // F_0087: orthonormal bases read off the SVD at rank's tolerance (optional, relative).
+    "nullspace(" ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ { case a ~ t => _NullSpace(Subspace.Null, a, t) }  |
+    "orth("      ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ { case a ~ t => _NullSpace(Subspace.Range, a, t) } |
     // F_0055 block matrices.  The n-ary three take any number of blocks; `ones` follows the
     // `zeros` shape, its one-argument form the square matrix.
     "hcat("    ~> rep1sep(guardedExpr, ",") <~ ")"                        ^^ (bs => _HCat(bs))             |
@@ -628,11 +643,19 @@ object Parser extends JavaTokenParsers:
       case a ~ b ~ c ~ d => stateSpace(a, b, c, d) }                                                       |
     // The method is a slot word, always written, never reserved (the rk45 / pbfgs precedent).
     "c2d(" ~> guardedExpr ~ ("," ~> variable) ~ ("," ~> variable) ~ ("," ~> guardedExpr) ~
-      ("," ~> ("zoh" ^^^ Zoh | "tustin" ^^^ Tustin)) <~ ")" ^^ {
-      case g ~ sv ~ zv ~ ts ~ m => _C2d(g, sv, zv, ts, m) }                                               |
+      ("," ~> c2dMethod) ~ opt("," ~> guardedExpr) <~ ")" ^? {
+      // F_0009: a prewarp frequency follows tustin only.
+      case g ~ sv ~ zv ~ ts ~ m ~ w if w.isEmpty || m == Tustin => _C2d(g, sv, zv, ts, m, w) }                                               |
     // F_0064: dlsim(sys, u, x0[, states]); `states` is a slot word (the svd(A, full) precedent).
     "dlsim(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt("," ~> "states") <~ ")" ^^ {
       case sy ~ u ~ x0 ~ st => _Dlsim(sy, u, x0, st.isDefined) }                                          |
+    // F_0065: the Riccati family, one node over a RiccatiKind (the _DistributionQuery pattern).
+    // "dlqr(" / "dlyap(" share no prefix with "dlsim(", and "kalmanGain(" none with "kalmanStep(".
+    "dare("       ~> repsep(guardedExpr, ",") <~ ")" ^? riccati(RiccatiKind.Dare, 4)       |
+    "dlqr("       ~> repsep(guardedExpr, ",") <~ ")" ^? riccati(RiccatiKind.Dlqr, 4)       |
+    "dlyap("      ~> repsep(guardedExpr, ",") <~ ")" ^? riccati(RiccatiKind.Dlyap, 2)      |
+    "kalmanGain(" ~> repsep(guardedExpr, ",") <~ ")" ^? riccati(RiccatiKind.KalmanGain, 4) |
+    "kalmanStep(" ~> repsep(guardedExpr, ",") <~ ")" ^? riccati(RiccatiKind.KalmanStep, 7) |
     // Special functions. dfact(n) is sugar for mfact(n, 2), the same relationship
     // log(x) has with LogBase(x, 10).
     "fact("   ~> guardedExpr <~ ")"                                       ^^ Factorial.apply               |
@@ -908,6 +931,14 @@ object Parser extends JavaTokenParsers:
         ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> minimizeMethod) <~ ")" ^^ {
           case lo ~ hi ~ m => (Some((lo, hi)), m) }
       ) ^^ { case f ~ vs ~ x0 ~ ((b, m)) => _Minimize(f, vs, x0, b, m) } |
+    // F_0066: nlp(f, vars, x0, g, h[, lb, ub], method) -- minimize's shape with the two
+    // constraint groups after the start; the method-only tail first, for the same reason.
+    "nlp(" ~> guardedExpr ~ ("," ~> variableColumn) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) ~ (
+        ("," ~> nlpMethod <~ ")") ^^ { m => (Option.empty[(_Expression, _Expression)], m) } |
+        ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> nlpMethod) <~ ")" ^^ {
+          case lo ~ hi ~ m => (Some((lo, hi)), m) }
+      ) ^^ { case f ~ vs ~ x0 ~ g ~ h ~ ((b, m)) => _Nlp(f, vs, x0, g, h, b, m) } |
     // F_0053: qp(H, f, A, b, lb, ub) and qp(H, f, A, b, Aeq, beq, lb, ub). The two trailing
     // arguments are optional rather than a second alternative, so the 6-argument form never
     // matches first and chokes on the seventh.
@@ -915,6 +946,11 @@ object Parser extends JavaTokenParsers:
       ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt(("," ~> guardedExpr) ~ ("," ~> guardedExpr)) <~ ")" ^^ {
       case h ~ f ~ a ~ b ~ p5 ~ p6 ~ Some(p7 ~ p8) => _QP(h, f, a, b, Some((p5, p6)), p7, p8)
       case h ~ f ~ a ~ b ~ p5 ~ p6 ~ None          => _QP(h, f, a, b, None, p5, p6) } |
+    // F_0011: lp(f, A, b, lb, ub) and lp(f, A, b, Aeq, beq, lb, ub), qp's optional-group shape.
+    "lp(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
+      ("," ~> guardedExpr) ~ opt(("," ~> guardedExpr) ~ ("," ~> guardedExpr)) <~ ")" ^^ {
+      case f ~ a ~ b ~ p4 ~ p5 ~ Some(p6 ~ p7) => _LP(f, a, b, Some((p4, p5)), p6, p7)
+      case f ~ a ~ b ~ p4 ~ p5 ~ None          => _LP(f, a, b, None, p4, p5) } |
     // F_0063: lsqfit in two forms, told apart by the second argument -- a COLUMN of parameter
     // names (the residual form) or one bare name, the independent variable (the curve-fit form,
     // Decision D). A bare name cannot start with `[`, so the two never overlap.
@@ -931,6 +967,15 @@ object Parser extends JavaTokenParsers:
     (("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ opt("," ~> "cov") <~ ")") ^^ {
       case lo ~ hi ~ c => (Some((lo, hi)), c.isDefined) } |
     ")" ^^^ ((Option.empty[(_Expression, _Expression)], false))
+
+  /** A Riccati-family node from its argument list, defined only at the arity the function takes
+   *  (F_0065): a wrong count fails the production, so the call is a parse error rather than a
+   *  node no evaluation could answer.
+   *  @param kind  the function
+   *  @param arity its argument count
+   *  @return the partial builder `^?` applies */
+  private def riccati(kind: RiccatiKind, arity: Int): PartialFunction[List[_Expression], _Expression] =
+    case args if args.size == arity => _Riccati(kind, args)
 
   /** A column of variable names, `[[x], [y]]` — `minimize`'s variable tuple. */
   private lazy val variableColumn: Parser[Vector[_Variable]] =
@@ -953,6 +998,16 @@ object Parser extends JavaTokenParsers:
   private lazy val minimizeMethod: Parser[MinimizeMethod] =
     "pbfgs" ^^^ MinimizeMethod.ProjectedBFGS | "bfgs" ^^^ MinimizeMethod.BFGS |
     "newton" ^^^ MinimizeMethod.Newton | "gd" ^^^ MinimizeMethod.GradientDescent
+
+  /** `c2d`'s method word (F_0092, F_0009), matched only in that slot, so none is reserved —
+   *  `impulse` included, which names a function elsewhere and is matched here as a word. */
+  private lazy val c2dMethod: Parser[DiscretisationMethod] =
+    "zoh" ^^^ Zoh | "tustin" ^^^ Tustin | "foh" ^^^ Foh | "impulse" ^^^ ImpulseInvariant |
+    "matched" ^^^ MatchedPoleZero | "forward" ^^^ ForwardEuler | "backward" ^^^ BackwardEuler
+
+  /** `nlp`'s method keyword, matched only in that slot so neither is reserved (F_0066). */
+  private lazy val nlpMethod: Parser[NlpMethod] =
+    "sqp" ^^^ NlpMethod.SQP | "auglag" ^^^ NlpMethod.AugLag
 
   /** The coordinate-system keyword of a vector operator.
    *

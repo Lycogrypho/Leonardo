@@ -142,7 +142,7 @@ private def checked(vars: Vector[_Variable], p0: Vector[Double], bounds: Option[
   bad.fold(Right((lo, hi)))(d => Left(LsqFailure.InvalidInput(d)))
 
 /** The free names of `cells` that are neither in `vars` nor bound in `env`. */
-private def unbound(cells: Seq[_Expression], vars: Vector[_Variable], env: Environment): Set[String] =
+private[optimize] def unbound(cells: Seq[_Expression], vars: Vector[_Variable], env: Environment): Set[String] =
   (cells.flatMap(_.freeVars).toSet -- vars.map(_.variable)).filter(env.get(_).isEmpty)
 
 
@@ -157,7 +157,7 @@ private final class Residual(val m: Int, val n: Int,
 
 /** Evaluates `cells` at a point of `vars`: compiled when the table covers them (F_0058), by
  *  tree evaluation otherwise; `None` when a cell is not a finite real. */
-private def evaluator(cells: Vector[_Expression], vars: Vector[_Variable],
+private[optimize] def evaluator(cells: Vector[_Expression], vars: Vector[_Variable],
                       env: Environment): Array[Double] => Option[Array[Double]] =
   def ok(a: Array[Double]) = Option.when(a.forall(finite))(a)
   compileMatrix(_Matrix(cells.size, 1, cells), vars, env) match
@@ -175,13 +175,13 @@ private def columnCells(e: _Expression): Option[Vector[_Expression]] = e match
   case other            => Some(Vector(other))
 
 /** The cells of an evaluated `rows×cols` matrix, row-major. */
-private def gridCells(e: _Expression, rows: Int, cols: Int): Option[Vector[_Expression]] = e match
+private[optimize] def gridCells(e: _Expression, rows: Int, cols: Int): Option[Vector[_Expression]] = e match
   case m: _MatrixShaped if m.rows == rows && m.cols == cols => Some(m.children.toVector)
   case d: _MatrixValue if d.rows == rows && d.cols == cols  => Some(d.toVector.map(_Number(_)))
   case _                                                     => None
 
 /** The additive terms of `e`. */
-private def summands(e: _Expression): List[_Expression] = e match
+private[optimize] def summands(e: _Expression): List[_Expression] = e match
   case Sum(a, b) => summands(a) ++ summands(b)
   case other     => List(other)
 

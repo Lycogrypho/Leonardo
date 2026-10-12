@@ -114,10 +114,42 @@ private def run(a: Array[Double], b: Array[Double], c: Array[Double], d: Array[D
 private def simMatrix(r: Either[_Expression, _Value], what: String, zeroShape: => Option[(Int, Int)])
     : Either[SimFailure, _MatrixValue] =
   r match
+    case Right(_Number(0.0)) if zeroShape.isEmpty => Left(ShapeMismatch(s"$what is 0, but its shape cannot be inferred"))
+    case other => matrixOperand(other, zeroShape).toRight(NotNumeric(s"$what is not a numeric matrix"))
+
+/** The four evaluated cells of a `[[A, B, C, D]]` model row, as `stateSpace`, `linearize` and
+ *  `arx2ss` build it (F_0064, F_0065).
+ *
+ *  **Two carriers**: a row of matrices stays a symbolic `_Matrix`, but a scalar plant written
+ *  with plain numbers — `stateSpace(0.5, 1, 1, 0)` — collapses to a dense `1×4` `_MatrixValue`,
+ *  and was declined by `dlsim` as "not the row stateSpace builds" until F_0065 found it.
+ *
+ *  @param sys the model expression
+ *  @param env the evaluation environment
+ *  @return the four cells, or `None` when `sys` is not a `1×4` row
+ */
+private[control] def modelRow(sys: _Expression, env: Environment): Option[Vector[Either[_Expression, _Value]]] =
+  sys.eval(env) match
+    // Every cell of a collapsed row is a 1×1 matrix -- a 0 there is [[0]], not a zero block of
+    // unknown shape, so the cells are rebuilt as matrices rather than handed on as numbers.
+    case Right(m: _MatrixValue) if m.rows == 1 && m.cols == 4 => Some(m.toVector.map(d => Right(_MatrixValue(1, 1, Array(d)))))
+    case other => other.toExpression match
+      case row: _Matrix if row.rows == 1 && row.cols == 4 => Some(row.elems.map(_.eval(env)))
+      case _                                               => None
+
+/** A model operand of the `control` nodes as a dense matrix — the one reading `dlsim` and the
+ *  Riccati family share (F_0064, F_0065): a matrix as itself (an exact one demoted), `0` as the
+ *  all-zero block of `zeroShape` when that shape is known, any other number as a `1×1` matrix.
+ *
+ *  @param r         the evaluated operand
+ *  @param zeroShape the shape a bare `0` stands for, when the caller can infer it
+ *  @return the dense matrix, or `None` for a non-numeric operand or an unshapeable `0`
+ */
+private[control] def matrixOperand(r: Either[_Expression, _Value], zeroShape: => Option[(Int, Int)]): Option[_MatrixValue] =
+  r match
     case Right(_Number(0.0)) => zeroShape.map((rows, cols) => _MatrixValue(rows, cols, new Array[Double](rows * cols)))
-                                  .toRight(ShapeMismatch(s"$what is 0, but its shape cannot be inferred"))
-    case Right(_Number(v))   => Right(_MatrixValue(1, 1, Array(v)))
-    case other               => _MatrixValue.ofEvaluated(other).toRight(NotNumeric(s"$what is not a numeric matrix"))
+    case Right(_Number(v))   => Some(_MatrixValue(1, 1, Array(v)))
+    case other               => _MatrixValue.ofEvaluated(other)
 
 
 /** `dlsim(sys, u, x0[, states])` — [[dlsim]] as a node (F_0064): the outputs `Y`, or with the
@@ -139,9 +171,8 @@ case class _Dlsim(sys: _Expression, u: _Expression, x0: _Expression, states: Boo
    *  @param env the evaluation environment
    *  @return `(Y, X)` or the reason */
   def detailed(env: Environment): Either[SimFailure, (_MatrixValue, _MatrixValue)] =
-    sys.eval(env).toExpression match
-      case row: _Matrix if row.rows == 1 && row.cols == 4 =>
-        val cells = row.elems.map(_.eval(env))
+    modelRow(sys, env) match
+      case Some(cells) =>
         for
           a  <- simMatrix(cells(0), "A", None)
           b  <- simMatrix(cells(1), "B", None)

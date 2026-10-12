@@ -188,6 +188,13 @@ object ToLatex:
       val body    = if d == 1 then n.abs.toString else s"\\frac{${n.abs}}{$d}"
       if n.signum < 0 then (s"-$body", AtSum) else (body, if d == 1 then Atomic else AtProduct)
 
+    // F_0008: an interval is its own delimiter. The value renders its outward display; the
+    // literal node renders its endpoints as expressions.
+    case i: _Interval =>
+      val d = i.toString
+      (s"\\left[${d.substring(1, d.length - 1)}\\right]", Atomic)
+    case _IntervalOf(a, b) => (s"\\left[${at(a, Grouped)}, ${at(b, Grouped)}\\right]", Atomic)
+
     // A matrix is its own delimiter, so it is Atomic, and every cell sits in an alignment
     // slot that groups for itself -- hence Grouped and never bracketed.
     case m: _MatrixShaped => (pmatrix(m.rows, m.cols, i => at(m.children(i), Grouped)), Atomic)

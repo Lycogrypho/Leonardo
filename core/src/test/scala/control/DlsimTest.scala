@@ -100,6 +100,15 @@ class DlsimTest extends AnyFlatSpec:
       case other => fail(s"unexpected: $other")
   }
 
+  it should "read a scalar plant written with plain numbers (F_0065)" in
+  {
+    // stateSpace(0.5, 1, 1, 0) collapses to a dense 1×4 row rather than a row of matrices, and was
+    // declined as "not the row stateSpace builds" until the model reader learned both carriers.
+    parse("dlsim(stateSpace(0.5, 1, 1, 0), [[1, 1, 1]], 0)").eval(env) match
+      case Right(y: _MatrixValue) => assert(y.toVector == Vector(0.0, 1.0, 1.5))
+      case other                  => fail(s"$other")
+  }
+
   it should "stay as written for a symbolic system, and say why" in
   {
     val e = parse("dlsim(stateSpace([[a]], [[1]], [[1]], 0), [[1, 1]], 0)")

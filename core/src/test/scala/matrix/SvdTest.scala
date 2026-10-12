@@ -54,6 +54,10 @@ class SvdTest extends AnyFlatSpec:
 
   private def norm(a: _MatrixValue): Double = math.sqrt(a.toVector.map(x => x * x).sum)
 
+  /** A matrix as a literal the parser reads back at full precision. */
+  private def literalOf(a: _MatrixValue): String =
+    (0 until a.rows).map(i => (0 until a.cols).map(j => _Number.render(a(i, j))).mkString("[", ", ", "]")).mkString("[", ", ", "]")
+
   private def assertClose(a: _MatrixValue, b: _MatrixValue, tol: Double = 1e-10): Unit =
     assert(a.rows == b.rows && a.cols == b.cols, s"shape: ${a.rows}x${a.cols} vs ${b.rows}x${b.cols}")
     val scale = math.max(1.0, norm(b))
@@ -95,6 +99,20 @@ class SvdTest extends AnyFlatSpec:
     assertValidSvd(random(6, 2, 4).multiply(random(2, 4, 5)))   // rank 2 in a 6x4
     assertValidSvd(random(1, 6, 6))
     assertValidSvd(random(6, 1, 7))
+  }
+
+  it should "decompose every rank-deficient matrix, not just the lucky ones (F_0099)" in
+  {
+    // A zero singular value's column is pure rounding noise, whose angle to the live columns
+    // never settles; the sweep used to keep rotating it until SvdMaxSweeps and then decline.
+    // [[1, 2, 3], [2, 4, 6], [1, 0, 1]] is rank 2 and was declined outright.
+    assertValidSvd(dense(3, 3, 1, 2, 3, 2, 4, 6, 1, 0, 1))
+    assert(number("rank([[1, 2, 3], [2, 4, 6], [1, 0, 1]])") == 2.0)
+    for n <- 3 to 8; k <- 1 until n; seed <- 1 to 5 do
+      val a = random(n, k, 1000L * n + 10 * k + seed).multiply(random(k, n, 7L * n + k + 31 * seed))
+      assert(a.svd.isDefined, s"rank-$k ${n}x$n, seed $seed: declined")
+      assertValidSvd(a)
+      assert(number(s"rank(${literalOf(a)})") == k.toDouble, s"rank-$k ${n}x$n, seed $seed")
   }
 
   it should "handle repeated singular values, the zero matrix and a single entry" in
