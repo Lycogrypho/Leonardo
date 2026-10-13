@@ -188,8 +188,11 @@ object ToLatex:
       val body    = if d == 1 then n.abs.toString else s"\\frac{${n.abs}}{$d}"
       if n.signum < 0 then (s"-$body", AtSum) else (body, if d == 1 then Atomic else AtProduct)
 
-    // F_0008: an interval is its own delimiter. The value renders its outward display; the
-    // literal node renders its endpoints as expressions.
+    // F_0008: an interval is its own delimiter. An exact endpoint renders as the rational it is,
+    // a fraction (F_0111: stripping `toString` showed `1/3` where a bare rational shows
+    // `\frac{1}{3}`); `Double` endpoints keep the outward-rounded display. The literal node
+    // renders its endpoints as expressions.
+    case i: _Interval if i.isExact => (s"\\left[${render(i.lo)._1}, ${render(i.hi)._1}\\right]", Atomic)
     case i: _Interval =>
       val d = i.toString
       (s"\\left[${d.substring(1, d.length - 1)}\\right]", Atomic)

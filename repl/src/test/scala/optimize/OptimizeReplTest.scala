@@ -66,6 +66,10 @@ class OptimizeReplTest extends AnyFlatSpec:
              .contains("note: qp declined: H has a negative eigenvalue"))
     assert(s.execute("qp(eye(2), [[0], [0]], [[1, 0], [-1, 0]], [[-1], [-1]], -inf, inf)")
              .contains("note: qp declined: the constraints admit no point"))
+    // F_0106: the semidefinite path's LP cap is named as such, in prose, not as an enum spelling.
+    val lp = s.execute("qp(zeros(41), ones(41, 1), 0, 0, 0, inf)")
+    assert(lp.contains("note: qp declined: a semidefinite H starts from an exact linear program"), lp)
+    assert(lp.contains(s"at most $MaxLpVariables variables") && !lp.contains("InvalidInput"), lp)
   }
 
   "convex, lagrange and kkt" should "answer at the prompt" in

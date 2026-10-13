@@ -145,13 +145,13 @@ private[optimize] def hessianCells(f: _Expression, vars: Vector[_Variable],
     case _                          => None
 
 /** The real eigenvalues of a symmetric matrix; `None` when the iteration fails or a pair is
- *  genuinely complex (which a symmetric Hessian cannot produce, so that is a failure too). */
+ *  genuinely complex (which a symmetric Hessian cannot produce, so that is a failure too).
+ *  "Genuinely" is judged against the spectrum's own scale, the largest modulus — not against
+ *  `max(1, |re|)`, which is a claim about the units of `f` (F_0109). */
 private[optimize] def eigenvaluesOf(m: _MatrixValue): Option[Vector[Double]] =
   m.eigenDecompose.flatMap { ev =>
     val parts = ev.flatMap(_Complex.parts)
-    Option.when(parts.size == ev.size &&
-                parts.forall((re, im) => math.abs(im) <= 1e-9 * math.max(1.0, math.abs(re))))(
-      parts.map(_._1))
+    Option.when(parts.size == ev.size && realParts(parts).size == parts.size)(parts.map(_._1))
   }
 
 /** True when no variable is repeated: `stationary(f, x, x)` names no basis. */

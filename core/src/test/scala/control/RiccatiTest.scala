@@ -166,6 +166,83 @@ class RiccatiTest extends AnyFlatSpec:
     assert(frob(minus(gain, pSteady.multiply(c.transpose).multiply(s))) <= 1e-12)
   }
 
+  // ── F_0107: the declines and conventions the first suite left unpinned ──
+
+  "the Riccati family" should "decline past MaxRiccatiOrder, kalmanStep included" in
+  {
+    val n = MaxRiccatiOrder + 1
+    assert(dlqr(eye(n), eye(n), eye(n), eye(n), env) == Left(RiccatiFailure.TooLarge(n)))
+    assert(dlyap(eye(n).scale(0.5), eye(n), env) == Left(RiccatiFailure.TooLarge(n)))
+    val z = _MatrixValue(n, 1, new Array[Double](n))
+    assert(kalmanStep(z, eye(n), m(1, 1, 0), m(1, 1, 0), eye(n), _MatrixValue(n, 1, new Array[Double](n)),
+                      _MatrixValue(1, n, new Array[Double](n)), m(1, 1, 0), eye(n), m(1, 1, 1)) ==
+             Left(RiccatiFailure.TooLarge(n)))
+  }
+
+  it should "decline a non-finite or non-numeric operand as NotNumeric" in
+  {
+    assert(dlqr(m(1, 1, Double.NaN), m(1, 1, 1), m(1, 1, 1), m(1, 1, 1), env).left.exists(_.isInstanceOf[RiccatiFailure.NotNumeric]))
+    parse("dare(x, 1, 1, 1)") match
+      case r: _Riccati => assert(r.detailed(env) == Left(RiccatiFailure.NotNumeric("A is not a numeric matrix")))
+      case other       => fail(s"parsed as $other")
+  }
+
+  it should "decline an answer that fails the certificate as Uncertified" in
+  {
+    // At precision 20 the tolerance, 5e-21, is below the rounding floor of any Double computation:
+    // the solve converges (it is answered at the default precision) and the certificate alone
+    // refuses it. Precision 15 was tried first and passes on this plant.
+    val a = random(8, 8, 5L).scale(1.5)
+    val b = random(8, 3, 55L)
+    assert(dlqr(a, b, eye(8), eye(3), env).isRight)
+    dlqr(a, b, eye(8), eye(3), new Environment(20)) match
+      case Left(RiccatiFailure.Uncertified(r)) => assert(r > 5e-21, r)
+      case other                               => fail(s"expected Uncertified, got $other")
+  }
+
+  "kalmanGain" should "name Qw and Rv in every failure about them, shapes included" in
+  {
+    val (a, c) = (eye(2), m(1, 2, 1, 0))
+    assert(kalmanGain(a, c, eye(3), m(1, 1, 1), env) == Left(RiccatiFailure.ShapeMismatch("Qw must be 2x2: it is 3x3")))
+    assert(kalmanGain(a, c, eye(2), eye(2), env) == Left(RiccatiFailure.ShapeMismatch("Rv must be 1x1: it is 2x2")))
+    assert(kalmanGain(a, c, eye(2), m(1, 1, 0), env) == Left(RiccatiFailure.NotDefinite("Rv")))
+    assert(kalmanGain(a, c, m(2, 2, 1, 2, 0, 1), m(1, 1, 1), env) == Left(RiccatiFailure.NotSymmetric("Qw")))
+  }
+
+  "kalmanStep" should "refuse an operand of the wrong shape, naming it" in
+  {
+    val one = m(1, 1, 1)
+    assert(kalmanStep(one, one, m(1, 1, 0), m(2, 1, 0, 0), one, m(1, 1, 0), one, m(1, 1, 0), one, one) ==
+             Left(RiccatiFailure.ShapeMismatch("y must be 1x1: it is 2x1")))
+  }
+
+  it should "update, then predict — pinned where the two orders differ (A = 2, Qw = 0.5)" in
+  {
+    // Update: S = 1/(P + Rv) = 1/2, M = 1/2, x̂⁺ = 1 + (3 − 1)/2 = 2, P⁺ = (1/2)²·1 + (1/2)²·1 = 1/2.
+    // Predict: x̂' = 2·2 = 4, P' = 4·(1/2) + 1/2 = 5/2. Predict-then-update gives x̂' = 31/11, P' = 9/11.
+    val (x, p) = solved(kalmanStep(m(1, 1, 1), m(1, 1, 1), m(1, 1, 0), m(1, 1, 3),
+                                   m(1, 1, 2), m(1, 1, 0), m(1, 1, 1), m(1, 1, 0), m(1, 1, 0.5), m(1, 1, 1)))
+    assert(math.abs(x(0, 0) - 4) < 1e-12 && math.abs(p(0, 0) - 2.5) < 1e-12, s"$x $p")
+  }
+
+  "dlyap" should "accept a Q that is not symmetric, and leave X unsymmetrised" in
+  {
+    // The equation is linear in Q: X(0, 1) = 2/(1 − 0.5·0.2), X(1, 0) = 0.
+    val a = m(2, 2, 0.5, 0, 0, 0.2)
+    val q = m(2, 2, 1, 2, 0, 1)
+    val x = solved(dlyap(a, q, env))
+    assert(math.abs(x(0, 1) - 2 / 0.9) < 1e-12 && x(1, 0) == 0.0, s"$x")
+    assert(frob(minus(a.multiply(x).multiply(a.transpose).add(q), x)) <= 1e-12)
+  }
+
+  "_Riccati" should "decline a wrong number of arguments rather than throw" in
+  {
+    val short = _Riccati(RiccatiKind.KalmanStep, List(_Number(1), _Number(1)))
+    assert(short.detailed(env).left.exists(_.isInstanceOf[RiccatiFailure.ShapeMismatch]), short.detailed(env))
+    assert(short.eval(env) == Left(short))
+    assert(short.rebuild(List(_Number(1))).eval(env).isLeft)
+  }
+
   // ── the nodes ──
 
   "the prompt forms" should "answer dare as a matrix and dlqr / kalmanGain / kalmanStep as rows" in

@@ -53,6 +53,22 @@ class LpTest extends AnyFlatSpec:
     assert(_Rational.of(-1, 2).contains(r.objective), r.objective)
   }
 
+  it should "map a variable bounded above only, and name the bounds holding in the active set (F_0113)" in {
+    val inf = _Number(Double.PositiveInfinity)
+    // max x on x ≤ 3 with no lower bound: the (None, Some(u)) map x = u − y.
+    lpSolve(Vector(_Number(-1)), None, None, Vector(_Number(Double.NegativeInfinity)), Vector(_Number(3))) match
+      case Right(r) => assert(doubles(r.x) == Vector(3.0) && r.active == Vector(QpConstraint.Upper(0)), r)
+      case Left(why) => fail(s"$why")
+    // min x on x ≥ −3: the lower bound holds.
+    lpSolve(Vector(_Number(1)), None, None, Vector(_Number(-3)), Vector(inf)) match
+      case Right(r) => assert(doubles(r.x) == Vector(-3.0) && r.active == Vector(QpConstraint.Lower(0)), r)
+      case Left(why) => fail(s"$why")
+    // Both bounds finite (the upper one becomes a row, F_0106's match): max x on 1 ≤ x ≤ 2.
+    lpSolve(Vector(_Number(-1)), None, None, Vector(_Number(1)), Vector(_Number(2))) match
+      case Right(r) => assert(doubles(r.x) == Vector(2.0) && r.active == Vector(QpConstraint.Upper(0)), r)
+      case Left(why) => fail(s"$why")
+  }
+
   it should "not cycle on Beale's degenerate example (Bland's rule)" in {
     // min -3/4 x1 + 20 x2 - 1/2 x3 + 6 x4 on 1/4 x1 - 8 x2 - x3 + 9 x4 <= 0,
     // 1/2 x1 - 12 x2 - 1/2 x3 + 3 x4 <= 0, x3 <= 1, x >= 0: optimum -5/4 at (1, 0, 1, 0).

@@ -85,7 +85,58 @@ class NlpTest extends AnyFlatSpec:
       assert(near(solved(s"nlp($k*(x + y), [[x], [y]], [[1], [0]], x^2 + y^2 - 2, 0, $m)").x, Seq(-1.0, -1.0)), s"$m at $k")
   }
 
-  it should "not let a session binding of a variable's name fold the problem" in {
+  it should "answer the same point when a VARIABLE is rescaled, which the certificate also claims (F_0113)" in {
+    // x = k·u: the answer (-1, -1) becomes u = -1/k. Every (method, k) is run before asserting,
+    // so the failure message reports all of them.
+    val outcomes = for m <- methods; k <- Seq(1e-6, 1e6) yield
+      val src = s"nlp($k*u + y, [[u], [y]], [[${1 / k}], [0]], ($k*u)^2 + y^2 - 2, 0, $m)"
+      (m, k, parse(src) match
+        case n: _Nlp => n.detailed(env)
+        case other   => fail(s"$other"))
+    def right(k: Double, r: NlpResult) = math.abs(r.x(0) * k + 1) <= 1e-6 && math.abs(r.x(1) + 1) <= 1e-6
+    // A DEFECT TOLERATED, NOT THE DESIGN (F_0116): SQP at k = 1e-6 and AugLag at k = 1e6 decline
+    // (Subproblem(25, MaxIterations(2000)) and MaxIterations(50, 0.22)). What is pinned for them is
+    // the safety half — a refusal, never a wrong point. Move them to `answered` when F_0116 lands.
+    val tolerated = Set(("sqp", 1e-6), ("auglag", 1e6))
+    for (m, k, out) <- outcomes do
+      out match
+        case Right(r)                    => assert(right(k, r), s"$m at $k answered a wrong point ${r.x}")
+        case Left(why) if tolerated((m, k)) => succeed
+        case Left(why)                   => fail(s"$m at $k declined: $why")
+  }
+
+  it should "refuse more than MaxNlpVariables before any work" in {
+    val vs = Vector.tabulate(MaxNlpVariables + 1)(i => _Variable(s"x$i"))
+    assert(nlpSolve(vs(0), vs, Vector.fill(vs.size)(0.0), Vector.empty, Vector.empty, None, NlpMethod.SQP, env) ==
+             Left(NlpFailure.InvalidInput(s"at most $MaxNlpVariables variables are accepted, not ${vs.size}")))
+  }
+
+  it should "decline, never answer, when the certificate cannot be met (precision 20)" in {
+    // A tolerance of 5e-21 is below any Double residual: whichever path ends the run, the answer
+    // is a refusal. Which decline it is is the iteration's business: SQP's first QP subproblem
+    // already fails its own certificate at this precision (Subproblem(1, Uncertified)).
+    val strict = new Environment(20)
+    for m <- methods do
+      parse(s"nlp(x + y, [[x], [y]], [[1], [0]], x^2 + y^2 - 2, 0, $m)") match
+        case n: _Nlp => n.detailed(strict) match
+          case Left(NlpFailure.InvalidInput(d)) => fail(s"$m: a well-formed problem refused as input: $d")
+          case Left(_)                          => succeed
+          case Right(r)                         => fail(s"$m answered under an unmeetable certificate: $r")
+        case other => fail(s"$other")
+  }
+
+  "withoutRounding" should "drop a coefficient that is rounding of cancelled terms, and keep a small genuine one" in {
+    // (1.0000000000001 − 1)·x: about 1e-13 left from terms of size 2, under RoundingLevel·2.
+    assert(withoutRounding(parse("(1.0000000000001 - 1)*x + y"), Vector("x", "y")).freeVars == Set("y"))
+    // 1e-13·x cancels nothing: its magnitude is itself, so it stays.
+    val small = parse("1e-13*x + y")
+    assert(withoutRounding(small, Vector("x", "y")) == small)
+    // Not a polynomial in the names: returned unchanged.
+    val other = parse("sin(x) + y")
+    assert(withoutRounding(other, Vector("x", "y")) == other)
+  }
+
+  "nlp" should "not let a session binding of a variable's name fold the problem" in {
     val bound = env.withBinding("x", _Number(5)).withBinding("y", _Number(7))
     for m <- methods do
       assert(near(solved(s"nlp(x + y, [[x], [y]], [[1], [0]], x^2 + y^2 - 2, 0, $m)", bound).x, Seq(-1.0, -1.0)), m)

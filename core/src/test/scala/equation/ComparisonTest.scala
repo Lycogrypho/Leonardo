@@ -21,6 +21,29 @@ class ComparisonTest extends AnyFlatSpec:
       case Right(_Bool(b)) => b
       case other           => fail(s"\"$s\" did not reduce to a boolean: $other")
 
+  /** A side that counts its evaluations: what an `integral` or `ode` side costs per call. */
+  private final class Counting(value: _Value) extends _Expression:
+    var evaluations = 0
+    override def eval(env: Environment): Either[_Expression, _Value] = { evaluations += 1; Right(value) }
+    override def children: List[_Expression] = Nil
+    override def rebuild(newChildren: List[_Expression]): _Expression = this
+
+  "a comparison" should "evaluate each side once, whichever path answers (F_0108)" in
+  {
+    // Ordered numbers, an interval, and an unordered (complex) side that stays symbolic: the
+    // three paths that used to evaluate a side once, twice and three times.
+    for (value, expected) <- List[(_Value, Boolean)]((_Number(1), true), (_Number(5), false)) do
+      val (l, r) = (Counting(value), Counting(_Number(2)))
+      assert(_Comparison(l, CompareOp.Lt, r).eval(env) == Right(_Bool(expected)))
+      assert(l.evaluations == 1 && r.evaluations == 1, s"${l.evaluations}, ${r.evaluations}")
+    val (il, ir) = (Counting(_Interval.of(_Number(0), _Number(1)).getOrElse(fail("interval"))), Counting(_Number(2)))
+    assert(_Comparison(il, CompareOp.Lt, ir).eval(env) == Right(_Bool(true)))
+    assert(il.evaluations == 1 && ir.evaluations == 1)
+    val (cl, cr) = (Counting(_Complex.of(1, 1)), Counting(_Number(2)))
+    assert(_Comparison(cl, CompareOp.Lt, cr).eval(env).isLeft)
+    assert(cl.evaluations == 1 && cr.evaluations == 1, s"${cl.evaluations}, ${cr.evaluations}")
+  }
+
   // --- the operators themselves ---
 
   "the comparison operators" should "evaluate on numbers" in

@@ -39,6 +39,11 @@ enum QpFailure:
   case MaxIterations(limit: Int)
   /** The final point failed the KKT certificate (X-02); `residual` is the relative residual. */
   case Uncertified(residual: Double)
+  /** A semidefinite `H` starts from an exact [[lpSolve]] feasible point (F_0074), and that LP
+   *  declined for a reason of its own (F_0106) — typically its caps, which are far below
+   *  `qp`'s: [[MaxLpVariables]], [[MaxLpConstraints]] and [[MaxLpBits]].  `Infeasible` is never
+   *  carried here; it is reported as [[Infeasible]], since the LP proves it. */
+  case FeasibleStart(why: LpFailure)
 
 /** A certified optimum of [[qpSolve]].
  *
@@ -89,7 +94,8 @@ val MaxQpConstraints: Int = 2000
  *  any whose multiplier would turn negative — so it stays dual-feasible and detects
  *  infeasibility by itself (a violated constraint that no step can reach).  It requires `H`
  *  **positive definite**, the case of every MPC Hessian `ΓᵀQΓ + R` with `R ≻ 0`; a merely
- *  semidefinite `H` is declined with its own reason rather than regularised.  Ties — equally
+ *  semidefinite `H` is never regularised but goes to the primal active-set method from an exact
+ *  [[lpSolve]] feasible point (F_0074), and so inherits that LP's caps (F_0106).  Ties — equally
  *  violated constraints, equal step ratios — go to the lowest index, so a run is deterministic.
  *
  *  Each step solves the reduced system afresh rather than updating a factorisation: at the
@@ -126,7 +132,9 @@ def qpSolve(h: _MatrixValue, f: Vector[Double],
   }
 
 /** A point satisfying the constraints, from [[lpSolve]] with zero cost (F_0074): exact, so an
- *  infeasible set is proved so.  An LP that declines for size is reported as the input it was. */
+ *  infeasible set is proved so.  Any other decline is the LP's, and is reported as
+ *  [[QpFailure.FeasibleStart]] carrying it (F_0106): the LP checks its own dimension caps before
+ *  any work, so they are not restated here, where a second copy could drift from them. */
 private def feasiblePoint(n: Int, ineq: Option[(_MatrixValue, Vector[Double])], eq: Option[(_MatrixValue, Vector[Double])],
                           lb: Vector[Double], ub: Vector[Double]): Either[QpFailure, Array[Double]] =
   def group(g: Option[(_MatrixValue, Vector[Double])]) =
@@ -134,8 +142,7 @@ private def feasiblePoint(n: Int, ineq: Option[(_MatrixValue, Vector[Double])], 
   lpSolve(Vector.fill(n)(_Number(0.0)), group(ineq), group(eq), lb.map(_Number(_)), ub.map(_Number(_))) match
     case Right(r) => Right(r.x.map { case _Number(d) => d; case _ => Double.NaN }.toArray)
     case Left(LpFailure.Infeasible) => Left(QpFailure.Infeasible)
-    case Left(why) => Left(QpFailure.InvalidInput(
-      s"a semidefinite H starts from an exact LP feasible point, and that LP declined: $why"))
+    case Left(why) => Left(QpFailure.FeasibleStart(why))
 
 
 /** One constraint row in the solver's form `n·z ≥ rhs`; `id` is `None` for an equality. */
@@ -468,8 +475,10 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int):
   private val certTol = 0.5 * math.pow(10.0, -precision)
   private val iterTol = math.max(1e-14, math.min(1e-10, certTol / 10))
 
-  private def hTimes(v: Array[Double]): Array[Double] =
-    Array.tabulate(n)(i => (0 until n).foldLeft(0.0)((acc, j) => acc + prob.h(i, j) * v(j)))
+  // `H`'s rows as arrays, read once: `hTimes` runs once per face direction per move, and a boxed
+  // fold over `prob.h(i, j)` there broke the file's own rule for inner loops (F_0108).
+  private val hRows: Array[Array[Double]] = Array.tabulate(n)(i => Array.tabulate(n)(j => prob.h(i, j)))
+  private def hTimes(v: Array[Double]): Array[Double] = Array.tabulate(n)(i => dotA(hRows(i), v))
   private def gradient(x: Array[Double]): Array[Double] =
     val hx = hTimes(x)
     Array.tabulate(n)(i => hx(i) + prob.f(i))
@@ -516,7 +525,7 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int):
         val coef = cols.map(c => dotA(c, r))
         val nul  = sigma.indices.filter(i => sigma(i) <= 1e-12 * top || top == 0.0)
         val falling = nul.filter(i => math.abs(coef(i)) > 1e-10 * math.max(gNorm, Double.MinPositiveValue))
-        def lift(w: Array[Double]): Array[Double] = Array.tabulate(n)(i => (0 until k).foldLeft(0.0)((acc, j) => acc + z(j)(i) * w(j)))
+        def lift(w: Array[Double]): Array[Double] = combine(new Array[Double](n), w.toVector, z, 1.0)
         if falling.nonEmpty then
           Move.Ray(lift(falling.foldLeft(Array.fill(k)(0.0))((acc, i) => combine(acc, Vector(coef(i)), Vector(cols(i)), -1.0))))
         else

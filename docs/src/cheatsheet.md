@@ -309,6 +309,8 @@ qp(H, f, A, b, lb, ub)               min 1/2 z'Hz + f'z  s.t. A z <= b, lb <= z 
                                      H positive semidefinite (definite: Goldfarb-Idnani;
                                      singular: primal active set, H = 0 is an LP, and an
                                      unbounded direction is reported); 0 and 0 = no A, b;
+                                     caps 500 variables, 2000 rows; singular H: lp's caps
+                                     (40 variables, 80 rows, 2048-bit coefficients);
                                      -inf / inf = no bound; a number applies to every z
 qp(H, f, A, b, Aeq, beq, lb, ub)     the same with Aeq z = beq
                                      the REPL names the active constraints, or says

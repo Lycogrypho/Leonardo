@@ -45,7 +45,13 @@ class LsqFitTest extends AnyFlatSpec:
     def norm(v: Vector[Double]) = sqrt(v.map(x => x * x).sum)
     rn <= 1e-12 * norm(ys) || free.forall(j => abs(cols(j).zip(r).map(_ * _).sum) <= 5e-6 * norm(cols(j)) * rn)
 
-  "curveFit" should "recover a = 2, b = -0.5 from exact data within 1e-8 (T2-05's acceptance)" in
+  "curveFit" should "say that no parameters were given, rather than that the model is not evaluable (F_0110)" in
+  {
+    assert(fit("2*exp(-0.5*t)", Vector.empty, vars = Vector.empty) ==
+             Left(LsqFailure.InvalidInput("there must be at least one parameter")))
+  }
+
+  it should "recover a = 2, b = -0.5 from exact data within 1e-8 (T2-05's acceptance)" in
   {
     val r = answer(fit("a*exp(b*t)", Vector(1.0, 0.0)))
     assert(abs(r.p(0) - 2) <= 1e-8 && abs(r.p(1) + 0.5) <= 1e-8, s"answered ${r.p}")

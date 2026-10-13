@@ -112,6 +112,8 @@ def curveFit(model: _Expression, t: _Variable, tdata: Vector[Double], ydata: Vec
              params: Vector[_Variable], p0: Vector[Double],
              bounds: Option[(Vector[Double], Vector[Double])], env: Environment): Either[LsqFailure, LsqResult] =
   for
+    // Before `checked`, which sees `t` prepended and so never finds the list empty (F_0110).
+    _   <- Either.cond(params.nonEmpty, (), LsqFailure.InvalidInput("there must be at least one parameter"))
     box <- checked(t +: params, 0.0 +: p0, bounds.map((l, h) => (Double.NegativeInfinity +: l, Double.PositiveInfinity +: h)))
              .map((l, h) => (l.tail, h.tail))
     _   <- Either.cond(tdata.size == ydata.size && tdata.nonEmpty, (),
@@ -185,6 +187,38 @@ private[optimize] def summands(e: _Expression): List[_Expression] = e match
   case Sum(a, b) => summands(a) ++ summands(b)
   case other     => List(other)
 
+/** For each cell, `Σ|t|` over its terms: the size of what cancels when the cell is zero, which a
+ *  residual's rounding is measured against — `lsqfit`'s exact fit and `nlp`'s KKT certificate.
+ *  One definition for both (F_0108), which had a `while` loop and a boxed `map(…).sum` apiece.
+ *
+ *  `split` is how a cell is cut into terms, and the two callers differ with no recorded reason:
+ *  `nlp` expands first (`summands(expand(c))`), `lsqfit` reads the terms as written. Unifying them
+ *  would move `lsqfit`'s exact-fit threshold, so the difference is kept as found and only the
+ *  kernel is shared.
+ *
+ *  @param cells the cells, possibly none
+ *  @param vars  the variables they are evaluated over
+ *  @param env   bindings and precision
+ *  @param split a cell's terms
+ *  @return the per-cell sums at a point, or `None` where a term is not a finite real */
+private[optimize] def termSums(cells: Vector[_Expression], vars: Vector[_Variable], env: Environment,
+                               split: _Expression => List[_Expression]): Array[Double] => Option[Array[Double]] =
+  if cells.isEmpty then _ => Some(Array.empty[Double])
+  else
+    val terms  = cells.map(split)
+    val starts = terms.scanLeft(0)(_ + _.size).toArray
+    val at     = evaluator(terms.flatten, vars, env)
+    x => at(x).map { v =>
+      Array.tabulate(cells.size) { k =>
+        var s = 0.0
+        var i = starts(k)
+        while i < starts(k + 1) do
+          s += math.abs(v(i))
+          i += 1
+        s
+      }
+    }
+
 /** The residual form: `r` renamed to fresh parameter names, evaluated, and differentiated by the
  *  library's one Jacobian ([[vector._Jacobian]]). */
 private def residualSystem(r: _Expression, params: Vector[_Variable], env: Environment): Either[LsqFailure, Residual] =
@@ -200,11 +234,8 @@ private def residualSystem(r: _Expression, params: Vector[_Variable], env: Envir
         gridCells(_Jacobian(_Matrix(m, 1, cells), fresh).eval(env).toExpression, m, n) match
           case None => Left(LsqFailure.NotEvaluable)
           case Some(jac) =>
-            val terms  = cells.map(summands)
-            val starts = terms.scanLeft(0)(_ + _.size)
-            val termAt = evaluator(terms.flatten, fresh, env)
             Right(Residual(m, n, evaluator(cells, fresh, env), evaluator(jac, fresh, env),
-              p => termAt(p).map(v => Array.tabulate(m)(k => (starts(k) until starts(k + 1)).map(i => math.abs(v(i))).sum))))
+                           termSums(cells, fresh, env, summands)))
 
 /** The curve-fit form: `rₖ = yₖ − model(tₖ, p)`, the model and its gradient compiled once. */
 private def curveSystem(model: _Expression, t: _Variable, tdata: Vector[Double], ydata: Vector[Double],

@@ -23,7 +23,8 @@ enum RiccatiFailure:
   case NoStabilisingSolution
   /** The iteration ended, but its answer failed the residual certificate (X-02). */
   case Uncertified(residual: Double)
-  /** The state dimension `n` is past [[MaxRiccatiOrder]]. */
+  /** The state dimension `n` — or, for [[kalmanStep]], the output count — is past
+   *  [[MaxRiccatiOrder]]. */
   case TooLarge(n: Int)
 
 import RiccatiFailure.*
@@ -104,8 +105,13 @@ private def checkWeights(q: _MatrixValue, r: _MatrixValue, n: Int, m: Int, qName
  *  `X = AᵀXA + H` when `G = 0` (Smith's method). Only products and inverses: no generalised
  *  eigenproblem, which the library does not have. Converges quadratically when a stabilising
  *  solution exists; `None` when a step is singular or leaves the finite numbers.
+ *
+ *  The answer is symmetrised only when `symmetric` says the solution is symmetric: a Riccati
+ *  solution always is, but a Stein solution only for a symmetric `H`, and symmetrising one for a
+ *  non-symmetric `H` answered a different equation — which the certificate then refused, so
+ *  `dlyap` declined every such `Q` it documents as accepted (F_0107).
  */
-private def doubling(a0: _MatrixValue, g0: _MatrixValue, h0: _MatrixValue): Option[_MatrixValue] =
+private def doubling(a0: _MatrixValue, g0: _MatrixValue, h0: _MatrixValue, symmetric: Boolean): Option[_MatrixValue] =
   val n  = a0.rows
   val id = _MatrixValue.identity(n)
   @annotation.tailrec
@@ -120,7 +126,7 @@ private def doubling(a0: _MatrixValue, g0: _MatrixValue, h0: _MatrixValue): Opti
         if !(a1.isFinite && g1.isFinite && h1.isFinite) then None
         else
           val change = frobenius(h1.add(h.scale(-1)))
-          if change <= 1e-14 * frobenius(h1) || step >= MaxDoublingSteps then Some(symmetrised(h1))
+          if change <= 1e-14 * frobenius(h1) || step >= MaxDoublingSteps then Some(if symmetric then symmetrised(h1) else h1)
           else go(a1, g1, h1, step + 1)
   go(a0, g0, h0, 1)
 
@@ -165,15 +171,23 @@ def dare(a: _MatrixValue, b: _MatrixValue, q: _MatrixValue, r: _MatrixValue, env
  */
 def dlqr(a: _MatrixValue, b: _MatrixValue, q: _MatrixValue, r: _MatrixValue, env: Environment)
     : Either[RiccatiFailure, (_MatrixValue, _MatrixValue)] =
+  dlqrNamed(a, b, q, r, env, "Q", "R")
+
+/** [[dlqr]], with the names its failures give the two weights: `Q` and `R` there, `Qw` and `Rv`
+ *  when [[kalmanGain]] solves the dual problem. Threading the names in, rather than remapping the
+ *  failures afterwards, is what reaches the shape messages too (F_0107): a remap matched only the
+ *  failures it listed, so a wrong-shaped `Qw` was reported as `Q`. */
+private def dlqrNamed(a: _MatrixValue, b: _MatrixValue, q: _MatrixValue, r: _MatrixValue, env: Environment,
+                      qName: String, rName: String): Either[RiccatiFailure, (_MatrixValue, _MatrixValue)] =
   val n = a.rows
   for
     _    <- checkSquare(a, "A", n)
     _    <- Either.cond(n <= MaxRiccatiOrder, (), TooLarge(n))
     _    <- Either.cond(b.rows == n, (), ShapeMismatch(s"B must have $n rows, as A does: it is ${b.rows}x${b.cols}"))
     _    <- Either.cond(a.isFinite && b.isFinite && q.isFinite && r.isFinite, (), NotNumeric("an entry is not finite"))
-    _    <- checkWeights(q, r, n, b.cols, "Q", "R")
-    rInv <- r.inverse.toRight(NotDefinite("R"))
-    p    <- doubling(a, symmetrised(b.multiply(rInv).multiply(b.transpose)), q).toRight(NoStabilisingSolution)
+    _    <- checkWeights(q, r, n, b.cols, qName, rName)
+    rInv <- r.inverse.toRight(NotDefinite(rName))
+    p    <- doubling(a, symmetrised(b.multiply(rInv).multiply(b.transpose)), q, symmetric = true).toRight(NoStabilisingSolution)
     s    <- r.add(b.transpose.multiply(p).multiply(b)).inverse.toRight(NoStabilisingSolution)
     k     = s.multiply(b.transpose).multiply(p).multiply(a)
     _    <- Either.cond(schurStable(a.add(b.multiply(k).scale(-1))), (), NoStabilisingSolution)
@@ -213,11 +227,11 @@ def dlyap(a: _MatrixValue, q: _MatrixValue, env: Environment): Either[RiccatiFai
     _ <- Either.cond(a.isFinite && q.isFinite, (), NotNumeric("an entry is not finite"))
     _ <- Either.cond(schurStable(a), (), NoStabilisingSolution)
     // doubling solves X = AᵀXA + H; the Stein equation in A is that equation in Aᵀ.
-    x <- doubling(a.transpose, _MatrixValue(n, n, new Array[Double](n * n)), q).toRight(NoStabilisingSolution)
+    x <- doubling(a.transpose, _MatrixValue(n, n, new Array[Double](n * n)), q, isSymmetric(q)).toRight(NoStabilisingSolution)
     res  = a.multiply(x).multiply(a.transpose).add(q).add(x.scale(-1))
     rel  = frobenius(res) / math.max(math.max(frobenius(x), frobenius(q)), Double.MinPositiveValue)
     _ <- Either.cond(rel <= 0.5 * math.pow(10, -env.precision), (), Uncertified(rel))
-  yield if isSymmetric(q) then symmetrised(x) else x
+  yield x
 
 /** The steady-state Kalman filter for `x[k+1] = A·x + B·u + w`, `y = C·x + D·u + v`,
  *  `w ~ N(0, Qw)`, `v ~ N(0, Rv)`: the measurement-update gain `M` and the a priori covariance
@@ -238,13 +252,7 @@ def kalmanGain(a: _MatrixValue, c: _MatrixValue, qw: _MatrixValue, rv: _MatrixVa
     : Either[RiccatiFailure, (_MatrixValue, _MatrixValue)] =
   for
     _ <- Either.cond(c.cols == a.rows, (), ShapeMismatch(s"C must have ${a.rows} columns, as A does: it is ${c.rows}x${c.cols}"))
-    p <- dare(a.transpose, c.transpose, qw, rv, env).left.map {
-           case NotDefinite("Q")  => NotDefinite("Qw")
-           case NotDefinite("R")  => NotDefinite("Rv")
-           case NotSymmetric("Q") => NotSymmetric("Qw")
-           case NotSymmetric("R") => NotSymmetric("Rv")
-           case other             => other
-         }
+    p <- dlqrNamed(a.transpose, c.transpose, qw, rv, env, "Qw", "Rv").map(_._2)
     s <- c.multiply(p).multiply(c.transpose).add(rv).inverse.toRight(NotDefinite("C·P·Cᵀ + Rv"))
   yield (p.multiply(c.transpose).multiply(s), p)
 
@@ -282,6 +290,10 @@ def kalmanStep(xhat: _MatrixValue, p: _MatrixValue, u: _MatrixValue, y: _MatrixV
     ShapeMismatch(s"$what must be ${rows}x$cols: it is ${mat.rows}x${mat.cols}")
   } match
     case Some(f) => Left(f)
+    // The Riccati family's size cap, as dlqr and dlyap apply it: a step costs several n³
+    // products and an inverse of the q×q innovation covariance (F_0107).
+    case None if n > MaxRiccatiOrder => Left(TooLarge(n))
+    case None if q > MaxRiccatiOrder => Left(TooLarge(q))
     case None =>
       for
         s <- c.multiply(p).multiply(c.transpose).add(rv).inverse.toRight(NotDefinite("C·P·Cᵀ + Rv"))
@@ -311,6 +323,14 @@ object RiccatiKind:
     case KalmanGain => "kalmanGain"
     case KalmanStep => "kalmanStep"
 
+  /** How many arguments the kind takes, as the grammar writes it.
+   *  @param k the kind
+   *  @return its argument count */
+  def arity(k: RiccatiKind): Int = k match
+    case Dare | Dlqr | KalmanGain => 4
+    case Dlyap                    => 2
+    case KalmanStep               => 7
+
 /** `dare(A, B, Q, R)`, `dlqr(A, B, Q, R)`, `dlyap(A, Q)`, `kalmanGain(A, C, Qw, Rv)` and
  *  `kalmanStep(xhat, P, u, y, sys, Qw, Rv)` as one node (F_0065), the `_DistributionQuery`
  *  pattern: the five differ only in the function they call.
@@ -333,6 +353,15 @@ case class _Riccati(kind: RiccatiKind, args: List[_Expression]) extends _Express
    *  @param env the evaluation environment
    *  @return a matrix (`dare`, `dlyap`) or a pair (the row forms), or the reason */
   def detailed(env: Environment): Either[RiccatiFailure, Either[_MatrixValue, (_MatrixValue, _MatrixValue)]] =
+    // The parser always supplies the right count, but `rebuild` and a programmatic node need not;
+    // every index below rests on this check (F_0107).
+    val expected = RiccatiKind.arity(kind)
+    if args.size != expected then
+      Left(ShapeMismatch(s"${RiccatiKind.keyword(kind)} takes $expected arguments, not ${args.size}"))
+    else answer(env)
+
+  /** [[detailed]] once the argument count is known to be right. */
+  private def answer(env: Environment): Either[RiccatiFailure, Either[_MatrixValue, (_MatrixValue, _MatrixValue)]] =
     val ev = args.map(_.eval(env))
     def mat(i: Int, what: String, zero: => Option[(Int, Int)] = None): Either[RiccatiFailure, _MatrixValue] =
       matrixOperand(ev(i), zero).toRight(NotNumeric(s"$what is not a numeric matrix"))

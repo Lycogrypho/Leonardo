@@ -148,10 +148,9 @@ private final case class LpProblem(f: Vector[Q], a: Option[(Vector[Vector[Q]], V
         (coeff.toVector, shift)
       // Inequality rows: the user's, then a finite upper bound of a bounded-below variable.
       val userIneq  = a.toList.flatMap((rs, bs) => rs.indices.map(k => (rs(k), bs(k), Option(QpConstraint.Row(k)))))
-      val upperRows = (0 until n).toList.collect {
-        case i if lb(i).isDefined && ub(i).isDefined =>
-          (Vector.tabulate(n)(j => if j == i then Q.one else Q.zero), ub(i).getOrElse(Q.zero), Option.empty[QpConstraint])
-      }
+      val upperRows = (0 until n).toList.flatMap(i => (lb(i), ub(i)) match
+        case (Some(_), Some(u)) => List((Vector.tabulate(n)(j => if j == i then Q.one else Q.zero), u, Option.empty[QpConstraint]))
+        case _                  => Nil)
       val ineq = (userIneq ++ upperRows).map { (row, b, id) =>
         val (c, shift) = inY(row)
         (c, b - shift, id)

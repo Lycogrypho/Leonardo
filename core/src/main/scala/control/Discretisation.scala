@@ -60,7 +60,10 @@ enum DiscretisationMethod:
 export DiscretisationMethod.{Zoh, Tustin, Foh, ImpulseInvariant, MatchedPoleZero, ForwardEuler, BackwardEuler}
 
 object DiscretisationMethod:
-  /** The slot word a method is written with at the prompt (none is reserved). */
+  /** The slot word a method is written with at the prompt (none is reserved): the one list of
+   *  them, which the parser reads and `_C2d.toString` writes (F_0110).
+   *  @param m the method
+   *  @return its word */
   def keyword(m: DiscretisationMethod): String = m match
     case Zoh              => "zoh"
     case Tustin           => "tustin"
@@ -70,8 +73,6 @@ object DiscretisationMethod:
     case ForwardEuler     => "forward"
     case BackwardEuler    => "backward"
 
-  /** Looks a method up by its slot word. */
-  def fromKeyword(s: String): Option[DiscretisationMethod] = values.find(m => keyword(m) == s)
 
 /** Discretises a continuous transfer function over sample period `ts`.
  *
@@ -229,13 +230,20 @@ private def matchedPoleZero(g: _Expression, s: _Variable, z: _Variable, ts: Doub
         a = (zs.map(mapped).map(w => (1 - w._1, -w._2)) ++ Vector.fill(math.max(excess - 1, 0))((2.0, 0.0)))
               .foldLeft((1.0, 0.0))(complexTimes)
         b = ps.map(mapped).map(w => (1 - w._1, -w._2)).foldLeft((1.0, 0.0))(complexTimes)
-        if math.abs(a._2) <= 1e-9 * math.max(1.0, math.abs(a._1)) && math.abs(b._2) <= 1e-9 * math.max(1.0, math.abs(b._1))
+        // Each product is real up to rounding, judged against the product of its factors' moduli:
+        // `max(1, |re|)` was a claim about the units, an absolute 1e-9 for slow poles (F_0109).
+        if math.abs(a._2) <= 1e-9 * modulusProduct(zs.map(mapped), math.max(excess - 1, 0)) &&
+           math.abs(b._2) <= 1e-9 * modulusProduct(ps.map(mapped), 0)
         ratio = a._1 / b._1
         if ratio != 0.0 && !ratio.isNaN && !ratio.isInfinite
         gain = target / (math.pow(ts, m0 - p0) * ratio)
         if !gain.isNaN && !gain.isInfinite
       yield normaliseTf(Ratio(Product(_Number(gain), polyToExpr(nz, z)), polyToExpr(dz, z)), z)
   }
+
+/** `Π |1 − wᵢ| · 2^twos`, the size of the product whose imaginary part must vanish. */
+private def modulusProduct(ws: Vector[(Double, Double)], twos: Int): Double =
+  ws.map(w => math.hypot(1 - w._1, w._2)).product * math.pow(2.0, twos)
 
 private def complexTimes(a: (Double, Double), b: (Double, Double)): (Double, Double) =
   (a._1 * b._1 - a._2 * b._2, a._1 * b._2 + a._2 * b._1)
@@ -249,7 +257,8 @@ private def realPolynomial(roots: Vector[(Double, Double)]): Option[Vector[Doubl
     val scaled  = acc.map(c => complexTimes(c, (-r._1, -r._2))) :+ ((0.0, 0.0))
     shifted.zip(scaled).map((x, y) => (x._1 + y._1, x._2 + y._2))
   }
-  val scale = math.max(1.0, cs.map(c => math.abs(c._1)).max)
+  // The polynomial is monic, so its largest coefficient is at least 1: no floor is needed (F_0109).
+  val scale = cs.map(c => math.hypot(c._1, c._2)).max
   Option.when(cs.forall(c => math.abs(c._2) <= 1e-9 * scale))(cs.map(_._1))
 
 /** Inverse of [[c2d]]: recovers a continuous transfer function from a discrete one.

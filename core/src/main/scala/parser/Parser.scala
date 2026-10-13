@@ -1000,10 +1000,12 @@ object Parser extends JavaTokenParsers:
     "newton" ^^^ MinimizeMethod.Newton | "gd" ^^^ MinimizeMethod.GradientDescent
 
   /** `c2d`'s method word (F_0092, F_0009), matched only in that slot, so none is reserved —
-   *  `impulse` included, which names a function elsewhere and is matched here as a word. */
+   *  `impulse` included, which names a function elsewhere and is matched here as a word.  Built
+   *  from [[control.DiscretisationMethod.keyword]], the one list of the words (F_0110), longest
+   *  first so that no word can match as the prefix of another. */
   private lazy val c2dMethod: Parser[DiscretisationMethod] =
-    "zoh" ^^^ Zoh | "tustin" ^^^ Tustin | "foh" ^^^ Foh | "impulse" ^^^ ImpulseInvariant |
-    "matched" ^^^ MatchedPoleZero | "forward" ^^^ ForwardEuler | "backward" ^^^ BackwardEuler
+    DiscretisationMethod.values.toList.sortBy(m => -DiscretisationMethod.keyword(m).length)
+      .map(m => literal(DiscretisationMethod.keyword(m)) ^^^ m).reduce(_ | _)
 
   /** `nlp`'s method keyword, matched only in that slot so neither is reserved (F_0066). */
   private lazy val nlpMethod: Parser[NlpMethod] =

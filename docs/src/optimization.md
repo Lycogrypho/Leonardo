@@ -250,7 +250,10 @@ needs no feasible starting point, and finds infeasibility by itself. A merely **
 starts from a feasible point found by the exact linear program below, and follows a direction
 of zero curvature until a constraint stops it, or reports the problem `Unbounded` when none
 does. `H = 0` is a linear program. Neither method regularises `H`, which would solve a
-different problem. Like `minimize`, an answer is **certified**: the KKT conditions are checked,
+different problem. Because that start comes from the exact linear program, **a semidefinite `qp`
+inherits `lp`'s caps** — 40 variables, 80 rows of `A` and `Aeq`, coefficients of 2048 bits —
+where a definite one accepts 500 variables and 2000 constraints; past them it declines and says
+that the linear program did. Like `minimize`, an answer is **certified**: the KKT conditions are checked,
 relative to the problem's scale, against the tolerance `=` uses, and a point that fails is not
 returned.
 

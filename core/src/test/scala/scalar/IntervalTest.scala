@@ -40,6 +40,28 @@ class IntervalTest extends AnyFlatSpec:
     assert(bounds("[1, x]".replace("x", "3")) == (1.0, 3.0))
   }
 
+  it should "leave a nested matrix endpoint unevaluated, as written (F_0111)" in {
+    // `[[1, 2], 3]` is not a matrix (its second row is not bracketed), so it is read as an
+    // interval literal whose lower end is a matrix, which `_Interval.of` refuses.
+    // The inner matrix is evaluated, so the tree is rebuilt; what is pinned is that it stays
+    // unevaluated and echoes as written.
+    val e = parse("[[1, 2], 3]")
+    e.eval(env) match
+      case Left(back: _IntervalOf) => assert(back.toString == e.toString, back)
+      case other                   => fail(s"$other")
+  }
+
+  it should "typeset an exact endpoint as a fraction, as a bare rational is (F_0111)" in {
+    value("[1/3, 1/2]", Some(30)) match
+      case Right(i: _Interval) => assert(latex.ToLatex(i) == "\\left[\\frac{1}{3}, \\frac{1}{2}\\right]", latex.ToLatex(i))
+      case other               => fail(s"$other")
+    value("[-1/2, 3]", Some(30)) match
+      case Right(i: _Interval) => assert(latex.ToLatex(i) == "\\left[-\\frac{1}{2}, 3\\right]", latex.ToLatex(i))
+      case other               => fail(s"$other")
+    // Double endpoints keep the outward-rounded display: no fraction appears.
+    assert(latex.ToLatex(interval(1.0 / 3, 2.0 / 3)) == "\\left[0.33333, 0.66667\\right]")
+  }
+
   it should "NOT be read as a number by the widening extractor (Decision A)" in {
     assert(_Number.unapply(interval(1, 2)).isEmpty)
   }
@@ -185,6 +207,66 @@ class IntervalTest extends AnyFlatSpec:
         check(s"$name([$a,$b])", node.eval(env.withBinding("t", x)), f(p))
   }
 
+  // ── F_0113: the exact-endpoint kernels, compared as rationals ──
+
+  private def q(v: _Value): spire.math.Rational = v match
+    case r: _Rational => spire.math.Rational(r.num, r.den)
+    case other        => fail(s"not exact: $other")
+
+  private def exactInterval(src: String): _Interval = value(src, Some(30)) match
+    case Right(i: _Interval) if i.isExact => i
+    case other                            => fail(s"$src: not an exact interval: $other")
+
+  /** The exact interval `src` is exactly `[lo, hi]`. */
+  private def exactly(src: String, lo: spire.math.Rational, hi: spire.math.Rational): Unit =
+    val i = exactInterval(src)
+    assert(q(i.lo) == lo && q(i.hi) == hi, s"$src: $i")
+
+  /** The exact interval `src` encloses `[lo, hi]`, each end within 1e-25 of it (the working
+   *  precision is 30 digits). The true values are spire's, at 400 bits. */
+  private def encloses(src: String, lo: spire.math.Real, hi: spire.math.Real): Unit =
+    val i = exactInterval(src)
+    val (l, h)   = (q(i.lo), q(i.hi))
+    val (tl, th) = (lo.toRational(400), hi.toRational(400))
+    val slack    = spire.math.Rational(BigInt(1), BigInt(10).pow(25))
+    assert(l <= tl && th <= h, s"$src: $i does not enclose [${tl.toDouble}, ${th.toDouble}]")
+    assert(tl - l < slack && h - th < slack, s"$src: $i is wider than the working precision")
+
+  "an exact interval" should "stay exact and tight through sin, cos, cosh and a square root (F_0113)" in {
+    import spire.math.{Rational => Q, Real}
+    val (third, half) = (Real(Q(1, 3)), Real(Q(1, 2)))
+    encloses("sin([1/3, 1/2])", Real.sin(third), Real.sin(half))
+    encloses("cos([1/3, 1/2])", Real.cos(half), Real.cos(third))
+    val c = exactInterval("cosh([-1/2, 1/3])")
+    assert(q(c.lo) == Q(1), s"the minimum of cosh, 1, is inside: $c")
+    encloses("cosh([-1/2, 1/3])", Real(1), (Real.exp(half) + Real.exp(-half)) / Real(2))
+    // spire's fpow at the endpoint 0: the bound reaches 0 from at most a pad below.
+    encloses("[0, 4]^(1/2)", Real(0), Real(2))
+  }
+
+  it should "be exactly right through abs, a square and a quotient" in {
+    import spire.math.{Rational => Q}
+    exactly("abs([-1/2, 1/3])", Q(0), Q(1, 2))
+    exactly("[1/3, 1/2]^2", Q(1, 9), Q(1, 4))
+    exactly("[-1/2, 1/3]^2", Q(0), Q(1, 4))
+    exactly("[1/3, 1/2] / [2, 4]", Q(1, 12), Q(1, 4))
+  }
+
+  it should "demote beside a Double, outward (float contagion)" in {
+    val x = exactInterval("[1/3, 1/2]")
+    Sum(x, _Number(0.5)).eval(env) match
+      case Right(i: _Interval) =>
+        assert(!i.isExact, s"$i")
+        val five6 = _Rational.of(5, 6).getOrElse(fail("5/6"))
+        assert(_Rational.fromDouble(i.loDouble).exists(_.compare(five6) <= 0), s"lower ${i.loDouble} above 5/6")
+        assert(i.hiDouble >= 1.0, s"upper ${i.hiDouble}")
+      case other => fail(s"$other")
+  }
+
+  "an interval literal with symbolic endpoints" should "typeset its endpoints as expressions" in {
+    assert(latex.ToLatex(parse("[a, b + 1]")) == "\\left[a, b + 1.0\\right]", latex.ToLatex(parse("[a, b + 1]")))
+  }
+
   // ── comparisons ──
 
   "a comparison" should "decide when it holds for every pair of points, and say unknown otherwise" in {
@@ -208,6 +290,7 @@ class IntervalTest extends AnyFlatSpec:
     assert(value("[1, 2] != 1.5") == Right(_Truth.Unknown))
     assert(value("[3, 4] <= [1, 2]") == Right(_Bool(false)))
     assert(value("[3, 4] >= [1, 2]") == Right(_Bool(true)))
+    assert(value("[1, 3] >= [2, 4]") == Right(_Truth.Unknown), ">= on overlap (F_0113)")
   }
 
   // ── F_0104: the floating-point edges ──

@@ -56,6 +56,20 @@ class OptimizeTest extends AnyFlatSpec:
     assertPoints("stationary(x^2 + x*y + y^2 - 3*x, x, y)", Vector(2.0, -1.0))
   }
 
+  it should "judge a root real against its factor's own scale, not against 1 (F_0109)" in
+  {
+    // 10⁻⁶ ± 10⁻¹⁰i is a complex pair: |im|/|root| = 10⁻⁴. The old floor, 1e-9·max(1, |re|),
+    // accepted it as the real root 10⁻⁶, and refused the same pair in units 10⁶ larger.
+    for k <- List(1e-6, 1.0, 1e6) do
+      assert(realParts(Seq((k, 1e-4 * k), (k, -1e-4 * k))).isEmpty, s"scale $k")
+      // A real pair carrying rounding-level imaginary parts is kept, at every scale.
+      assert(realParts(Seq((0.5 * k, 1e-17 * k), (k, -1e-17 * k))) == Seq(0.5 * k, k), s"scale $k")
+    // A root at the origin beside others is real when its imaginary part is rounding of theirs.
+    assert(realParts(Seq((0.0, 1e-20), (1e-6, 0.0))) == Seq(0.0, 1e-6))
+    // The stationary-point version of the first case cannot be pinned here yet: squareFreeFactors
+    // reads the pair as a double root first, through polyTrim's absolute 1e-9 (F_0118).
+  }
+
   it should "stay exact end to end, derivative included (F_0071)" in
   {
     parse("stationary(x^2 + x*y + y^2 - 3*x, x, y)", Some(30)).eval(env) match

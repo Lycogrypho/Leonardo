@@ -74,20 +74,23 @@ case class _Comparison(lhs: _Expression, op: CompareOp, rhs: _Expression) extend
       compareSides(lhs, rhs, env)((l, r) => _Comparison(l, op, r)) match
         case Right(_Bool(b)) => Right(_Bool(!b))
         case other           => other
+    // Each side is evaluated once and the results shared: an `integral` or `ode` side was
+    // evaluated three times here, by the interval test, the ordering and the fallback (F_0108).
     case _ =>
-      intervalOrder(op, lhs, rhs, env).getOrElse(
-        ordering(lhs, rhs, env) match
+      val (l, r) = (lhs.eval(env), rhs.eval(env))
+      intervalOrder(op, l, r, env).getOrElse(
+        orderingOf(l, r, env) match
           case Some(c) => Right(_Bool(holds(op, c)))
-          case None    => Left(_Comparison(lhs.eval(env).toExpression, op, rhs.eval(env).toExpression)))
+          case None    => Left(_Comparison(l.toExpression, op, r.toExpression)))
 
   /** An ordering with an interval operand (F_0008): `true` or `false` when the relation holds
    *  for every pair of points or for none, `unknown` when it depends on the points —
    *  `[1, 3] < [2, 4]` is neither.  `None` when no operand is an interval, or when the other
    *  has no real bounds (a complex number, a matrix): that relation is not a question about
    *  points, so it stays symbolic below rather than being answered `unknown` (F_0101). */
-  private def intervalOrder(op: CompareOp, lhs: _Expression, rhs: _Expression,
+  private def intervalOrder(op: CompareOp, l: Either[_Expression, _Value], r: Either[_Expression, _Value],
                             env: Environment): Option[Either[_Expression, _Value]] =
-    (lhs.eval(env), rhs.eval(env)) match
+    (l, r) match
       case (Right(a), Right(b)) if _Interval.comparable(a, b) =>
         val tolerance = 0.5 * math.pow(10, -env.precision)
         val verdict = op match
@@ -122,7 +125,12 @@ case class _Comparison(lhs: _Expression, op: CompareOp, rhs: _Expression) extend
  */
 private[equation] def ordering(lhs: _Expression, rhs: _Expression,
                                env: Environment): Option[Int] =
-  (lhs.eval(env), rhs.eval(env)) match
+  orderingOf(lhs.eval(env), rhs.eval(env), env)
+
+/** [[ordering]] of two sides already evaluated, so a caller that has them evaluates nothing twice. */
+private[equation] def orderingOf(l: Either[_Expression, _Value], r: Either[_Expression, _Value],
+                                 env: Environment): Option[Int] =
+  (l, r) match
     // Exact operands compare exactly -- no tolerance is needed or wanted when neither side
     // carries representation error.  Must precede the `_Number` case, which widens over
     // `_Rational` and would otherwise read both as Doubles.

@@ -1099,6 +1099,8 @@ final class Session:
     case QpFailure.MaxIterations(limit) => s"no optimum within $limit iterations"
     case QpFailure.Uncertified(r)       =>
       s"the final point failed the KKT check (relative residual ${_Number.render(r)})"
+    case QpFailure.FeasibleStart(lp)    =>
+      s"a semidefinite H starts from an exact linear program for a feasible point, and it declined: ${describeLp(lp)}"
 
   /** An [[LpFailure]] in prose: the two verdicts the exact arithmetic proves, said as proofs. */
   private def describeLp(why: LpFailure): String = why match

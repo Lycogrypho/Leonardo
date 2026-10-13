@@ -39,6 +39,48 @@ class DiscretisationTest extends AnyFlatSpec:
     case Some(Vector(_Number(p))) => p
     case other                    => fail(s"$gd: poles $other")
 
+  // ── F_0113: a second plant for the response equivalences, a finite zero, the prewarp range ──
+
+  "impulse invariance" should "match Ts·Z{g(nTs)} on a two-pole plant, 1/((s + 1)(s + 2))" in {
+    // g(t) = e^-t − e^-2t, so G_d = Ts·(z/(z − e^-Ts) − z/(z − e^-2Ts)).
+    val ts = 0.1
+    val gd = discretised("1/((s + 1)*(s + 2))", ts, ImpulseInvariant)
+    def ref(z0: Double) = ts * (z0 / (z0 - math.exp(-ts)) - z0 / (z0 - math.exp(-2 * ts)))
+    for z0 <- Seq(2.0, -0.5, 3.0) do assert(close(at(gd, z0), ref(z0), 1e-9), s"z = $z0: ${at(gd, z0)} vs ${ref(z0)}")
+  }
+
+  "first-order hold" should "match (z − 1)²/(Ts z)·Z{L⁻¹[G/s²]} on a two-pole plant, and keep the DC gain" in {
+    // G/s² = −3/4·1/s + 1/2·1/s² + 1/(s + 1) − 1/4·1/(s + 2), worked by partial fractions.
+    val ts = 0.1
+    val gd = discretised("1/((s + 1)*(s + 2))", ts, Foh)
+    def ref(z0: Double) =
+      val zf = -0.75 * z0 / (z0 - 1) + (ts / 2) * z0 / ((z0 - 1) * (z0 - 1)) +
+               z0 / (z0 - math.exp(-ts)) - 0.25 * z0 / (z0 - math.exp(-2 * ts))
+      (z0 - 1) * (z0 - 1) / (ts * z0) * zf
+    for z0 <- Seq(2.0, -0.5, 3.0) do assert(close(at(gd, z0), ref(z0), 1e-9), s"z = $z0: ${at(gd, z0)} vs ${ref(z0)}")
+    assert(close(at(gd, 1.0), 0.5, 1e-9), "G(0) = 1/2")
+  }
+
+  "matched pole-zero" should "map a finite zero by e^(sTs) and match the low-frequency gain" in {
+    // (s + 3)/((s + 1)(s + 2)), Ts = 0.1: excess 1, so no zero at z = −1; the gain makes G_d(1) = G(0) = 3/2.
+    val ts = 0.1
+    val gd = discretised("(s + 3)/((s + 1)*(s + 2))", ts, MatchedPoleZero)
+    val (zz, p1, p2) = (math.exp(-3 * ts), math.exp(-ts), math.exp(-2 * ts))
+    val k = 1.5 * (1 - p1) * (1 - p2) / (1 - zz)
+    def ref(z0: Double) = k * (z0 - zz) / ((z0 - p1) * (z0 - p2))
+    for z0 <- Seq(2.0, -0.5, 1.0) do assert(close(at(gd, z0), ref(z0), 1e-9), s"z = $z0: ${at(gd, z0)} vs ${ref(z0)}")
+    zeros(gd, z) match
+      case Some(Vector(_Number(w))) => assert(close(w, zz), s"zero $w")
+      case other                    => fail(s"zeros $other")
+  }
+
+  "prewarped Tustin" should "decline a frequency outside 0 < w·Ts/2 < π/2" in {
+    val g = parse("1/(s + 1)")
+    for w <- Seq(0.0, -1.0, math.Pi / 0.1, 40.0) do
+      assert(c2dPrewarped(g, s, z, 0.1, w).isEmpty, s"w = $w")
+    assert(c2dPrewarped(g, s, z, 0.1, 1.0).isDefined)
+  }
+
   "forward Euler" should "substitute s = (z - 1)/Ts" in {
     // 1/(s + 1) at Ts = 0.1: 0.1/(z - 0.9), DC gain 1.
     val gd = discretised("1/(s + 1)", 0.1, ForwardEuler)
@@ -155,8 +197,13 @@ class DiscretisationTest extends AnyFlatSpec:
     for (word, m) <- Seq("zoh" -> Zoh, "tustin" -> Tustin, "foh" -> Foh, "impulse" -> ImpulseInvariant,
                          "matched" -> MatchedPoleZero, "forward" -> ForwardEuler, "backward" -> BackwardEuler) do
       parse(s"c2d(1/(s + 1), s, z, 0.1, $word)") match
-        case c: _C2d => assert(c.method == m && c.prewarp.isEmpty, word)
+        case c: _C2d => assert(c.method == m && c.prewarp.isEmpty && DiscretisationMethod.keyword(m) == word, word)
         case other   => fail(s"$word: $other")
+    // F_0110: the parser reads `keyword`, so every method the enum gains is readable at once.
+    for m <- DiscretisationMethod.values do
+      parse(s"c2d(1/(s + 1), s, z, 0.1, ${DiscretisationMethod.keyword(m)})") match
+        case c: _C2d => assert(c.method == m, m)
+        case other   => fail(s"$m: $other")
     val e = parse("c2d(1/(s + 1), s, z, 0.5, tustin, 1)")
     assert(parse(e.toString) == e)
     assert(!Parser.parse("c2d(1/(s + 1), s, z, 0.5, zoh, 1)").successful, "a prewarp frequency belongs to tustin")

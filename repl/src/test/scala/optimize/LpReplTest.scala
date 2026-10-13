@@ -25,6 +25,17 @@ class LpReplTest extends AnyFlatSpec:
     assert(out.contains("note: lp declined: no point satisfies the constraints (proved"), out)
   }
 
+  it should "say why it declined for an unbounded objective and for the coefficient cap (F_0113)" in
+  {
+    val unbounded = session.execute("lp(-1, 0, 0, 0, inf)")
+    assert(unbounded.contains("note: lp declined: the objective decreases without bound on the feasible set (proved)"), unbounded)
+    // F_0105's case at the prompt: one pivot rewrites the second row to 2^2100-sized entries.
+    val s = session
+    s.execute("exact on")
+    val big = s.execute("lp([[-1], [-1]], [[1, 1], [2^2100, 2^2100]], [[1], [5*2^2100]], 0, inf)")
+    assert(big.contains("note: lp declined: an exact coefficient grew to") && big.contains("past the cap"), big)
+  }
+
   it should "stay exact in exact mode" in
   {
     val s = session

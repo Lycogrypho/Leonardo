@@ -207,30 +207,16 @@ private object NlpSystem:
         case Some(dcells) =>
           Right(NlpSystem(n, gr.size, hr.size, fr, gr, hr, fresh,
             cellsAt(fr +: (gr ++ hr), fresh, env), cellsAt(dcells, fresh, env),
-            termSums(gr ++ hr, fresh, env), termSums(dcells, fresh, env)))
+            termSums(gr ++ hr, fresh, env, expandedTerms), termSums(dcells, fresh, env, expandedTerms)))
 
   /** An evaluator that also accepts no cells. */
   private def cellsAt(cells: Vector[_Expression], vars: Vector[_Variable],
                       env: Environment): Array[Double] => Option[Array[Double]] =
     if cells.isEmpty then _ => Some(Array.empty[Double]) else evaluator(cells, vars, env)
 
-  /** For each cell, `Σ|t|` over the terms of its expanded form: the size of what cancels when
-   *  the cell is zero, which a residual is measured against (the `lsqfit` exact-fit idea). */
-  private def termSums(cells: Vector[_Expression], vars: Vector[_Variable],
-                       env: Environment): Array[Double] => Option[Array[Double]] =
-    val terms  = cells.map(c => summands(expand(c)).toVector)
-    val starts = terms.scanLeft(0)(_ + _.size)
-    val at     = cellsAt(terms.flatten, vars, env)
-    x => at(x).map { v =>
-      Array.tabulate(cells.size) { k =>
-        var s = 0.0
-        var i = starts(k)
-        while i < starts(k + 1) do
-          s += math.abs(v(i))
-          i += 1
-        s
-      }
-    }
+  /** The terms of a cell's expanded form: what the KKT certificate measures a residual against.
+   *  `lsqfit` reads its residuals' terms as written; see [[termSums]]. */
+  private def expandedTerms(c: _Expression): List[_Expression] = summands(expand(c))
 
 
 // ── the certificate ──
@@ -569,7 +555,8 @@ private def innerMinimum(sys: NlpSystem, x0: Array[Double], lo: Array[Double], h
       // plain gradient step, which the projection then lands exactly on the bound. Without it
       // the quasi-Newton step creeps towards the bound and never reaches it, and the outer
       // certificate cannot read that bound's multiplier.
-      val width = (0 until n).map(i => math.abs(clamp(Array.tabulate(n)(k => x(k) - gx(k)))(i) - x(i))).max
+      val proj  = clamp(Array.tabulate(n)(k => x(k) - gx(k)))     // once, not once per coordinate (F_0108)
+      val width = (0 until n).map(i => math.abs(proj(i) - x(i))).max
       val eps   = math.min(1e-3, width)
       val near  = Array.tabulate(n)(i => (x(i) - lo(i) <= eps && gx(i) > 0.0) || (hi(i) - x(i) <= eps && gx(i) < 0.0))
       val free  = Array.tabulate(n)(i => if near(i) then 0.0 else pg(i))

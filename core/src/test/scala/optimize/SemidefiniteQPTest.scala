@@ -50,6 +50,29 @@ class SemidefiniteQPTest extends AnyFlatSpec:
     assert(failure("qp(zeros(1), 1, [[1], [-1]], [[1], [-2]], -inf, inf)") == QpFailure.Infeasible)
   }
 
+  it should "report the exact LP's own decline as FeasibleStart, not as the user's input (F_0106)" in {
+    // 41 variables: inside qp's caps (500), past the LP phase's (40). The minimum is z = 0.
+    failure("qp(zeros(41), ones(41, 1), 0, 0, 0, inf)") match
+      case QpFailure.FeasibleStart(LpFailure.InvalidInput(detail)) => assert(detail.contains(s"$MaxLpVariables"), detail)
+      case other => fail(s"expected FeasibleStart(InvalidInput), got $other")
+    // The definite path never reaches the LP, so the same size is answered there.
+    assert(solved("qp(eye(41), ones(41, 1), 0, 0, 0, inf)").z.forall(_ == 0.0))
+  }
+
+  it should "take a warm start without changing the answer, and with no more iterations (F_0113)" in {
+    // The mixed problem: its active set is row 0 of A. A warm start from it, from a wrong guess,
+    // and from nothing must answer the same point; the right one should not cost more.
+    val (h, f) = (mv(Seq(Seq(1, 0), Seq(0, 0))), Vector(-2.0, -1.0))
+    val a = Some((mv(Seq(Seq(1, 1))), Vector(3.0)))
+    def run(warm: Set[QpConstraint]) =
+      qpSolve(h, f, a, None, Vector(0.0, 0.0), Vector(Inf, Inf), warm, env).fold(w => fail(s"$warm: $w"), identity)
+    val cold = run(Set.empty)
+    val hot  = run(cold.active.toSet)
+    val off  = run(Set(QpConstraint.Lower(1)))
+    for r <- Seq(hot, off) do assert(near(r.z, cold.z), s"${r.z} vs ${cold.z}")
+    assert(hot.iterations <= cold.iterations, s"warm ${hot.iterations} vs cold ${cold.iterations}")
+  }
+
   it should "still decline an indefinite H as not convex" in {
     assert(failure("qp([[1, 0], [0, -1]], [[0], [0]], 0, 0, -inf, inf)") == QpFailure.NotConvex)
   }
