@@ -94,15 +94,31 @@ class NlpTest extends AnyFlatSpec:
         case n: _Nlp => n.detailed(env)
         case other   => fail(s"$other"))
     def right(k: Double, r: NlpResult) = math.abs(r.x(0) * k + 1) <= 1e-6 && math.abs(r.x(1) + 1) <= 1e-6
-    // A DEFECT TOLERATED, NOT THE DESIGN (F_0116): SQP at k = 1e-6 and AugLag at k = 1e6 decline
+    // A DEFECT TOLERATED, NOT THE DESIGN (F_0120): SQP at k = 1e-6 and AugLag at k = 1e6 decline
     // (Subproblem(25, MaxIterations(2000)) and MaxIterations(50, 0.22)). What is pinned for them is
-    // the safety half — a refusal, never a wrong point. Move them to `answered` when F_0116 lands.
+    // the safety half — a refusal, never a wrong point. Answer them when F_0120 lands.
     val tolerated = Set(("sqp", 1e-6), ("auglag", 1e6))
     for (m, k, out) <- outcomes do
       out match
         case Right(r)                    => assert(right(k, r), s"$m at $k answered a wrong point ${r.x}")
         case Left(why) if tolerated((m, k)) => succeed
         case Left(why)                   => fail(s"$m at $k declined: $why")
+  }
+
+  it should "reach a bound exactly, so the certificate can read its multiplier (F_0116)" in {
+    // min Σ (xi − i/10)² + Σ xi·x(i+1) (convex), 0 ≤ xi ≤ 0.5, optionally Σ xi ≤ n/4, from 0.
+    // SQP landed on a bound as x + (hi − x), one ulp inside it, where the certificate does not
+    // absorb the bound's component: it declined Stalled(0.2) at n = 12 and Stalled(0.45) and
+    // Stalled(0.69) at n = 20, while AugLag certified the same problems.
+    for n <- Seq(12, 20); withConstraint <- Seq(false, true); m <- methods do
+      val vs  = (1 to n).map(i => s"[x$i]").mkString("[", ", ", "]")
+      val obj = (1 to n).map(i => s"(x$i - ${i / 10.0})^2").mkString(" + ") + " + " +
+                (1 until n).map(i => s"x$i*x${i + 1}").mkString(" + ")
+      val g   = if withConstraint then (1 to n).map(i => s"x$i").mkString(" + ") + s" - ${n / 4.0}" else "0"
+      val x0  = Seq.fill(n)("[0]").mkString("[", ", ", "]")
+      val r   = solved(s"nlp($obj, $vs, $x0, $g, 0, 0, 0.5, $m)")
+      assert(r.kktResidual <= 0.5e-5 && r.bounded.nonEmpty, s"n = $n, constraint $withConstraint, $m: $r")
+      assert(r.bounded.forall(i => r.x(i) == 0.0 || r.x(i) == 0.5), s"$m: a bounded variable is not on its bound: ${r.x}")
   }
 
   it should "refuse more than MaxNlpVariables before any work" in {

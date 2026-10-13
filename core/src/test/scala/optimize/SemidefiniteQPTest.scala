@@ -59,6 +59,20 @@ class SemidefiniteQPTest extends AnyFlatSpec:
     assert(solved("qp(eye(41), ones(41, 1), 0, 0, 0, inf)").z.forall(_ == 0.0))
   }
 
+  it should "answer at 40 variables with a rank-20 Hessian, whose reduced Hessian needs a full SVD (F_0117)" in {
+    // Box bounds only, so the exact LP phase is trivial; the primal active-set method's first face
+    // is all of R^40 and its reduced Hessian is H itself, rank 20. Its SVD declined (an unpivoted
+    // basis completion), which qp reported as Uncertified(Infinity).
+    val rnd = new Random(108)
+    val (n, k) = (40, 20)
+    val g = Vector.fill(k, n)((rnd.nextInt(5) - 2).toDouble)
+    val h = Vector.tabulate(n, n)((i, j) => (0 until k).map(r => g(r)(i) * g(r)(j)).sum)
+    val f = Vector.fill(n)((rnd.nextInt(11) - 5).toDouble)
+    qpSolve(mv(h), f, None, None, Vector.fill(n)(-5.0), Vector.fill(n)(5.0), Set.empty, env) match
+      case Right(r) => assert(r.kktResidual <= 0.5e-5 && r.z.forall(z => z >= -5 && z <= 5), r)
+      case Left(why) => fail(s"declined: $why")
+  }
+
   it should "take a warm start without changing the answer, and with no more iterations (F_0113)" in {
     // The mixed problem: its active set is row 0 of A. A warm start from it, from a wrong guess,
     // and from nothing must answer the same point; the right one should not cost more.

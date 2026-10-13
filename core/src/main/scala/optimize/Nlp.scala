@@ -329,6 +329,19 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
   def clamp(x: Array[Double]): Array[Double] = Array.tabulate(n)(i => math.min(math.max(x(i), lo(i)), hi(i)))
   def identity: Array[Array[Double]] = Array.tabulate(n, n)((i, j) => if i == j then 1.0 else 0.0)
 
+  /** A full step lands on each bound the QP holds active **exactly**.  `x + (hi − x)` is
+   *  `hi` only up to rounding, and the certificate absorbs a bound's component only when `x` is
+   *  on the bound, so an iterate one ulp inside it read its bound multiplier as a residual and
+   *  the iteration stalled short of a certificate it had reached (F_0116). */
+  def onBounds(x: Array[Double], active: Vector[QpConstraint]): Array[Double] =
+    val out = x.clone()
+    active.foreach {
+      case QpConstraint.Lower(i) => out(i) = lo(i)
+      case QpConstraint.Upper(i) => out(i) = hi(i)
+      case _                     => ()
+    }
+    out
+
   def subproblem(p: NlpPoint, b: Array[Array[Double]], gRhs: Array[Double], hRhs: Array[Double],
                  warm: Set[QpConstraint]): Either[QpFailure, QpResult] =
     qpSolve(_MatrixValue(n, n, b.flatten), p.grad.toVector,
@@ -381,13 +394,13 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
 
   /** The accepted next point, or `None` when no step down to `2⁻⁴⁰` passes the Armijo test. */
   def search(p: NlpPoint, b: Array[Array[Double]], d: Array[Double], nu: Double, slope: Double,
-             warm: Set[QpConstraint]): Option[Array[Double]] =
+             warm: Vector[QpConstraint]): Option[Array[Double]] =
     val phi0 = p.f + nu * l1Violation(p.g, p.h)
     def merit(x: Array[Double]): Option[Double] =
       sys.values(x).map(v => v(0) + nu * l1Violation(v.slice(1, 1 + sys.mg), v.slice(1 + sys.mg, v.length)))
     def accepts(x: Array[Double], alpha: Double): Boolean =
       merit(x).exists(m => m <= phi0 + 1e-4 * alpha * slope)
-    val full = clamp(Array.tabulate(n)(i => p.x(i) + d(i)))
+    val full = onBounds(clamp(Array.tabulate(n)(i => p.x(i) + d(i))), warm)
     if accepts(full, 1.0) then Some(full)
     else
       // Second-order correction: re-solve with the constraints' values at x + d in place of
@@ -395,8 +408,8 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
       val corrected = sys.values(full).flatMap { v =>
         val gRhs = Array.tabulate(sys.mg)(j => -v(1 + j) + (0 until n).map(i => p.jg(j * n + i) * d(i)).sum)
         val hRhs = Array.tabulate(sys.mh)(k => -v(1 + sys.mg + k) + (0 until n).map(i => p.jh(k * n + i) * d(i)).sum)
-        subproblem(p, b, gRhs, hRhs, warm).toOption
-          .map(q => clamp(Array.tabulate(n)(i => p.x(i) + q.z(i))))
+        subproblem(p, b, gRhs, hRhs, warm.toSet).toOption
+          .map(q => onBounds(clamp(Array.tabulate(n)(i => p.x(i) + q.z(i))), q.active))
           .filter(accepts(_, 1.0))
       }
       corrected.orElse(
@@ -426,7 +439,7 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
           val slope = nlpDot(p.grad, d) - nuK * l1Violation(p.g, p.h)
           if !(slope < 0.0) then
             if res <= tol then answer else Left(NlpFailure.Stalled(res))
-          else search(p, bk, d, nuK, slope, qp.active.toSet) match
+          else search(p, bk, d, nuK, slope, qp.active) match
             case None =>
               if res <= tol then answer else Left(NlpFailure.LineSearchFailed(k))
             case Some(x) =>

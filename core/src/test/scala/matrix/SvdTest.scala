@@ -29,6 +29,36 @@ class SvdTest extends AnyFlatSpec:
     val rng = new Random(seed)
     _MatrixValue(rows, cols, Array.fill(rows * cols)(rng.nextDouble() * 2 - 1))
 
+  /** `GᵀG` for an `r×n` matrix `G` of small integers: symmetric, rank `r` (almost surely). */
+  private def lowRank(r: Int, n: Int, seed: Long): _MatrixValue =
+    val rng = new Random(seed)
+    val g   = Array.fill(r, n)((rng.nextInt(5) - 2).toDouble)
+    _MatrixValue(n, n, Array.tabulate(n * n)(idx => (0 until r).map(t => g(t)(idx / n) * g(t)(idx % n)).sum))
+
+  "svd" should "decompose a rank-deficient matrix whose dead directions outnumber what an unpivoted completion finds (F_0117)" in {
+    // Rank 20 of 40: U has 20 live columns and must be completed by 20 more. The completion took
+    // unit vectors in order with a fixed 0.5 threshold and ran out of candidates, so svd declined.
+    for (r, n, seed) <- Seq((20, 40, 2L), (15, 30, 1L), (30, 60, 5L), (1, 50, 7L)) do
+      val a = lowRank(r, n, seed)
+      a.svd match
+        case Some((u, s, v)) =>
+          assert(s.count(_ > 1e-9 * s.head) == r, s"rank $r of $n: $s")
+          assert(u.rows == n && u.cols == n && v.cols == n)
+        case None => fail(s"rank $r of $n declined")
+  }
+
+  "completeBasis" should "always complete an orthonormal base, by pivoting on the largest residual" in {
+    for (r, n, seed) <- Seq((20, 40, 2L), (1, 7, 3L), (63, 64, 4L)) do
+      // An orthonormal base of r directions spread over every coordinate: Q from qr of a random matrix.
+      val base = random(n, r, seed).qrDecompose.map(_._1).getOrElse(fail("qr"))
+      val cols = Vector.tabulate(r)(j => Array.tabulate(n)(i => base(i, j)))
+      val full = _MatrixValue.completeBasis(cols, n, n).getOrElse(fail(s"$r of $n not completed"))
+      assert(full.size == n)
+      for p <- 0 until n; q <- p until n do
+        val d = (0 until n).map(i => full(p)(i) * full(q)(i)).sum
+        assert(math.abs(d - (if p == q then 1.0 else 0.0)) <= 1e-12, s"$r of $n: columns $p, $q dot $d")
+  }
+
   private def parse(s: String, exact: Option[Int] = None): _Expression =
     Parser.parse(s, exact) match
       case Parser.Success(e, _) => e
