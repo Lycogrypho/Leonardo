@@ -147,7 +147,7 @@ private def factorDenominator(den: Vector[Double]): Option[(Vector[(Double, Int)
       rootsOfSquareFree(poly) match
         case None => false
         case Some(parts) =>
-          val (reals, comps) = parts.partition((_, im) => math.abs(im) < 1e-6)
+          val (reals, comps) = parts.partition(realAmong(parts, 1e-6))
           reals.foreach((re, _) => realB += ((re, k)))
           comps.filter(_._2 > 0.0).foreach((re, im) => quadB += ((-2.0 * re, re * re + im * im, k)))
           true

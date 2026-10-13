@@ -247,7 +247,7 @@ private def realRoots(e: _Expression, u: _Variable): Option[Vector[Double]] =
       case 0          => Some(Vector.empty)
       case _ =>
         sequence(squareFreeFactors(n).map((p, _) => rootsOfSquareFree(p)).toList).map { parts =>
-          parts.flatMap(realParts)
+          parts.flatMap(roots => realParts(roots))
             // A root at a pole of the fraction is not a root: the denominator is compared with
             // its own terms there, not with an absolute 1 (F_0109).
             .filter(r => math.abs(evalCoeffsReal(den, r)) > 1e-12 * termSize(den, r))
@@ -255,16 +255,6 @@ private def realRoots(e: _Expression, u: _Variable): Option[Vector[Double]] =
         }
     }
 
-
-/** The real roots among one square-free factor's roots.  A real root found through the
- *  eigenvalues can carry a vanishing imaginary part, judged against the **factor's own root
- *  scale**, the largest modulus among its roots.  It was `1e-9·max(1, |re|)` until F_0109, a
- *  claim about the unknowns' units: `(x − 10⁻⁶)² + 10⁻²⁰` has roots `10⁻⁶ ± 10⁻¹⁰i`, and the
- *  floor read them as the real root `10⁻⁶` — a stationary point of a function that has none —
- *  while the same polynomial in units 10⁶ larger was refused. */
-private[optimize] def realParts(roots: Seq[(Double, Double)]): Seq[Double] =
-  val scale = roots.map((re, im) => math.hypot(re, im)).maxOption.getOrElse(0.0)
-  roots.collect { case (re, im) if math.abs(im) <= 1e-9 * scale => re }
 
 /** `Σ |cᵢ|·|x|ⁱ`, the size of the terms whose sum is the polynomial's value at `x`. */
 private def termSize(cs: Vector[Double], x: Double): Double =

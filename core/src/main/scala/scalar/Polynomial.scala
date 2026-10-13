@@ -243,6 +243,69 @@ private[leonardo] def squareFreeFactors(d0: Vector[Double]): Vector[(Vector[Doub
   val dd = polyTrim(d0)
   if polyDegree(dd) < 1 then Vector.empty
   else
+    // At the roots' own scale (F_0118): Yun's gcds trim with an absolute tolerance, so near the
+    // origin every Euclidean remainder read as zero and distinct roots merged into a repeated one.
+    val rho = rootScale(dd)
+    if rho == 0.0 || rho == 1.0 then yun(dd)
+    else yun(toRootScale(dd, rho)).map((p, k) => (fromRootScale(p, rho), k))
+
+/** Whether a root, among one factor's roots, is real: its imaginary part at most `tol` times the
+ *  **largest modulus among them**, the factor's own root scale.  It replaced three tests that
+ *  were absolute below unit scale — `1e-9·max(1, |re|)` in `optimize` (F_0109), the same with
+ *  `RootClusterTolerance` in `Singularity`, and `|im| < 1e-6` in the partial-fraction tier
+ *  (F_0118): `10⁻⁶ ± 10⁻¹⁰i` read as real at those floors, and its copy in units 10⁶ larger did not.
+ *
+ *  @param roots the roots of one factor, as `(re, im)`
+ *  @param tol   the relative tolerance
+ *  @return the test for one of them
+ */
+private[leonardo] def realAmong(roots: Seq[(Double, Double)], tol: Double): ((Double, Double)) => Boolean =
+  val scale = roots.map((re, im) => math.hypot(re, im)).maxOption.getOrElse(0.0)
+  (_, im) => math.abs(im) <= tol * scale
+
+/** The real parts of the roots that are real by [[realAmong]].
+ *  @param roots the roots of one factor, as `(re, im)`
+ *  @param tol   the relative tolerance
+ *  @return those real roots */
+private[leonardo] def realParts(roots: Seq[(Double, Double)], tol: Double = 1e-9): Seq[Double] =
+  roots.filter(realAmong(roots, tol)).map(_._1)
+
+/** The scale of the roots, `M = maxₖ |cₙ₋ₖ/cₙ|^(1/k)`: between half the largest root's modulus
+ *  (Fujiwara's bound is `2M`) and `n` times it, and exactly proportional to the variable's units.
+ *  `0` for a pure power of the variable, whose roots are all `0`. This is the scale the
+ *  polynomial's own arithmetic happens at (F_0118).
+ *
+ *  **Why `M` and not Fujiwara's `2M`**: the first version used `2M`, which put a root pair at
+ *  `10⁻⁶(1 ± 10⁻⁴i)` near `y = 0.25` and shrank the Euclidean remainder that tells the pair apart
+ *  sixteen-fold, to `6·10⁻¹⁰` — below the absolute trim, so the pair still merged. Within a
+ *  constant factor every choice is units-invariant; the one nearest the roots loses least.
+ *
+ *  @param cs a trimmed coefficient vector of degree at least 1
+ *  @return the scale
+ */
+private[leonardo] def rootScale(cs: Vector[Double]): Double =
+  val n = polyDegree(cs)
+  if n < 1 then 0.0
+  else (1 to n).map(k => math.pow(math.abs(cs(n - k) / cs(n)), 1.0 / k)).max
+
+/** `p(ρ·y)` made monic: the polynomial in `y = x/ρ`, whose roots are of order one. Written as
+ *  `(cᵢ/cₙ)·ρ^(i−n)` so neither `ρⁿ` nor `cₙ` can overflow on its own. */
+private[leonardo] def toRootScale(cs: Vector[Double], rho: Double): Vector[Double] =
+  val n = polyDegree(cs)
+  Vector.tabulate(n + 1)(i => cs(i) / cs(n) * math.pow(rho, (i - n).toDouble))
+
+/** The inverse of [[toRootScale]] on a monic factor `q(y)` of degree `d`: `ρᵈ·q(x/ρ)`, monic in `x`. */
+private[leonardo] def fromRootScale(q: Vector[Double], rho: Double): Vector[Double] =
+  val d = polyDegree(q)
+  Vector.tabulate(d + 1)(i => q(i) / q(d) * math.pow(rho, (d - i).toDouble))
+
+/** Yun's algorithm itself, on a trimmed polynomial of degree at least 1 (see [[squareFreeFactors]]).
+ *
+ *  **Limit, inherent to one scale**: roots at `10⁻⁶` and `10⁶` in the *same* polynomial are
+ *  separated at the large one's scale, so the small ones still meet the absolute tolerance. */
+private def yun(dd: Vector[Double]): Vector[(Vector[Double], Int)] =
+  if polyDegree(dd) < 1 then Vector.empty
+  else
     val g  = polyGcd(dd, polyTrim(derivCoeffs(dd)))
     var c  = polyTrim(polyDivide(dd, g)._1)
     var w  = polySub(polyTrim(polyDivide(polyTrim(derivCoeffs(dd)), g)._1), polyTrim(derivCoeffs(c)))

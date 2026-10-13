@@ -29,6 +29,14 @@ class SingularityTest extends AnyFlatSpec:
       case other => fail(s"expected one simple pole at 1, got $other")
   }
 
+  "1/((x - 1e-6)(x - 2e-6))" should "be two simple poles, not one double pole between them (F_0118)" in
+  {
+    sing(Ratio(_Number(1), Product(linear(1e-6), linear(2e-6)))) match
+      case Some(Vector(Singularity(p, SingularityKind.Pole(1)), Singularity(q, SingularityKind.Pole(1)))) =>
+        assert(math.abs(p - 1e-6) <= 1e-15 && math.abs(q - 2e-6) <= 1e-15, s"poles at $p, $q")
+      case other => fail(s"expected simple poles at 1e-6 and 2e-6, got $other")
+  }
+
   "1/(x-1)^2" should "be a pole of order 2" in
   {
     sing(Ratio(_Number(1), Power(linear(1), _Number(2)))) match

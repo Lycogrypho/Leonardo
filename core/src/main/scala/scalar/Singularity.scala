@@ -80,10 +80,7 @@ private def realRootsWithMultiplicity(cs: Vector[Double]): Vector[(Double, Int)]
   if polyDegree(cs) < 1 then Vector.empty
   else
     squareFreeFactors(cs).flatMap { (part, mult) =>
-      rootsOfSquareFree(part).getOrElse(Vector.empty).collect {
-        case (re, im) if math.abs(im) <= RootClusterTolerance * math.max(1.0, math.abs(re)) =>
-          (re, mult)
-      }
+      realParts(rootsOfSquareFree(part).getOrElse(Vector.empty), RootClusterTolerance).map((_, mult))
     }.sortBy(_._1)
 
 /** Reads `e` as a ratio of two numeric-coefficient polynomials in `v`. */

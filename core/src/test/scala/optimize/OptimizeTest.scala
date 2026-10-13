@@ -5,6 +5,7 @@ import core.*
 import matrix._Matrix
 import equation._Equation
 import parser.Parser
+import scalar.realParts
 import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.math.abs
@@ -66,8 +67,21 @@ class OptimizeTest extends AnyFlatSpec:
       assert(realParts(Seq((0.5 * k, 1e-17 * k), (k, -1e-17 * k))) == Seq(0.5 * k, k), s"scale $k")
     // A root at the origin beside others is real when its imaginary part is rounding of theirs.
     assert(realParts(Seq((0.0, 1e-20), (1e-6, 0.0))) == Seq(0.0, 1e-6))
-    // The stationary-point version of the first case cannot be pinned here yet: squareFreeFactors
-    // reads the pair as a double root first, through polyTrim's absolute 1e-9 (F_0118).
+  }
+
+  it should "find stationary points near the origin as it does at unit scale (F_0118)" in
+  {
+    // f' = (x − 10⁻⁶)² + 10⁻²⁰ > 0: no stationary point. squareFreeFactors read the complex pair
+    // as a double root, and the point 10⁻⁶ passed verification: a wrong answer.
+    assert(parse("stationary(x^3/3 - 1e-6*x^2 + 1.00000001e-12*x, x)").eval(env) == Right(_Bool(false)))
+    assert(parse("stationary(x^3/3 - x^2 + 1.00000001*x, x)").eval(env) == Right(_Bool(false)))
+    // f' = (x − ½·10⁻⁶)(x − 10⁻⁶): two points, which merged into a double root and were declined.
+    // Asked at precision 12: `stationary` dedupes its points under the `=` tolerance, which is
+    // absolute (0.5·10⁻ᵖ), so at precision 5 the two are one point by the library's own
+    // equality — a separate matter, recorded in F_0119.
+    val fine = points("stationary(x^3/3 - 0.75e-6*x^2 + 0.5e-12*x, x)", new Environment(12))
+    assert(fine.size == 2 && close(fine(0), Vector(0.5e-6), 1e-15) && close(fine(1), Vector(1e-6), 1e-15), fine)
+    assertPoints("stationary(x^3/3 - 0.75*x^2 + 0.5*x, x)", Vector(0.5), Vector(1.0))
   }
 
   it should "stay exact end to end, derivative included (F_0071)" in

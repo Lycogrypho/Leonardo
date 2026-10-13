@@ -23,6 +23,27 @@ class PolynomialTest extends AnyFlatSpec:
     Sum(Sum(Power(v, _Number(3)), Product(_Number(-1), Power(v, _Number(3)))),
         Sum(Power(v, _Number(2)), _Number(1)))
 
+  // --- F_0118: square-free factorisation reads multiplicity at the roots' own scale ---
+
+  /** Monic `Π (x − rᵢ)` as ascending coefficients. */
+  private def fromRoots(rs: Double*): Vector[Double] =
+    rs.foldLeft(Vector(1.0))((p, r) => polyMul(p, Vector(-r, 1.0)))
+
+  "squareFreeFactors" should "separate distinct roots and keep a repeated one, whatever their scale (F_0118)" in
+  {
+    for a <- Seq(1e-6, 1.0, 1e6) do
+      // (x − a)(x − 2a): square-free, one factor of degree 2.
+      squareFreeFactors(fromRoots(a, 2 * a)) match
+        case Vector((p, 1)) => assert(polyDegree(p) == 2, s"a = $a: $p")
+        case other          => fail(s"a = $a: (x − a)(x − 2a) factored as $other")
+      // (x − a)²(x − 2a): one simple factor and one double, each with its root.
+      squareFreeFactors(fromRoots(a, a, 2 * a)) match
+        case Vector((p1, 1), (p2, 2)) =>
+          assert(polyDegree(p1) == 1 && math.abs(-p1(0) / p1(1) - 2 * a) <= 1e-9 * a, s"a = $a: simple $p1")
+          assert(polyDegree(p2) == 1 && math.abs(-p2(0) / p2(1) - a) <= 1e-9 * a, s"a = $a: double $p2")
+        case other => fail(s"a = $a: (x − a)²(x − 2a) factored as $other")
+  }
+
   // --- collect trims, which is what makes the consolidation behaviour-preserving ---
   //
   // This is the load-bearing invariant.  The two former copies of `polyRoots` disagreed

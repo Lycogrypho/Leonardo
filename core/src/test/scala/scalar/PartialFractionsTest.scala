@@ -41,6 +41,14 @@ class PartialFractionsTest extends AnyFlatSpec:
                  s"d/dx ∫ $integrand at x=$p: got $got, want $want  (anti=$anti)")
         case (g, w) => fail(s"could not evaluate at x=$p ($g, $w); anti=$anti")
 
+  // ── F_0118: distinct roots near the origin stay distinct ──
+
+  "a cubic denominator with roots near 1e-6" should "decompose into its three simple poles, as it does at unit scale" in
+  {
+    verify("1/((x - 1e-6)*(x - 2e-6)*(x - 3e-6))", 5e-6, 1.5e-6, -2e-6)
+    verify("1/((x - 1)*(x - 2)*(x - 3))", 5.0, 1.5, -2.0)
+  }
+
   // ── repeated real roots at degree ≥ 3 ────────────────────────────────────────
 
   "a repeated real root (deg 3)" should "decompose and close" in

@@ -69,14 +69,24 @@ private[control] def coeffsOf(e: _Expression, v: _Variable): Option[(Vector[Doub
  *  form is what the caller had — rather than silently deleting a genuine factor.
  */
 private def cancelCommon(num: Vector[Double], den: Vector[Double]): (Vector[Double], Vector[Double]) =
-  val g = polyGcd(num, den)
+  // At the joint root scale (F_0118): `x = ρ·y` maps both polynomials alike, so their ratio is
+  // unchanged, and the gcd's absolute trim then meets coefficients of order one rather than the
+  // tiny ones a plant with poles near 1e-6 rad/s has. The remainder test is relative to the
+  // scaled coefficients, with no `max(1, …)` floor.
+  val rho = math.max(rootScale(num), rootScale(den))
+  def scaled(p: Vector[Double]): Vector[Double] =
+    if rho == 0.0 then p else Vector.tabulate(p.size)(i => p(i) * math.pow(rho, i.toDouble))
+  def unscaled(p: Vector[Double]): Vector[Double] =
+    if rho == 0.0 then p else Vector.tabulate(p.size)(i => p(i) / math.pow(rho, i.toDouble))
+  val (ny, dy) = (scaled(num), scaled(den))
+  val g = polyGcd(ny, dy)
   if polyDegree(g) <= 0 then (num, den)
   else
-    val (qn, rn)  = polyDivide(num, g)
-    val (qd, rd)  = polyDivide(den, g)
-    val scale     = math.max(1.0, (num ++ den).map(math.abs).max)
+    val (qn, rn)  = polyDivide(ny, g)
+    val (qd, rd)  = polyDivide(dy, g)
+    val scale     = (ny ++ dy).map(math.abs).max
     val exact     = (rn ++ rd).forall(r => math.abs(r) < 1e-6 * scale)
-    if exact then (polyTrim(qn), polyTrim(qd)) else (num, den)
+    if exact then (polyTrim(unscaled(qn)), polyTrim(unscaled(qd))) else (num, den)
 
 /** Rebuilds an expression as one rational `N(v)/D(v)`, or simplifies it if it is not rational.
  *
