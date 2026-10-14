@@ -65,51 +65,120 @@ private[leonardo] val MaxRationalDegree = 24
  */
 private[leonardo] def rationalCoeffs(e: _Expression,
                                      v: _Variable): Option[(Vector[Double], Vector[Double])] =
-  def capped(p: (Vector[Double], Vector[Double])): Option[(Vector[Double], Vector[Double])] =
+  rationalCoeffsIn(e, v, new Environment())
+
+/** [[rationalCoeffs]] with `env`'s bindings folded into the coefficients (`singularities` reads a
+ *  bound parameter as its value).
+ *  @param e   the expression
+ *  @param v   the variable
+ *  @param env the bindings a coefficient is evaluated in
+ *  @return the numerator and denominator coefficients, or `None` */
+private[leonardo] def rationalCoeffsIn(e: _Expression, v: _Variable,
+                                       env: Environment): Option[(Vector[Double], Vector[Double])] =
+  rationalCoeffsM(e, v, env).map((n, d) => (n.map(_._1), d.map(_._1)))
+
+/** The relative size below which a coefficient is rounding of the terms that cancelled into it,
+ *  not value (F_0068, F_0119): a coefficient computed from terms of size `m` carries an error of
+ *  order `m·ε`, so one at most `1e-10·m` is indistinguishable from zero, and one above it is not. */
+private[leonardo] val RoundingLevel: Double = 1e-10
+
+/** A coefficient vector with, beside each coefficient, `Σ|terms|` that formed it (F_0119). */
+private type MPoly = Vector[(Double, Double)]
+
+private val MOne: MPoly = Vector((1.0, 1.0))
+
+/** Drops top coefficients that are exactly zero or rounding of their terms: never a genuine one,
+ *  however small. The zero polynomial is `[(0, m)]`, `m` the largest magnitude that cancelled —
+ *  kept, because [[magnitudeOf]] measures a residue against exactly that. */
+private def mTrim(p: MPoly): MPoly =
+  val top = p.lastIndexWhere((c, m) => c != 0.0 && math.abs(c) > RoundingLevel * m)
+  if top < 0 then Vector((0.0, p.map(_._2).maxOption.getOrElse(0.0))) else p.take(top + 1)
+
+private def mAdd(a: MPoly, b: MPoly): MPoly =
+  mTrim(Vector.tabulate(math.max(a.size, b.size)) { i =>
+    val ((ca, ma), (cb, mb)) = (a.lift(i).getOrElse((0.0, 0.0)), b.lift(i).getOrElse((0.0, 0.0)))
+    (ca + cb, ma + mb)
+  })
+
+private def mMul(a: MPoly, b: MPoly): MPoly =
+  val c = Array.fill(a.size + b.size - 1)(0.0)
+  val m = Array.fill(a.size + b.size - 1)(0.0)
+  for i <- a.indices; j <- b.indices do
+    c(i + j) += a(i)._1 * b(j)._1
+    m(i + j) += a(i)._2 * b(j)._2
+  mTrim(c.indices.toVector.map(k => (c(k), m(k))))
+
+private def mIsZero(p: MPoly): Boolean = p.forall(_._1 == 0.0)
+
+/** The polynomial fraction of `e` in `v` with magnitudes (F_0119).  **Structural throughout**,
+ *  constant subexpressions included — `0.1·0.3 − 0.03` is seen as a cancellation of terms of size
+ *  0.06, not as the number `3.5·10⁻¹⁸` — and each result is trimmed by [[mTrim]], so a genuine tiny
+ *  coefficient survives where the absolute `RationalEps` used to drop it: `1e-12·x² + x + 1` was
+ *  read as linear, losing a pole, a stationary point and the right antiderivative. */
+private def rationalCoeffsM(e: _Expression, v: _Variable, env: Environment): Option[(MPoly, MPoly)] =
+  def capped(p: (MPoly, MPoly)): Option[(MPoly, MPoly)] =
     Option.when(p._1.size <= MaxRationalDegree + 1 && p._2.size <= MaxRationalDegree + 1)(p)
 
-  def numeric(x: _Expression): Option[Double] = x.eval(new Environment()) match
-    case Right(_Number(d)) => Some(d)
-    case _                 => None
+  def numeric(x: _Expression): Option[Double] = x.eval(env) match
+    case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+    case _                                             => None
 
   e match
-    case _ if !dependsOn(e, v) => numeric(e).map(d => (Vector(d), Vector(1.0)))
-
-    case x: _Variable if x.variable == v.variable => Some((Vector(0.0, 1.0), Vector(1.0)))
+    case x: _Variable if x.variable == v.variable => Some((Vector((0.0, 0.0), (1.0, 1.0)), MOne))
 
     case Sum(a, b) =>
-      for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
-          r <- capped((polyAdd(polyMul(an, bd), polyMul(bn, ad)), polyMul(ad, bd)))
+      for (an, ad) <- rationalCoeffsM(a, v, env); (bn, bd) <- rationalCoeffsM(b, v, env)
+          r <- capped((mAdd(mMul(an, bd), mMul(bn, ad)), mMul(ad, bd)))
       yield r
 
     case Product(a, b) =>
-      for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
-          r <- capped((polyMul(an, bn), polyMul(ad, bd)))
+      for (an, ad) <- rationalCoeffsM(a, v, env); (bn, bd) <- rationalCoeffsM(b, v, env)
+          r <- capped((mMul(an, bn), mMul(ad, bd)))
       yield r
 
     case Ratio(a, b) =>
-      // The zero test must go through polyDegree: polyTrim never returns an EMPTY vector
-      // (it yields [0.0] for the zero polynomial), so a `.nonEmpty` guard here was dead
-      // code and X / 0-in-v was silently accepted.
-      for (an, ad) <- rationalCoeffs(a, v); (bn, bd) <- rationalCoeffs(b, v)
-          if polyDegree(bn) >= 0
-          r <- capped((polyMul(an, bd), polyMul(ad, bn)))
+      // X / 0 is refused, the zero polynomial being [(0, 0)] after mTrim.
+      for (an, ad) <- rationalCoeffsM(a, v, env); (bn, bd) <- rationalCoeffsM(b, v, env)
+          if !mIsZero(bn)
+          r <- capped((mMul(an, bd), mMul(ad, bn)))
       yield r
 
     case Power(b, _Number(k)) if k.toInt.toDouble == k && math.abs(k) <= MaxRationalDegree =>
-      rationalCoeffs(b, v).flatMap { (bn, bd) =>
+      rationalCoeffsM(b, v, env).flatMap { (bn, bd) =>
         // A negative power swaps numerator and denominator, so the zero polynomial must be
         // refused BEFORE the swap puts it underneath (the Ratio reasoning).
         // A non-negative power of zero stays legitimate: it is the zero numerator.
-        if k < 0 && polyDegree(bn) < 0 then None
+        if k < 0 && mIsZero(bn) then None
         else
-          val (num, den) = (1 to math.abs(k.toInt)).foldLeft((Vector(1.0), Vector(1.0))) {
-            case ((accN, accD), _) => (polyMul(accN, bn), polyMul(accD, bd))
+          val (num, den) = (1 to math.abs(k.toInt)).foldLeft((MOne, MOne)) {
+            case ((accN, accD), _) => (mMul(accN, bn), mMul(accD, bd))
           }
           capped(if k >= 0 then (num, den) else (den, num))
       }
 
+    case _ if !dependsOn(e, v) => numeric(e).map(d => (Vector((d, math.abs(d))), MOne))
+
     case _ => None
+
+/** The size of the terms that cancel in a numeric expression — `Σ|t|` through its sums,
+ *  products, quotients and integer powers, with no folding — or `None` when `e` is not numeric
+ *  in `env` (F_0119). A residue is small relative to this, not to an absolute 1.
+ *  @param e   the expression, numeric once `env` is applied
+ *  @param env the bindings
+ *  @return the magnitude */
+private[leonardo] def magnitudeOf(e: _Expression, env: Environment): Option[Double] =
+  rationalCoeffsM(e, _Variable("__magnitudeOf"), env).flatMap { (num, den) =>
+    (num, den) match
+      case (Vector((_, m)), Vector((d, _))) if d != 0.0 => Some(m / math.abs(d))
+      case _                                          => None
+  }
+
+/** The exact degree of a coefficient vector: the last non-zero coefficient, `-1` for none.  For
+ *  vectors already trimmed by magnitude (from [[rationalCoeffs]]), where [[polyDegree]]'s
+ *  absolute `RationalEps` would drop a genuine tiny top coefficient (F_0119).
+ *  @param cs the coefficients
+ *  @return the degree */
+private[leonardo] def degreeOf(cs: Vector[Double]): Int = cs.lastIndexWhere(_ != 0.0)
 
 /** Degree of a coefficient vector: the highest index carrying a non-negligible
  *  coefficient, or `-1` for the zero polynomial.
@@ -194,10 +263,11 @@ private[leonardo] def polyMonic(a: Vector[Double]): Vector[Double] =
 
 /** Polynomial long division `num / den` -> `(quotient, remainder)` coefficient vectors
  *  (`num = quotient * den + remainder`, `deg remainder < deg den`). */
-private[leonardo] def polyDivide(num: Vector[Double], den: Vector[Double]): (Vector[Double], Vector[Double]) =
-  val dd   = polyDegree(den)
+private[leonardo] def polyDivide(num: Vector[Double], den: Vector[Double],
+                                 degree: Vector[Double] => Int = polyDegree): (Vector[Double], Vector[Double]) =
+  val dd   = degree(den)
   val lc   = den(dd)
-  val dnum = polyDegree(num)
+  val dnum = degree(num)
   if dnum < dd then (Vector(0.0), num)
   else
     val rr = num.toArray.clone()
@@ -240,8 +310,11 @@ private[leonardo] def polyGcd(a0: Vector[Double], b0: Vector[Double]): Vector[Do
  *  @return `(square-free factor, multiplicity)` pairs, ascending in multiplicity
  */
 private[leonardo] def squareFreeFactors(d0: Vector[Double]): Vector[(Vector[Double], Int)] =
-  val dd = polyTrim(d0)
-  if polyDegree(dd) < 1 then Vector.empty
+  // Only exact zeros are trimmed here (F_0119): a caller hands over a polynomial already trimmed
+  // for its provenance, and the absolute RationalEps would drop a genuine tiny top coefficient.
+  // Yun's own arithmetic runs at the root scale, where the absolute trim is effectively relative.
+  val dd = d0.take(degreeOf(d0) + 1)
+  if degreeOf(dd) < 1 then Vector.empty
   else
     // At the roots' own scale (F_0118): Yun's gcds trim with an absolute tolerance, so near the
     // origin every Euclidean remainder read as zero and distinct roots merged into a repeated one.
@@ -284,14 +357,14 @@ private[leonardo] def realParts(roots: Seq[(Double, Double)], tol: Double = 1e-9
  *  @return the scale
  */
 private[leonardo] def rootScale(cs: Vector[Double]): Double =
-  val n = polyDegree(cs)
+  val n = degreeOf(cs)
   if n < 1 then 0.0
   else (1 to n).map(k => math.pow(math.abs(cs(n - k) / cs(n)), 1.0 / k)).max
 
 /** `p(ρ·y)` made monic: the polynomial in `y = x/ρ`, whose roots are of order one. Written as
  *  `(cᵢ/cₙ)·ρ^(i−n)` so neither `ρⁿ` nor `cₙ` can overflow on its own. */
 private[leonardo] def toRootScale(cs: Vector[Double], rho: Double): Vector[Double] =
-  val n = polyDegree(cs)
+  val n = degreeOf(cs)
   Vector.tabulate(n + 1)(i => cs(i) / cs(n) * math.pow(rho, (i - n).toDouble))
 
 /** The inverse of [[toRootScale]] on a monic factor `q(y)` of degree `d`: `ρᵈ·q(x/ρ)`, monic in `x`. */

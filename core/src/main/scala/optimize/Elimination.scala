@@ -241,8 +241,10 @@ private def isZero(e: _Expression): Boolean = e match
  *  equation in the last unknown leaves a continuum. */
 private def realRoots(e: _Expression, u: _Variable): Option[Vector[Double]] =
   rationalCoeffs(e, u).flatMap { (num, den) =>
-    val n = polyTrim(num)
-    polyDegree(n) match
+    // Already trimmed by magnitude: polyTrim's absolute 1e-9 would drop a genuine tiny top
+    // coefficient and lose its root (F_0119).
+    val n = num.take(math.max(degreeOf(num), 0) + 1)
+    degreeOf(n) match
       case d if d < 0 => None
       case 0          => Some(Vector.empty)
       case _ =>
@@ -287,31 +289,42 @@ private def satisfies(point: SolutionPoint, eqs: List[_Expression], env: Environ
   if verdicts.contains(None) then None
   else Some(verdicts.forall(_.contains(true)))
 
-/** `Some(true)` holds, `Some(false)` undefined, `None` defined but failing. */
+/** `Some(true)` holds, `Some(false)` undefined, `None` defined but failing.
+ *
+ *  A residue holds when it is at most `tolerance` **of the terms that cancel in it** (F_0119),
+ *  not of an absolute 1: against the user's absolute `=` tolerance every residue near the
+ *  origin passed, and the residue of a genuine stationary point near `−10¹²` failed. */
 private def residueVerdict(r: _Expression, env: Environment, tolerance: Double): Option[Boolean] =
+  // The terms' size from the magnitude-tracked builder, which does not fold: `expand` combines
+  // numeric like terms, so a numeric residue came back as one term, its own size.
+  def small(d: Double, at: Environment): Boolean =
+    d == 0.0 || magnitudeOf(r, at).exists(size => math.abs(d) <= tolerance * size)
   if r.freeVars.isEmpty then
     r.eval(env) match
       case Right(q: _Rational)                    => if q.isZero then Some(true) else None
       case Right(_Number(d)) if d.isNaN || d.isInfinite => Some(false)
-      case Right(_Number(d))                      => if math.abs(d) <= tolerance then Some(true) else None
+      case Right(_Number(d))                      => if small(d, env) then Some(true) else None
       case Right(_)                               => Some(false)
       case Left(_)                                => Some(false)
   else
-    val values = sampled(r, env)
+    val values = sampledAt(r, env)
     if values.isEmpty then Some(false)
-    else if values.forall(d => math.abs(d) <= tolerance) then Some(true)
+    else if values.forall((d, at) => small(d, at)) then Some(true)
     else None
 
 /** The finite values of `r` with its free parameters bound to [[ParameterSamples]], each
  *  parameter to a different sample so no two are tested only at equal values. */
-private def sampled(r: _Expression, env: Environment): Vector[Double] =
+private def sampled(r: _Expression, env: Environment): Vector[Double] = sampledAt(r, env).map(_._1)
+
+/** [[sampled]], each value with the environment it was taken in. */
+private def sampledAt(r: _Expression, env: Environment): Vector[(Double, Environment)] =
   val names = r.freeVars.toList.sorted
   ParameterSamples.indices.toVector.flatMap { k =>
     val bound = names.zipWithIndex.foldLeft(env) { case (acc, (n, i)) =>
       acc.withBinding(n, _Number(ParameterSamples((k + i) % ParameterSamples.size)))
     }
     r.eval(bound) match
-      case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+      case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some((d, bound))
       case _                                               => None
   }
 
@@ -324,12 +337,20 @@ private def vanishesAtSamples(r: _Expression, env: Environment, tolerance: Doubl
 private def isRealPoint(p: SolutionPoint): Boolean =
   p.values.forall { case _: _Complex => false; case _ => true }
 
-/** Drops points equal, coordinate by coordinate, to one kept earlier. */
+/** Drops points equal, coordinate by coordinate, to one kept earlier.
+ *
+ *  Equal means within `tolerance` **of that unknown's largest magnitude among the points**
+ *  (F_0119), not within an absolute `tolerance`: at precision 5 the points `0.5·10⁻⁶` and `10⁻⁶`
+ *  were one. The set's own scale still merges a root computed as `10⁻¹⁷` in one branch with
+ *  the same root computed as `0` in another, which a per-pair relative test would not. */
 private def dedupe(points: List[SolutionPoint], unknowns: List[_Variable],
                    tolerance: Double): List[SolutionPoint] =
+  val scale = unknowns.map { u =>
+    u.variable -> points.flatMap(_.get(u.variable)).collect { case _Number(d) => math.abs(d) }.maxOption.getOrElse(0.0)
+  }.toMap
   def same(a: SolutionPoint, b: SolutionPoint): Boolean = unknowns.forall { u =>
     (a.get(u.variable), b.get(u.variable)) match
-      case (Some(_Number(x)), Some(_Number(y))) => math.abs(x - y) <= tolerance
+      case (Some(_Number(x)), Some(_Number(y))) => math.abs(x - y) <= tolerance * scale(u.variable)
       case (x, y)                               => x == y
   }
   points.foldLeft(List.empty[SolutionPoint])((acc, p) => if acc.exists(same(_, p)) then acc else acc :+ p)

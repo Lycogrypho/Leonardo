@@ -84,6 +84,18 @@ class OptimizeTest extends AnyFlatSpec:
     assertPoints("stationary(x^3/3 - 0.75*x^2 + 0.5*x, x)", Vector(0.5), Vector(1.0))
   }
 
+  it should "keep a tiny leading coefficient, and separate near points at the default precision (F_0119)" in
+  {
+    // f' = 1e-12·x² + x + 1: points at -1 and about -1e12. The x² coefficient was dropped as
+    // below 1e-9, and only -1 was listed.
+    val pts = points("stationary(1e-12*x^3/3 + x^2/2 + x, x)")
+    assert(pts.size == 2, pts)
+    assert(math.abs(pts(0)(0) / -999999999999.0 - 1) <= 1e-9 && math.abs(pts(1)(0) + 1) <= 1e-9, pts)
+    // Part B: at precision 5, 0.5e-6 and 1e-6 were merged under the absolute `=` tolerance.
+    val near = points("stationary(x^3/3 - 0.75e-6*x^2 + 0.5e-12*x, x)")
+    assert(near.size == 2 && close(near(0), Vector(0.5e-6), 1e-15) && close(near(1), Vector(1e-6), 1e-15), near)
+  }
+
   it should "stay exact end to end, derivative included (F_0071)" in
   {
     parse("stationary(x^2 + x*y + y^2 - 3*x, x, y)", Some(30)).eval(env) match

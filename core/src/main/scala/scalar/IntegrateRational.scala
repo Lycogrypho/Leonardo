@@ -37,12 +37,14 @@ private def constValue(e: _Expression): Option[Double] =
     case _                 => None
 
 /** Dense numeric coefficient vector `[c0, c1, ..., cn]` of `e` as a polynomial in `v`,
- *  or `None` when `e` is not polynomial or any coefficient is not a concrete number. */
+ *  or `None` when `e` is not polynomial or any coefficient is not a concrete number.
+ *
+ *  Read through [[rationalCoeffs]], which trims by magnitude (F_0119): through `collect` and
+ *  the absolute `RationalEps`, `1e-12·x² + x + 1` was linear and `∫ 1/(1e-12·x² + x + 1)`
+ *  answered `ln(x + 1)`. A rounding-residue top coefficient is still dropped. */
 private def polyCoeffs(e: _Expression, v: _Variable): Option[Vector[Double]] =
-  collect(e, v).flatMap { cs =>
-    cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
-      for tail <- acc; d <- constValue(c) yield d +: tail
-    }
+  rationalCoeffs(e, v).flatMap { (num, den) =>
+    Option.when(degreeOf(den) == 0)(num.map(_ / den(0)))
   }
 
 /** Builds `k * ln(arg)`, folding `k = 0` to `0` and `k = 1` to `ln(arg)`. */
@@ -70,7 +72,7 @@ private def integratePolyCoeffs(cs: Vector[Double], v: _Variable): _Expression =
  *          (repeated/complex roots at degree >= 3)
  */
 private def integrateProperRational(num: Vector[Double], den: Vector[Double], v: _Variable): Option[_Expression] =
-  polyDegree(den) match
+  degreeOf(den) match
     case 1 =>
       // n0 / (d1*v + d0) = (n0/d1) * ln(d1*v + d0)
       val d1 = den(1)
@@ -95,20 +97,26 @@ private def integrateQuadraticDen(num: Vector[Double], den: Vector[Double], v: _
   val a  = -p / 2.0
   val w2 = q - p * p / 4.0             // (v - a)^2 + w2
   val xa = Sum(v, _Number(-a))         // v - a
-  if w2 > RationalEps then
+  // The three cases are told apart relative to the terms of w2 (F_0119): against an absolute
+  // RationalEps a quadratic whose roots are far from unit scale was misclassified.
+  val w2Scale = p * p / 4.0 + math.abs(q)
+  if w2 > RationalEps * w2Scale then
     // complex conjugate roots: (n1/2)*ln((v-a)^2 + w2) + ((n0 + n1*a)/w)*atan((v-a)/w)
     val w = math.sqrt(w2)
     val logPart = logTerm(n1 / 2.0, Sum(Power(xa, _Number(2)), _Number(w2)))
     val atanArg = Atan(Ratio(xa, _Number(w)))
     Some(simplifyFully(Sum(logPart, scaleBy((n0 + n1 * a) / w, atanArg))))
-  else if math.abs(w2) <= RationalEps then
+  else if math.abs(w2) <= RationalEps * w2Scale then
     // repeated real root a: n1*ln(v-a) - (n0 + n1*a)/(v-a)
     Some(simplifyFully(Sum(logTerm(n1, xa), scaleBy(-(n0 + n1 * a), Ratio(_Number(1), xa)))))
   else
-    // distinct real roots a +/- r: A*ln(v-r1) + B*ln(v-r2)
-    val r  = math.sqrt(-w2)
-    val r1 = a + r
-    val r2 = a - r
+    // distinct real roots: A*ln(v-r1) + B*ln(v-r2), r1 the larger. The roots by the STABLE
+    // form (the conditioning table's first row): a ± r cancels catastrophically for the root
+    // nearer zero once p² dominates q, which is what 1e-12·x² + x + 1 is (F_0119).
+    val r   = math.sqrt(-w2)
+    val big = a - math.signum(if p == 0.0 then 1.0 else p) * r
+    val small = q / big
+    val (r1, r2) = if big >= small then (big, small) else (small, big)
     val a1 = (n1 * r1 + n0) / (r1 - r2)
     val a2 = (n1 * r2 + n0) / (r2 - r1)
     Some(simplifyFully(Sum(logTerm(a1, Sum(v, _Number(-r1))), logTerm(a2, Sum(v, _Number(-r2))))))
@@ -267,10 +275,10 @@ private def integrateRational(numE: _Expression, denE: _Expression, v: _Variable
   for
     numC <- polyCoeffs(numE, v)
     denC <- polyCoeffs(denE, v)
-    if polyDegree(denC) >= 1
+    if degreeOf(denC) >= 1
     res  <-
-      if polyDegree(numC) >= polyDegree(denC) then
-        val (quot, rem) = polyDivide(numC, denC)
+      if degreeOf(numC) >= degreeOf(denC) then
+        val (quot, rem) = polyDivide(numC, denC, degreeOf)
         val polyPart    = integratePolyCoeffs(quot, v)
         if polyDegree(rem) < 0 then Some(polyPart)
         else integrateProperRational(rem, denC, v).map(pr => Sum(polyPart, pr))

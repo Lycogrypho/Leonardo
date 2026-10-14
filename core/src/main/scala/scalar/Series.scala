@@ -280,7 +280,7 @@ private def rationalRegularise(f: _Expression, v: _Variable, point: _Expression,
                                m: Int, env: Environment): Option[_Expression] =
   point.eval(env) match
     case Right(_Number(a)) if !a.isNaN && !a.isInfinite =>
-      asRatio(f, v, env).flatMap { (num, den) =>
+      rationalCoeffsIn(f, v, env).flatMap { (num, den) =>
         (1 to m).foldLeft(Option(den))((acc, _) => acc.flatMap(d => deflateExact(d, a)))
           .map(d => simplifyFully(Ratio(polyToExpr(num, v), polyToExpr(d, v))))
       }

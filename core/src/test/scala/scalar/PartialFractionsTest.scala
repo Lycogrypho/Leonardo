@@ -41,6 +41,30 @@ class PartialFractionsTest extends AnyFlatSpec:
                  s"d/dx ∫ $integrand at x=$p: got $got, want $want  (anti=$anti)")
         case (g, w) => fail(s"could not evaluate at x=$p ($g, $w); anti=$anti")
 
+  // ── F_0119: a tiny leading coefficient is kept, a residue one is not ──
+
+  /** The antiderivative differentiates back to the integrand **relatively**, at every point. */
+  private def verifyRelative(integrand: String, points: Double*): Unit =
+    val f    = parse(integrand)
+    val anti = integrate(f, x)
+    assert(!hasIntegral(anti), s"∫ $integrand should close, got $anti")
+    val back = derive(anti, x)
+    for p <- points do
+      (valueAt(back, p), valueAt(f, p)) match
+        case (Some(got), Some(want)) =>
+          assert(math.abs(got - want) <= 1e-6 * math.abs(want), s"d/dx ∫ $integrand at x=$p: got $got, want $want  (anti=$anti)")
+        case (g, w) => fail(s"could not evaluate at x=$p ($g, $w); anti=$anti")
+
+  "1/(1e-12x² + x + 1)" should "integrate as the quadratic it is, not as 1/(x + 1) (F_0119)" in
+  {
+    verifyRelative("1/(1e-12*x^2 + x + 1)", 0.0, 3.0, 1e11, -2e12)
+  }
+
+  "a denominator whose x² coefficient is rounding residue" should "integrate as the linear denominator it is" in
+  {
+    verifyRelative("1/((0.1*x + 0.2)*(0.3*x) - 0.03*x^2)", 1.0, 1e3, -5.0)
+  }
+
   // ── F_0118: distinct roots near the origin stay distinct ──
 
   "a cubic denominator with roots near 1e-6" should "decompose into its three simple poles, as it does at unit scale" in

@@ -37,6 +37,26 @@ class SingularityTest extends AnyFlatSpec:
       case other => fail(s"expected simple poles at 1e-6 and 2e-6, got $other")
   }
 
+  "1/(1e-12x² + x + 1)" should "keep its tiny leading coefficient: two simple poles, -1 and about -1e12 (F_0119)" in
+  {
+    // The x² coefficient is genuine; read as zero, the pole near -1e12 vanished.
+    sing(Ratio(_Number(1), parser.Parser.parse("1e-12*x^2 + x + 1").get)) match
+      case Some(Vector(Singularity(p, SingularityKind.Pole(1)), Singularity(q, SingularityKind.Pole(1)))) =>
+        // Roots of 1e-12x² + x + 1: -(1e12 - 1) and 1/(1e-12·-(1e12 - 1)) ≈ -1 - 1e-12.
+        assert(math.abs(q + 1) <= 1e-9, s"near pole $q")
+        assert(math.abs(p / -999999999999.0 - 1) <= 1e-9, s"far pole $p")
+      case other => fail(s"expected two simple poles, got $other")
+  }
+
+  it should "not invent a pole from a top coefficient that is rounding residue (F_0119)" in
+  {
+    // (0.1x + 0.2)·0.3x − 0.03x² is 0.06x exactly; in floating point the x² coefficient is
+    // 0.1·0.3 − 0.03 ≈ 3.5e-18. Kept, it would put a pole near -1.7e16.
+    sing(Ratio(_Number(1), parser.Parser.parse("(0.1*x + 0.2)*(0.3*x) - 0.03*x^2").get)) match
+      case Some(Vector(Singularity(at, SingularityKind.Pole(1)))) => assert(math.abs(at) <= 1e-12, s"pole at $at")
+      case other => fail(s"expected one simple pole at 0, got $other")
+  }
+
   "1/(x-1)^2" should "be a pole of order 2" in
   {
     sing(Ratio(_Number(1), Power(linear(1), _Number(2)))) match

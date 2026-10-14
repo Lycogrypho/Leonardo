@@ -40,7 +40,7 @@ case class Singularity(at: Double, kind: SingularityKind)
  */
 private[leonardo] def singularitiesOf(e: _Expression, v: _Variable,
                                       env: Environment): Option[Vector[Singularity]] =
-  asRatio(e, v, env).map { (num, den) =>
+  rationalCoeffsIn(e, v, env).map { (num, den) =>
     val numRoots = realRootsWithMultiplicity(num)
     realRootsWithMultiplicity(den).map { (centre, denMult) =>
       val numMult = numRoots.collect { case (r, m) if sameRoot(r, centre) => m }.sum
@@ -77,47 +77,9 @@ private def sameRoot(a: Double, b: Double): Boolean =
  *  square-free part that is ordinary rounding, not the old repeated-root perturbation.
  */
 private def realRootsWithMultiplicity(cs: Vector[Double]): Vector[(Double, Int)] =
-  if polyDegree(cs) < 1 then Vector.empty
+  if degreeOf(cs) < 1 then Vector.empty
   else
     squareFreeFactors(cs).flatMap { (part, mult) =>
       realParts(rootsOfSquareFree(part).getOrElse(Vector.empty), RootClusterTolerance).map((_, mult))
     }.sortBy(_._1)
 
-/** Reads `e` as a ratio of two numeric-coefficient polynomials in `v`. */
-private def asRatio(e: _Expression, v: _Variable,
-                    env: Environment): Option[(Vector[Double], Vector[Double])] = e match
-  case Ratio(n, d) =>
-    for (nn, nd) <- asRatio(n, v, env); (dn, dd) <- asRatio(d, v, env)
-    yield (mulPoly(nn, dd), mulPoly(nd, dn))
-  case Product(a, b) =>
-    for (an, ad) <- asRatio(a, v, env); (bn, bd) <- asRatio(b, v, env)
-    yield (mulPoly(an, bn), mulPoly(ad, bd))
-  case Sum(a, b) =>
-    for (an, ad) <- asRatio(a, v, env); (bn, bd) <- asRatio(b, v, env)
-    yield (addPoly(mulPoly(an, bd), mulPoly(bn, ad)), mulPoly(ad, bd))
-  case _ =>
-    plainCoeffs(e, v, env).map(cs => (cs, Vector(1.0)))
-
-/** `collect` plus a fold of every coefficient to a number. */
-private def plainCoeffs(e: _Expression, v: _Variable, env: Environment): Option[Vector[Double]] =
-  collect(e, v).flatMap { cs =>
-    cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
-      for tail <- acc; d <- (c.eval(env) match
-                               case Right(_Number(x)) if !x.isNaN && !x.isInfinite => Some(x)
-                               case _                                              => None)
-      yield d +: tail
-    }
-  }
-
-private def addPoly(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-  if a.isEmpty then b else if b.isEmpty then a
-  else Vector.tabulate(math.max(a.size, b.size)) { i =>
-    a.applyOrElse(i, (_: Int) => 0.0) + b.applyOrElse(i, (_: Int) => 0.0)
-  }
-
-private def mulPoly(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-  if a.isEmpty || b.isEmpty then Vector.empty
-  else
-    val out = Array.fill(a.size + b.size - 1)(0.0)
-    for i <- a.indices; j <- b.indices do out(i + j) += a(i) * b(j)
-    out.toVector

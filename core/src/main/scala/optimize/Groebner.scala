@@ -62,11 +62,6 @@ def groebnerBasis(eqs: List[_Expression], unknowns: List[_Variable],
   }
 
 
-/** The relative size below which a coefficient produced by substituting an inexact root is
- *  rounding, not value: a root found to about `10⁻¹³` leaves its polynomial's coefficients that
- *  far from their true value, and a true zero must read as zero. */
-private val RoundingLevel: Double = 1e-10
-
 /** `e` with every coefficient that is rounding dropped, when `e` is a polynomial in `names` with
  *  numeric coefficients; otherwise `e` unchanged (F_0068).
  *
