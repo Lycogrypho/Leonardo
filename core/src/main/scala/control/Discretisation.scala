@@ -191,7 +191,7 @@ private def rampResponse(g: _Expression, s: _Variable, t: _Variable): _Expressio
 /** Whether the numerator's degree is below (`strict`) or at most the denominator's. */
 private def properOrStrict(g: _Expression, v: _Variable, strict: Boolean): Boolean =
   rationalCoeffs(g, v).exists { (num, den) =>
-    val (n, d) = (polyDegree(polyTrim(num)), polyDegree(polyTrim(den)))
+    val (n, d) = (degreeOf(num), degreeOf(den))
     if strict then n < d else n <= d
   }
 
@@ -207,14 +207,14 @@ private def strictlyProper(g: _Expression, v: _Variable): Boolean = properOrStri
  */
 private def matchedPoleZero(g: _Expression, s: _Variable, z: _Variable, ts: Double): Option[_Expression] =
   coeffsOf(g, s).flatMap { (num0, den0) =>
-    val (num, den) = (polyTrim(num0), polyTrim(den0))
-    val excess = polyDegree(den) - polyDegree(num)
+    val (num, den) = (trimExact(num0), trimExact(den0))
+    val excess = degreeOf(den) - degreeOf(num)
     def origin(cs: Vector[Double]): Int = cs.indexWhere(_ != 0.0) match { case -1 => 0; case k => k }
     val (m0, p0) = (origin(num), origin(den))
     val (ns, ds) = (num.drop(m0), den.drop(p0))
     def rootsOf(cs: Vector[Double]): Option[Vector[(Double, Double)]] =
-      if polyDegree(cs) < 1 then Some(Vector.empty)
-      else polyRoots(cs).flatMap(rs => sequence(rs.toList.map(_Complex.parts))).map(_.toVector)
+      if degreeOf(cs) < 1 then Some(Vector.empty)
+      else rootsAtScale(cs).flatMap(rs => sequence(rs.toList.map(_Complex.parts))).map(_.toVector)
     if excess < 0 || ns.isEmpty || ds.isEmpty then None
     else
       for

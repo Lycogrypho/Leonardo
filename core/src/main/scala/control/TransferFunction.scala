@@ -59,7 +59,9 @@ def feedback(g: _Expression, h: _Expression, v: _Variable): _Expression =
  *  goes through here so no two of them can disagree about what the poles are.
  */
 private[control] def coeffsOf(e: _Expression, v: _Variable): Option[(Vector[Double], Vector[Double])] =
-  rationalCoeffs(e, v).map((num, den) => cancelCommon(polyTrim(num), polyTrim(den)))
+  // trimExact, not polyTrim: rationalCoeffs has already trimmed by magnitude, and the absolute
+  // RationalEps dropped a genuine tiny leading coefficient and its pole (F_0121).
+  rationalCoeffs(e, v).map((num, den) => cancelCommon(trimExact(num), trimExact(den)))
 
 /** Divides a common polynomial factor out of `num`/`den`.
  *
@@ -73,20 +75,41 @@ private def cancelCommon(num: Vector[Double], den: Vector[Double]): (Vector[Doub
   // unchanged, and the gcd's absolute trim then meets coefficients of order one rather than the
   // tiny ones a plant with poles near 1e-6 rad/s has. The remainder test is relative to the
   // scaled coefficients, with no `max(1, …)` floor.
+  // Each is also divided by its OWN size, so the gcd's trim meets coefficients of order one rather
+  // than the 1e-12 a plant with poles near 1e-6 has even at its root scale (F_0121): the common
+  // factor of feedback(1e-6/(s + 1e-6), 1) went uncancelled and was reported as a pole. One
+  // common size is not enough: it leaves the smaller polynomial below the trim, and the gcd then
+  // swallowed a constant numerator whole. A common factor of `num` is one of `num/k`, and each
+  // quotient is restored with its own factor, so the ratio is unchanged.
   val rho = math.max(rootScale(num), rootScale(den))
-  def scaled(p: Vector[Double]): Vector[Double] =
+  def scaledRaw(p: Vector[Double]): Vector[Double] =
     if rho == 0.0 then p else Vector.tabulate(p.size)(i => p(i) * math.pow(rho, i.toDouble))
-  def unscaled(p: Vector[Double]): Vector[Double] =
-    if rho == 0.0 then p else Vector.tabulate(p.size)(i => p(i) / math.pow(rho, i.toDouble))
-  val (ny, dy) = (scaled(num), scaled(den))
-  val g = polyGcd(ny, dy)
-  if polyDegree(g) <= 0 then (num, den)
+  def sizeOf(p: Vector[Double]): Double =
+    val s = p.map(math.abs).max
+    if s > 0.0 && !s.isInfinite then s else 1.0
+  val (rawN, rawD)   = (scaledRaw(num), scaledRaw(den))
+  val (normN, normD) = (sizeOf(rawN), sizeOf(rawD))
+  def unscaled(p: Vector[Double], norm: Double): Vector[Double] =
+    if rho == 0.0 then p.map(_ * norm) else Vector.tabulate(p.size)(i => p(i) * norm / math.pow(rho, i.toDouble))
+  val (ny, dy) = (rawN.map(_ / normN), rawD.map(_ / normD))
+  if polyDegree(ny) < 0 || polyDegree(dy) < 0 then (num, den)
   else
-    val (qn, rn)  = polyDivide(ny, g)
-    val (qd, rd)  = polyDivide(dy, g)
-    val scale     = (ny ++ dy).map(math.abs).max
-    val exact     = (rn ++ rd).forall(r => math.abs(r) < 1e-6 * scale)
-    if exact then (polyTrim(unscaled(qn)), polyTrim(unscaled(qd))) else (num, den)
+    val g = polyGcd(ny, dy)
+    if polyDegree(g) <= 0 then (num, den)
+    else
+      val (qn, rn) = polyDivide(ny, g)
+      val (qd, rd) = polyDivide(dy, g)
+      // Both are at unit size now, so the remainder test is against one.
+      val exact    = (rn ++ rd).forall(r => math.abs(r) < 1e-6)
+      if !exact then (num, den)
+      else
+        val (rn0, rd0) = (trimExact(unscaled(polyTrim(qn), normN)), trimExact(unscaled(polyTrim(qd), normD)))
+        // The scaled gcd is monic in `y`, so the quotients carry a stray `ρ^deg g`: rescale so the
+        // denominator keeps its own leading coefficient, the form the unscaled division gave
+        // before F_0118 — and so feedback(1e-6/(s + 1e-6), 1) reads 1e-6/(s + 2e-6), not
+        // 3e-12/(3e-6·s + 6e-12).
+        val k = den(degreeOf(den)) / rd0.last
+        if k == 0.0 || k.isNaN || k.isInfinite then (rn0, rd0) else (rn0.map(_ * k), rd0.map(_ * k))
 
 /** Rebuilds an expression as one rational `N(v)/D(v)`, or simplifies it if it is not rational.
  *
@@ -101,7 +124,9 @@ private[control] def normaliseTf(e: _Expression, v: _Variable): _Expression =
 
 /** Rebuilds a dense coefficient vector into an expression in `v`. */
 private[control] def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =
-  val terms = polyTrim(cs).zipWithIndex.collect {
+  // trimExact, not polyTrim: the coefficients arrive trimmed for their provenance, and the absolute
+  // RationalEps erased a numerator of 1e-10 (F_0121).
+  val terms = trimExact(cs).zipWithIndex.collect {
     case (c, 0)                                  => _Number(c)
     case (c, 1) if math.abs(c - 1.0) < RationalEps => v
     case (c, 1)                                  => Product(_Number(c), v)
@@ -121,7 +146,7 @@ private[control] def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =
  *  @return the poles, or `None` when `G` is not rational in `v` or the roots do not resolve
  */
 def poles(g: _Expression, v: _Variable): Option[Vector[_Value]] =
-  coeffsOf(g, v).flatMap((_, den) => polyRoots(den))
+  coeffsOf(g, v).flatMap((_, den) => rootsAtScale(den))
 
 /** Zeros of `G`: the roots of its numerator.  See [[poles]] for the `_Value` result type.
  *
@@ -130,7 +155,7 @@ def poles(g: _Expression, v: _Variable): Option[Vector[_Value]] =
  *  @return the zeros, or `None` when `G` is not rational in `v`
  */
 def zeros(g: _Expression, v: _Variable): Option[Vector[_Value]] =
-  coeffsOf(g, v).flatMap((num, _) => polyRoots(num))
+  coeffsOf(g, v).flatMap((num, _) => rootsAtScale(num))
 
 /** Steady-state gain: `G` evaluated at `v = 0`.
  *
@@ -174,9 +199,13 @@ private def modulus(p: _Value): Option[Double] = p match
  *  @return `Some(true)`/`Some(false)`, or `None` when the poles cannot be determined
  */
 def isStable(g: _Expression, v: _Variable): Option[Boolean] =
+  // A pole is in the open left half-plane when its real part is negative beyond the rounding
+  // of the pole itself: Re(p) < -RationalEps·|p|. The test was Re(p) < -1e-9, absolute, so a
+  // stable plant with a pole at -1e-10 was reported unstable — a verdict that moved with the time
+  // units (F_0121). An imaginary-axis pole, computed with a rounding-size real part, still fails.
   poles(g, v).flatMap { ps =>
-    val parts = ps.map(realPart)
-    Option.when(parts.forall(_.isDefined))(parts.flatten.forall(_ < -RationalEps))
+    val parts = ps.map(p => realPart(p).zip(modulus(p)))
+    Option.when(parts.forall(_.isDefined))(parts.flatten.forall((re, mod) => re < -RationalEps * mod))
   }
 
 /** Discrete-time stability: every pole strictly **inside the unit circle**.

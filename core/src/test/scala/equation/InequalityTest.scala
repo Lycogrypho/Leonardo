@@ -21,6 +21,34 @@ class InequalityTest extends AnyFlatSpec:
   /** True when the solver declined and the node stayed symbolic. */
   private def staysSymbolic(src: String): Boolean = solved(src).startsWith("solve(")
 
+  // ── F_0121: roots near 1e-6 and a tiny leading coefficient ──
+
+  /** The solved relation evaluated at `x = at`, at precision 12: a comparison near 1e-6 is decided
+   *  under the absolute `=` tolerance, which at the default precision would call 0.5e-6 equal to
+   *  1e-6. */
+  private def holdsAt(src: String, at: Double): Boolean =
+    val fine = new Environment(12)
+    Parser.parse(src).get.eval(fine) match
+      case Left(rel) => rel.eval(fine.withBinding("x", _Number(at))) match
+        case Right(_Bool(b)) => b
+        case other           => fail(s"$src at $at: $other")
+      case Right(_Bool(b)) => b
+      case other           => fail(s"$src: $other")
+
+  "a quadratic inequality" should "keep two roots near 1e-6 distinct, and keep a tiny leading coefficient (F_0121)" in
+  {
+    // (x - 1e-6)(x - 2e-6) > 0: the discriminant 1e-12 was compared with 1e-9·max(1, …) and read
+    // as zero, answering x != 1.5e-6.
+    val near = "solve((x - 1e-6)*(x - 2e-6) > 0, x)"
+    assert(holdsAt(near, 0.5e-6) && holdsAt(near, 3e-6) && !holdsAt(near, 1.5e-6))
+    // 1e-12x² + x + 1 > 0: roots about -1e12 and -1. The x² coefficient below 1e-9 made it decline.
+    val wide = "solve(1e-12*x^2 + x + 1 > 0, x)"
+    assert(holdsAt(wide, 0.0) && holdsAt(wide, -2e12) && !holdsAt(wide, -1e6))
+    // A residue x² coefficient is still dropped: (0.1x + 0.2)·0.3x − 0.03x² > 0 is 0.06x > 0.
+    val residue = "solve((0.1*x + 0.2)*(0.3*x) - 0.03*x^2 > 0, x)"
+    assert(holdsAt(residue, 1.0) && !holdsAt(residue, -1.0) && !holdsAt(residue, -1e18))
+  }
+
   // ── the sign table (slice A) ───────────────────────────────────────────────
 
   private val a = _Variable("a")

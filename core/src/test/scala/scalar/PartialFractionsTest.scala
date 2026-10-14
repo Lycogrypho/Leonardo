@@ -60,6 +60,12 @@ class PartialFractionsTest extends AnyFlatSpec:
     verifyRelative("1/(1e-12*x^2 + x + 1)", 0.0, 3.0, 1e11, -2e12)
   }
 
+  "an improper fraction with a tiny leading coefficient" should "keep it in the polynomial part (F_0121)" in
+  {
+    // The quotient's 1e-12·x² term was dropped as below 1e-9: 60 % wrong by x = 1e12.
+    verifyRelative("(1e-12*x^3 + x^2 + 1)/(x + 1)", 0.0, 3.0, 1e6, 1e12)
+  }
+
   "a denominator whose x² coefficient is rounding residue" should "integrate as the linear denominator it is" in
   {
     verifyRelative("1/((0.1*x + 0.2)*(0.3*x) - 0.03*x^2)", 1.0, 1e3, -5.0)

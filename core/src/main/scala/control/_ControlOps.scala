@@ -93,4 +93,4 @@ def impulseResponse(g: _Expression, s: _Variable, t: _Variable): _Expression =
 
 /** True when `G`'s numerator degree exceeds its denominator degree. */
 private def improper(g: _Expression, v: _Variable): Boolean =
-  rationalCoeffs(g, v).exists((num, den) => polyDegree(polyTrim(num)) > polyDegree(polyTrim(den)))
+  rationalCoeffs(g, v).exists((num, den) => degreeOf(num) > degreeOf(den))

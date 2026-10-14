@@ -44,9 +44,19 @@ private[equation] def solveInequality(c: _Comparison, v: _Variable,
   val difference = Sum(c.lhs, Product(minusOne, c.rhs))
 
   collect(difference, v) match
-    case Some(cs) => polynomialTier(cs, c.op, v, env)
+    // collect keeps the coefficients' exact tier; the degree is read from the magnitude-tracked
+    // coefficients (F_0121), so a residue top coefficient is dropped and a genuine tiny one kept.
+    case Some(cs) => polynomialTier(atMagnitudeDegree(cs, difference, v, env), c.op, v, env)
     // `collect` gives up on a denominator containing `v`, which is exactly the rational tier.
     case None     => rationalTier(difference, c.op, v, env)
+
+/** `collect`'s coefficients cut to the degree the magnitude-tracked coefficients give, when the
+ *  polynomial is numeric; unchanged when its coefficients are symbolic. */
+private def atMagnitudeDegree(cs: Vector[_Expression], e: _Expression, v: _Variable,
+                              env: Environment): Vector[_Expression] =
+  rationalCoeffsIn(e, v, env) match
+    case Some((num, den)) if degreeOf(den) == 0 => cs.take(math.max(degreeOf(num), 0) + 1)
+    case _                                     => cs
 
 /** Linear and quadratic tiers over `collect`'s coefficient vector. */
 private def polynomialTier(cs: Vector[_Expression], op: CompareOp,
@@ -84,7 +94,8 @@ private def quadraticTier(c0: _Expression, c1: _Expression, c2: _Expression, op:
     a0 <- foldReal(c0, env)
     a1 <- foldReal(c1, env)
     a2 <- foldReal(c2, env)
-    if math.abs(a2) > RationalEps
+    // Not an absolute 1e-9: the degree was already read by magnitude (F_0121).
+    if a2 != 0.0
     // Normalise to an upward parabola; multiplying through by -1 flips the relation.
     (b0, b1, b2, o) = if a2 < 0 then (-a0, -a1, -a2, flip(op)) else (a0, a1, a2, op)
     result <- quadraticShape(b0, b1, b2, o, v, env)
@@ -94,7 +105,9 @@ private def quadraticTier(c0: _Expression, c1: _Expression, c2: _Expression, op:
 private def quadraticShape(b0: Double, b1: Double, b2: Double, op: CompareOp,
                            v: _Variable, env: Environment): Option[_Expression] =
   val disc  = b1 * b1 - 4 * b2 * b0
-  val scale = math.max(1.0, math.abs(b1 * b1) + math.abs(4 * b2 * b0))
+  // The discriminant's own terms, with no `max(1, …)` floor (F_0121): under it the roots 1e-6
+  // and 2e-6 (disc 1e-12) read as a double root and the answer was x != 1.5e-6.
+  val scale = math.abs(b1 * b1) + math.abs(4 * b2 * b0)
   val eps   = RationalEps * scale
   if disc < -eps then Some(noRealRoots(op))
   else if disc <= eps then Some(doubleRoot(-b1 / (2 * b2), op, v))
@@ -157,8 +170,8 @@ private def foldReal(e: _Expression, env: Environment): Option[Double] = e.eval(
 private def rationalTier(diff: _Expression, op: CompareOp,
                          v: _Variable, env: Environment): Option[_Expression] =
   for
-    (num, den) <- asRational(diff, v, env)
-    if polyDegree(den) >= 1 && polyDegree(num) >= 0
+    (num, den) <- rationalCoeffsIn(diff, v, env)
+    if degreeOf(den) >= 1 && degreeOf(num) >= 0
     zeros  = realRootsOf(num)
     poles  = realRootsOf(den)
     if zeros.nonEmpty || poles.nonEmpty
@@ -167,8 +180,8 @@ private def rationalTier(diff: _Expression, op: CompareOp,
 
 /** Real roots of a coefficient vector, ascending; empty when it has none or is constant. */
 private def realRootsOf(cs: Vector[Double]): Vector[Double] =
-  if polyDegree(cs) < 1 then Vector.empty
-  else polyRoots(cs).fold(Vector.empty)(_.collect { case _Number(d) if !d.isNaN => d }.sorted)
+  if degreeOf(cs) < 1 then Vector.empty
+  else rootsAtScale(cs).fold(Vector.empty)(_.collect { case _Number(d) if !d.isNaN => d }.sorted)
 
 /** Tests one sample point per open interval and unions those that satisfy the relation.
  *
@@ -203,7 +216,7 @@ private def sampleBetween(critical: Vector[Double]): Vector[Double] =
 /** Whether `N(x)/D(x) <op> 0` holds at the sample point `x`. */
 private def holdsAt(num: Vector[Double], den: Vector[Double], x: Double, op: CompareOp): Boolean =
   val d = polyEvalLocal(den, x)
-  if math.abs(d) < RationalEps then false
+  if d == 0.0 then false
   else
     val value = polyEvalLocal(num, x) / d
     op match
@@ -223,49 +236,6 @@ private def intervalPiece(critical: Vector[Double], i: Int, v: _Variable): _Expr
   else if i == critical.size then _Comparison(v, CompareOp.Gt, _Number(critical.last))
   else And(_Comparison(v, CompareOp.Gt, _Number(critical(i - 1))),
            _Comparison(v, CompareOp.Lt, _Number(critical(i))))
-
-/** Reads `e` as a ratio of two numeric-coefficient polynomials in `v`.
- *
- *  Combines fractions structurally, so `1/x - 2` becomes `(1 - 2x)/x` rather than being
- *  rejected for not already being a single `Ratio`.
- */
-private def asRational(e: _Expression, v: _Variable,
-                       env: Environment): Option[(Vector[Double], Vector[Double])] = e match
-  case Ratio(a, b) =>
-    for (na, da) <- asRational(a, v, env); (nb, db) <- asRational(b, v, env)
-    yield (mulLocal(na, db), mulLocal(da, nb))
-  case Product(a, b) =>
-    for (na, da) <- asRational(a, v, env); (nb, db) <- asRational(b, v, env)
-    yield (mulLocal(na, nb), mulLocal(da, db))
-  case Sum(a, b) =>
-    for (na, da) <- asRational(a, v, env); (nb, db) <- asRational(b, v, env)
-    yield (addLocal(mulLocal(na, db), mulLocal(nb, da)), mulLocal(da, db))
-  case _ =>
-    numericCoeffsOf(e, v, env).map(cs => (cs, Vector(1.0)))
-
-/** `collect` plus a fold of every coefficient to a number; `None` if any stays symbolic. */
-private def numericCoeffsOf(e: _Expression, v: _Variable,
-                            env: Environment): Option[Vector[Double]] =
-  collect(e, v).flatMap { cs =>
-    cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
-      for tail <- acc; d <- foldReal(c, env) yield d +: tail
-    }
-  }
-
-// Dense-coefficient arithmetic, kept local to the rational tier: these have exactly one
-// caller, and `Polynomial.scala` earns a helper when there is a second one.
-private def addLocal(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-  if a.isEmpty then b else if b.isEmpty then a
-  else Vector.tabulate(math.max(a.size, b.size)) { i =>
-    a.applyOrElse(i, (_: Int) => 0.0) + b.applyOrElse(i, (_: Int) => 0.0)
-  }
-
-private def mulLocal(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-  if a.isEmpty || b.isEmpty then Vector.empty
-  else
-    val out = Array.fill(a.size + b.size - 1)(0.0)
-    for i <- a.indices; j <- b.indices do out(i + j) += a(i) * b(j)
-    out.toVector
 
 private def polyEvalLocal(cs: Vector[Double], x: Double): Double =
   cs.foldRight(0.0)((c, acc) => acc * x + c)

@@ -29,6 +29,18 @@ class ZTransformTest extends AnyFlatSpec:
       case Right(_Number(d)) => d
       case other             => fail(s"expected a number for $e at ${v.variable}=$at but got: $other")
 
+  "invztrans" should "invert poles near the origin as it does at unit scale (F_0121)" in
+  {
+    // z/((z − a)(z − 2a)), a = 1e-6: x[n] = ((2a)ⁿ − aⁿ)/a. The origin's partial-fraction
+    // coefficient is rounding of terms near 1e6, above an absolute 1e-12, and the inverse declined
+    // as though there were a pole at the origin.
+    val a = 1e-6
+    val x = inverseZTransformOf(parse("z/((z - 1e-6)*(z - 2e-6))"), z, n)
+    for k <- 1 to 4 do
+      val want = (math.pow(2 * a, k) - math.pow(a, k)) / a
+      assert(math.abs(evalAt(x, n, k) - want) <= 1e-9 * math.abs(want), s"n = $k: $x")
+  }
+
   /** Asserts two expressions agree numerically over several sample points of `v`. */
   def assertAgrees(actual: _Expression, expected: _Expression, v: _Variable,
                    points: Seq[Double], tol: Double = 1e-9): Unit =

@@ -279,8 +279,10 @@ private def polySatisfying(arg: _Expression, v: _Variable, env: Environment,
   numericCoeffs(arg, v, env).map { cs =>
     val cuts = thresholds.flatMap { t =>
       val shifted = shiftBy(cs, -t)                       // roots of p(v) - t
-      if polyDegree(shifted) < 1 then Vector.empty[Double]
-      else polyRoots(shifted).fold(Vector.empty[Double])(
+      // Exact degree and roots at the polynomial's own scale (F_0121): through polyDegree's
+      // absolute 1e-9 the tiny x² of ln(1e-12·x² + x + 1) was dropped, and with it a branch.
+      if degreeOf(shifted) < 1 then Vector.empty[Double]
+      else rootsAtScale(shifted).fold(Vector.empty[Double])(
              _.collect { case _Number(d) if !d.isNaN => d })
     }.sorted.distinct
 
@@ -309,15 +311,11 @@ private def shiftBy(cs: Vector[Double], delta: Double): Vector[Double] =
 private def polyValue(cs: Vector[Double], x: Double): Double =
   cs.foldRight(0.0)((c, acc) => acc * x + c)
 
-/** `collect` plus a fold of every coefficient to a number; `None` if any stays symbolic. */
+/** The numeric coefficients of a polynomial in `v`, trimmed by magnitude (F_0121); `None` if
+ *  `e` is not a polynomial with numeric coefficients. */
 private def numericCoeffs(e: _Expression, v: _Variable, env: Environment): Option[Vector[Double]] =
-  collect(e, v).flatMap { cs =>
-    cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
-      for tail <- acc; d <- (c.eval(env) match
-                               case Right(_Number(x)) if !x.isNaN && !x.isInfinite => Some(x)
-                               case _                                              => None)
-      yield d +: tail
-    }
+  rationalCoeffsIn(e, v, env).flatMap { (num, den) =>
+    Option.when(degreeOf(den) == 0)(num.map(_ / den(0)))
   }
 
 /** Intersects two interval sets: every pairwise overlap, coalesced. */

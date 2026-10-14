@@ -17,6 +17,19 @@ class DomainTest extends AnyFlatSpec:
 
   private def reqs(d: DomainSet): Set[Requirement] = d.constraints.map(_.req).toSet
 
+  // ── F_0121: a tiny leading coefficient is kept ──
+
+  "ln(1e-12x² + x + 1)" should "be defined beyond -1e12 as well as above -1 (F_0121)" in
+  {
+    // Roots of the argument: about -1e12 and -1. The x² coefficient was dropped as below 1e-9,
+    // and the answer was x >= -1 alone.
+    val holds = realDomain(parser.Parser.parse("ln(1e-12*x^2 + x + 1)").get).intervals
+      .getOrElse(fail("no intervals"))
+    def inside(p: Double) = holds.exists(i => (p > i.lo || (i.loIncl && p == i.lo)) && (p < i.hi || (i.hiIncl && p == i.hi)))
+    assert(inside(-2e12) && inside(-0.5) && inside(10.0), holds)
+    assert(!inside(-1e6) && !inside(-2.0), holds)
+  }
+
   // ── slice A: the requirement table ─────────────────────────────────────────
 
   "ln" should "require a positive argument over the reals" in

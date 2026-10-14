@@ -78,9 +78,10 @@ private def invRationalZ(f: _Expression, z: _Variable, n: _Variable): Option[_Ex
   for
     (ns, ds) <- rationalCoeffs(f, z)
     // Decompose X(z)/z: the denominator gains a factor of z, i.e. a root at the origin.
-    shifted = Vector(0.0) ++ polyTrim(ds)
-    if polyTrim(ns).size <= shifted.size - 1     // strictly proper after the division by z
-    terms <- decomposeReal(polyTrim(ns), shifted)
+    // trimExact: rationalCoeffs has trimmed by magnitude (F_0121).
+    shifted = Vector(0.0) ++ trimExact(ds)
+    if trimExact(ns).size <= shifted.size - 1     // strictly proper after the division by z
+    terms <- decomposeReal(trimExact(ns), shifted)
     result <- combineTerms(terms, z, n)
   yield simplifyFully(result)
 
@@ -144,8 +145,13 @@ private def solveDense(a: Array[Array[Double]], b: Vector[Double]): Option[Vecto
  *  is declined: it would need the Kronecker delta the library has no node for.
  */
 private def combineTerms(terms: Vector[ZTerm], z: _Variable, n: _Variable): Option[_Expression] =
-  val nonZero = terms.filter(t => math.abs(t.coeff) > 1e-12)
-  if nonZero.exists(t => math.abs(t.root) < 1e-12) then None
+  // Both tests relative to the terms' own sizes, not absolute 1e-12 (F_0121): with poles near
+  // 1e-6 the coefficients are near 1e6, so the origin's coefficient, rounding of those, was kept
+  // and the inverse declined as though there were a pole at the origin.
+  val coeffScale = terms.map(t => math.abs(t.coeff)).maxOption.getOrElse(0.0)
+  val rootScale  = terms.map(t => math.abs(t.root)).maxOption.getOrElse(0.0)
+  val nonZero = terms.filter(t => math.abs(t.coeff) > 1e-12 * coeffScale)
+  if nonZero.exists(t => math.abs(t.root) <= 1e-12 * rootScale) then None
   else if nonZero.isEmpty then Some(_Number(0))
   else Some(nonZero.map(termToSequence(_, n)).reduce(Sum.apply))
 

@@ -173,12 +173,79 @@ private[leonardo] def magnitudeOf(e: _Expression, env: Environment): Option[Doub
       case _                                          => None
   }
 
+/** The roots of a polynomial found **at its root scale** (F_0121): `x = ρy` with `ρ` =
+ *  [[rootScale]], the companion matrix of the monic polynomial in `y` handed to [[polyRoots]],
+ *  each root mapped back by `ρ`. The degree is the exact one ([[degreeOf]]), so a genuine tiny
+ *  leading coefficient keeps its root; [[polyRoots]] on the raw vector reads degree through the
+ *  absolute `RationalEps` and dropped it — `1e-12·s² + s + 1` had one pole of two.
+ *
+ *  One scale cannot fit roots that are themselves far apart: at `ρ = 1e12` the root near `−1`
+ *  is `−1e-12` in `y`, and the companion iteration's absolute error there was a relative 9e-5
+ *  (`−1.0000889`). So each root is **polished** by Newton's method on the original
+ *  coefficients, a step kept only while it reduces `|p|`, which recovers every root to the
+ *  accuracy its own conditioning allows.
+ *  @param cs a coefficient vector, already trimmed for its provenance
+ *  @return the roots, `_Number` or `_Complex`, or `None` below degree 1 or when the iteration fails */
+private[leonardo] def rootsAtScale(cs: Vector[Double]): Option[Vector[_Value]] =
+  val n = degreeOf(cs)
+  if n < 1 then None
+  else
+    val rho = rootScale(cs)
+    if rho == 0.0 then Some(Vector.fill(n)(_Number(0.0)))
+    else
+      val p = cs.take(n + 1)
+      polyRoots(toRootScale(cs, rho)).map(_.map {
+        case c: _Complex => _Complex.parts(c).fold(c: _Value) { (re, im) =>
+          val (pr, pi) = polish(p, re * rho, im * rho)
+          _Complex.of(pr, pi)
+        }
+        case _Number(d)  => _Number(polish(p, d * rho, 0.0)._1)
+        case other       => other
+      })
+
+/** `p` and `p′` at the complex point `x + iy`, by Horner. */
+private def hornerComplex(p: Vector[Double], x: Double, y: Double): (Double, Double, Double, Double) =
+  p.foldRight((0.0, 0.0, 0.0, 0.0)) { case (c, (vr, vi, dr, di)) =>
+    // p' accumulates before p is advanced: d ← d·z + v, v ← v·z + c.
+    val ndr = dr * x - di * y + vr
+    val ndi = dr * y + di * x + vi
+    (vr * x - vi * y + c, vr * y + vi * x, ndr, ndi)
+  }
+
+/** Newton's method on `p` from `x + iy`, each step kept only while it reduces `|p|` (F_0121).
+ *  A real start stays real, since every step from a real point on a real polynomial is real. */
+private def polish(p: Vector[Double], x0: Double, y0: Double): (Double, Double) =
+  @annotation.tailrec
+  def go(x: Double, y: Double, size: Double, left: Int): (Double, Double) =
+    if left == 0 || size == 0.0 then (x, y)
+    else
+      val (vr, vi, dr, di) = hornerComplex(p, x, y)
+      val d2 = dr * dr + di * di
+      if d2 == 0.0 || d2.isInfinite || d2.isNaN then (x, y)
+      else
+        // z ← z − p/p′
+        val nx = x - (vr * dr + vi * di) / d2
+        val ny = y - (vi * dr - vr * di) / d2
+        val (wr, wi, _, _) = hornerComplex(p, nx, ny)
+        val next = math.hypot(wr, wi)
+        if next < size && !nx.isNaN && !ny.isNaN then go(nx, ny, next, left - 1) else (x, y)
+  val (vr, vi, _, _) = hornerComplex(p, x0, y0)
+  go(x0, y0, math.hypot(vr, vi), 8)
+
 /** The exact degree of a coefficient vector: the last non-zero coefficient, `-1` for none.  For
  *  vectors already trimmed by magnitude (from [[rationalCoeffs]]), where [[polyDegree]]'s
  *  absolute `RationalEps` would drop a genuine tiny top coefficient (F_0119).
  *  @param cs the coefficients
  *  @return the degree */
 private[leonardo] def degreeOf(cs: Vector[Double]): Int = cs.lastIndexWhere(_ != 0.0)
+
+/** `cs` up to its exact degree, `[0.0]` for the zero polynomial: [[polyTrim]] without the
+ *  absolute `RationalEps`, for vectors already trimmed by magnitude (F_0121).
+ *  @param cs the coefficients
+ *  @return the trimmed coefficients */
+private[leonardo] def trimExact(cs: Vector[Double]): Vector[Double] =
+  val d = degreeOf(cs)
+  if d < 0 then Vector(0.0) else cs.take(d + 1)
 
 /** Degree of a coefficient vector: the highest index carrying a non-negligible
  *  coefficient, or `-1` for the zero polynomial.

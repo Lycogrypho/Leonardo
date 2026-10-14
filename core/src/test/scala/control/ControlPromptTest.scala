@@ -22,6 +22,20 @@ class ControlPromptTest extends AnyFlatSpec:
 
   private def run(src: String, e: Environment = env) = parse(src).eval(e)
 
+  "the pole and stability functions" should "work at any scale of the frequency variable (F_0121)" in
+  {
+    // 1e-12s² + s + 1: poles about -1e12 and -1; the s² coefficient was dropped and one was listed.
+    val wide = roots(run("tfpoles(1/(1e-12*s^2 + s + 1), s)"))
+    assert(wide.size == 2 && math.abs(wide(0)._1 / -999999999999.0 - 1) <= 1e-9 && math.abs(wide(1)._1 + 1) <= 1e-9, wide)
+    // feedback(1e-6/(s + 1e-6), 1) = 1e-6/(s + 2e-6): the common factor (s + 1e-6) went uncancelled
+    // and was reported as a pole.
+    val fb = roots(run("tfpoles(feedback(1e-6/(s + 1e-6), 1, s), s)"))
+    assert(fb.size == 1 && math.abs(fb(0)._1 / -2e-6 - 1) <= 1e-9, fb)
+    // A plant with a slow stable pole is stable: the test was Re(p) < -1e-9, absolute.
+    assert(run("isStable(1/(s + 1e-10), s)") == Right(_Bool(true)))
+    assert(run("isStable(1/(s^2 + 1), s)") == Right(_Bool(false)), "an undamped pair is still not stable")
+  }
+
   /** The real parts of a `1×n` row of roots, sorted; complex roots by their real part. */
   private def roots(r: Either[_Expression, _Value]): Vector[(Double, Double)] = r match
     case Left(m: _Matrix) if m.rows == 1 => m.elems.map {

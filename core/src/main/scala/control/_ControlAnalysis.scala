@@ -33,7 +33,7 @@ private def resolved(g: _Expression, v: _Variable, env: Environment): _Expressio
  *  constant means "no roots to find" — and changing that would make [[isStable]] call an
  *  improper polynomial `G` vacuously stable. */
 private def provablyNone(g: _Expression, v: _Variable, denominator: Boolean): Boolean =
-  coeffsOf(g, v).exists((num, den) => polyDegree(polyTrim(if denominator then den else num)) <= 0)
+  coeffsOf(g, v).exists((num, den) => degreeOf(if denominator then den else num) <= 0)
 
 /** Why the roots of `G` in `v` are not available: not a rational function with numeric
  *  coefficients, or roots the root finder could not resolve. */

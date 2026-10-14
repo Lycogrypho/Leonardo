@@ -58,8 +58,10 @@ private def scaleBy(k: Double, e: _Expression): _Expression =
 
 /** Integrates the polynomial `sum(cs(i) * v^i)` term by term to `sum(cs(i)/(i+1) * v^(i+1))`. */
 private def integratePolyCoeffs(cs: Vector[Double], v: _Variable): _Expression =
+  // Every non-zero term (F_0121): an absolute 1e-9 dropped the quotient's genuine 1e-12·x² term
+  // from ∫ (1e-12·x³ + x² + 1)/(x + 1), 60 % wrong by x = 1e12.
   val terms = cs.zipWithIndex.collect {
-    case (c, i) if math.abs(c) > RationalEps => scaleBy(c / (i + 1), Power(v, _Number(i + 1)))
+    case (c, i) if c != 0.0 => scaleBy(c / (i + 1), Power(v, _Number(i + 1)))
   }
   if terms.isEmpty then _Number(0) else terms.reduce((a, b) => Sum(a, b))
 
