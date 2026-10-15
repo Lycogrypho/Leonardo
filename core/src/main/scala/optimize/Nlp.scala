@@ -180,6 +180,15 @@ private final class NlpSystem(val n: Int, val mg: Int, val mh: Int,
                    ct.slice(0, mg), ct.slice(mg, mg + mh),
                    dt.slice(0, n), dt.slice(n, jgEnd), dt.slice(jgEnd, jhEnd))
 
+  /** The same problem in `yᵢ = xᵢ/sᵢ`: every value read at `x = s·y`, and every derivative (and
+   *  its terms) in variable `i` multiplied by `sᵢ`, the chain rule for a change of units (F_0120). */
+  def scaled(s: Array[Double]): NlpSystem =
+    def back(y: Array[Double]): Array[Double] = Array.tabulate(n)(i => y(i) * s(i))
+    // Every derivative row is n wide (∇f, then each Jacobian row), so entry e is in variable e % n.
+    def times(a: Array[Double]): Array[Double] = Array.tabulate(a.length)(e => a(e) * s(e % n))
+    NlpSystem(n, mg, mh, f, gs, hs, vars, y => values(back(y)), y => derivatives(back(y)).map(times),
+              y => constraintTerms(back(y)), y => derivTerms(back(y)).map(times))
+
 private object NlpSystem:
 
   def build(f: _Expression, vars: Vector[_Variable], g: Vector[_Expression], h: Vector[_Expression],
@@ -342,6 +351,27 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
     }
     out
 
+  /** `p` with every bound the QP holds active that it lies within rounding of landed on exactly,
+   *  or `None` when there is none.  A step accepted by backtracking is not snapped (it stops
+   *  short of the bound on purpose), and when it stops one rounding error short the next QP's
+   *  correcting step is too small to show as descent: the iteration stalled one ulp from a
+   *  certificate it had reached (`x = 3.4·10⁻¹⁷` against a bound at `0`, F_0120). "Within
+   *  rounding" is `10⁻¹²` of the variable's own range, its bound width or else the point's
+   *  size, so the test is a fraction of the variable's units rather than a claim about them. */
+  def snappedPoint(p: NlpPoint, active: Vector[QpConstraint]): Option[NlpPoint] =
+    val size = p.x.map(math.abs).maxOption.getOrElse(0.0)
+    def near(i: Int, bound: Double): Boolean =
+      val width = hi(i) - lo(i)
+      val range = if width.isInfinite then math.max(size, math.abs(bound)) else width
+      p.x(i) != bound && math.abs(p.x(i) - bound) <= 1e-12 * range
+    val out = p.x.clone()
+    active.foreach {
+      case QpConstraint.Lower(i) if near(i, lo(i)) => out(i) = lo(i)
+      case QpConstraint.Upper(i) if near(i, hi(i)) => out(i) = hi(i)
+      case _                                        => ()
+    }
+    if out.sameElements(p.x) then None else sys.at(out)
+
   def subproblem(p: NlpPoint, b: Array[Array[Double]], gRhs: Array[Double], hRhs: Array[Double],
                  warm: Set[QpConstraint]): Either[QpFailure, QpResult] =
     qpSolve(_MatrixValue(n, n, b.flatten), p.grad.toVector,
@@ -438,7 +468,10 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
           val nuK   = if nu >= 1.1 * m then nu else 2.0 * m
           val slope = nlpDot(p.grad, d) - nuK * l1Violation(p.g, p.h)
           if !(slope < 0.0) then
-            if res <= tol then answer else Left(NlpFailure.Stalled(res))
+            if res <= tol then answer
+            else snappedPoint(p, qp.active) match
+              case Some(q) => loop(q, bk, nuK, qp.active.toSet, k + 1, first)
+              case None    => Left(NlpFailure.Stalled(res))
           else search(p, bk, d, nuK, slope, qp.active) match
             case None =>
               if res <= tol then answer else Left(NlpFailure.LineSearchFailed(k))
@@ -446,7 +479,10 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
               val moved = (0 until n).map(i => math.abs(x(i) - p.x(i))).max
               val size  = p.x.map(math.abs).maxOption.getOrElse(0.0)
               if moved <= 1e-15 * size || moved == 0.0 then
-                if res <= tol then answer else Left(NlpFailure.Stalled(res))
+                if res <= tol then answer
+                else snappedPoint(p, qp.active) match
+                  case Some(q) => loop(q, bk, nuK, qp.active.toSet, k + 1, first)
+                  case None    => Left(NlpFailure.Stalled(res))
               else sys.at(x) match
                 case None    => Left(NlpFailure.NotEvaluable)
                 case Some(q) => loop(q, updated(bk, p, q, mu, lam, first), nuK, qp.active.toSet, k + 1, false)
@@ -479,6 +515,43 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
  */
 private def augLag(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[Double],
                    env: Environment): Either[NlpFailure, NlpResult] =
+  // Run in yᵢ = xᵢ/sᵢ, sᵢ the variable's own length (F_0120): the method's constants — the
+  // ε-active cap, the first quasi-Newton step, the balance of f/fScale against the penalty — are
+  // written for unit-sized variables, and with F_0116's problem in units c times smaller it
+  // declined for every c < 1 while answering every c ≥ 1. In y the run is the same whatever c is.
+  // One length for all variables is not enough: with x = 10⁻⁶·u, u's start 10⁶ made y's
+  // answer −1 a 10⁻⁶ in scaled units, and the run declined.
+  val s = lengthScales(x0, lo, hi)
+  if s.forall(_ == 1.0) then augLagAtUnitScale(sys, x0, lo, hi, env)
+  else
+    val (ylo, yhi) = (Array.tabulate(sys.n)(i => lo(i) / s(i)), Array.tabulate(sys.n)(i => hi(i) / s(i)))
+    augLagAtUnitScale(sys.scaled(s), Array.tabulate(sys.n)(i => x0(i) / s(i)), ylo, yhi, env).flatMap { r =>
+      // Back in x, a coordinate on a bound in y lands on the bound exactly (the F_0116 rule),
+      // and the certificate is measured again where the answer is reported.
+      val x = Array.tabulate(sys.n)(i =>
+        if r.x(i) <= ylo(i) then lo(i) else if r.x(i) >= yhi(i) then hi(i) else r.x(i) * s(i))
+      sys.at(x) match
+        case None => Left(NlpFailure.NotEvaluable)
+        case Some(p) =>
+          val (mu, lam) = (r.inequalityMultipliers.toArray, r.equalityMultipliers.toArray)
+          val res = kktResidual(sys, p, mu, lam, lo, hi)
+          if res <= certificateTolerance(env) then Right(nlpAnswer(p, r.iterations, res, mu, lam, lo, hi))
+          else Left(NlpFailure.Stalled(res))
+    }
+
+/** Each variable's length as the problem itself sets it: the larger of its starting value and its
+ *  bound width when finite, or `1` when both are zero or absent — the one place a unit is
+ *  assumed, and only where the problem states none. */
+private def lengthScales(x0: Array[Double], lo: Array[Double], hi: Array[Double]): Array[Double] =
+  Array.tabulate(x0.length) { i =>
+    val width = hi(i) - lo(i)
+    val s     = math.max(math.abs(x0(i)), if width.isInfinite then 0.0 else width)
+    if s > 0.0 && !s.isInfinite then s else 1.0
+  }
+
+/** [[augLag]] on a problem whose variables are of unit size. */
+private def augLagAtUnitScale(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[Double],
+                              env: Environment): Either[NlpFailure, NlpResult] =
   val tol    = certificateTolerance(env)
   val target = math.min(1e-10, tol / 100)
   val fScale = sys.at(x0).map(_.grad.map(math.abs).maxOption.getOrElse(0.0))

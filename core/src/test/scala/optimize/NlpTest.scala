@@ -94,10 +94,11 @@ class NlpTest extends AnyFlatSpec:
         case n: _Nlp => n.detailed(env)
         case other   => fail(s"$other"))
     def right(k: Double, r: NlpResult) = math.abs(r.x(0) * k + 1) <= 1e-6 && math.abs(r.x(1) + 1) <= 1e-6
-    // A DEFECT TOLERATED, NOT THE DESIGN (F_0120): SQP at k = 1e-6 and AugLag at k = 1e6 decline
-    // (Subproblem(25, MaxIterations(2000)) and MaxIterations(50, 0.22)). What is pinned for them is
-    // the safety half — a refusal, never a wrong point. Answer them when F_0120 lands.
-    val tolerated = Set(("sqp", 1e-6), ("auglag", 1e6))
+    // A DEFECT TOLERATED, NOT THE DESIGN (F_0120): SQP at k = 1e-6 declines
+    // (Subproblem(25, MaxIterations(2000))). What is pinned for it is the safety half — a refusal,
+    // never a wrong point. AugLag at k = 1e6 declined too (MaxIterations(50, 0.22)) until it ran
+    // in each variable's own length (F_0120 step A); answer SQP's when step B lands.
+    val tolerated = Set(("sqp", 1e-6))
     for (m, k, out) <- outcomes do
       out match
         case Right(r)                    => assert(right(k, r), s"$m at $k answered a wrong point ${r.x}")
@@ -119,6 +120,26 @@ class NlpTest extends AnyFlatSpec:
       val r   = solved(s"nlp($obj, $vs, $x0, $g, 0, 0, 0.5, $m)")
       assert(r.kktResidual <= 0.5e-5 && r.bounded.nonEmpty, s"n = $n, constraint $withConstraint, $m: $r")
       assert(r.bounded.forall(i => r.x(i) == 0.0 || r.x(i) == 0.5), s"$m: a bounded variable is not on its bound: ${r.x}")
+  }
+
+  it should "answer F_0116's problem in any uniform units, by both methods (F_0120 step A)" in {
+    // The same problem in z = c·x, every variable, the constraint and the bounds rescaled. Before:
+    // AugLag declined every c < 1 (MaxIterations(50, 0.34 … 0.999)) while answering every c ≥ 1,
+    // and SQP stalled one ulp from an active bound it had reached by backtracking (Stalled(0.2)
+    // at n = 12, c = 10; Stalled(0.69) at n = 20, c = 1/3).
+    def problem(n: Int, c: Double, m: String): String =
+      def x(i: Int) = s"(z$i/$c)"
+      val vs  = (1 to n).map(i => s"[z$i]").mkString("[", ", ", "]")
+      val obj = (1 to n).map(i => s"(${x(i)} - ${i / 10.0})^2").mkString(" + ") + " + " +
+                (1 until n).map(i => s"${x(i)}*${x(i + 1)}").mkString(" + ")
+      val g   = (1 to n).map(x).mkString(" + ") + s" - ${n / 4.0}"
+      s"nlp($obj, $vs, ${Seq.fill(n)("[0]").mkString("[", ", ", "]")}, $g, 0, 0, ${0.5 * c}, $m)"
+    for n <- Seq(12, 20); m <- methods do
+      val unit = solved(problem(n, 1.0, m)).x
+      for c <- Seq(0.01, 1.0 / 3, 10.0) do
+        val r = solved(problem(n, c, m))
+        assert(near(r.x.map(_ / c), unit, 1e-5), s"n = $n, $m at c = $c: ${r.x}")
+        assert(r.bounded.forall(i => r.x(i) == 0.0 || r.x(i) == 0.5 * c), s"$m at c = $c: a bounded variable is off its bound")
   }
 
   it should "refuse more than MaxNlpVariables before any work" in {
