@@ -26,6 +26,15 @@ class ControlTest extends AnyFlatSpec:
     assert(r.successful, s"parse failed for \"$input\": $r")
     r.get
 
+  "routhTable" should "keep every row at a small scale (F_0125)" in {
+    // Poles near 1e-6: every entry below the first row is that small, and an absolute RationalEps
+    // ended the table after three rows of four.
+    val unit  = routhTable(parse("1/((s+1)*(s+2)*(s+3))"), s)
+    val small = routhTable(parse("1/((s+1e-6)*(s+2e-6)*(s+3e-6))"), s)
+    assert(unit.map(_.size).contains(4) && small.map(_.size).contains(4), s"$unit vs $small")
+    assert(small.exists(_.forall(_.headOption.exists(_ > 0.0))), s"every first-column entry positive: $small")
+  }
+
   def evalAt(e: _Expression, v: _Variable, at: Double): Double =
     e.eval(new Environment().withBinding(v.variable, _Number(at))) match
       case Right(_Number(d)) => d

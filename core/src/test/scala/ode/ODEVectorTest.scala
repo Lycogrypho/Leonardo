@@ -35,6 +35,13 @@ class ODEVectorTest extends AnyFlatSpec:
 
   private val oscillator = "[[v], [-x]], [[x], [v]], t, 0, [[1], [0]]"
 
+  "odeSolve with rk45" should "run over a span far below one time unit (F_0125)" in {
+    // y' = −1e12·y over 5e-12: the adaptive step's floor was 1e-12·max(1, |t|), above the steps
+    // this span needs, and the run declined StepSizeUnderflow.
+    val traj = rows("odeSolve([[-1e12*y]], [[y]], t, 0, [[1]], 5e-12, 1e-12, rk45)")
+    assert(abs(traj.last(1) / exp(-5.0) - 1) <= 1e-4, s"${traj.last}")
+  }
+
   // --- the acceptance problems ---
 
   "odeSolve" should "bring the harmonic oscillator back to its start after 2π (h = 0.01, rk4)" in

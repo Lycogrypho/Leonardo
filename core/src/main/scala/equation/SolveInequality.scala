@@ -50,14 +50,6 @@ private[equation] def solveInequality(c: _Comparison, v: _Variable,
     // `collect` gives up on a denominator containing `v`, which is exactly the rational tier.
     case None     => rationalTier(difference, c.op, v, env)
 
-/** `collect`'s coefficients cut to the degree the magnitude-tracked coefficients give, when the
- *  polynomial is numeric; unchanged when its coefficients are symbolic. */
-private def atMagnitudeDegree(cs: Vector[_Expression], e: _Expression, v: _Variable,
-                              env: Environment): Vector[_Expression] =
-  rationalCoeffsIn(e, v, env) match
-    case Some((num, den)) if degreeOf(den) == 0 => cs.take(math.max(degreeOf(num), 0) + 1)
-    case _                                     => cs
-
 /** Linear and quadratic tiers over `collect`'s coefficient vector. */
 private def polynomialTier(cs: Vector[_Expression], op: CompareOp,
                            v: _Variable, env: Environment): Option[_Expression] =

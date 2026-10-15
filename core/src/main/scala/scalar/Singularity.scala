@@ -42,8 +42,11 @@ private[leonardo] def singularitiesOf(e: _Expression, v: _Variable,
                                       env: Environment): Option[Vector[Singularity]] =
   rationalCoeffsIn(e, v, env).map { (num, den) =>
     val numRoots = realRootsWithMultiplicity(num)
-    realRootsWithMultiplicity(den).map { (centre, denMult) =>
-      val numMult = numRoots.collect { case (r, m) if sameRoot(r, centre) => m }.sum
+    val denRoots = realRootsWithMultiplicity(den)
+    // The roots' own scale (F_0125): a match is measured against it, not against 1.
+    val scale = (numRoots ++ denRoots).map((r, _) => math.abs(r)).maxOption.getOrElse(0.0)
+    denRoots.map { (centre, denMult) =>
+      val numMult = numRoots.collect { case (r, m) if sameRoot(r, centre, scale) => m }.sum
       if numMult >= denMult then Singularity(centre, SingularityKind.Removable)
       else Singularity(centre, SingularityKind.Pole(denMult - numMult))
     }
@@ -56,9 +59,12 @@ private[leonardo] def singularitiesOf(e: _Expression, v: _Variable,
  */
 private val RootClusterTolerance = 1e-6
 
-/** Whether two computed roots are the same point, relative to magnitude. */
-private def sameRoot(a: Double, b: Double): Boolean =
-  math.abs(a - b) <= RootClusterTolerance * math.max(1.0, math.max(math.abs(a), math.abs(b)))
+/** Whether two computed roots are the same point, relative to the scale of all the roots.
+ *  It was relative to `max(1, |a|, |b|)`, an absolute `10⁻⁶` below unit scale, so the
+ *  numerator root at `10⁻⁷` matched the pole at `3·10⁻⁷` too and that pole was reported
+ *  with order 0 (F_0125). */
+private def sameRoot(a: Double, b: Double, scale: Double): Boolean =
+  math.abs(a - b) <= RootClusterTolerance * scale
 
 /** The distinct real roots of `cs` with their multiplicities, in ascending order.
  *

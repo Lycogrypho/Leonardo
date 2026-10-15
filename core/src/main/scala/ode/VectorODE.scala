@@ -186,13 +186,16 @@ private def dpAttempt(p: VectorProblem, t: Double, y: Vector[Double],
 private[ode] def adaptive(p: VectorProblem, t0: Double, y0: Vector[Double], t1: Double,
                           tol: Double, budget: Int): Either[OdeFailure, (Vector[Double], Int)] =
   val dir = math.signum(t1 - t0)
+  val timeScale = math.max(math.abs(t1), math.abs(t1 - t0))
   @annotation.tailrec
   def loop(t: Double, y: Vector[Double], h: Double, steps: Int): Either[OdeFailure, (Vector[Double], Int)] =
-    if dir * (t1 - t) <= 1e-14 * math.max(1.0, math.abs(t1)) then Right((y, steps))
+    // Both floors are relative to the run's own time scale (F_0125): against max(1, |t|) a
+    // span of 5e-12 needed a step below the 1e-12 floor, and rk45 declined StepSizeUnderflow.
+    if dir * (t1 - t) <= 1e-14 * timeScale then Right((y, steps))
     else if steps >= budget then Left(OdeFailure.MaxSteps(MaxOdeSteps))
     else
       val hh = if dir * (t + h - t1) > 0 then t1 - t else h
-      if math.abs(hh) < 1e-12 * math.max(1.0, math.abs(t)) then Left(OdeFailure.StepSizeUnderflow(t))
+      if math.abs(hh) < 1e-12 * math.max(timeScale, math.abs(t)) then Left(OdeFailure.StepSizeUnderflow(t))
       else dpAttempt(p, t, y, hh) match
         case Left(fail) => Left(fail)
         case Right((y5, err)) =>

@@ -36,6 +36,21 @@ class EigDecompositionTest extends AnyFlatSpec:
 
   // ---- _MatrixValue.spectralDecompose ----
 
+  "spectralDecompose of a matrix in tiny units" should "find the eigenvectors it finds at unit scale (F_0125)" in
+  {
+    // 1e-14·[[1, 1], [0, 2]]: the pivot floor 1e-12 sat above every entry of A − λI, and both
+    // eigenvectors came back (1, 0).
+    for k <- Seq(1.0, 1e-14) do
+      val a = dense(2, 2, k, k, 0.0, 2 * k)
+      a.spectralDecompose match
+        case None => fail(s"declined at scale $k")
+        case Some((vectors, values)) =>
+          for (v, lambda) <- vectors.zip(values) do
+            val (vs, l) = (v.collect { case _Number(d) => d }, lambda match { case _Number(d) => d; case o => fail(s"$o") })
+            val av = Vector(a(0, 0) * vs(0) + a(0, 1) * vs(1), a(1, 0) * vs(0) + a(1, 1) * vs(1))
+            assert(av.zip(vs).forall((x, y) => math.abs(x - l * y) <= 1e-9 * math.abs(l)), s"scale $k: A·v ≠ λv for $vs, $l")
+  }
+
   "spectralDecompose of a 2×2 symmetric" should "satisfy A·V = V·D" in
   {
     val a = dense(2, 2, 4, 1, 1, 3)

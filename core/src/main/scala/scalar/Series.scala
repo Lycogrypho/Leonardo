@@ -288,7 +288,7 @@ private def rationalRegularise(f: _Expression, v: _Variable, point: _Expression,
 
 /** Divides `cs` by `(v − root)`, or `None` when that leaves a remainder. */
 private def deflateExact(cs: Vector[Double], root: Double): Option[Vector[Double]] =
-  if polyDegree(cs) < 1 then None
+  if degreeOf(cs) < 1 then None      // cs is magnitude-trimmed (F_0125)
   else
     val desc      = cs.reverse
     val out       = desc.tail.scanLeft(desc.head)((acc, c) => acc * root + c)

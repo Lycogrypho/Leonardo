@@ -209,7 +209,11 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
     cs  <- collect(radicand, v)
     if cs.length == 3
     c0  <- constValue(cs(0)); c1 <- constValue(cs(1)); c2 <- constValue(cs(2))
-    if math.abs(c1) < RationalEps && math.abs(c2) > RationalEps
+    // No linear term, and a quadratic one, judged at the radicand's own size √|c0·c2| (F_0125):
+    // against an absolute RationalEps, (1 + 1e-10·x − x²)^0.5 lost its linear term and
+    // (1 − 1e-12·x²)^0.5 was refused. Only rounding counts as no linear term: dropping a real one
+    // answers a different integral, while keeping it only makes this tier decline.
+    if c2 != 0.0 && math.abs(c1) <= 1e-14 * math.sqrt(math.abs(c0 * c2))
     w    = freshVar(e.freeVars + v.variable)
     scale = math.sqrt(math.abs(c2))
     ratio = c0 / c2

@@ -24,6 +24,17 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
       case _Number(d) => assert(math.abs(d - expected) <= tol, s"$expr: expected ≈ $expected but got $d")
       case other => fail(s"$expr: expected _Number ≈ $expected, got $other")
 
+  "invlaplace" should "keep tiny numerators and a tiny leading coefficient (F_0125)" in:
+    // 1e-13/((s+1)(s+2)(s+3)) = 1e-13·(e^-t/2 − e^-2t + e^-3t/2): every numerator was below an
+    // absolute 1e-12 and the inverse was 0.
+    val want = 1e-13 * (math.exp(-1.0) / 2 - math.exp(-2.0) + math.exp(-3.0) / 2)
+    approxAt("invlaplace(1e-13/((s+1)*(s+2)*(s+3)), s, t)", want, 1e-9 * want, "t" -> 1.0)
+    // 1/(1e-10·s³ + s + 1): its degree was read as 1 and the inverse declined. The pole near −1
+    // has residue 1/(1 + 3e-10), the dominant term at t = 1e-3 before the fast pair matters.
+    evalAt("invlaplace(1/(1e-10*s^3 + s + 1), s, t)") match
+      case Left(e) => assert(!e.toString.contains("invlaplace"), s"declined: $e")
+      case Right(v) => fail(s"not a function of t: $v")
+
   // ─────────────────────────── parser round-trips ──────────────────────────────
 
   "laplace parser" should "produce a _Laplace node" in:

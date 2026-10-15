@@ -331,7 +331,11 @@ case class _Laurent(e: _Expression, v: _Variable, point: _Expression,
     point.eval(env) match
       case Right(_Number(a)) if !a.isNaN && !a.isInfinite =>
         singularitiesOf(e, v, env).flatMap { ss =>
-          ss.find(s => math.abs(s.at - a) < 1e-6).map(_.kind) match
+          // The nearest singularity, within 1e-6 of the singularities' own scale (F_0125): an absolute
+          // 1e-6 matched the regular point 5e-7 to the pole at 1e-7, read the order as 1, and the
+          // expansion of 1/(x - 1e-7) about 5e-7 declined.
+          val scale = (ss.map(s => math.abs(s.at)) :+ math.abs(a)).max
+          ss.minByOption(s => math.abs(s.at - a)).filter(s => math.abs(s.at - a) <= 1e-6 * scale).map(_.kind) match
             case Some(SingularityKind.Pole(o)) => Some(o)
             case Some(SingularityKind.Removable) => Some(0)
             // Not a singularity at all: an ordinary Taylor expansion is the right answer.

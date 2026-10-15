@@ -84,6 +84,18 @@ class LaurentTest extends AnyFlatSpec:
 
   // ── degenerate and refused cases ───────────────────────────────────────────
 
+  it should "not borrow a nearby pole's order at a regular point of small scale (F_0125)" in
+  {
+    // 5e-7 is a regular point of 1/(x − 1e-7); an absolute 1e-6 matched it to the pole at 1e-7 and
+    // read the order as 1. The match is now relative to the singularities' own scale.
+    val src = "laurent(1/(x - 1e-7), x, 5e-7, 3)"
+    val at  = 5e-7 + 1e-8
+    val exact = 1 / (at - 1e-7)
+    valueAt(src, at) match
+      case Some(got) => assert(math.abs(got / exact - 1) <= 1e-6, s"$src at $at: $got vs $exact")
+      case None      => fail(s"$src declined: ${run(src)}")
+  }
+
   "a removable singularity" should "give an ordinary Taylor series rather than an error" in
   {
     // m = 0 means no principal part; the caller asked a well-formed question.

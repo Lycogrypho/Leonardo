@@ -181,8 +181,12 @@ private[probability] def quantileOf(d: _Distribution, p: Double): Option[Double]
       var a = lo
       var b = hi
       var k = 0
-      while k < 200 && (b - a) > 1e-14 * math.max(1.0, math.abs(a)) do
-        val m = 0.5 * (a + b)
+      // To the resolution of a Double, at any scale (F_0125): the stop at 1e-14·max(1, |a|) was
+      // absolute below unit scale, and quantile(normal(0, 1e-12), 0.975) came out 0.1 % off.
+      // A midpoint that cannot split the bracket any more is the end; 200 halvings bound it.
+      var m = 0.5 * (a + b)
+      while k < 200 && m > a && m < b do
         if d.cdf(m).exists(_ < p) then a = m else b = m
+        m = 0.5 * (a + b)
         k += 1
       Some(if d.isDiscrete then math.ceil(b - 1e-9) else 0.5 * (a + b))

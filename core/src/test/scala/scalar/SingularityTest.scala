@@ -21,6 +21,16 @@ class SingularityTest extends AnyFlatSpec:
 
   private def sing(e: _Expression): Option[Vector[Singularity]] = singularitiesOf(e, x, env)
 
+  "a removable point beside a pole" should "be told apart from it at any scale (F_0125)" in
+  {
+    // (x − 1e-7)/((x − 1e-7)(x − 3e-7)): the numerator root matched BOTH denominator roots under
+    // an absolute 1e-6, and the pole at 3e-7 was reported with order 0.
+    sing(Ratio(linear(1e-7), Product(linear(1e-7), linear(3e-7)))) match
+      case Some(Vector(Singularity(_, SingularityKind.Removable), Singularity(at, SingularityKind.Pole(1)))) =>
+        assert(math.abs(at - 3e-7) <= 1e-15)
+      case other => fail(s"$other")
+  }
+
   "1/(x-1)" should "be a simple pole at 1" in
   {
     sing(Ratio(_Number(1), linear(1))) match

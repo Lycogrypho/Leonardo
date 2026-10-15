@@ -30,6 +30,14 @@ class ProbabilityTest extends AnyFlatSpec:
       case Right(d: _Distribution) => d
       case other                   => fail(s"\"$s\" is not a distribution: $other")
 
+  "quantile" should "be as accurate at any scale of the distribution (F_0125)" in {
+    // The bisection stopped at 1e-14·max(1, |a|): normal(0, 1e-12)'s 0.975 quantile was 0.1 % off,
+    // and normal(1e12, 1)'s 0.002 off.
+    val z = 1.959963984540054
+    assert(math.abs(num("quantile(normal(0, 1e-12), 0.975)") / 1e-12 - z) <= 1e-9)
+    assert(math.abs(num("quantile(normal(1e12, 1), 0.975)") - 1e12 - z) <= 1e-3)
+  }
+
   // --- slice A: the carrier and the continuous families ---
 
   "a distribution" should "be a concrete value that evaluates to itself" in

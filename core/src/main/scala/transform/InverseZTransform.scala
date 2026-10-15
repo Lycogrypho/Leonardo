@@ -96,7 +96,7 @@ private case class ZTerm(coeff: Double, root: Double, power: Int)
  *  and only the square-free parts — simple, well-conditioned roots — reach a root finder.
  */
 private def decomposeReal(ns: Vector[Double], ds: Vector[Double]): Option[Vector[ZTerm]] =
-  val degree = polyDegree(ds)
+  val degree = degreeOf(ds)          // ds arrives through trimExact (F_0121, F_0125)
 
   // (root, multiplicity) for every pole, refusing the moment one is not real.
   def polesOf: Option[Vector[(Double, Int)]] =

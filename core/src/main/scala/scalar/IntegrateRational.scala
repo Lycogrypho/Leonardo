@@ -50,9 +50,10 @@ private def polyCoeffs(e: _Expression, v: _Variable): Option[Vector[Double]] =
 /** Builds `k * ln(arg)`, folding `k = 0` to `0` and `k = 1` to `ln(arg)`. */
 private def logTerm(k: Double, arg: _Expression): _Expression = scaleBy(k, Ln(arg))
 
-/** Builds `k * e`, folding `k = 0` to `0` and `k = 1` to `e`. */
+/** Builds `k * e`, folding `k = 0` to `0` and `k = 1` to `e`.  Only an exact zero folds
+ *  (F_0125): `|k| < 1e-15` turned `∫ 1e-16/(x + 1)` into `0`. */
 private def scaleBy(k: Double, e: _Expression): _Expression =
-  if math.abs(k) < 1e-15 then _Number(0)
+  if k == 0.0 then _Number(0)
   else if math.abs(k - 1.0) < 1e-15 then e
   else Product(_Number(k), e)
 
@@ -162,17 +163,31 @@ private def factorDenominator(den: Vector[Double]): Option[(Vector[(Double, Int)
           comps.filter(_._2 > 0.0).foreach((re, im) => quadB += ((-2.0 * re, re * re + im * im, k)))
           true
     }
-    val deg      = polyDegree(den)
+    // degreeOf: `den` arrives magnitude-trimmed (F_0119), and polyDegree's absolute 1e-9 read
+    // 1e-10·x³ + x + 1 as linear, so three roots never matched one degree (F_0125).
+    val deg      = degreeOf(den)
     val totalMul = realB.map(_._2).sum + 2 * quadB.map(_._3).sum
     if !ok || totalMul != deg then None
     else
       // reconstruction check: lead * Π factors must match den (guards a mis-factorisation)
-      val lead  = den(deg)
-      val recon = (realB.flatMap((r, m) => Vector.fill(m)(Vector(-r, 1.0))) ++
-                   quadB.flatMap((p, q, m) => Vector.fill(m)(Vector(q, p, 1.0))))
-        .foldLeft(Vector(lead))(polyMul)
+      val lead    = den(deg)
+      val factors = realB.flatMap((r, m) => Vector.fill(m)(Vector(-r, 1.0))) ++
+                    quadB.flatMap((p, q, m) => Vector.fill(m)(Vector(q, p, 1.0)))
+      val recon   = factors.foldLeft(Vector(lead))(polyMul)
+      // Each coefficient against the size of the terms that form it (F_0125), not 1 + |den(i)|:
+      // that floor accepted any reconstruction of a denominator in units below 1. A coefficient
+      // the factors leave at exactly 0 (`size(i) = 0`) may still carry rounding in `den` -- the
+      // Weierstrass denominators do -- so a difference that is rounding beside the leading term
+      // at the roots' own scale, `ρ^(i−deg)`, is accepted too; both tests are units-free.
+      val size    = factors.map(_.map(math.abs)).foldLeft(Vector(math.abs(lead)))(polyMul)
+      val rho     = rootScale(den)
+      def rounding(i: Int, d: Double): Boolean =
+        rho > 0.0 && d * math.pow(rho, (i - deg).toDouble) <= 1e-12 * math.abs(lead)
       val matches = recon.length == den.length &&
-                    recon.indices.forall(i => math.abs(recon(i) - den(i)) <= 1e-3 * (1.0 + math.abs(den(i))))
+                    recon.indices.forall { i =>
+                      val d = math.abs(recon(i) - den(i))
+                      d <= 1e-3 * size(i) || rounding(i, d)
+                    }
       if matches then Some((realB.toVector, quadB.toVector)) else None
 
 /** `∫ dv/(v^2 + p v + q)^j` for an irreducible quadratic (`w2 = q - p^2/4 > 0`), by the
@@ -208,7 +223,7 @@ private def integrateQuadPowerTerm(bCoef: Double, cCoef: Double, p: Double, q: D
  */
 private def integratePartialFractions(num: Vector[Double], den: Vector[Double], v: _Variable): Option[_Expression] =
   factorDenominator(den).flatMap { (realFactors, quadFactors) =>
-    val deg  = polyDegree(den)
+    val deg  = degreeOf(den)
     val lead = den(deg)
     // All factor polynomials, in a fixed order (reals first, then quadratics), with mult.
     val factorPolys = realFactors.map((r, m) => (Vector(-r, 1.0), m)) ++
@@ -244,8 +259,12 @@ private def integratePartialFractions(num: Vector[Double], den: Vector[Double], 
       val rhs = Array.tabulate(deg)(i => num.lift(i).getOrElse(0.0))
       _MatrixValue(deg, deg, mat).inverse.map { inv =>
         val x     = inv.multiply(_MatrixValue(deg, 1, rhs)).toVector
+        // A numerator is dropped only as rounding beside the largest one (F_0125): an absolute
+        // RationalEps dropped every term of ∫ 1e-12/((x-1)(x-2)(x-3)), answering 0. Keeping a
+        // spurious tiny term costs nothing; dropping a genuine one answers a different integral.
+        val xScale = x.map(math.abs).maxOption.getOrElse(0.0)
         val terms = columns.zipWithIndex.collect {
-          case ((Term.Real(r, j), _), i) if math.abs(x(i)) > RationalEps =>
+          case ((Term.Real(r, j), _), i) if math.abs(x(i)) > 1e-12 * xScale =>
             if j == 1 then logTerm(x(i), Sum(v, _Number(-r)))
             else scaleBy(-x(i) / (j - 1), Ratio(_Number(1), Power(Sum(v, _Number(-r)), _Number(j - 1))))
         }.toVector
@@ -282,7 +301,10 @@ private def integrateRational(numE: _Expression, denE: _Expression, v: _Variable
       if degreeOf(numC) >= degreeOf(denC) then
         val (quot, rem) = polyDivide(numC, denC, degreeOf)
         val polyPart    = integratePolyCoeffs(quot, v)
-        if polyDegree(rem) < 0 then Some(polyPart)
+        // The remainder is zero only as rounding beside the numerator (F_0125): polyDegree's
+        // absolute 1e-9 dropped the genuine 1e-10 of ∫ (x + 1e-10)/x, and its 1e-10·ln x term.
+        val numSize = numC.map(math.abs).maxOption.getOrElse(0.0)
+        if rem.forall(r => math.abs(r) <= 1e-12 * numSize) then Some(polyPart)
         else integrateProperRational(rem, denC, v).map(pr => Sum(polyPart, pr))
       else integrateProperRational(numC, denC, v)
   yield simplifyFully(res)

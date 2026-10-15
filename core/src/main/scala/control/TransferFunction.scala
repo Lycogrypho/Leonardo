@@ -233,19 +233,27 @@ def isStableDiscrete(g: _Expression, v: _Variable): Option[Boolean] =
  *  @return the array, row by row from the highest power down, or `None`
  */
 def routhTable(g: _Expression, v: _Variable): Option[Vector[Vector[Double]]] =
+  // Each entry carries its magnitude, the size of the terms that formed it, and reads as zero
+  // only at RationalEps of that (F_0125). An absolute 1e-9 cut the table short for poles near
+  // 1e-6, where every entry below the first row is that small: three rows of four.
+  type Entry = (Double, Double)
+  def isZero(e: Entry): Boolean = math.abs(e._1) <= RationalEps * e._2
+
   /** The next row from the previous two; empty when the pivot vanishes (a degenerate case
    *  this tier reports rather than repairs — see [[isStable]] for why it is not consulted). */
-  def nextRow(a: Vector[Double], b: Vector[Double]): Vector[Double] =
-    val pivot = b.headOption.getOrElse(0.0)
-    if math.abs(pivot) < RationalEps then Vector.empty
+  def nextRow(a: Vector[Entry], b: Vector[Entry]): Vector[Entry] =
+    val pivot = b.headOption.getOrElse((0.0, 0.0))
+    if isZero(pivot) then Vector.empty
     else Vector.tabulate(math.max(0, a.size - 1)) { i =>
-      (pivot * a.lift(i + 1).getOrElse(0.0) - a.head * b.lift(i + 1).getOrElse(0.0)) / pivot
+      val (ai, bi) = (a.lift(i + 1).getOrElse((0.0, 0.0)), b.lift(i + 1).getOrElse((0.0, 0.0)))
+      ((pivot._1 * ai._1 - a.head._1 * bi._1) / pivot._1,
+       (math.abs(pivot._1) * ai._2 + a.head._2 * bi._2) / math.abs(pivot._1))
     }
 
-  def exhausted(r: Vector[Double]): Boolean = !r.exists(math.abs(_) > RationalEps)
+  def exhausted(r: Vector[Entry]): Boolean = r.forall(isZero)
 
   coeffsOf(g, v).map { (_, den) =>
-    val cs = den.reverse                      // descending powers
+    val cs = den.reverse.map(c => (c, math.abs(c)))   // descending powers, each its own magnitude
     val (first, second) = cs.zipWithIndex.partition(_._2 % 2 == 0)
     // The array is a two-term recurrence, so it unfolds from the pair of seed rows: the
     // even- and odd-indexed coefficients. At most `cs.size` rows, and it stops at the first
@@ -255,9 +263,10 @@ def routhTable(g: _Expression, v: _Variable): Option[Vector[Vector[Double]]] =
       .map(_._1).take(cs.size).toVector
     // Scanning from index 1: the leading coefficient is non-zero by construction (the
     // denominator arrives trimmed), so the seed row never terminates the array.
-    rows.indexWhere(exhausted, 1) match
+    val kept = rows.indexWhere(exhausted, 1) match
       case -1   => rows
       case stop => rows.take(stop + 1)
+    kept.map(_.map(_._1))
   }
 
 /** [[https://en.wikipedia.org/wiki/Frequency_response Frequency response]] of `G` at angular frequency `w`: substitute `v -> i*w`.

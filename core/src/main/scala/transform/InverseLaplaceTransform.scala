@@ -108,7 +108,7 @@ private def numericCoeffs(e: _Expression, s: _Variable): Option[Vector[Double]] 
     cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
       for tail <- acc; d <- asNumber(c) yield d +: tail
     }
-  }
+  }.map(atMagnitudeDegree(_, e, s, new Environment()))   // a genuine tiny top kept (F_0125)
 
 /** Evaluates `e` in an empty environment and returns the numeric value, or `None`. */
 private def asNumber(e: _Expression): Option[Double] =
@@ -208,7 +208,7 @@ private def invHigherDegree(
  *  map each surviving coefficient to its inverse-transform pair.
  */
 private def partialFractionTerms(ns: Vector[Double], ds: Vector[Double], t: _Variable): Option[Vector[_Expression]] =
-  val deg  = polyDegree(ds)
+  val deg  = degreeOf(ds)            // ds is cut to its magnitude-tracked degree (F_0125)
   val lead = ds(deg)
   // Square-free factorisation first: multiplicities arithmetically, roots only per part.
   val factored = squareFreeFactors(ds).foldLeft(Option((Vector.empty[(Double, Int)], Vector.empty[(Double, Double, Int)]))) {
@@ -251,8 +251,11 @@ private def partialFractionTerms(ns: Vector[Double], ds: Vector[Double], t: _Var
         val rhs = Array.tabulate(deg)(i => ns.lift(i).getOrElse(0.0))
         _MatrixValue(deg, deg, mat).inverse.flatMap { inv =>
           val x = inv.multiply(_MatrixValue(deg, 1, rhs)).toVector
+          // Dropped only as rounding beside the largest numerator (F_0125): an absolute 1e-12
+          // inverted 1e-13/((s+1)(s+2)(s+3)) to 0.
+          val xScale = x.map(math.abs).maxOption.getOrElse(0.0)
           val realTerms = columns.zipWithIndex.collect {
-            case ((PfTerm.Real(r, j), _), i) if math.abs(x(i)) > 1e-12 => invRealPower(x(i), r, j, t)
+            case ((PfTerm.Real(r, j), _), i) if math.abs(x(i)) > 1e-12 * xScale => invRealPower(x(i), r, j, t)
           }.toVector
           // Each quadratic power pairs its constant-numerator unknown with its s-numerator one.
           val quadTerms = columns.zipWithIndex.collect {

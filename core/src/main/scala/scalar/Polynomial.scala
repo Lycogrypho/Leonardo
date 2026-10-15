@@ -232,6 +232,21 @@ private def polish(p: Vector[Double], x0: Double, y0: Double): (Double, Double) 
   val (vr, vi, _, _) = hornerComplex(p, x0, y0)
   go(x0, y0, math.hypot(vr, vi), 8)
 
+/** `collect`'s coefficients (or any vector read from `e` in `v`) cut to the degree the
+ *  magnitude-tracked coefficients give, when `e` is a numeric polynomial; unchanged otherwise
+ *  (F_0121, shared by F_0125). `collect` tracks no magnitudes, so a rounding-residue top
+ *  coefficient would survive it; this drops that one and keeps a genuine tiny one.
+ *  @param cs  the coefficients, constant term first
+ *  @param e   the polynomial they were read from
+ *  @param v   the variable
+ *  @param env bindings
+ *  @return `cs` to the magnitude-tracked degree */
+private[leonardo] def atMagnitudeDegree[A](cs: Vector[A], e: _Expression, v: _Variable,
+                                           env: Environment): Vector[A] =
+  rationalCoeffsIn(e, v, env) match
+    case Some((num, den)) if degreeOf(den) == 0 => cs.take(math.max(degreeOf(num), 0) + 1)
+    case _                                     => cs
+
 /** The exact degree of a coefficient vector: the last non-zero coefficient, `-1` for none.  For
  *  vectors already trimmed by magnitude (from [[rationalCoeffs]]), where [[polyDegree]]'s
  *  absolute `RationalEps` would drop a genuine tiny top coefficient (F_0119).

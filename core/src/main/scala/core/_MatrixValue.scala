@@ -936,15 +936,18 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
     // near-zero diagonal entries of (A - λI) can be ≈ 1e-10 even for simple
     // eigenvalues.  A relative tolerance of 1e-8 (of the largest entry in b)
     // absorbs this without misclassifying genuine small pivots.
+    // Purely relative (F_0125): the 1e-12 floor sat above every entry of a matrix in units of
+    // 1e-14, and eig(1e-14·[[1, 1], [0, 2]]) returned (1, 0) for both eigenvectors. `<=` keeps an
+    // all-zero `b` (scale 0) a skipped column rather than a division by zero.
     val scale = b.foldLeft(0.0)((m, v) => math.max(m, math.abs(v)))
-    val tol   = math.max(1e-12, scale * 1e-8)
+    val tol   = scale * 1e-8
     while row < n && col < n do
       var maxAbs = 0.0; var maxRow = row; var r = row
       while r < n do
         val v = math.abs(a(r * n + col))
         if v > maxAbs then { maxAbs = v; maxRow = r }
         r += 1
-      if maxAbs < tol then col += 1
+      if maxAbs <= tol then col += 1
       else
         if maxRow != row then
           var k = 0
@@ -957,7 +960,8 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         while rr < n do
           if rr != row then
             val f = a(rr * n + col)
-            if math.abs(f) > 1e-15 then
+            // An exact test: an absolute 1e-15 left a row of a 1e-14 matrix uneliminated.
+            if f != 0.0 then
               var k = 0; while k < n do { a(rr*n+k) -= f * a(row*n+k); k += 1 }
           rr += 1
         row += 1; col += 1
@@ -987,15 +991,16 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
     val im = Array.tabulate(n * n)(k =>                             if k/n == k%n then -lIm else 0.0)
     val piv = Array.fill(n)(-1)
     var row = 0; var col = 0
+    // Purely relative, as in realNullVec (F_0125).
     val scale = re.zip(im).foldLeft(0.0) { case (m, (r, i)) => math.max(m, math.hypot(r, i)) }
-    val tol   = math.max(1e-12, scale * 1e-8)
+    val tol   = scale * 1e-8
     while row < n && col < n do
       var maxMag = 0.0; var maxRow = row; var r = row
       while r < n do
         val m = math.hypot(re(r*n+col), im(r*n+col))
         if m > maxMag then { maxMag = m; maxRow = r }
         r += 1
-      if maxMag < tol then col += 1
+      if maxMag <= tol then col += 1
       else
         if maxRow != row then
           var k = 0
@@ -1016,7 +1021,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
         while rr < n do
           if rr != row then
             val fRe = re(rr*n+col); val fIm = im(rr*n+col)
-            if math.hypot(fRe, fIm) > 1e-15 then
+            if fRe != 0.0 || fIm != 0.0 then
               var k = 0
               while k < n do
                 re(rr*n+k) -= fRe*re(row*n+k) - fIm*im(row*n+k)

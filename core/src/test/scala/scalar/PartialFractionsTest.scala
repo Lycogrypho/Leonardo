@@ -66,6 +66,19 @@ class PartialFractionsTest extends AnyFlatSpec:
     verifyRelative("(1e-12*x^3 + x^2 + 1)/(x + 1)", 0.0, 3.0, 1e6, 1e12)
   }
 
+  "a rational integral at a small scale" should "keep its numerators, its tiny coefficients, its remainder and its degree (F_0125)" in
+  {
+    // Every partial-fraction numerator of 1e-12/((x-1)(x-2)(x-3)) is below 1e-9: the antiderivative was 0.
+    verifyRelative("1e-12/((x - 1)*(x - 2)*(x - 3))", 4.0, 5.0, -1.0)
+    // A coefficient below 1e-15 folded to 0: ∫ 1e-16/(x + 1) was 0.
+    verifyRelative("1e-16/(x + 1)", 0.0, 3.0)
+    // The remainder 1e-10 of (x + 1e-10)/x was dropped, and with it 1e-10·ln x; near x = 1e-12
+    // that term is most of the integrand.
+    verifyRelative("(x + 1e-10)/x", 1e-12, 1.0)
+    // factorDenominator read 1e-10·x³ + x + 1 as linear through polyDegree, and declined.
+    verifyRelative("1/(1e-10*x^3 + x + 1)", 0.0, 3.0, 1e4)
+  }
+
   "a denominator whose x² coefficient is rounding residue" should "integrate as the linear denominator it is" in
   {
     verifyRelative("1/((0.1*x + 0.2)*(0.3*x) - 0.03*x^2)", 1.0, 1e3, -5.0)

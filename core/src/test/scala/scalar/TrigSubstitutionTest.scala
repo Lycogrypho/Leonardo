@@ -42,6 +42,16 @@ class TrigSubstitutionTest extends AnyFlatSpec:
                  s"d/dx ∫ $integrand at x=$p: got $got, want $want  (anti=$anti)")
         case (g, w) => fail(s"could not evaluate at x=$p ($g, $w); anti=$anti")
 
+  "a radicand at another scale" should "be judged at its own size (F_0125)" in
+  {
+    // (1 − 1e-12·x²)^0.5: the quadratic coefficient was below RationalEps, so the tier refused it.
+    verify("(1 - 1e-12*x^2)^0.5", 0.0, 3e5, 9e5)
+    // A genuine linear term is never dropped as negligible: the tier declines rather than answer
+    // ∫ (1 − x²)^0.5 in its place, which it did while 1e-10 sat below RationalEps.
+    val anti = integrate(parse("(1 + 1e-10*x - x^2)^0.5"), x)
+    assert(hasIntegral(anti), s"answered a different integral: $anti")
+  }
+
   // ── √(a² − v²): sine substitution ────────────────────────────────────────────
 
   "√(a² − v²) forms" should "close by sine substitution" in
