@@ -70,12 +70,40 @@ object Environment:
  *                        that has to be told is the parser, which decides what a literal
  *                        becomes.  That flag lives in `cli.Session` beside `pretty`; an
  *                        `Environment.exact` field would be read by nothing.
+ *  @param limits         the work and size budgets every call evaluated here runs under
+ *                        ([[Limits]], F_0124); each defaults to the value the library has
+ *                        always used. A library caller raises one with [[withLimit]]; the REPL
+ *                        and the browser keep the defaults.
  */
 class Environment(val precision: Int = Environment.DefaultPrecision,
                   private val variables: Map[String, _Value] = Map(),
                   val symmetricLogic: Boolean = false,
                   val semantics: LogicSemantics = LogicSemantics.MinMax,
-                  val workingPrecision: Int = Environment.DefaultWorkingPrecision):
+                  val workingPrecision: Int = Environment.DefaultWorkingPrecision,
+                  val limits: Limits = Limits.Default):
+
+  /** The published five-argument constructor, kept so that adding [[limits]] is binary-compatible
+   *  (MiMa): an existing caller compiled against it still links, with the default limits.
+   *  @param precision        see the class
+   *  @param variables        see the class
+   *  @param symmetricLogic   see the class
+   *  @param semantics        see the class
+   *  @param workingPrecision see the class */
+  def this(precision: Int, variables: Map[String, _Value], symmetricLogic: Boolean, semantics: LogicSemantics,
+           workingPrecision: Int) =
+    this(precision, variables, symmetricLogic, semantics, workingPrecision, Limits.Default)
+
+  /** This environment with every budget taken from `next`.
+   *  @param next the limits
+   *  @return the same bindings and settings under `next` */
+  def withLimits(next: Limits): Environment =
+    new Environment(precision, variables, symmetricLogic, semantics, workingPrecision, next)
+
+  /** This environment with one budget set (F_0124): `env.withLimit(Limit.MaxQpVariables, 2000)`.
+   *  @param limit the budget
+   *  @param value its new value, at least 1
+   *  @return the same bindings and settings with `limit` at `value` */
+  def withLimit(limit: Limit, value: Long): Environment = withLimits(limits.withLimit(limit, value))
 
   /** The reduction policy sized for this environment's working precision.
    *
@@ -102,4 +130,4 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
    *  @param value    the concrete value to associate
    */
   def withBinding(variable: String, value: _Value): Environment =
-    new Environment(precision, variables + (variable -> value), symmetricLogic, semantics, workingPrecision)
+    new Environment(precision, variables + (variable -> value), symmetricLogic, semantics, workingPrecision, limits)

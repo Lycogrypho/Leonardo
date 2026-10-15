@@ -38,15 +38,19 @@ case class LpResult(x: Vector[_Value], objective: _Value, iterations: Int, activ
  *  the time and these two only the work per pivot.  **Neither does, as F_0105 measured**: dense
  *  integer problems at 40 × 80 with entries `0 … 9` and every cost negative take 25–217 pivots,
  *  3–139 s on Node and 0.5–26 s on the JVM, and never reach [[MaxLpBits]]; F_0115 holds the
- *  decision on a cap that bounds the time. */
-val MaxLpVariables: Int = 40
+ *  decision on a cap that bounds the time.
+ *
+ *  This and the three caps below are the **defaults** of their [[core.Limit]]s (F_0124): a
+ *  library caller raises one through [[core.Environment.withLimit]] or the [[lpSolve]] overload
+ *  taking [[core.Limits]]. */
+val MaxLpVariables: Int = Limit.MaxLpVariables.default.toInt
 
 /** The largest number of constraint rows (inequalities and equalities); see [[MaxLpVariables]]. */
-val MaxLpConstraints: Int = 80
+val MaxLpConstraints: Int = Limit.MaxLpConstraints.default.toInt
 
 /** The pivot cap.  Bland's rule cannot cycle, but its worst case is exponential; at the sizes
  *  accepted the measured problems take tens of pivots. */
-val MaxLpPivots: Int = 20000
+val MaxLpPivots: Int = Limit.MaxLpPivots.default.toInt
 
 /** The largest exact coefficient, in bits of numerator plus denominator, before [[lpSolve]]
  *  declines — meant as the cap that bounds the time, since the dimension does not; it does not
@@ -56,7 +60,7 @@ val MaxLpPivots: Int = 20000
  *  the right-hand sides and the reduced costs.  The input is not measured on its own: a large
  *  coefficient costs nothing until a pivot combines it, and the first pivot that does is
  *  measured. */
-val MaxLpBits: Int = 2048
+val MaxLpBits: Int = Limit.MaxLpBits.default.toInt
 
 
 /** Minimises `fᵀx` subject to `A x ≤ b`, `Aeq x = beq` and `lb ≤ x ≤ ub`, **exactly** (F_0011).
@@ -84,17 +88,35 @@ val MaxLpBits: Int = 2048
 def lpSolve(f: Vector[_Value],
             a: Option[(Vector[Vector[_Value]], Vector[_Value])], eq: Option[(Vector[Vector[_Value]], Vector[_Value])],
             lb: Vector[_Value], ub: Vector[_Value]): Either[LpFailure, LpResult] =
+  lpSolve(f, a, eq, lb, ub, Limits.Default)
+
+/** [[lpSolve]] under `limits` (F_0124): the dimension, pivot and coefficient caps are
+ *  [[core.Limit.MaxLpVariables]], `MaxLpConstraints`, `MaxLpPivots` and `MaxLpBits`. An overload
+ *  rather than a defaulted parameter, which would be a binary break.
+ *
+ *  @param f      the cost vector
+ *  @param a      the inequality rows and their right-hand side, or `None`
+ *  @param eq     the equality rows and their right-hand side, or `None`
+ *  @param lb     lower bounds, `-inf` for none
+ *  @param ub     upper bounds, `inf` for none
+ *  @param limits the budgets the solve runs under
+ *  @return the optimal vertex, or why there is none
+ */
+def lpSolve(f: Vector[_Value],
+            a: Option[(Vector[Vector[_Value]], Vector[_Value])], eq: Option[(Vector[Vector[_Value]], Vector[_Value])],
+            lb: Vector[_Value], ub: Vector[_Value], limits: Limits): Either[LpFailure, LpResult] =
   val n = f.size
+  val (maxVars, maxRows) = (limits.count(Limit.MaxLpVariables), limits.count(Limit.MaxLpConstraints))
   def bad(d: String): Either[LpFailure, LpResult] = Left(LpFailure.InvalidInput(d))
   val finite = (f ++ a.toList.flatMap((r, b) => r.flatten ++ b) ++ eq.toList.flatMap((r, b) => r.flatten ++ b))
   val bounds = lb ++ ub
   def rows(g: Option[(Vector[Vector[_Value]], Vector[_Value])]) = g.fold(0)(_._2.size)
   if n == 0 then bad("there must be at least one variable")
-  else if n > MaxLpVariables then bad(s"at most $MaxLpVariables variables are accepted, not $n")
+  else if n > maxVars then bad(s"at most $maxVars variables are accepted, not $n")
   else if lb.size != n || ub.size != n then bad(s"lb and ub must each have $n entries")
   else if List(a, eq).flatten.exists((r, b) => r.size != b.size || r.exists(_.size != n)) then
     bad(s"every constraint row must have $n entries, one right-hand side per row")
-  else if rows(a) + rows(eq) > MaxLpConstraints then bad(s"at most $MaxLpConstraints constraints are accepted")
+  else if rows(a) + rows(eq) > maxRows then bad(s"at most $maxRows constraints are accepted")
   else
     (sequence(finite.toList.map(rational(_, allowInfinite = false))), sequence(bounds.toList.map(rational(_, allowInfinite = true)))) match
       case (None, _) | (_, None) => bad("every coefficient must be a finite number, every bound a number or ±inf")
@@ -103,7 +125,7 @@ def lpSolve(f: Vector[_Value],
         def q(v: _Value): Q = rational(v, allowInfinite = false).flatten.getOrElse(Q.zero)
         def bound(v: _Value): Option[Q] = rational(v, allowInfinite = true).flatten
         LpProblem(f.map(q), a.map((r, b) => (r.map(_.map(q)), b.map(q))), eq.map((r, b) => (r.map(_.map(q)), b.map(q))),
-                  lb.map(bound), ub.map(bound)).solve.map(_.result(exact))
+                  lb.map(bound), ub.map(bound)).solve(limits).map(_.result(exact))
 
 /** A value as a rational: `Some(Some(q))` for a finite number, `Some(None)` for an infinite
  *  bound when `allowInfinite`, `None` for anything else. */
@@ -128,7 +150,7 @@ private final case class LpProblem(f: Vector[Q], a: Option[(Vector[Vector[Q]], V
   /** `xᵢ = offsetᵢ + Σ coefficient·yⱼ`, one or two standard variables per original one. */
   private final case class Map1(offset: Q, terms: List[(Int, Q)])
 
-  def solve: Either[LpFailure, Solved] =
+  def solve(limits: Limits): Either[LpFailure, Solved] =
     if (0 until n).exists(i => (lb(i), ub(i)) match { case (Some(l), Some(u)) => l > u; case _ => false }) then
       Left(LpFailure.Infeasible)
     else
@@ -160,7 +182,7 @@ private final case class LpProblem(f: Vector[Q], a: Option[(Vector[Vector[Q]], V
         (c, bs(k) - shift)
       })
       val (cy, cShift) = inY(f)
-      Tableau.solve(cy, ineq.map((c, b, _) => (c, b)), eqs).map { (y, pivots) =>
+      Tableau.solve(cy, ineq.map((c, b, _) => (c, b)), eqs, limits).map { (y, pivots) =>
         val x = maps.map(m => m.terms.foldLeft(m.offset)((acc, t) => acc + t._2 * y(t._1)))
         val slackZero = ineq.indices.map { k =>
           val (c, b, _) = ineq(k)
@@ -188,7 +210,9 @@ private final case class Solved(x: Vector[Q], objective: Q, pivots: Int, active:
 private object Tableau:
 
   /** Minimises `cᵀy` on `ineq` (`≤`) and `eqs` (`=`), `y ≥ 0`: the optimal `y` and the pivots. */
-  def solve(c: Vector[Q], ineq: List[(Vector[Q], Q)], eqs: List[(Vector[Q], Q)]): Either[LpFailure, (Vector[Q], Int)] =
+  def solve(c: Vector[Q], ineq: List[(Vector[Q], Q)], eqs: List[(Vector[Q], Q)],
+            limits: Limits): Either[LpFailure, (Vector[Q], Int)] =
+    val (maxPivots, maxBits) = (limits.count(Limit.MaxLpPivots), limits.count(Limit.MaxLpBits))
     val ny = c.size
     val ns = ineq.size
     // Rows `[coefficients | slacks | rhs]`, each negated if its right-hand side is negative so
@@ -245,8 +269,8 @@ private object Tableau:
       red = Array.tabulate(width)(j => (0 until m).filter(live).foldLeft(cost(j))((acc, i) => acc - cost(basis(i)) * t(i)(j)))
       var result: Option[Either[LpFailure, Unit]] = None
       while result.isEmpty do
-        if pivots >= MaxLpPivots then result = Some(Left(LpFailure.MaxIterations(MaxLpPivots)))
-        else if widest > MaxLpBits then result = Some(Left(LpFailure.TooLarge(widest)))
+        if pivots >= maxPivots then result = Some(Left(LpFailure.MaxIterations(maxPivots)))
+        else if widest > maxBits then result = Some(Left(LpFailure.TooLarge(widest)))
         else
           val inBasis = basis.toSet
           (0 until width).find(j => allowed(j) && !inBasis.contains(j) && red(j).signum < 0) match

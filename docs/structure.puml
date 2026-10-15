@@ -205,11 +205,28 @@ package "core" {
         + workingPrecision: Int  (exact tier; default 30)
         + symmetricLogic: Boolean  (truth-value encoding)
         + semantics: LogicSemantics  (t-norm family)
+        + limits: Limits  (work and size budgets, F_0124)
         + get(name: String): Option
         + withBinding(name, v): Environment
+        + withLimit(l, n) / withLimits(ls): Environment
         __ companion __
         DefaultPrecision: Int = 5
         DefaultWorkingPrecision: Int = 30
+    }
+
+    enum "Limit" <<data>> [[developer.html]] {
+        MaxQpVariables, MaxLpBits, MaxGroebnerBasis, ...
+        + default: Long  (the published constant's value)
+        one case per work or size budget (F_0124);
+        the optimize package so far
+    }
+
+    class "Limits" <<data>> [[developer.html]] {
+        + apply(l: Limit): Long
+        + count(l: Limit): Int
+        + withLimit(l, n): Limits  (refuses n < 1)
+        __ companion __
+        Default: Limits
     }
 
     "_Value"        --|> "_Expression"
@@ -229,6 +246,8 @@ package "core" {
     "_Rational"    ..>  "GcdPolicy"    : reduction policy per operation
     "_Rational"    ..>  "Environment"  : workingPrecision + rationalPolicy
     "Environment"  ..>  "LogicSemantics" : t-norm family field
+    "Environment"  -->  "Limits"         : limits
+    "Limits"       ..>  "Limit"          : overrides over defaults
 
     class "_Heaviside" <<case>> [[expressions.html]] {
         + arg: _Expression

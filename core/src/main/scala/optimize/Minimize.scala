@@ -78,8 +78,11 @@ case class MinimizeResult(x: Vector[Double], value: Double, iterations: Int, gra
  *  cap after 79 ms with the gradient still at 0.014 and declines — the honest answer for that
  *  method there, so the cap is not raised to flatter it.  2000 is more than fifty times every
  *  converging case.
+ *
+ *  The **default** of [[core.Limit.MaxMinimizeIterations]] (F_0124); a caller raises it through
+ *  [[core.Environment.withLimit]].
  */
-val MaxMinimizeIterations: Int = 2000
+val MaxMinimizeIterations: Int = Limit.MaxMinimizeIterations.default.toInt
 
 
 /** Minimises `f` over `vars` from `x0`, optionally inside the box `lb ≤ x ≤ ub`
@@ -138,6 +141,9 @@ private final class Problem(f: _Expression, vars: Vector[_Variable], env: Enviro
 
   /** The certificate's bound on `stationarity`: the number `=` uses. */
   val tolerance: Double = 0.5 * math.pow(10, -env.precision)
+
+  /** The iteration cap this run is held to (F_0124). */
+  val maxIterations: Int = env.limits.count(Limit.MaxMinimizeIterations)
 
   private def bound(x: Vector[Double]): Environment =
     vars.zip(x).foldLeft(env) { case (acc, (v, d)) => acc.withBinding(v.variable, _Number(d)) }
@@ -212,8 +218,8 @@ private def certify(p: Problem, s: Double, x: Vector[Double], fx: Double, g: Vec
  *  reached, and one that does not is the iteration limit. */
 private def atCap(p: Problem, s: Double, x: Vector[Double], fx: Double,
                   g: Vector[Double]): Either[MinimizeFailure, MinimizeResult] =
-  if s <= p.tolerance then Right(MinimizeResult(x, fx, MaxMinimizeIterations, normInf(g)))
-  else Left(MinimizeFailure.MaxIterations(MaxMinimizeIterations, normInf(g)))
+  if s <= p.tolerance then Right(MinimizeResult(x, fx, p.maxIterations, normInf(g)))
+  else Left(MinimizeFailure.MaxIterations(p.maxIterations, normInf(g)))
 
 /** Whether the step made no measurable progress, in the point and in the value. */
 private def stagnant(x: Vector[Double], xn: Vector[Double], fx: Double, fn: Double): Boolean =
@@ -231,7 +237,7 @@ private def newton(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Mini
         case Some(g) =>
           val s = stationarity(g, x, x0, f0, fx)
           if s <= Target then certify(p, s, x, fx, g, k)
-          else if k >= MaxMinimizeIterations then atCap(p, s, x, fx, g)
+          else if k >= p.maxIterations then atCap(p, s, x, fx, g)
           else p.hess(x).flatMap(h => choleskySolve(h, p.n, g)) match
             case None => Left(MinimizeFailure.HessianNotPositiveDefinite(k))
             case Some(step) =>
@@ -257,7 +263,7 @@ private def bfgs(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Minimi
            k: Int, f0: Double): Either[MinimizeFailure, MinimizeResult] =
     val st = stationarity(g, x, x0, f0, fx)
     if st <= Target then certify(p, st, x, fx, g, k)
-    else if k >= MaxMinimizeIterations then atCap(p, st, x, fx, g)
+    else if k >= p.maxIterations then atCap(p, st, x, fx, g)
     else
       val d0 = h.map(row => -dot(row, g))
       // A direction that does not descend means the approximation has gone bad: restart it.
@@ -320,7 +326,7 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
     val pg = projected(x, g)
     val st = stationarity(pg, x, x0, f0, fx)
     if st <= Target then certify(p, st, x, fx, pg, k)
-    else if k >= MaxMinimizeIterations then atCap(p, st, x, fx, pg)
+    else if k >= p.maxIterations then atCap(p, st, x, fx, pg)
     else
       val active = Vector.tabulate(n)(i => isActive(x, g, i))
       val raw =

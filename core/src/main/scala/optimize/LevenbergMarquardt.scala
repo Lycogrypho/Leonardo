@@ -131,7 +131,7 @@ private def levenbergMarquardt(res: Residual, p0: Vector[Double], box: (Vector[D
         val active = (0 until n).filterNot(free.contains).toVector
         Right(LsqResult(p.toVector, math.sqrt(sumSq(r)), k,
                         if active.isEmpty then covariance(j, r) else None, active))
-      case _ => Left(if atCap then LsqFailure.MaxIterations(MaxLsqIterations, c) else LsqFailure.Stalled(c))
+      case _ => Left(if atCap then LsqFailure.MaxIterations(env.limits.count(Limit.MaxLsqIterations), c) else LsqFailure.Stalled(c))
 
   /** The scaled, damped step over the free parameters: QR of `[J_F·D⁻¹; √λ·I]` against
    *  `[−r; 0]`, never the normal equations. */
@@ -158,7 +158,7 @@ private def levenbergMarquardt(res: Residual, p0: Vector[Double], box: (Vector[D
     val g    = jtr(j, r, m, n)
     val free = freeOf(p, g)
     if free.isEmpty || cosine(j, r, g, free) <= LsqTarget || exactFit(p, r) then finish(p, r, j, k, atCap = false)
-    else if k >= MaxLsqIterations then finish(p, r, j, k, atCap = true)
+    else if k >= env.limits.count(Limit.MaxLsqIterations) then finish(p, r, j, k, atCap = true)
     else if lambda > MaxDamping then finish(p, r, j, k, atCap = false)
     else
       val f = 0.5 * sumSq(r)
@@ -182,7 +182,7 @@ private def levenbergMarquardt(res: Residual, p0: Vector[Double], box: (Vector[D
             val dn = Array.tabulate(n)(i => math.max(d(i), cn(i)))
             loop(pn, rn, jn, dn, lambda * math.max(1.0 / 3, 1 - math.pow(2 * rho - 1, 3)), 2.0, k + 1)
 
-  if m.toLong * n * n > MaxLsqWork then Left(LsqFailure.TooLarge(m, n))
+  if m.toLong * n * n > env.limits(Limit.MaxLsqWork) then Left(LsqFailure.TooLarge(m, n))
   else
     val p = clamp(p0.toArray)
     (for r <- res.values(p); j <- res.jacobian(p) yield (r, j)) match

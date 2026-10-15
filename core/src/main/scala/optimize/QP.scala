@@ -75,17 +75,20 @@ case class QpMultipliers(inequality: Vector[Double], equality: Vector[Double],
 /** The iteration cap: additions plus drops of active constraints.  Measured (F_0053, JVM, random
  *  problems with half the variables' worth of constraints active): 35 iterations at 50 variables
  *  and 200 constraints, 170 at 200 / 800, 368 at 500 / 2000 — roughly 0.7 per variable — so 2000
- *  leaves a wide margin while bounding the worst case at the largest size to tens of seconds. */
-val MaxQpIterations: Int = 2000
+ *  leaves a wide margin while bounding the worst case at the largest size to tens of seconds.
+ *
+ *  This and the two caps below are the **defaults** of their [[core.Limit]]s (F_0124); a caller
+ *  raises one through [[core.Environment.withLimit]]. */
+val MaxQpIterations: Int = Limit.MaxQpIterations.default.toInt
 
 /** The largest number of variables accepted, checked before any work.  Measured: a cold solve
  *  takes 9.6 ms at 50 variables, 51 ms at 100, 173 ms at 200 and 4.3 s at 500, the setup growing
  *  as `m·n²` — 500 is where it stops being interactive, the `MaxSampleCount` rule in time. */
-val MaxQpVariables: Int = 500
+val MaxQpVariables: Int = Limit.MaxQpVariables.default.toInt
 
 /** The largest number of constraint rows (inequalities, equalities and finite bounds), the
  *  companion of [[MaxQpVariables]]: 2000 rows at 500 variables is the 4.3 s point above. */
-val MaxQpConstraints: Int = 2000
+val MaxQpConstraints: Int = Limit.MaxQpConstraints.default.toInt
 
 /** Minimises `½ zᵀHz + fᵀz` subject to `A z ≤ b`, `Aeq z = beq` and `lb ≤ z ≤ ub` (F_0053).
  *
@@ -115,19 +118,21 @@ val MaxQpConstraints: Int = 2000
  *  @param ub   upper bounds, `n` entries, `+∞` for none
  *  @param warm constraints believed active, typically the previous solve's [[QpResult.active]];
  *              only the iteration count depends on it, never the answer
- *  @param env  supplies the precision the certificate is held to
+ *  @param env  supplies the precision the certificate is held to, and the budgets (F_0124):
+ *              [[core.Limit.MaxQpVariables]], `MaxQpConstraints`, `MaxQpIterations`, and the
+ *              LP's caps for a semidefinite `H`'s feasible start
  *  @return the certified optimum, or why there is none
  */
 def qpSolve(h: _MatrixValue, f: Vector[Double],
             ineq: Option[(_MatrixValue, Vector[Double])], eq: Option[(_MatrixValue, Vector[Double])],
             lb: Vector[Double], ub: Vector[Double],
             warm: Set[QpConstraint], env: Environment): Either[QpFailure, QpResult] =
-  QpProblem.build(h, f, ineq, eq, lb, ub).flatMap { prob =>
+  QpProblem.build(h, f, ineq, eq, lb, ub, env.limits).flatMap { prob =>
     prob.inverseHessian match
-      case Right(hinv) => QpSolver(prob, hinv, env.precision).solve(warm)
+      case Right(hinv) => QpSolver(prob, hinv, env.precision, env.limits).solve(warm)
       // F_0074: a semidefinite H goes to the primal active-set method, from an exact LP vertex.
       case Left(QpFailure.NotStrictlyConvex) =>
-        feasiblePoint(f.size, ineq, eq, lb, ub).flatMap(PrimalActiveSet(prob, env.precision).solve(_, warm))
+        feasiblePoint(f.size, ineq, eq, lb, ub, env.limits).flatMap(PrimalActiveSet(prob, env.precision, env.limits).solve(_, warm))
       case Left(other) => Left(other)
   }
 
@@ -136,10 +141,10 @@ def qpSolve(h: _MatrixValue, f: Vector[Double],
  *  [[QpFailure.FeasibleStart]] carrying it (F_0106): the LP checks its own dimension caps before
  *  any work, so they are not restated here, where a second copy could drift from them. */
 private def feasiblePoint(n: Int, ineq: Option[(_MatrixValue, Vector[Double])], eq: Option[(_MatrixValue, Vector[Double])],
-                          lb: Vector[Double], ub: Vector[Double]): Either[QpFailure, Array[Double]] =
+                          lb: Vector[Double], ub: Vector[Double], limits: Limits): Either[QpFailure, Array[Double]] =
   def group(g: Option[(_MatrixValue, Vector[Double])]) =
     g.map((a, b) => (Vector.tabulate(a.rows)(i => Vector.tabulate(a.cols)(j => _Number(a(i, j)): _Value)), b.map(_Number(_): _Value)))
-  lpSolve(Vector.fill(n)(_Number(0.0)), group(ineq), group(eq), lb.map(_Number(_)), ub.map(_Number(_))) match
+  lpSolve(Vector.fill(n)(_Number(0.0)), group(ineq), group(eq), lb.map(_Number(_)), ub.map(_Number(_)), limits) match
     case Right(r) => Right(r.x.map { case _Number(d) => d; case _ => Double.NaN }.toArray)
     case Left(LpFailure.Infeasible) => Left(QpFailure.Infeasible)
     case Left(why) => Left(QpFailure.FeasibleStart(why))
@@ -256,7 +261,8 @@ private object QpProblem:
 
   def build(h: _MatrixValue, f: Vector[Double],
             ineq: Option[(_MatrixValue, Vector[Double])], eq: Option[(_MatrixValue, Vector[Double])],
-            lb: Vector[Double], ub: Vector[Double]): Either[QpFailure, QpProblem] =
+            lb: Vector[Double], ub: Vector[Double], limits: Limits): Either[QpFailure, QpProblem] =
+    val (maxVars, maxRows) = (limits.count(Limit.MaxQpVariables), limits.count(Limit.MaxQpConstraints))
     val n = h.rows
     def bad(detail: String) = Left(QpFailure.InvalidInput(detail))
     def finite(xs: Iterable[Double]) = xs.forall(d => !d.isNaN && !d.isInfinite)
@@ -270,7 +276,7 @@ private object QpProblem:
           else Right(Vector.tabulate(a.rows)(k => (Array.tabulate(n)(j => a(k, j)), b(k))))
     val maxH  = h.toVector.map(math.abs).maxOption.getOrElse(0.0)
     if h.rows != h.cols then bad("H must be square")
-    else if n > MaxQpVariables then bad(s"at most $MaxQpVariables variables are accepted, not $n")
+    else if n > maxVars then bad(s"at most $maxVars variables are accepted, not $n")
     else if f.size != n || lb.size != n || ub.size != n then bad(s"f, lb and ub must each have $n entries")
     else if !finite(h.toVector) || !finite(f) then bad("H and f must be finite")
     else if lb.exists(_.isNaN) || ub.exists(_.isNaN) then bad("a bound is not a number")
@@ -287,14 +293,16 @@ private object QpProblem:
                ins.zipWithIndex.map { case ((a, b), k) => QpRow(a.map(-_), -b, Some(QpConstraint.Row(k))) } ++
                (0 until n).filter(i => lb(i) > Double.NegativeInfinity).map(i => QpRow(unit(i, 1.0), lb(i), Some(QpConstraint.Lower(i)))) ++
                (0 until n).filter(i => ub(i) < Double.PositiveInfinity).map(i => QpRow(unit(i, -1.0), -ub(i), Some(QpConstraint.Upper(i))))
-        _ <- if rows.size > MaxQpConstraints then bad(s"at most $MaxQpConstraints constraints are accepted, not ${rows.size}")
+        _ <- if rows.size > maxRows then bad(s"at most $maxRows constraints are accepted, not ${rows.size}")
              else Right(())
       yield QpProblem(n, h, f.toArray, rows)
 
 
 /** The Goldfarb–Idnani iteration over one validated problem; see [[qpSolve]]. */
-private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precision: Int):
+private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precision: Int, limits: Limits):
   import prob.{n, rows}
+
+  private val maxIterations = limits.count(Limit.MaxQpIterations)
 
   private val certTol = 0.5 * math.pow(10.0, -precision)
   /** Decisions inside the iteration are held tighter than the certificate, so a point the
@@ -362,7 +370,7 @@ private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precis
 
   /** Adds the most violated inactive inequality, or certifies when none is violated. */
   @tailrec private def outer(s: State): Either[QpFailure, QpResult] =
-    if s.iters > MaxQpIterations then Left(QpFailure.MaxIterations(MaxQpIterations))
+    if s.iters > maxIterations then Left(QpFailure.MaxIterations(maxIterations))
     else
       val candidates = rows.indices.filterNot(s.act.contains).filterNot(rows(_).isEquality)
         .map(j => (qpRelative(rows(j).slack(s.x), prob.rowScale(rows(j), s.x)), j))
@@ -374,7 +382,7 @@ private final class QpSolver(prob: QpProblem, hinv: Array[Array[Double]], precis
 
   /** One constraint `p` is brought into the active set by full and partial steps. */
   @tailrec private def step(s: State, p: Int, up: Double): Either[QpFailure, State] =
-    if s.iters > MaxQpIterations then Left(QpFailure.MaxIterations(MaxQpIterations))
+    if s.iters > maxIterations then Left(QpFailure.MaxIterations(maxIterations))
     else direction(s.act, p) match
       case None => Left(QpFailure.Uncertified(Double.PositiveInfinity))
       case Some((r, z, curvature)) =>
@@ -469,8 +477,10 @@ private def qpMultipliers(prob: QpProblem, act: Vector[Int], u: Vector[Double]):
  *  blocking constraint, which joins the working set.  At a zero step the multipliers decide:
  *  all non-negative is optimal (certified by the shared [[qpCertificate]]), otherwise the
  *  lowest-index negative one leaves.  Lowest-index choices throughout, against cycling. */
-private final class PrimalActiveSet(prob: QpProblem, precision: Int):
+private final class PrimalActiveSet(prob: QpProblem, precision: Int, limits: Limits):
   import prob.{n, rows}
+
+  private val maxIterations = limits.count(Limit.MaxQpIterations)
 
   private val certTol = 0.5 * math.pow(10.0, -precision)
   private val iterTol = math.max(1e-14, math.min(1e-10, certTol / 10))
@@ -561,7 +571,7 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int):
 
     @annotation.tailrec
     def loop(x: Array[Double], w: Vector[Int], it: Int): Either[QpFailure, QpResult] =
-      if it > MaxQpIterations then Left(QpFailure.MaxIterations(MaxQpIterations))
+      if it > maxIterations then Left(QpFailure.MaxIterations(maxIterations))
       else move(x, w) match
         case None => Left(QpFailure.Uncertified(Double.PositiveInfinity))
         case Some(Move.Ray(d)) =>

@@ -21,23 +21,26 @@ import spire.math.Rational as Q
  *  6 elements before minimisation; at 24 cyclic-5 declines in 0.2–0.7 s on the JVM and
  *  0.75–0.9 s on Node, and every one of them still answers.  **The coefficient cap could not
  *  be the lever**: a 2×2 system with general decimal coefficients needs 1259 bits, since a
- *  `Double` is read as the dyadic rational it holds. */
-val MaxGroebnerBasis: Int = 24
+ *  `Double` is read as the dyadic rational it holds.
+ *
+ *  This and the three caps below are the **defaults** of their [[core.Limit]]s (F_0124); a
+ *  caller raises one through [[core.Environment.withLimit]]. */
+val MaxGroebnerBasis: Int = Limit.MaxGroebnerBasis.default.toInt
 
 /** The highest total degree an element of the basis may reach before [[groebnerBasis]]
  *  declines — a lex basis's last element carries the whole system's Bézout number as its degree,
  *  which is what the elimination solver then root-finds. */
-val MaxGroebnerDegree: Int = 24
+val MaxGroebnerDegree: Int = Limit.MaxGroebnerDegree.default.toInt
 
 /** The largest coefficient, in bits of numerator plus denominator, before [[groebnerBasis]]
  *  declines: exact arithmetic does not round, it grows, and a lex basis is where it grows.
  *  Checked at every reduction step, which is what bounds a decline's time: without it,
  *  cyclic-5's reduction ran for minutes (F_0122). A 2×2 system with decimal coefficients
  *  needs 1259 bits, so neither 512 nor 1024 is enough. */
-val MaxGroebnerCoefficientBits: Int = 4096
+val MaxGroebnerCoefficientBits: Int = Limit.MaxGroebnerCoefficientBits.default.toInt
 
 /** The S-polynomial reductions [[groebnerBasis]] may perform before declining. */
-val MaxGroebnerReductions: Int = 2000
+val MaxGroebnerReductions: Int = Limit.MaxGroebnerReductions.default.toInt
 
 
 /** The reduced Gröbner basis of the polynomials `eqs` in `unknowns`, under the lexicographic
@@ -68,10 +71,11 @@ val MaxGroebnerReductions: Int = 2000
 def groebnerBasis(eqs: List[_Expression], unknowns: List[_Variable],
                   env: Environment): Option[List[_Expression]] =
   val names = unknowns.map(_.variable).toVector
-  val read  = eqs.map(e => GPoly.from(substitute(e, boundParameters(eqs, names.toSet, env)), names))
+  val read  = eqs.map(e => GPoly.from(substitute(e, boundParameters(eqs, names.toSet, env)), names,
+                                      env.limits.count(Limit.MaxGroebnerDegree)))
   sequence(read).flatMap { ps =>
     val exact = ps.forall(_._2)
-    buchberger(ps.map(_._1).filterNot(_.isZero)).map(_.map(_.toExpression(unknowns, exact)))
+    buchberger(ps.map(_._1).filterNot(_.isZero), env.limits).map(_.map(_.toExpression(unknowns, exact)))
   }
 
 
@@ -159,7 +163,7 @@ private object GPoly:
 
   /** Reads `e` as a polynomial in `names`, with whether every coefficient was exact; `None`
    *  for anything else. `_Rational` is matched BEFORE `_Number`, whose extractor widens. */
-  def from(e: _Expression, names: Vector[String]): Option[(GPoly, Boolean)] =
+  def from(e: _Expression, names: Vector[String], maxDegree: Int = MaxGroebnerDegree): Option[(GPoly, Boolean)] =
     val n = names.size
     def go(e: _Expression): Option[(GPoly, Boolean)] = e match
       case r: _Rational => Some((constant(n, Q(r.num, r.den)), true))
@@ -178,8 +182,8 @@ private object GPoly:
         yield (p.shifted(q.lead._2.reciprocal, Vector.fill(n)(0)), x && y)
       case Power(b, k) =>
         val exponent = k match
-          case r: _Rational if r.den == 1 && r.num >= 0 && r.num <= MaxGroebnerDegree => Some((r.num.toInt, true))
-          case _Number(d) if d == math.floor(d) && d >= 0 && d <= MaxGroebnerDegree     => Some((d.toInt, false))
+          case r: _Rational if r.den == 1 && r.num >= 0 && r.num <= maxDegree => Some((r.num.toInt, true))
+          case _Number(d) if d == math.floor(d) && d >= 0 && d <= maxDegree     => Some((d.toInt, false))
           case _                                                                         => None
         for (p, x) <- go(b); (m, y) <- exponent yield ((1 to m).foldLeft(constant(n, Q.one))((acc, _) => acc * p), x && y)
       case _ => None
@@ -224,13 +228,15 @@ private object GPoly:
 
 /** Buchberger's algorithm with the coprime-leading-term criterion and the normal selection
  *  strategy (the pair with the smallest lcm first), then interreduction; `None` past a cap. */
-private def buchberger(input: List[GPoly]): Option[List[GPoly]] =
+private def buchberger(input: List[GPoly], limits: Limits): Option[List[GPoly]] =
+  val (maxBasis, maxDegree) = (limits.count(Limit.MaxGroebnerBasis), limits.count(Limit.MaxGroebnerDegree))
+  val (maxBits, maxWork)    = (limits.count(Limit.MaxGroebnerCoefficientBits), limits.count(Limit.MaxGroebnerReductions))
   val n = input.headOption.map(_.lead._1.length).getOrElse(0)
   val one = GPoly(Map(Vector.fill(n)(0) -> Q.one))
   def lcm(a: Mono, b: Mono): Mono = a.lazyZip(b).map(math.max)
   def divides(a: Mono, b: Mono): Boolean = a.lazyZip(b).forall(_ <= _)
   def quotient(b: Mono, a: Mono): Mono = b.lazyZip(a).map(_ - _)
-  def withinCaps(p: GPoly): Boolean = p.degree <= MaxGroebnerDegree && p.bits <= MaxGroebnerCoefficientBits
+  def withinCaps(p: GPoly): Boolean = p.degree <= maxDegree && p.bits <= maxBits
 
   /** The full remainder of `p` on division by `g`; `None` when a cap is passed on the way. */
   def reduce(p: GPoly, g: Vector[GPoly]): Option[GPoly] =
@@ -256,7 +262,7 @@ private def buchberger(input: List[GPoly]): Option[List[GPoly]] =
     if basis.exists(_.isConstant) then Some(Vector(one))
     else pairs match
       case Nil => Some(basis)
-      case _ if work >= MaxGroebnerReductions || basis.size > MaxGroebnerBasis => None
+      case _ if work >= maxWork || basis.size > maxBasis => None
       case _ =>
         val (i, j) = pairs.minBy((a, b) => {
           val l = lcm(basis(a).lead._1, basis(b).lead._1)

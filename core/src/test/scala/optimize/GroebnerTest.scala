@@ -90,9 +90,11 @@ class GroebnerTest extends AnyFlatSpec:
     val r  = eliminate(cyclic, vars("a", "b", "c", "d", "e"), env)
     val seconds = (System.nanoTime() - t0) / 1e9
     assert(r.isEmpty, "declined rather than answered past the caps")
-    // F_0122: 0.2–0.7 s on the JVM and 0.75–0.9 s on Node with the basis capped at 24. At 40 it
-    // took 3–5.4 s on Node and failed the old 10 s bound once in a loaded full run.
-    assert(seconds < 5, s"took $seconds s")
+    // F_0122: 0.2–0.7 s on the JVM and 0.75–0.9 s on Node alone, with the basis capped at 24; at
+    // 40 it took 3–5.4 s on Node alone and 10.07 s in a loaded run. A bound must hold under the
+    // full suite's load, which runs the JVM and Node suites at once: there it took 5.9 s once, and
+    // F_0122's first bound, 5 s, set from unloaded timings, failed. 10 s keeps 1.7× over that.
+    assert(seconds < 10, s"took $seconds s")
   }
 
   it should "solve a system with general decimal coefficients, which needs coefficients past 1024 bits (F_0122)" in

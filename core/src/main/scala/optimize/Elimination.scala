@@ -14,7 +14,7 @@ import scalar.*
  *  `n = 10` — and at `n = 11` (2048 points) passes the cap and declines after 0.16 s.  So the
  *  cap bounds an answer near two thousand points and its cost well under a second.
  */
-val MaxEliminationSteps: Int = 4000
+val MaxEliminationSteps: Int = Limit.MaxEliminationSteps.default.toInt
 
 /** A solution of a system: each unknown's name mapped to its value.
  *
@@ -87,7 +87,7 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
   def go(eqs: List[_Expression], left: List[_Variable],
          assigned: Map[String, _Expression], basis: Boolean = false): Option[List[SolutionPoint]] =
     steps += 1
-    if steps > MaxEliminationSteps then None
+    if steps > env.limits.count(Limit.MaxEliminationSteps) then None
     else
       val leftNames = left.map(_.variable).toSet
       reduceConstantEquations(eqs, leftNames, env, tolerance) match

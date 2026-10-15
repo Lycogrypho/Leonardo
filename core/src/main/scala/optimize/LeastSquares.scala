@@ -44,7 +44,7 @@ case class LsqResult(p: Vector[Double], residualNorm: Double, iterations: Int,
  *  from `(0.1, −3)`, `(0.01, 0.01)` and `(10, 1)`; Rosenbrock's residual `[[10(b − a²)], [1 − a]]`
  *  in 21 from `(−1.2, 1)`.  100 is about three times the slowest converging case.
  */
-val MaxLsqIterations: Int = 100
+val MaxLsqIterations: Int = Limit.MaxLsqIterations.default.toInt
 
 /** The cap on one iteration's work, `m·n²` for `m` residuals in `n` parameters (F_0063).
  *
@@ -54,7 +54,7 @@ val MaxLsqIterations: Int = 100
  *  0.28 s at the cap on Node, so a fit that runs to [[MaxLsqIterations]] there is the worst case,
  *  ~28 s.
  */
-private[leonardo] val MaxLsqWork: Long = 400_000L
+private[leonardo] val MaxLsqWork: Long = Limit.MaxLsqWork.default
 
 
 /** Minimises `‖r(p)‖²` for an `m×1` residual column `r`, optionally inside `lb ≤ p ≤ ub`

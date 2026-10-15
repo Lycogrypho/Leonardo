@@ -383,6 +383,22 @@ A program calls `nlpSolve`, whose `NlpResult` carries the multipliers of both gr
 active inequalities; `qpSolve`'s `QpResult` now carries its multipliers too, which is what
 the SQP iteration reads.
 
+## Raising a cap
+
+Every solver here stops at a budget — a dimension, an iteration count, a coefficient's size —
+and declines past it rather than run without end. The defaults were measured for the browser
+REPL, where a frozen tab cannot be interrupted. A program with time to spare raises one on its
+`Environment` (`Limit` lists them all); the answer is certified exactly as before, only the
+amount of work allowed changes. Here a linear program one variable past `MaxLpVariables`:
+
+```scala mdoc
+val wide = e(s"lp(ones(${MaxLpVariables + 1}, 1), 0, 0, 1, inf)")
+wide.eval(env).isRight                                                     // declined at the default
+wide.eval(env.withLimit(Limit.MaxLpVariables, MaxLpVariables + 1)).isRight // answered
+```
+
+The REPL and the browser keep the defaults.
+
 ## Where to go next
 
 - The full grammar of every call is on the [cheat sheet](cheatsheet.md#optimization).

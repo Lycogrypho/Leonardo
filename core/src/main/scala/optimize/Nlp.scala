@@ -73,11 +73,14 @@ case class NlpResult(x: Vector[Double], value: Double, iterations: Int, kktResid
 
 /** SQP's iteration cap.  **Measured** (F_0066, JVM): the test problems converge in 1–42
  *  iterations — 28 for Rosenbrock with a bound, 42 for an objective scaled by `10⁶` — and a
- *  50-variable problem in 10; 200 is almost five times the slowest. */
-val MaxNlpIterations: Int = 200
+ *  50-variable problem in 10; 200 is almost five times the slowest.
+ *
+ *  This, [[MaxAugLagRounds]] and [[MaxNlpVariables]] are the **defaults** of their
+ *  [[core.Limit]]s (F_0124); a caller raises one through [[core.Environment.withLimit]]. */
+val MaxNlpIterations: Int = Limit.MaxNlpIterations.default.toInt
 
 /** The augmented Lagrangian's cap on rounds, each one a full inner minimisation. */
-val MaxAugLagRounds: Int = 50
+val MaxAugLagRounds: Int = Limit.MaxAugLagRounds.default.toInt
 
 /** The penalty beyond which the augmented Lagrangian gives up on feasibility.  Ten orders
  *  above the start: past it the inner problems are conditioned beyond what a `Double` BFGS
@@ -92,7 +95,7 @@ val MaxNlpPenalty: Double = 1e12
  *  0.1–0.8 s at 50, 0.1–0.5 s at 75 and 0.3–0.6 s at 100 on the JVM; 0.4–0.8 s, 1.1 s and
  *  2.3–3.5 s on Node — the same as before the variables were scaled. At the prompt the expression-depth limit (`core.MaxExpressionDepth`)
  *  stops a sum of more than about 200 terms first, so this cap binds only library callers. */
-val MaxNlpVariables: Int = 100
+val MaxNlpVariables: Int = Limit.MaxNlpVariables.default.toInt
 
 
 /** Minimises `f` over `vars` subject to `g ≤ 0`, `h = 0` and `lb ≤ x ≤ ub` (F_0066, MPC T3-02).
@@ -133,7 +136,8 @@ def nlpSolve(f: _Expression, vars: Vector[_Variable], x0: Vector[Double],
   val (lo, hi) = bounds.getOrElse((Vector.fill(n)(Double.NegativeInfinity), Vector.fill(n)(Double.PositiveInfinity)))
   val invalid: Option[String] =
     if !distinctVariables(vars) then Some("the variables must be distinct names")
-    else if n > MaxNlpVariables then Some(s"at most $MaxNlpVariables variables are accepted, not $n")
+    else if n > env.limits.count(Limit.MaxNlpVariables) then
+      Some(s"at most ${env.limits.count(Limit.MaxNlpVariables)} variables are accepted, not $n")
     else if x0.size != n then Some(s"the starting point has ${x0.size} entries for $n variables")
     else if x0.exists(d => d.isNaN || d.isInfinite) then Some("the starting point must be finite")
     else if lo.size != n || hi.size != n then Some(s"the bounds must have $n entries each")
@@ -544,8 +548,8 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
         val res = kktResidual(sys, p, mu, lam, lo, hi)
         def answer = Right(nlpAnswer(p, k, res, mu, lam, lo, hi))
         if res <= target then answer
-        else if k >= MaxNlpIterations then
-          if res <= tol then answer else Left(NlpFailure.MaxIterations(MaxNlpIterations, res))
+        else if k >= env.limits.count(Limit.MaxNlpIterations) then
+          if res <= tol then answer else Left(NlpFailure.MaxIterations(env.limits.count(Limit.MaxNlpIterations), res))
         else
           val m     = (mu ++ lam).map(math.abs).maxOption.getOrElse(0.0)
           val nuK   = if nu >= 1.1 * m then nu else 2.0 * m
@@ -609,7 +613,8 @@ private def augLag(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Arr
   def round(x: Array[Double], mu: Array[Double], lam: Array[Double], rho: Double, previous: Double,
             lastResidual: Double, k: Int): Either[NlpFailure, NlpResult] =
     val omega = math.max(1e-13, math.pow(0.1, k))
-    innerMinimum(sys, x, lo, hi, fScale, mu, lam, rho, omega).flatMap(sys.at) match
+    innerMinimum(sys, x, lo, hi, fScale, mu, lam, rho, omega, env.limits.count(Limit.MaxAugLagInnerIterations))
+      .flatMap(sys.at) match
       case None => Left(NlpFailure.NotEvaluable)
       case Some(p) =>
         val mu1  = Array.tabulate(sys.mg)(j => math.max(0.0, mu(j) + rho * p.g(j)))
@@ -619,8 +624,8 @@ private def augLag(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Arr
         val violation = primalViolation(sys, p)
         def answer    = Right(nlpAnswer(p, k, res, muF, lamF, lo, hi))
         if res <= target || (res <= tol && res > 0.5 * lastResidual) then answer
-        else if k >= MaxAugLagRounds then
-          if res <= tol then answer else Left(NlpFailure.MaxIterations(MaxAugLagRounds, res))
+        else if k >= env.limits.count(Limit.MaxAugLagRounds) then
+          if res <= tol then answer else Left(NlpFailure.MaxIterations(env.limits.count(Limit.MaxAugLagRounds), res))
         else if rho >= MaxNlpPenalty && violation > tol then Left(NlpFailure.Infeasible(k))
         else
           val rho1 = if violation > 0.25 * previous then math.min(rho * 10, MaxNlpPenalty) else rho
@@ -629,17 +634,14 @@ private def augLag(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Arr
   round(x0, Array.fill(sys.mg)(0.0), Array.fill(sys.mh)(0.0), 10.0, Double.PositiveInfinity,
         Double.PositiveInfinity, 1)
 
-/** The inner iteration cap of the augmented Lagrangian: reaching it ends the round, it does not
- *  fail it — the outer certificate decides. */
-private val MaxInnerIterations: Int = 500
-
 /** A minimiser of the augmented Lagrangian under the bounds, to projected gradient `omega`: a
  *  projected BFGS with an Armijo search along the projected path, the inverse Hessian reset
  *  when its direction is not a descent one.  `None` when the functions are not real somewhere
- *  the iteration must evaluate them. */
+ *  the iteration must evaluate them.  `maxInner` is [[core.Limit.MaxAugLagInnerIterations]]:
+ *  reaching it ends the round, it does not fail it — the outer certificate decides. */
 private def innerMinimum(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[Double],
                          fScale: Double, mu: Array[Double], lam: Array[Double], rho: Double,
-                         omega: Double): Option[Array[Double]] =
+                         omega: Double, maxInner: Int): Option[Array[Double]] =
   val (n, mg, mh) = (sys.n, sys.mg, sys.mh)
   def clamp(x: Array[Double]): Array[Double] = Array.tabulate(n)(i => math.min(math.max(x(i), lo(i)), hi(i)))
   def value(x: Array[Double]): Option[Double] = sys.values(x).map { v =>
@@ -681,7 +683,7 @@ private def innerMinimum(sys: NlpSystem, x0: Array[Double], lo: Array[Double], h
   def loop(x: Array[Double], fx: Double, gx: Array[Double], hInv: Array[Array[Double]], fresh: Boolean,
            it: Int): Option[Array[Double]] =
     val pg = projected(x, gx)
-    if it >= MaxInnerIterations || pg.forall(c => math.abs(c) <= omega) then Some(x)
+    if it >= maxInner || pg.forall(c => math.abs(c) <= omega) then Some(x)
     else
       // Bertsekas' ε-active set: a coordinate within ε of a bound it is pushed against takes a
       // plain gradient step, which the projection then lands exactly on the bound. Without it

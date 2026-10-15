@@ -16,7 +16,7 @@ import logic.And
  *  constraint, so ten keeps the worst case under half a second on the JVM.  The browser is
  *  slower, which is what recurrent task F_0019 re-measures after every release.
  */
-val MaxKKTInequalities: Int = 10
+val MaxKKTInequalities: Int = Limit.MaxKKTInequalities.default.toInt
 
 
 /** The constraints of an optimization problem, read from the language.
@@ -118,7 +118,7 @@ def kktPoints(f: _Expression, g: _Expression, h: _Expression, vars: Vector[_Vari
     _      <- Option.when(distinctVariables(vars))(())
     gs     <- Constraints.inequalities(g)
     hs     <- Constraints.equalities(h)
-    _      <- Option.when(gs.size <= MaxKKTInequalities)(())
+    _      <- Option.when(gs.size <= env.limits.count(Limit.MaxKKTInequalities))(())
     perSet <- sequence(activeSets(gs.size).map(a => activeSetPoints(f, gs, hs, a, vars, env)))
   yield projected(perSet.flatten, vars, env)
 

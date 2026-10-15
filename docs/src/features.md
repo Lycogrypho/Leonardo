@@ -183,7 +183,9 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   damped-BFGS Hessian, so every subproblem is a `qp`) or an augmented Lagrangian; either way
   the answer is a local KKT point certified by a scale-free KKT residual, and the REPL names the
   binding inequalities with their multipliers. Throughout, an answer that cannot be
-  proved complete is not given: a list of stationary points is read as *all* of them. See
+  proved complete is not given: a list of stationary points is read as *all* of them. Every
+  solver's size and iteration caps are defaults a program can raise on its `Environment`
+  (`env.withLimit(Limit.MaxQpVariables, 2000)`); the REPL keeps them. See
   [Optimization](optimization.md).
 
 - **Probability**: Distributions are first-class values — `normal(0, 1)`, `binomial(10, 0.3)`,

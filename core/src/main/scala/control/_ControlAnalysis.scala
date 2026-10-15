@@ -26,7 +26,7 @@ import matrix._Matrix
  *  `v` stays free even when the session happens to bind it. */
 private def resolved(g: _Expression, v: _Variable, env: Environment): _Expression =
   val bound = substitute(g, (g.freeVars - v.variable).flatMap(n => env.get(n).map(value => n -> (value: _Expression))).toMap)
-  bound.eval(new Environment(env.precision, Map(), env.symmetricLogic, env.semantics, env.workingPrecision)).toExpression
+  bound.eval(new Environment(env.precision, Map(), env.symmetricLogic, env.semantics, env.workingPrecision, env.limits)).toExpression
 
 /** Whether `G` provably has no poles (`denominator`) or no zeros (`!denominator`): that side of
  *  the fraction is a constant in lowest terms. Read here, not from [[poles]], whose `None` for a

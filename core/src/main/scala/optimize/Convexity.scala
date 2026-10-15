@@ -13,7 +13,7 @@ import matrix.{_Matrix, Determinant}
  *  higher cap here would buy nothing but a slower `None`.  Kept as a separate constant
  *  because the other is not visible, and documented as its mirror so the two move together.
  */
-val MaxConvexityVariables: Int = 6
+val MaxConvexityVariables: Int = Limit.MaxConvexityVariables.default.toInt
 
 /** Whether `f` is convex in `vars` (F_0010 slice 2): `Some(true)`, `Some(false)`, or `None`
  *  when neither can be established.
@@ -42,7 +42,7 @@ val MaxConvexityVariables: Int = 6
  *  @return the verdict, or `None` when it cannot be established
  */
 def convexity(f: _Expression, vars: Vector[_Variable], env: Environment): Option[Boolean] =
-  if !distinctVariables(vars) || vars.size > MaxConvexityVariables then None
+  if !distinctVariables(vars) || vars.size > env.limits.count(Limit.MaxConvexityVariables) then None
   else hessianCells(f, vars, env).flatMap { cells =>
     val n      = vars.size
     val minors = principalSubsets(n).map(s => principalMinor(cells, n, s, env))

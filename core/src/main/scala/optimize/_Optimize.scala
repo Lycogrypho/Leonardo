@@ -297,7 +297,7 @@ case class _LP(f: _Expression, a: _Expression, b: _Expression, eq: Option[(_Expr
         yield (in, eg, lo, hi)
         read match
           case Left(detail)              => Left(LpFailure.InvalidInput(detail))
-          case Right((in, eg, lo, hi)) => lpSolve(fv, in, eg, lo, hi)
+          case Right((in, eg, lo, hi)) => lpSolve(fv, in, eg, lo, hi, env.limits)
 
 /** The cells of an evaluated operand as values, **keeping exactness**: a number is `1×1`, a dense
  *  matrix reads as `Double`s, and a matrix with exact cells — which stays a symbolic `_Matrix` —

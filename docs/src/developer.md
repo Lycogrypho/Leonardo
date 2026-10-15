@@ -239,11 +239,13 @@ val env2 = env.withBinding("x", _Number(3.14))   // scoped copy — original unc
 `withBinding` into recursive `eval` calls is how binder variables are scoped during
 `_DefIntegral`, `_ODE`, etc.
 
-`Environment` carries five fields — `precision`, the variable bindings, `symmetricLogic`,
-`semantics` and `workingPrecision` (the digits an irrational is approximated to in exact
-mode, a different quantity from the display precision) — all but the first two added as
-*defaulted* parameters so existing call sites keep compiling (see
-[Recurring design patterns](#recurring-design-patterns), pattern 4).
+`Environment` carries six fields — `precision`, the variable bindings, `symmetricLogic`,
+`semantics`, `workingPrecision` (the digits an irrational is approximated to in exact
+mode, a different quantity from the display precision) and `limits` (the work and size
+budgets, pattern 6) — all but the first two added as *defaulted* parameters so existing call
+sites keep compiling (see [Recurring design patterns](#recurring-design-patterns), pattern 4).
+The last one also kept the published five-argument constructor as an auxiliary one: a new
+parameter on a published constructor is a binary break, which MiMa reports.
 
 `Environment.DefaultPrecision = 5` is the single source of truth for rounding, and one
 point is easy to get wrong: **rounding is a display concern only**.  `_Number.eval` is
@@ -367,6 +369,23 @@ input **unchanged** rather than a wrong or enormous answer:
 | `MaxTruthTableVars` / `MaxKleeneTableVars` | `TruthTable.scala` | 16 / 10 |
 | `MaxSymbolicDim` | `_MatrixOperation.scala` | 6 |
 | `MaxDepth` | `Parser.scala` | 200 (the shallowest platform, Node, decides) |
+
+**A work or size budget is a `core.Limit`, read through `env.limits`** (F_0124). The defaults
+are the values above, measured for the browser REPL where a frozen tab cannot be interrupted,
+and a library caller with time to spare raises one without a rebuild:
+
+```scala
+val generous = new Environment().withLimit(Limit.MaxQpVariables, 2000)
+qpSolve(h, f, ineq, eq, lb, ub, Set.empty, generous)
+```
+
+The published constant (`optimize.MaxQpVariables`) stays as the default, defined as
+`Limit.MaxQpVariables.default`, so there is one definition. **Only budgets are limits, never
+tolerances**: raising a budget only lets a slow case finish, and every answer is still
+certified; the one tolerance a caller sets, the certificate's, comes from `precision`. The
+REPL and the browser keep the defaults. **Add a new cap as a `Limit`**, never as a fresh
+hard-coded `Max…`. The `optimize` package reads all of its budgets this way; the other
+packages' move is under way (F_0124), and `DesignNotes.md` keeps the inventory.
 
 Alongside the size caps sit **content** guards, which abort when a sub-result is not good
 enough to build on: `hasDerivative` in `Series.scala` refuses to emit a Taylor polynomial
