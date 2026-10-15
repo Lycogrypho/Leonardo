@@ -90,7 +90,26 @@ class GroebnerTest extends AnyFlatSpec:
     val r  = eliminate(cyclic, vars("a", "b", "c", "d", "e"), env)
     val seconds = (System.nanoTime() - t0) / 1e9
     assert(r.isEmpty, "declined rather than answered past the caps")
-    assert(seconds < 10, s"took $seconds s")
+    // F_0122: 0.2–0.7 s on the JVM and 0.75–0.9 s on Node with the basis capped at 24. At 40 it
+    // took 3–5.4 s on Node and failed the old 10 s bound once in a loaded full run.
+    assert(seconds < 5, s"took $seconds s")
+  }
+
+  it should "solve a system with general decimal coefficients, which needs coefficients past 1024 bits (F_0122)" in
+  {
+    // A Double is read as the dyadic rational it holds (0.1 is a 110-bit fraction), so this 2×2
+    // system's basis reaches 1259 bits: the coefficient cap cannot be lowered to bound a decline.
+    val eqs = Seq("1.37*x^2 + 2.91*x*y - 0.73*y^2 + 0.11*x - 2.3", "0.57*x^2 - 1.13*y^2 + 0.41*x*y - 0.29*y + 0.5")
+    eliminate(eqs.map(parse(_)).toList, vars("x", "y"), env) match
+      case None => fail("declined")
+      case Some(points) =>
+        assert(points.size == 2, s"$points")
+        for p <- points; e <- eqs do
+          val at = new Environment().withBinding("x", p("x") match { case v: _Value => v; case o => fail(s"$o") })
+                                    .withBinding("y", p("y") match { case v: _Value => v; case o => fail(s"$o") })
+          parse(e).eval(at) match
+            case Right(_Number(d)) => assert(math.abs(d) <= 1e-9, s"$e at $p: $d")
+            case other             => fail(s"$e at $p: $other")
   }
 
   "stationary" should "list the nine stationary points of a function with a coupled gradient" in

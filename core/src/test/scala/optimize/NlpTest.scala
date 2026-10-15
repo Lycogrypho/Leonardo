@@ -85,25 +85,29 @@ class NlpTest extends AnyFlatSpec:
       assert(near(solved(s"nlp($k*(x + y), [[x], [y]], [[1], [0]], x^2 + y^2 - 2, 0, $m)").x, Seq(-1.0, -1.0)), s"$m at $k")
   }
 
-  it should "answer the same point when a VARIABLE is rescaled, which the certificate also claims (F_0113)" in {
-    // x = k·u: the answer (-1, -1) becomes u = -1/k. Every (method, k) is run before asserting,
-    // so the failure message reports all of them.
-    val outcomes = for m <- methods; k <- Seq(1e-6, 1e6) yield
-      val src = s"nlp($k*u + y, [[u], [y]], [[${1 / k}], [0]], ($k*u)^2 + y^2 - 2, 0, $m)"
-      (m, k, parse(src) match
+  it should "answer the same point when a VARIABLE is rescaled, which the certificate also claims (F_0113, F_0120)" in {
+    // x = k·u: the answer (-1, -1) becomes u = -1/k. Before F_0120, SQP declined k = 1e-6
+    // (Subproblem(25, MaxIterations(2000))) and AugLag k = 1e6 (MaxIterations(50, 0.22)), and SQP
+    // took 8 to 49 iterations across k. Run in each variable's own length, the run is the same
+    // computation for every k: one iteration count per method.
+    // The second family rescales a variable that STARTS AT 0 with no bounds, x = k·v: the problem
+    // states no length for v, so it is measured from the rows (Decision B, option 3).
+    val families = Seq(
+      ("start", (k: Double, m: String) => s"nlp($k*u + y, [[u], [y]], [[${1 / k}], [0]], ($k*u)^2 + y^2 - 2, 0, $m)",
+                (k: Double, r: NlpResult) => math.abs(r.x(0) * k + 1) <= 1e-6 && math.abs(r.x(1) + 1) <= 1e-6),
+      ("rows", (k: Double, m: String) => s"nlp(x + $k*v, [[x], [v]], [[1], [0]], x^2 + ($k*v)^2 - 2, 0, $m)",
+               (k: Double, r: NlpResult) => math.abs(r.x(0) + 1) <= 1e-6 && math.abs(r.x(1) * k + 1) <= 1e-6))
+    for (name, src, right) <- families; m <- methods do
+      // Every k is run before asserting, so a failure reports all of them.
+      val outcomes = Seq(1e-6, 1e-3, 1.0, 1e3, 1e6).map(k => k -> (parse(src(k, m)) match
         case n: _Nlp => n.detailed(env)
-        case other   => fail(s"$other"))
-    def right(k: Double, r: NlpResult) = math.abs(r.x(0) * k + 1) <= 1e-6 && math.abs(r.x(1) + 1) <= 1e-6
-    // A DEFECT TOLERATED, NOT THE DESIGN (F_0120): SQP at k = 1e-6 declines
-    // (Subproblem(25, MaxIterations(2000))). What is pinned for it is the safety half — a refusal,
-    // never a wrong point. AugLag at k = 1e6 declined too (MaxIterations(50, 0.22)) until it ran
-    // in each variable's own length (F_0120 step A); answer SQP's when step B lands.
-    val tolerated = Set(("sqp", 1e-6))
-    for (m, k, out) <- outcomes do
-      out match
-        case Right(r)                    => assert(right(k, r), s"$m at $k answered a wrong point ${r.x}")
-        case Left(why) if tolerated((m, k)) => succeed
-        case Left(why)                   => fail(s"$m at $k declined: $why")
+        case other   => fail(s"$other")))
+      for (k, out) <- outcomes do
+        out match
+          case Right(r)  => assert(right(k, r), s"$name, $m at $k answered a wrong point ${r.x}")
+          case Left(why) => fail(s"$name, $m at $k declined: $why; all: $outcomes")
+      val counts = outcomes.collect { case (_, Right(r)) => r.iterations }.distinct
+      assert(counts.size == 1, s"$name, $m: the iteration count moves with k: $outcomes")
   }
 
   it should "reach a bound exactly, so the certificate can read its multiplier (F_0116)" in {
@@ -140,6 +144,23 @@ class NlpTest extends AnyFlatSpec:
         val r = solved(problem(n, c, m))
         assert(near(r.x.map(_ / c), unit, 1e-5), s"n = $n, $m at c = $c: ${r.x}")
         assert(r.bounded.forall(i => r.x(i) == 0.0 || r.x(i) == 0.5 * c), s"$m at c = $c: a bounded variable is off its bound")
+  }
+
+  it should "keep a separable problem with no stated lengths as fast as unscaled (F_0120, the D calibration)" in {
+    // 40 variables from 0, x ≥ -1: no variable states a length. Taken as absolute lengths, the
+    // row-derived D's came out ~n times too large (a row's size sums every variable's terms), and
+    // SQP went from 15–17 iterations to its cap of 200. With no stated length to calibrate
+    // against, every length is 1 and the run is the unscaled one.
+    val n   = 40
+    val vs  = (0 until n).map(i => s"[x$i]").mkString("[", ", ", "]")
+    val f   = (0 until n).map(i => s"(x$i - ${(i + 1).toDouble / n})^2").mkString(" + ")
+    val g   = "[[" + (0 until n).map(i => s"x$i^2").mkString(" + ") + s" - ${n / 4.0}], [" +
+              (0 until n).map(i => s"x$i*x$i*x$i").mkString(" + ") + s" - ${n / 10.0}]]"
+    val x0  = Seq.fill(n)("[0]").mkString("[", ", ", "]")
+    for m <- methods do
+      val r = solved(s"nlp($f, $vs, $x0, $g, 0, -1, inf, $m)")
+      assert(r.kktResidual <= 0.5e-5, s"$m: $r")
+      if m == "sqp" then assert(r.iterations <= 30, s"sqp took ${r.iterations} iterations")
   }
 
   it should "refuse more than MaxNlpVariables before any work" in {

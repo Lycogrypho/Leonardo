@@ -87,7 +87,10 @@ val MaxNlpPenalty: Double = 1e12
 /** The largest number of variables accepted, checked before any work.  **Measured** on a
  *  quadratic objective with two nonlinear constraints and a bound, JVM / Node: 0.34 / 0.68 s at
  *  50 variables, 0.39 / 1.6 s at 75, for either method — the symbolic Jacobians and their
- *  compilation dominate. At the prompt the expression-depth limit (`core.MaxExpressionDepth`)
+ *  compilation dominate.  **Re-measured by F_0120** (2026-10-15, `Σ(xᵢ − cᵢ)²` under
+ *  `Σxᵢ² ≤ n/4`, `Σxᵢ³ ≤ n/10`, `x ≥ −1`, from 0; SQP 15–17 iterations, AugLag 9 rounds):
+ *  0.1–0.8 s at 50, 0.1–0.5 s at 75 and 0.3–0.6 s at 100 on the JVM; 0.4–0.8 s, 1.1 s and
+ *  2.3–3.5 s on Node — the same as before the variables were scaled. At the prompt the expression-depth limit (`core.MaxExpressionDepth`)
  *  stops a sum of more than about 200 terms first, so this cap binds only library callers. */
 val MaxNlpVariables: Int = 100
 
@@ -142,10 +145,80 @@ def nlpSolve(f: _Expression, vars: Vector[_Variable], x0: Vector[Double],
       NlpSystem.build(f, vars, g, h, env).flatMap { sys =>
         val (l, u) = (lo.toArray, hi.toArray)
         val start  = Array.tabulate(n)(i => math.min(math.max(x0(i), l(i)), u(i)))
-        method match
-          case NlpMethod.SQP    => sqp(sys, start, l, u, env)
-          case NlpMethod.AugLag => augLag(sys, start, l, u, env)
+        val solve = method match
+          case NlpMethod.SQP    => sqp
+          case NlpMethod.AugLag => augLag
+        atOwnLengths(sys, start, l, u, env)(solve)
       }
+
+/** `solve` run in `yᵢ = xᵢ/sᵢ`, `sᵢ` each variable's own length ([[variableLengths]]), the
+ *  answer mapped back and certified again in `x` (F_0120).
+ *
+ *  **Both methods' constants are written for unit-sized variables**: AugLag's ε-active cap,
+ *  first quasi-Newton step and the balance of `f/fScale` against its penalty; SQP's first `B = I`
+ *  and its QP subproblem. With F_0116's problem in units `c` times smaller AugLag declined every
+ *  `c < 1`, and with one variable `10⁻⁶` times smaller (`x = 10⁻⁶·u`) SQP's QP ran to its
+ *  iteration cap. In `y` every such run is the same computation whatever the units. **One length
+ *  for all variables is not enough**: `u`'s start `10⁶` made `y`'s answer `−1` a `10⁻⁶` in scaled
+ *  units, and that run declined.  A coordinate on a bound in `y` lands on the bound exactly in
+ *  `x` (the F_0116 rule); the multipliers are those of `x` already, since `f`, `g` and `h` are
+ *  unchanged.  All lengths `1` runs `solve` on the problem itself. */
+private def atOwnLengths(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[Double], env: Environment)
+                        (solve: (NlpSystem, Array[Double], Array[Double], Array[Double], Environment) => Either[NlpFailure, NlpResult])
+    : Either[NlpFailure, NlpResult] =
+  val n = sys.n
+  val s = variableLengths(sys, x0, lo, hi)
+  if s.forall(_ == 1.0) then solve(sys, x0, lo, hi, env)
+  else
+    val (ylo, yhi) = (Array.tabulate(n)(i => lo(i) / s(i)), Array.tabulate(n)(i => hi(i) / s(i)))
+    solve(sys.scaled(s), Array.tabulate(n)(i => x0(i) / s(i)), ylo, yhi, env).flatMap { r =>
+      val x = Array.tabulate(n)(i =>
+        if r.x(i) <= ylo(i) then lo(i) else if r.x(i) >= yhi(i) then hi(i) else r.x(i) * s(i))
+      sys.at(x) match
+        case None => Left(NlpFailure.NotEvaluable)
+        case Some(p) =>
+          val (mu, lam) = (r.inequalityMultipliers.toArray, r.equalityMultipliers.toArray)
+          val res = kktResidual(sys, p, mu, lam, lo, hi)
+          if res <= certificateTolerance(env) then Right(nlpAnswer(p, r.iterations, res, mu, lam, lo, hi))
+          else Left(NlpFailure.Stalled(res))
+    }
+
+/** Each variable's length, measured from the problem (F_0120 Decision B, option 3, amended).
+ *
+ *  **First what the problem states**: the larger of `|x0ᵢ|` and the bound width when finite.
+ *  **Where it states neither** (a variable starting at `0` with an infinite bound), the rows
+ *  give its size **relative to the stated ones**: `Dᵢ = minᵣ sᵣ / |∂r/∂xᵢ|` at `x0`, `sᵣ` the
+ *  size of row `r`'s terms there (a row whose terms all vanish says nothing), calibrated by the
+ *  median of `statedⱼ / Dⱼ` over the stated variables. With no stated variable to calibrate
+ *  against, an unstated length is `1`.
+ *
+ *  **Why only relative** (owner, 2026-10-15): used as an absolute length, `D` regressed a
+ *  separable problem from 15–17 SQP iterations to 200 and declines at 75 and 100 variables. A
+ *  row's size sums every variable's terms, so in a sum of `n` of them each `D` came out about
+ *  `n` times too large; a ratio of two `D`s cancels that, and calibrating against a stated
+ *  length restores the units. Each part is invariant under rescaling `f`, a constraint or a
+ *  variable. */
+private def variableLengths(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[Double]): Array[Double] =
+  val n = sys.n
+  val stated = Array.tabulate(n) { i =>
+    val width = hi(i) - lo(i)
+    math.max(math.abs(x0(i)), if width.isInfinite then 0.0 else width)
+  }
+  if stated.forall(_ > 0.0) then stated
+  else
+    val rows = 1 + sys.mg + sys.mh
+    // Dᵢ per variable: the smallest sᵣ / |∂r/∂xᵢ| over the rows that have a size, when one moves.
+    val fromRows: Array[Option[Double]] = (for d <- sys.derivatives(x0); sz <- sys.rowSizes(x0) yield
+      Array.tabulate(n) { i =>
+        val inverse = (0 until rows).filter(r => sz(r) > 0.0).map(r => math.abs(d(r * n + i)) / sz(r)).maxOption.getOrElse(0.0)
+        Option.when(inverse > 0.0 && !inverse.isInfinite)(1.0 / inverse)
+      }).getOrElse(Array.fill(n)(None))
+    val ratios = (0 until n).flatMap(i => fromRows(i).filter(_ => stated(i) > 0.0).map(stated(i) / _)).sorted
+    val calibration = Option.when(ratios.nonEmpty)(ratios(ratios.size / 2))
+    Array.tabulate(n) { i =>
+      if stated(i) > 0.0 then stated(i)
+      else (for c <- calibration; r <- fromRows(i) yield c * r).filter(s => s > 0.0 && !s.isInfinite).getOrElse(1.0)
+    }
 
 
 /** The problem at one point: the values, the derivatives, and the magnitudes of the terms
@@ -165,7 +238,14 @@ private final class NlpSystem(val n: Int, val mg: Int, val mh: Int,
                               val values: Array[Double] => Option[Array[Double]],
                               val derivatives: Array[Double] => Option[Array[Double]],
                               constraintTerms: Array[Double] => Option[Array[Double]],
-                              derivTerms: Array[Double] => Option[Array[Double]]):
+                              derivTerms: Array[Double] => Option[Array[Double]],
+                              objectiveTerms: Array[Double] => Option[Array[Double]]):
+
+  /** The size of each row of `[f; g; h]`'s terms at `x`, in the derivatives' row order: what
+   *  [[variableLengths]] measures a row's sensitivity against. Not part of [[at]], whose callers
+   *  never read the objective's terms, so the iterations pay nothing for it. */
+  def rowSizes(x: Array[Double]): Option[Array[Double]] =
+    for ft <- objectiveTerms(x); ct <- constraintTerms(x) yield ft ++ ct
 
   /** Everything at `x`, or `None` when a cell is not a finite real there. */
   def at(x: Array[Double]): Option[NlpPoint] =
@@ -187,7 +267,7 @@ private final class NlpSystem(val n: Int, val mg: Int, val mh: Int,
     // Every derivative row is n wide (∇f, then each Jacobian row), so entry e is in variable e % n.
     def times(a: Array[Double]): Array[Double] = Array.tabulate(a.length)(e => a(e) * s(e % n))
     NlpSystem(n, mg, mh, f, gs, hs, vars, y => values(back(y)), y => derivatives(back(y)).map(times),
-              y => constraintTerms(back(y)), y => derivTerms(back(y)).map(times))
+              y => constraintTerms(back(y)), y => derivTerms(back(y)).map(times), y => objectiveTerms(back(y)))
 
 private object NlpSystem:
 
@@ -214,9 +294,12 @@ private object NlpSystem:
       derived match
         case None => Left(NlpFailure.NotEvaluable)
         case Some(dcells) =>
+          // Compiled only if a variable's length has to be measured from the rows.
+          lazy val objective = termSums(Vector(fr), fresh, env, expandedTerms)
           Right(NlpSystem(n, gr.size, hr.size, fr, gr, hr, fresh,
             cellsAt(fr +: (gr ++ hr), fresh, env), cellsAt(dcells, fresh, env),
-            termSums(gr ++ hr, fresh, env, expandedTerms), termSums(dcells, fresh, env, expandedTerms)))
+            termSums(gr ++ hr, fresh, env, expandedTerms), termSums(dcells, fresh, env, expandedTerms),
+            x => objective(x)))
 
   /** An evaluator that also accepts no cells. */
   private def cellsAt(cells: Vector[_Expression], vars: Vector[_Variable],
@@ -515,43 +598,6 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
  */
 private def augLag(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[Double],
                    env: Environment): Either[NlpFailure, NlpResult] =
-  // Run in yᵢ = xᵢ/sᵢ, sᵢ the variable's own length (F_0120): the method's constants — the
-  // ε-active cap, the first quasi-Newton step, the balance of f/fScale against the penalty — are
-  // written for unit-sized variables, and with F_0116's problem in units c times smaller it
-  // declined for every c < 1 while answering every c ≥ 1. In y the run is the same whatever c is.
-  // One length for all variables is not enough: with x = 10⁻⁶·u, u's start 10⁶ made y's
-  // answer −1 a 10⁻⁶ in scaled units, and the run declined.
-  val s = lengthScales(x0, lo, hi)
-  if s.forall(_ == 1.0) then augLagAtUnitScale(sys, x0, lo, hi, env)
-  else
-    val (ylo, yhi) = (Array.tabulate(sys.n)(i => lo(i) / s(i)), Array.tabulate(sys.n)(i => hi(i) / s(i)))
-    augLagAtUnitScale(sys.scaled(s), Array.tabulate(sys.n)(i => x0(i) / s(i)), ylo, yhi, env).flatMap { r =>
-      // Back in x, a coordinate on a bound in y lands on the bound exactly (the F_0116 rule),
-      // and the certificate is measured again where the answer is reported.
-      val x = Array.tabulate(sys.n)(i =>
-        if r.x(i) <= ylo(i) then lo(i) else if r.x(i) >= yhi(i) then hi(i) else r.x(i) * s(i))
-      sys.at(x) match
-        case None => Left(NlpFailure.NotEvaluable)
-        case Some(p) =>
-          val (mu, lam) = (r.inequalityMultipliers.toArray, r.equalityMultipliers.toArray)
-          val res = kktResidual(sys, p, mu, lam, lo, hi)
-          if res <= certificateTolerance(env) then Right(nlpAnswer(p, r.iterations, res, mu, lam, lo, hi))
-          else Left(NlpFailure.Stalled(res))
-    }
-
-/** Each variable's length as the problem itself sets it: the larger of its starting value and its
- *  bound width when finite, or `1` when both are zero or absent — the one place a unit is
- *  assumed, and only where the problem states none. */
-private def lengthScales(x0: Array[Double], lo: Array[Double], hi: Array[Double]): Array[Double] =
-  Array.tabulate(x0.length) { i =>
-    val width = hi(i) - lo(i)
-    val s     = math.max(math.abs(x0(i)), if width.isInfinite then 0.0 else width)
-    if s > 0.0 && !s.isInfinite then s else 1.0
-  }
-
-/** [[augLag]] on a problem whose variables are of unit size. */
-private def augLagAtUnitScale(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[Double],
-                              env: Environment): Either[NlpFailure, NlpResult] =
   val tol    = certificateTolerance(env)
   val target = math.min(1e-10, tol / 100)
   val fScale = sys.at(x0).map(_.grad.map(math.abs).maxOption.getOrElse(0.0))

@@ -1,4 +1,9 @@
 /.bsp/
+# A Coursier download cache, `null/Coursier/cache/...`: Coursier's Windows default is
+# %LOCALAPPDATA%\Coursier\cache, and with LOCALAPPDATA unset in some launcher it resolved to
+# "null" relative to the working directory. 712 files (59 MB of jars and checksums) had been
+# committed in 2023, before this rule existed -- and a rule does not untrack a tracked file --
+# so the jars sat in the repository until F_0123 deleted them (2026-10-15).
 /null/
 /.idea/
 

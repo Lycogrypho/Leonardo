@@ -9,10 +9,20 @@ import spire.math.Rational as Q
 /** The largest basis [[groebnerBasis]] builds before declining.  **Measured** (F_0068, JVM /
  *  Node): the test systems end with 2–4 elements and solve in tens of milliseconds — the
  *  nine-point stationary problem in 0.19 s on Node, three dense quadratics in three unknowns in
- *  0.33 / 0.48 s, Katsura-3 in under 0.15 s; cyclic-5, whose lexicographic basis is notoriously
- *  large, passes one of the four caps and declines in 0.13 / 0.16 s.  The caps bound the cost of
- *  a decline, not only of an answer. */
-val MaxGroebnerBasis: Int = 40
+ *  0.33 / 0.48 s, Katsura-3 in under 0.15 s.  The caps bound the cost of a decline, not only of
+ *  an answer.
+ *
+ *  **24, re-measured by F_0122** (2026-10-15). It was 40, and cyclic-5 — whose lexicographic
+ *  basis is notoriously large — then grew 32 elements and coefficients near the 4096-bit cap
+ *  before declining, in 0.6–0.9 s on the JVM and 3–5 s on Node; F_0068 had recorded 0.13 /
+ *  0.16 s, which no build reached (re-run at F_0068's own commit: 0.9–3.4 s). The last
+ *  elements cost the most, since their coefficients are the widest. Every basis a successful
+ *  solve builds, in the suite and in decimal-coefficient variants of its systems, holds at most
+ *  6 elements before minimisation; at 24 cyclic-5 declines in 0.2–0.7 s on the JVM and
+ *  0.75–0.9 s on Node, and every one of them still answers.  **The coefficient cap could not
+ *  be the lever**: a 2×2 system with general decimal coefficients needs 1259 bits, since a
+ *  `Double` is read as the dyadic rational it holds. */
+val MaxGroebnerBasis: Int = 24
 
 /** The highest total degree an element of the basis may reach before [[groebnerBasis]]
  *  declines — a lex basis's last element carries the whole system's Bézout number as its degree,
@@ -20,7 +30,10 @@ val MaxGroebnerBasis: Int = 40
 val MaxGroebnerDegree: Int = 24
 
 /** The largest coefficient, in bits of numerator plus denominator, before [[groebnerBasis]]
- *  declines: exact arithmetic does not round, it grows, and a lex basis is where it grows. */
+ *  declines: exact arithmetic does not round, it grows, and a lex basis is where it grows.
+ *  Checked at every reduction step, which is what bounds a decline's time: without it,
+ *  cyclic-5's reduction ran for minutes (F_0122). A 2×2 system with decimal coefficients
+ *  needs 1259 bits, so neither 512 nor 1024 is enough. */
 val MaxGroebnerCoefficientBits: Int = 4096
 
 /** The S-polynomial reductions [[groebnerBasis]] may perform before declining. */
@@ -102,7 +115,7 @@ private final case class GPoly(terms: Map[Mono, Q]):
   def isConstant: Boolean = terms.keys.forall(_.forall(_ == 0))
   lazy val lead: (Mono, Q) = terms.maxBy(_._1)
   def degree: Int = terms.keys.map(_.sum).maxOption.getOrElse(0)
-  def bits: Int = terms.values.map(q => q.numerator.toBigInt.bitLength + q.denominator.toBigInt.bitLength).maxOption.getOrElse(0)
+  def bits: Int = terms.valuesIterator.map(q => q.numerator.bitLength + q.denominator.bitLength).maxOption.getOrElse(0)
 
   def +(that: GPoly): GPoly =
     GPoly(that.terms.foldLeft(terms) { case (acc, (m, c)) =>
