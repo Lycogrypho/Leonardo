@@ -620,4 +620,5 @@ addCommandAlias("checks",
   ";tools/runMain it.grypho.scala.leonardo.tools.charset" +
   ";tools/runMain it.grypho.scala.leonardo.tools.actionPins" +
   ";tools/runMain it.grypho.scala.leonardo.tools.scalaVersion" +
-  ";tools/runMain it.grypho.scala.leonardo.tools.docLinks")
+  ";tools/runMain it.grypho.scala.leonardo.tools.docLinks" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.csp")

@@ -1564,10 +1564,14 @@ final class Session:
   private def exactState: String =
     s"exact = ${onOff(exactMode)}, working precision = $workingPrecision"
 
-  /** Sets the exact-arithmetic flag from `"on"`/`"off"` (case-insensitive). */
+  /** Sets the exact-arithmetic flag from `"on"`/`"off"` (case-insensitive).
+   *
+   *  Echoes the flag alone, as every other setter echoes what it set (F_0127): it used to echo
+   *  [[exactState]], both settings, and a loaded session — which writes `exact precision` and
+   *  `exact` as two lines — printed the same line twice. */
   private def setExact(text: String): String = text.toLowerCase match
-    case "on"  | "true"  => exactMode = true;  exactState
-    case "off" | "false" => exactMode = false; exactState
+    case "on"  | "true"  => exactMode = true;  "exact = on"
+    case "off" | "false" => exactMode = false; "exact = off"
     case _               => s"exact expects 'on', 'off' or 'precision <n>', got: $text"
 
   /** Sets the working precision — the digits an irrational is approximated to.
@@ -1582,12 +1586,12 @@ final class Session:
    *  irrational spends the session inside spire with no way back — Ctrl-C at a terminal, and
    *  nothing at all in the browser, where a shared link carries this setting and the page
    *  replays one on load (F_0041).  The `MaxSampleCount` rule: a mistyped digit must be
-   *  reported, not attempted.
+   *  reported, not attempted.  Echoes the precision it set, spelled as the command (F_0127).
    */
   private def setWorkingPrecision(text: String): String =
     text.toIntOption match
       case Some(n) if n >= 1 && n <= Session.MaxWorkingPrecision =>
-        workingPrecision = n; exactState
+        workingPrecision = n; s"exact precision = $n"
       case Some(n) if n > Session.MaxWorkingPrecision =>
         s"working precision must be at most ${Session.MaxWorkingPrecision}, got: $n"
       case Some(n) => s"working precision must be at least 1, got: $n"

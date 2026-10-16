@@ -135,6 +135,64 @@ class CheckersTest extends AnyFlatSpec:
     assert(found.isEmpty, s"unpinned: $found")
   }
 
+  // --- the page's Content-Security-Policy (F_0112) -------------------------------------
+
+  /** `leonardoStart();`'s SHA-256, computed outside the guard (and the hash Firefox accepted
+   *  when the owner measured the page), so the guard is checked against an independent value. */
+  private val StartHash = "'sha256-B5hDBCYSjSGBdp0jtHHlr4oyZJq4+lhIMhbJeyfn/qA='"
+
+  /** A page with `policy` as its CSP and `body` after it. */
+  private def page(policy: String, body: String): Path =
+    fixture("index.html" ->
+      s"""<html><head><meta http-equiv="Content-Security-Policy" content="$policy"></head>
+         |<body>$body</body></html>
+         |""".stripMargin).resolve("index.html")
+
+  "the CSP guard" should "accept an inline script whose hash the policy lists" in
+  {
+    val p = page(s"default-src 'none'; script-src 'self' $StartHash",
+                 "<script src=\"main.js\"></script><script>leonardoStart();</script>")
+    assert(CheckCsp.offences(p).isEmpty, CheckCsp.offences(p))
+  }
+
+  it should "flag an inline script the policy does not list, naming the hash to add" in
+  {
+    val found = CheckCsp.offences(page("script-src 'self'", "<script>leonardoStart();</script>"))
+    assert(found.size == 1 && found.head.contains(StartHash), found)
+  }
+
+  it should "flag a listed hash no inline script has" in
+  {
+    val found = CheckCsp.offences(page(s"script-src 'self' $StartHash", "<script src=\"main.js\"></script>"))
+    assert(found.size == 1 && found.head.contains("stale"), found)
+  }
+
+  it should "flag an inline script that spans lines, whose bytes depend on the checkout" in
+  {
+    val found = CheckCsp.offences(page("script-src 'self'", "<script>\nleonardoStart();\n</script>"))
+    assert(found.exists(_.contains("one line")), found)
+  }
+
+  it should "flag a page with no policy, and a script policy that allows inline or eval" in
+  {
+    assert(CheckCsp.offences(fixture("index.html" -> "<html><head></head></html>").resolve("index.html"))
+             .exists(_.contains("no Content-Security-Policy")))
+    assert(CheckCsp.offences(page(s"script-src 'self' 'unsafe-eval' $StartHash", "<script>leonardoStart();</script>"))
+             .exists(_.contains("'unsafe-eval'")))
+  }
+
+  it should "flag an inline event handler, which the policy blocks without a word" in
+  {
+    val found = CheckCsp.offences(page("script-src 'self'", "<button onclick=\"go()\">Go</button>"))
+    assert(found.exists(_.contains("onclick")), found)
+  }
+
+  it should "find nothing wrong with the page this repository ships" in
+  {
+    val found = CheckCsp.offences(Paths.get("web", "index.html"))
+    assert(found.isEmpty, found)
+  }
+
   // --- the Scala version -------------------------------------------------------------
 
   "the Scala-version guard" should "flag a build path that spells the version" in

@@ -2084,6 +2084,12 @@ package "tools" <<Rectangle>> {
         (mdoc only warns; Linux 404s a case slip)
         the one guard NOT defaulting to GuardedRoots
     }
+    class "CheckCsp" <<object>> [[developer.html]] {
+        + offences(page): Vector
+        web/index.html's policy lists every inline
+        script's SHA-256, no stale hash, no unsafe
+        script source, one-line scripts (F_0112)
+    }
     class "Files" <<utility>> [[developer.html]] {
         + GuardedRoots: Vector
         + rootsOrDefault(args): Vector
@@ -2102,6 +2108,7 @@ package "tools" <<Rectangle>> {
     "CheckActionPins"   ..> "Files"
     "CheckScalaVersion" ..> "Files"
     "CheckDocLinks"     ..> "Files"
+    "CheckCsp"          ..> "Files"
     "FixMojibake"       ..> "CheckCharset" : reads Forbidden,\nso the two cannot drift
 }
 

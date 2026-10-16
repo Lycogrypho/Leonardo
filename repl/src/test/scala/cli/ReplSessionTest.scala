@@ -859,11 +859,22 @@ class ReplSessionTest extends AnyFlatSpec:
     assert(s.execute("exact") == "exact = off, working precision = 30")
   }
 
-  it should "report both settings when switched on" in
+  it should "echo the setting it changed, the bare command reporting both (F_0127)" in
   {
     val s = session
-    assert(s.execute("exact on") == "exact = on, working precision = 30")
-    assert(s.execute("exact off") == "exact = off, working precision = 30")
+    assert(s.execute("exact on") == "exact = on")
+    assert(s.execute("exact off") == "exact = off")
+    assert(s.execute("exact") == "exact = off, working precision = 30")
+  }
+
+  it should "say what each line of a loaded session set, without repeating one (F_0127)" in
+  {
+    // A saved session writes `exact precision 30` and `exact off` as two lines, and both used to
+    // echo the combined status: `:load` and a shared link printed the same line twice, and
+    // neither said which setting it had applied.
+    val out = session.load(session.script).linesIterator.toList
+    assert(out.contains("exact precision = 30") && out.contains("exact = off"), out)
+    assert(out.distinct == out, s"a line repeated: $out")
   }
 
   it should "make tenths add exactly, and show the fraction" in
@@ -886,7 +897,7 @@ class ReplSessionTest extends AnyFlatSpec:
   it should "accept a working precision and keep it separate from display precision" in
   {
     val s = session
-    assert(s.execute("exact precision 50") == "exact = off, working precision = 50")
+    assert(s.execute("exact precision 50") == "exact precision = 50")
     assert(s.execute("precision 3") == "precision = 3")
     assert(s.execute("exact") == "exact = off, working precision = 50",
            "display precision must not disturb the working precision")
@@ -923,7 +934,7 @@ class ReplSessionTest extends AnyFlatSpec:
     // makes this case affordable to run on every push; at the 10000 first proposed it was
     // minutes, which is how the number got fixed.
     val s = session
-    assert(s.execute(s"exact precision ${Session.MaxWorkingPrecision}").contains("working precision"))
+    assert(s.execute(s"exact precision ${Session.MaxWorkingPrecision}") == s"exact precision = ${Session.MaxWorkingPrecision}")
     s.execute("exact on")
     assert(s.execute("pi") == "3.14159")
   }

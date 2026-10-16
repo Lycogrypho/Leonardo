@@ -20,7 +20,7 @@ package tools
  *
  *  Each is a thin shell over its object's `run`, so a test exercises the logic without the
  *  process exiting underneath the suite.  Run them through the `checks` alias — one sbt boot
- *  for all four — or individually.
+ *  for all of them — or individually.
  *
  *  **Given no paths, each scans [[Files.GuardedRoots]]** (issue F_0028), which is why the
  *  alias names none: the set of guarded trees is one constant rather than a string repeated
@@ -46,3 +46,6 @@ package tools
 
 /** Flags a relative documentation link that does not resolve. See [[CheckDocLinks]]. */
 @main def docLinks(args: String*): Unit = sys.exit(CheckDocLinks.run(args))
+
+/** Flags the browser page's inline scripts disagreeing with its policy. See [[CheckCsp]]. */
+@main def csp(args: String*): Unit = sys.exit(CheckCsp.run(args))

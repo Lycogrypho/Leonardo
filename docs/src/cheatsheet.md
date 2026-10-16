@@ -37,7 +37,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `logic minmax\|product\|lukasiewicz` | Fuzzy t-norm family (default: minmax) |
 | `unset <name>` | Remove a binding or definition |
 | `:save <file>` | Write session to a replayable script (browser: its own storage) |
-| `:load <file>` | Replay a session script (browser: its own storage) |
+| `:load <file>` | Run a session script, restoring its settings, bindings and definitions (browser: its own storage) |
 | `quit` / `exit` | Leave the REPL |
 | `plot <expr> <v> <lo> <hi> [n]` | **Browser only** — draw `y = f(x)` as a line |
 | `points <expr> <v> <lo> <hi> [n]` | **Browser only** — draw the samples as points, axes locked to the same scale |

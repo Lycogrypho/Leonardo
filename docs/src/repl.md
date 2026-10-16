@@ -416,8 +416,9 @@ back with the refusal in the transcript. `colors` is deliberately absent, since 
 not syntax-highlight and a control that changes nothing visible is worse than none.
 
 The **Copy shareable link** button puts the whole session in the URL fragment. Opening that
-link restores the bindings and definitions; because it is a fragment, it is never sent to any
-server.
+link restores the settings, bindings and definitions; because it is a fragment, it is never sent
+to any server. It carries the environment, not the transcript: **a figure is not in it**, since
+`plot` leaves nothing in the session, so a reader draws it again.
 
 ## Unset a binding
 
@@ -495,7 +496,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `env` / `vars` | Show session state |
 | `unset <name>` | Remove binding or definition |
 | `:save <file>` | Write replayable script |
-| `:load <file>` | Replay a script |
+| `:load <file>` | Run a script: restores a saved session's settings, bindings and definitions |
 | `help [topic]` | Show help |
 | `quit` / `exit` | Leave the REPL |
 

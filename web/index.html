@@ -11,6 +11,21 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!--
+      The Content-Security-Policy (F_0112): it makes the textContent-only rule ENFORCED rather
+      than reviewed, since a result that somehow reached the page as markup could not run.
+      Measured by the owner in Firefox on the built page, every interaction checked.
+      - Scripts: this origin, plus the two inline scripts below BY HASH. Neither 'unsafe-inline'
+        nor 'unsafe-eval' is needed.
+      - Styles: 'unsafe-inline', with no hash, since a hash would switch 'unsafe-inline' off.
+        Plotly inserts a <style> at load and throws when it is refused, and MathLive positions
+        every piece of a formula with a style attribute.
+      - Images: data: and blob:, for Plotly's PNG download.
+      EDITING AN INLINE SCRIPT changes its hash: `sbt checks` (CheckCsp) names the new one.
+      Keep each inline script on ONE line, so its bytes, and hash, do not depend on the
+      checkout's line endings.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-qhASU5GRZ8Q0Yf1vg80PeM+vNpjYzOq/Nc1//5huTIs=' 'sha256-B5hDBCYSjSGBdp0jtHHlr4oyZJq4+lhIMhbJeyfn/qA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Leonardo - browser REPL</title>
 
     <!--
@@ -54,11 +69,8 @@
       those by ACCIDENT. With a keyboard present the exclusion has to be a decision.
     -->
     <script src="vendor/mathlive/mathlive.min.js"></script>
-    <script>
-      globalThis.leonardoLatexToMarkup = globalThis.MathLive.convertLatexToMarkup;
-      globalThis.leonardoLatexToAsciiMath = globalThis.MathLive.convertLatexToAsciiMath;
-      globalThis.MathLive.MathfieldElement.soundsDirectory = null;
-    </script>
+    <!-- One line, and allowed by its hash in the policy above. -->
+    <script>globalThis.leonardoLatexToMarkup = globalThis.MathLive.convertLatexToMarkup; globalThis.leonardoLatexToAsciiMath = globalThis.MathLive.convertLatexToAsciiMath; globalThis.MathLive.MathfieldElement.soundsDirectory = null;</script>
 
     <style>
       :root {
@@ -229,7 +241,8 @@
       <div id="settings" class="bar" role="group" aria-label="Session settings"></div>
 
       <div class="bar">
-        <button id="share" type="button">Copy shareable link</button>
+        <button id="share" type="button"
+                title="A link that restores this session's settings, bindings and definitions - not the transcript or a figure">Copy shareable link</button>
         <button id="clear" type="button">Clear transcript</button>
       </div>
       </section>
@@ -243,7 +256,8 @@
         <code class="mono">points</code> draws coordinates.
         <code class="mono">latex on</code> typesets results.
         <code class="mono">:save name</code> and <code class="mono">:load name</code> use this
-        browser's storage. Nothing you type leaves this tab.
+        browser's storage. A shareable link restores your settings, bindings and definitions, not
+        the transcript or a figure. Nothing you type leaves this tab.
       </footer>
     </main>
 
