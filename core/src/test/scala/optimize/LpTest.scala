@@ -123,6 +123,50 @@ class LpTest extends AnyFlatSpec:
       case other                          => fail(s"expected TooLarge from a rewritten row, got $other")
   }
 
+  /** F_0105's dense problems: `n` variables, `m` rows of `A x ≤ b` with `A` in `0 … 9` (or, mixed,
+   *  `−5 … 9` with `x ≤ 100`), `b` in `50 … 149`, every cost in `−9 … −1`, `x ≥ 0`. */
+  private def dense(mixed: Boolean, seed: Int, n: Int, m: Int) =
+    val r = new java.util.Random(seed.toLong)
+    def num(d: Int): _Value = _Number(d.toDouble)
+    val a = Vector.fill(m)(Vector.fill(n)(num(if mixed then r.nextInt(15) - 5 else r.nextInt(10))))
+    val b = Vector.fill(m)(num(50 + r.nextInt(100)))
+    val f = Vector.fill(n)(num(-1 - r.nextInt(9)))
+    (f, Some((a, b)), Vector.fill(n)(num(0)), Vector.fill(n)(if mixed then num(100) else _Number(Double.PositiveInfinity)))
+
+  it should "drive an artificial out on a negative pivot (F_0115)" in {
+    // -x + y = 0 and x - y = 0: phase 1 ends at once with both artificials basic at zero, and the
+    // first non-zero entry of the first row is -1, so the integer tableau's denominator turns
+    // negative and the whole tableau is negated. The second row is then redundant and retired.
+    // max y on x <= 3 is (3, 3).
+    val one = _Number(1); val minus = _Number(-1); val zero = _Number(0)
+    lpSolve(Vector(zero, minus), Some((Vector(Vector(one, zero)), Vector(_Number(3)))),
+            Some((Vector(Vector(minus, one), Vector(one, minus)), Vector(zero, zero))),
+            Vector(zero, zero), Vector(_Number(Double.PositiveInfinity), _Number(Double.PositiveInfinity))) match
+      case Right(r)  => assert(doubles(r.x) == Vector(3.0, 3.0) && r.objective == _Number(-3.0), r)
+      case Left(why) => fail(s"$why")
+  }
+
+  it should "decline MaxWork past a lowered work budget, and answer under the default (F_0115)" in {
+    val (f, a, lb, ub) = dense(mixed = true, seed = 1, n = 20, m = 40)
+    lpSolve(f, a, None, lb, ub, Limits.Default.withLimit(Limit.MaxLpWork, 100000)) match
+      case Left(LpFailure.MaxWork(budget)) => assert(budget == 100000)
+      case other                           => fail(s"expected MaxWork, got $other")
+    lpSolve(f, a, None, lb, ub) match
+      case Right(r)  => assert(r.iterations == 55, r.iterations)
+      case Left(why) => fail(s"$why")
+  }
+
+  it should "decline the worst dense 40 x 80 problem promptly at the default budget (F_0115)" in {
+    // 352 pivots; in spire rationals it took 139 s on Node, in the integer tableau 7.7 s, and the
+    // budget stops it at ~2 s on Node (0.55 s on the JVM). The bound is generous for loaded runs.
+    val (f, a, lb, ub) = dense(mixed = true, seed = 4, n = 40, m = 80)
+    val t0 = System.nanoTime()
+    val res = lpSolve(f, a, None, lb, ub)
+    val s = (System.nanoTime() - t0) / 1e9
+    assert(res == Left(LpFailure.MaxWork(MaxLpWork)), res)
+    assert(s < 10, s"$s s")
+  }
+
   "the lp production" should "answer a column, round-trip, and reserve lp" in {
     val e = parse("lp([[-3], [-5]], [[1, 0], [0, 2], [3, 2]], [[4], [12], [18]], 0, inf)")
     e.eval(env) match

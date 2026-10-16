@@ -1110,6 +1110,8 @@ final class Session:
     case LpFailure.MaxIterations(limit) => s"no optimum within $limit pivots"
     case LpFailure.TooLarge(bits)       =>
       s"an exact coefficient grew to $bits bits, past the cap: exact arithmetic does not round, it grows"
+    case LpFailure.MaxWork(budget)      =>
+      s"no optimum within the work cap of $budget units: exact arithmetic on this problem costs more than the cap allows"
 
   /** An [[NlpFailure]] in prose.  Residuals are rendered in full, as gradient norms are. */
   private def describeNlp(why: NlpFailure): String = why match

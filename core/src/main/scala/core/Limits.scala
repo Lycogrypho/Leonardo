@@ -37,6 +37,8 @@ enum Limit(val default: Long):
   case MaxLpPivots extends Limit(20000)
   /** The widest coefficient, in bits, an exact simplex pivot may write. */
   case MaxLpBits extends Limit(2048)
+  /** The arithmetic an exact linear program may do, in the units `optimize.MaxLpWork` defines (F_0115). */
+  case MaxLpWork extends Limit(125000000)
   /** Iterations of `minimize`. */
   case MaxMinimizeIterations extends Limit(2000)
   /** SQP iterations of `nlp`. */

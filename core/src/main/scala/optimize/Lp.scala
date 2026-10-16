@@ -18,6 +18,9 @@ enum LpFailure:
   /** An exact coefficient outgrew [[MaxLpBits]]: exact arithmetic does not round, it grows, and
    *  past this size each pivot costs seconds. */
   case TooLarge(bits: Int)
+  /** The arithmetic reached [[MaxLpWork]] units before an answer (F_0115): the budget that
+   *  bounds the time, where the dimension and bit caps do not. */
+  case MaxWork(budget: Long)
 
 /** An optimal vertex of a linear program.
  *
@@ -33,14 +36,12 @@ case class LpResult(x: Vector[_Value], objective: _Value, iterations: Int, activ
  *
  *  **Measured on Node, the slowest platform**, random dense integer problems over four seeds:
  *  at 40 variables and 80 constraints 0.05–0.3 s on the JVM and 0.1–1.7 s on Node; at 50 × 100
- *  one seed took 1.2 s on the JVM and 7.4 s on Node.  Exact arithmetic's cost is the size the
- *  rationals grow to rather than the dimension, which is why [[MaxLpBits]] was meant to bound
- *  the time and these two only the work per pivot.  **Neither does, as F_0105 measured**: dense
- *  integer problems at 40 × 80 with entries `0 … 9` and every cost negative take 25–217 pivots,
- *  3–139 s on Node and 0.5–26 s on the JVM, and never reach [[MaxLpBits]]; F_0115 holds the
- *  decision on a cap that bounds the time.
+ *  one seed took 1.2 s on the JVM and 7.4 s on Node.  **The dimension does not bound the time**,
+ *  and neither does [[MaxLpBits]] (F_0105): dense integer problems at 40 × 80 took 3–139 s on
+ *  Node in spire rationals, and never reached it. [[MaxLpWork]] is the cap that does (F_0115);
+ *  these are input validation.
  *
- *  This and the three caps below are the **defaults** of their [[core.Limit]]s (F_0124): a
+ *  This and the caps below are the **defaults** of their [[core.Limit]]s (F_0124): a
  *  library caller raises one through [[core.Environment.withLimit]] or the [[lpSolve]] overload
  *  taking [[core.Limits]]. */
 val MaxLpVariables: Int = Limit.MaxLpVariables.default.toInt
@@ -52,15 +53,27 @@ val MaxLpConstraints: Int = Limit.MaxLpConstraints.default.toInt
  *  accepted the measured problems take tens of pivots. */
 val MaxLpPivots: Int = Limit.MaxLpPivots.default.toInt
 
-/** The largest exact coefficient, in bits of numerator plus denominator, before [[lpSolve]]
- *  declines — meant as the cap that bounds the time, since the dimension does not; it does not
- *  bound it either (see [[MaxLpVariables]] and F_0115).
+/** The widest integer, in bits, the fraction-free tableau may hold before [[lpSolve]] declines:
+ *  an entry or the common denominator, the actual entries being their quotients (F_0115). A
+ *  bound on memory and on one pivot's cost; the time is bounded by [[MaxLpWork]].
  *
- *  Measured on **every entry a pivot writes** (F_0105): the pivot row, each row it rewrites,
- *  the right-hand sides and the reduced costs.  The input is not measured on its own: a large
- *  coefficient costs nothing until a pivot combines it, and the first pivot that does is
- *  measured. */
+ *  Measured on **every entry a pivot writes** (F_0105): every rewritten row, the right-hand
+ *  sides and the reduced costs.  The input is not measured on its own: a large coefficient costs
+ *  nothing until a pivot combines it, and the first pivot that does is measured. */
 val MaxLpBits: Int = Limit.MaxLpBits.default.toInt
+
+/** The arithmetic [[lpSolve]] may do, in work units, before it declines `MaxWork` (F_0115):
+ *  **the cap that bounds the time**.
+ *
+ *  Each tableau entry a pivot rewrites, `(p·a − f·b)/d`, costs `80 + w(p)·w(a) + w(f)·w(b) +
+ *  w(q)·w(d)` units, `w` counting 32-bit words and `q` the quotient: schoolbook multiplication
+ *  and division, plus a fixed cost per entry. **Measured on Node**, over F_0105's dense problems
+ *  (sixteen at 30 × 60 and 40 × 80): a unit is ~16–20 ns there and the fixed cost ~1.5 µs, which
+ *  a micro-benchmark of `BigInteger` arithmetic confirms. At this default a decline comes after
+ *  **2.1 s on Node** and 0.55 s on the JVM (the `MaxLsqWork` figure); fifteen of the sixteen
+ *  answer, the slowest in 1.85 s on Node, and the sixteenth — 352 pivots, 7.7 s to answer — is
+ *  declined. Checked after each rewritten row, so a decline overshoots by at most one row. */
+val MaxLpWork: Long = Limit.MaxLpWork.default
 
 
 /** Minimises `fᵀx` subject to `A x ≤ b`, `Aeq x = beq` and `lb ≤ x ≤ ub`, **exactly** (F_0011).
@@ -90,8 +103,9 @@ def lpSolve(f: Vector[_Value],
             lb: Vector[_Value], ub: Vector[_Value]): Either[LpFailure, LpResult] =
   lpSolve(f, a, eq, lb, ub, Limits.Default)
 
-/** [[lpSolve]] under `limits` (F_0124): the dimension, pivot and coefficient caps are
- *  [[core.Limit.MaxLpVariables]], `MaxLpConstraints`, `MaxLpPivots` and `MaxLpBits`. An overload
+/** [[lpSolve]] under `limits` (F_0124): the dimension, pivot, coefficient and work caps are
+ *  [[core.Limit.MaxLpVariables]], `MaxLpConstraints`, `MaxLpPivots`, `MaxLpBits` and
+ *  `MaxLpWork`. An overload
  *  rather than a defaulted parameter, which would be a binary break.
  *
  *  @param f      the cost vector
@@ -206,71 +220,127 @@ private final case class Solved(x: Vector[Q], objective: Q, pivots: Int, active:
     LpResult(x.map(value), value(objective), pivots, active)
 
 
-/** The two-phase dense simplex over the rationals, Bland's rule throughout. */
+/** The two-phase dense simplex, **fraction-free over the integers** (F_0115), Bland's rule
+ *  throughout.
+ *
+ *  The tableau is kept as integers `T` over one common denominator `d > 0`, the actual entries
+ *  being `T/d`: Edmonds' integer-preserving form of Gauss–Jordan, Bareiss's for elimination. A
+ *  pivot on `p = T(r)(col)` rewrites every other row, the reduced costs included, as
+ *  `(p·a − f·b)/d` with `f` that row's entry in `col`, and the division is **exact**: each
+ *  entry is a minor of the original integer matrix and `d` the basis's determinant. Then `d = p`.
+ *  It replaced arithmetic in spire's `Rational`, whose cost the survey found was set not by the
+ *  size of the coefficients but by its representation: every operation on a fraction pays a gcd,
+ *  15–100× a whole number of the same size, and a value that fits a `Long` while its product
+ *  does not runs 20–300× slower than a `BigInteger`. On `BigInteger` with no gcd the cost is
+ *  that of the multiplications and the division, which [[MaxLpWork]] counts: the dense 40 × 80
+ *  problems that took 3–139 s on Node take 1.0–7.7 s, the same pivots in the same order. */
 private object Tableau:
+  import java.math.BigInteger as Z
+
+  /** The fixed cost of rewriting one entry, in work units: measured on Node, where allocating
+   *  and dividing a `BigInteger` costs ~1.5 µs whatever its size and a unit ~16–20 ns. */
+  private val EntryWork = 80L
+
+  /** `cs` scaled by the least common multiple of its denominators: the same constraint, or a
+   *  positive multiple of the same cost, in integers. */
+  private def integral(cs: Vector[Q]): Vector[Z] =
+    def big(s: spire.math.SafeLong): Z = s.toBigInt.bigInteger
+    val l = cs.foldLeft(Z.ONE)((acc, q) => { val d = big(q.denominator); acc.divide(acc.gcd(d)).multiply(d) })
+    cs.map(q => big(q.numerator).multiply(l.divide(big(q.denominator))))
 
   /** Minimises `cᵀy` on `ineq` (`≤`) and `eqs` (`=`), `y ≥ 0`: the optimal `y` and the pivots. */
   def solve(c: Vector[Q], ineq: List[(Vector[Q], Q)], eqs: List[(Vector[Q], Q)],
             limits: Limits): Either[LpFailure, (Vector[Q], Int)] =
     val (maxPivots, maxBits) = (limits.count(Limit.MaxLpPivots), limits.count(Limit.MaxLpBits))
+    val maxWork = limits(Limit.MaxLpWork)
     val ny = c.size
     val ns = ineq.size
-    // Rows `[coefficients | slacks | rhs]`, each negated if its right-hand side is negative so
+    // Each row `[coefficients | rhs]` in integers, negated if its right-hand side is negative so
     // that phase 1 starts from a feasible artificial basis.
-    val raw: Vector[(Vector[Q], Q)] =
-      ineq.zipWithIndex.map { case ((cs, b), k) => (cs ++ Vector.tabulate(ns)(j => if j == k then Q.one else Q.zero), b) }.toVector ++
-      eqs.map((cs, b) => (cs ++ Vector.fill(ns)(Q.zero), b)).toVector
-    val negated = raw.map(_._2.signum < 0)
-    val rows    = raw.zip(negated).map { case ((cs, b), neg) => if neg then (cs.map(-_).toArray, -b) else (cs.toArray, b) }
+    val raw     = (ineq ++ eqs).map((cs, b) => integral(cs :+ b)).toVector
+    val negated = raw.map(_.last.signum < 0)
+    val rows    = raw.zip(negated).map((row, neg) => if neg then row.map(_.negate) else row)
     val m     = rows.size
     val width = ny + ns + m          // + one artificial per row
-    val t     = Array.tabulate(m)(i => Array.tabulate(width)(j => if j < ny + ns then rows(i)._1(j) else if j - ny - ns == i then Q.one else Q.zero))
-    val rhs   = rows.map(_._2).toArray
+    val t = Array.tabulate(m) { i =>
+      Array.tabulate(width) { j =>
+        if j < ny then rows(i)(j)
+        else if j < ny + ns then
+          if j - ny != i then Z.ZERO else if negated(i) then Z.ONE.negate else Z.ONE
+        else if j - ny - ns == i then Z.ONE
+        else Z.ZERO
+      }
+    }
+    val rhs = rows.map(_.last).toArray
     // An inequality whose right-hand side was already non-negative starts with its slack basic,
     // the textbook start; only the others need an artificial, and an all-`≤` problem with
     // `b ≥ 0` needs no phase 1 at all.
     val basis = Array.tabulate(m)(i => if i < ns && !negated(i) then ny + i else ny + ns + i)
+    var d      = Z.ONE
     var pivots = 0
-    // The reduced-cost row of the phase being run, kept current by every pivot rather than
-    // recomputed: with rationals the recomputation was most of the time.
-    var red: Array[Q] = Array.empty
+    // The reduced-cost row of the phase being run, times `d`, kept current by every pivot.
+    var red: Array[Z] = Array.empty
 
-    // The widest coefficient written so far, in bits, against MaxLpBits.
+    // The widest integer written so far, in bits, against MaxLpBits; the work done, against MaxLpWork.
     var widest = 0
-    def bits(q: Q): Int = q.numerator.toBigInt.bitLength + q.denominator.toBigInt.bitLength
+    var work   = 0L
+    def words(z: Z): Long = (z.bitLength >>> 5) + 1L
 
-    /** Records `q` in `widest` and returns it.  Every entry a pivot writes goes through here —
-     *  the pivot row, each row it rewrites, their right-hand sides and the reduced costs:
-     *  measuring the pivot row alone let a rewritten row pass the cap unseen until it pivoted
-     *  itself, if ever (F_0105). */
-    def written(q: Q): Q =
-      widest = math.max(widest, bits(q))
-      q
-
-    /** One pivot.  Only the pivot row's non-zero columns change anywhere, and the slack and
-     *  artificial blocks keep most of a row zero, so only those are visited. */
+    /** One pivot: every other row, and the reduced costs, become `(p·a − f·b)/d`. The pivot row
+     *  itself is unchanged, since its actual entries `T(r)/d` become `T(r)/p`. Stops part-way
+     *  once the work passes the budget, leaving a tableau `run` then declines on. */
     def pivot(r: Int, col: Int): Unit =
       val p  = t(r)(col)
-      val nz = (0 until width).filter(j => !t(r)(j).isZero).toArray
-      for j <- nz do t(r)(j) = written(t(r)(j) / p)
-      rhs(r) = written(rhs(r) / p)
-      for i <- 0 until m if i != r && !t(i)(col).isZero do
-        val factor = t(i)(col)
-        for j <- nz do t(i)(j) = written(t(i)(j) - factor * t(r)(j))
-        rhs(i) = written(rhs(i) - factor * rhs(r))
-      if red.nonEmpty && !red(col).isZero then
-        val factor = red(col)
-        for j <- nz do red(j) = written(red(j) - factor * t(r)(j))
+      val pr = t(r)
+      /** `(p·a − f·b)/d`, exact, recorded in `widest` and `work`. A zero that stays zero is not
+       *  rewritten. */
+      def combine(a: Z, f: Z, b: Z): Z =
+        if a.signum == 0 && (f.signum == 0 || b.signum == 0) then a
+        else
+          val num = p.multiply(a).subtract(f.multiply(b))
+          val q   = num.divide(d)
+          work += EntryWork + words(p) * words(a) + words(f) * words(b) + words(q) * words(d)
+          widest = math.max(widest, q.bitLength)
+          q
+      var i = 0
+      while i < m && work <= maxWork do
+        val row = t(i)
+        val f   = row(col)
+        if i != r && !(f.signum == 0 && p == d) then
+          for j <- 0 until width do row(j) = combine(row(j), f, pr(j))
+          rhs(i) = combine(rhs(i), f, rhs(r))
+        i += 1
+      if red.nonEmpty then
+        val f = red(col)
+        if !(f.signum == 0 && p == d) then
+          for j <- 0 until width do red(j) = combine(red(j), f, pr(j))
+      d = p
+      if d.signum < 0 then
+        // A negative pivot (only when driving an artificial out): negate everything, so `d > 0`
+        // and an entry's sign is its actual sign.
+        for row <- t; j <- 0 until width do row(j) = row(j).negate
+        for i <- 0 until m do rhs(i) = rhs(i).negate
+        for j <- red.indices do red(j) = red(j).negate
+        d = d.negate
+      widest = math.max(widest, d.bitLength)
       basis(r) = col
       pivots += 1
 
     /** Runs to optimality on `cost` over the columns `allowed`; `Left` when unbounded or capped. */
-    def run(cost: Int => Q, allowed: Int => Boolean, live: Array[Boolean]): Either[LpFailure, Unit] =
-      red = Array.tabulate(width)(j => (0 until m).filter(live).foldLeft(cost(j))((acc, i) => acc - cost(basis(i)) * t(i)(j)))
+    def run(cost: Int => Z, allowed: Int => Boolean, live: Array[Boolean]): Either[LpFailure, Unit] =
+      red = Array.tabulate(width)(j =>
+        (0 until m).filter(live).foldLeft(d.multiply(cost(j))) { (acc, i) =>
+          work += EntryWork + words(cost(basis(i))) * words(t(i)(j))
+          acc.subtract(cost(basis(i)).multiply(t(i)(j)))
+        })
       var result: Option[Either[LpFailure, Unit]] = None
       while result.isEmpty do
         if pivots >= maxPivots then result = Some(Left(LpFailure.MaxIterations(maxPivots)))
         else if widest > maxBits then result = Some(Left(LpFailure.TooLarge(widest)))
+        // Load-bearing beyond the budget: a pivot the budget stopped part-way leaves the tableau
+        // inconsistent, and this check is what keeps anything from reading it (with it removed,
+        // a stopped pivot led on to a wrong optimum — the mutation test).
+        else if work > maxWork then result = Some(Left(LpFailure.MaxWork(maxWork)))
         else
           val inBasis = basis.toSet
           (0 until width).find(j => allowed(j) && !inBasis.contains(j) && red(j).signum < 0) match
@@ -279,27 +349,33 @@ private object Tableau:
               val candidates = (0 until m).filter(i => live(i) && t(i)(col).signum > 0)
               if candidates.isEmpty then result = Some(Left(LpFailure.Unbounded))
               else
-                val best = candidates.map(i => rhs(i) / t(i)(col)).min
-                val r = candidates.filter(i => rhs(i) / t(i)(col) == best).minBy(basis(_))
+                // The least ratio rhs(i)/T(i)(col), compared by cross-multiplication (both
+                // denominators positive); a tie goes to the lowest basic variable.
+                def ratio(i: Int, k: Int): Int = rhs(i).multiply(t(k)(col)).compareTo(rhs(k).multiply(t(i)(col)))
+                val r = candidates.reduce { (i, k) =>
+                  val cmp = ratio(i, k)
+                  if cmp < 0 || (cmp == 0 && basis(i) < basis(k)) then i else k
+                }
                 pivot(r, col)
       result.getOrElse(Right(()))
 
     val live = Array.fill(m)(true)
     // Phase 1: minimise the sum of the artificials.
-    run(j => if j >= ny + ns then Q.one else Q.zero, _ => true, live).flatMap { _ =>
-      val infeasibility = (0 until m).filter(i => basis(i) >= ny + ns).map(rhs(_)).foldLeft(Q.zero)(_ + _)
+    run(j => if j >= ny + ns then Z.ONE else Z.ZERO, _ => true, live).flatMap { _ =>
+      val infeasibility = (0 until m).filter(i => basis(i) >= ny + ns).map(rhs(_)).foldLeft(Z.ZERO)(_.add(_))
       if infeasibility.signum > 0 then Left(LpFailure.Infeasible)
       else
         // Drive every artificial still basic (at zero) out of the basis; a row with no other
         // non-zero entry is redundant and is retired.
         for i <- 0 until m if basis(i) >= ny + ns do
-          (0 until ny + ns).find(j => !t(i)(j).isZero) match
+          (0 until ny + ns).find(j => t(i)(j).signum != 0) match
             case Some(col) => pivot(i, col)
             case None      => live(i) = false
-        // Phase 2: the real cost, artificials barred.
-        run(j => if j < ny then c(j) else Q.zero, _ < ny + ns, live).map { _ =>
+        // Phase 2: the real cost, scaled to integers, artificials barred.
+        val cz = integral(c)
+        run(j => if j < ny then cz(j) else Z.ZERO, _ < ny + ns, live).map { _ =>
           val y = Array.fill(ny)(Q.zero)
-          for i <- 0 until m if live(i) && basis(i) < ny do y(basis(i)) = rhs(i)
+          for i <- 0 until m if live(i) && basis(i) < ny do y(basis(i)) = Q(BigInt(rhs(i)), BigInt(d))
           (y.toVector, pivots)
         }
     }

@@ -389,7 +389,9 @@ Every solver here stops at a budget — a dimension, an iteration count, a coeff
 and declines past it rather than run without end. The defaults were measured for the browser
 REPL, where a frozen tab cannot be interrupted. A program with time to spare raises one on its
 `Environment` (`Limit` lists them all); the answer is certified exactly as before, only the
-amount of work allowed changes. Here a linear program one variable past `MaxLpVariables`:
+amount of work allowed changes. For a linear program the time is bounded by `MaxLpWork`, a
+count of the exact arithmetic done (about two seconds in a browser); the dimension caps only
+check the input. Here a linear program one variable past `MaxLpVariables`:
 
 ```scala mdoc
 val wide = e(s"lp(ones(${MaxLpVariables + 1}, 1), 0, 0, 1, inf)")

@@ -215,7 +215,7 @@ package "core" {
     }
 
     enum "Limit" <<data>> [[developer.html]] {
-        MaxQpVariables, MaxLpBits, MaxGroebnerBasis, ...
+        MaxQpVariables, MaxLpBits, MaxLpWork, MaxGroebnerBasis, ...
         + default: Long  (the published constant's value)
         one case per work or size budget (F_0124);
         the optimize package so far
@@ -1732,9 +1732,10 @@ package "optimize" <<Rectangle>> {
     class "Lp" <<utility>> [[optimization.html]] {
         __ F_0011: exact linear programming __
         lpSolve(f, A/b, Aeq/beq, lb, ub): Either[LpFailure, LpResult]
-        two-phase simplex over spire rationals, Bland's rule
+        two-phase simplex, fraction-free over BigInteger (F_0115), Bland's rule
         slack basis where b >= 0; infeasible / unbounded PROVED
-        caps: 40 variables, 80 rows, 2048-bit coefficients (measured)
+        caps: 40 variables, 80 rows, 2048-bit integers;
+        MaxLpWork bounds the time (~2 s on Node, measured)
     }
     class "_LP" <<case>> [[optimization.html]] {
         lp(f, A, b[, Aeq, beq], lb, ub); 0 = absent group
