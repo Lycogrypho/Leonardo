@@ -527,7 +527,7 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int, limits: Lim
       // to the matrix's size and a zero matrix has none.
       val decomposition =
         if m.toVector.forall(_ == 0.0) then Some((Vector.fill(k)(0.0), _MatrixValue.identity(k)))
-        else m.svd.map((_, sigma, v) => (sigma, v))
+        else m.svd(limits).map((_, sigma, v) => (sigma, v))
       decomposition.map { (sigma, v) =>
         val top  = sigma.headOption.getOrElse(0.0)
         val gNorm = math.sqrt(dotA(g, g))

@@ -5,15 +5,18 @@ import core.*
 
 
 /** Maximum number of variables [[truthTable]] enumerates (2^16 = 65536 rows).
- *  Beyond this the table is rejected (empty result) rather than attempted.
+ *  Beyond this the table is rejected (empty result) rather than attempted.  The **default** of
+ *  [[core.Limit.MaxTruthTableVars]] (F_0124): [[truthTable]] reads its environment's value, up
+ *  to 30, past which the row count overflows an `Int`.
  */
-val MaxTruthTableVars: Int = 16
+val MaxTruthTableVars: Int = Limit.MaxTruthTableVars.default.toInt
 
 
 /** Maximum number of variables [[kleeneTable]] enumerates (3^10 = 59049 rows) —
- *  the three-valued counterpart of [[MaxTruthTableVars]], set to the same row budget.
+ *  the three-valued counterpart of [[MaxTruthTableVars]], set to the same row budget.  The
+ *  **default** of [[core.Limit.MaxKleeneTableVars]] (F_0124), honoured up to 19 (`3¹⁹` rows).
  */
-val MaxKleeneTableVars: Int = 10
+val MaxKleeneTableVars: Int = Limit.MaxKleeneTableVars.default.toInt
 
 
 /** The three Kleene truth values in ascending order: `false`, `unknown`, `true`.
@@ -37,11 +40,11 @@ val KleeneValues: Vector[_Value] = Vector(_Bool(false), _Truth.Unknown, _Bool(tr
  *              yields a single row with the empty assignment
  *  @param env  base environment for each row's evaluation (row bindings shadow it)
  *  @return one `(assignment, result)` pair per row, or an empty vector when `vars`
- *          exceeds [[MaxTruthTableVars]]
+ *          exceeds the environment's `Limit.MaxTruthTableVars`
  */
 def truthTable(e: _Expression, vars: List[_Variable], env: Environment = new Environment())
     : Vector[(Map[String, Boolean], Option[Boolean])] =
-  if vars.size > MaxTruthTableVars then Vector.empty
+  if vars.size > math.min(env.limits(Limit.MaxTruthTableVars), 30L) then Vector.empty
   else
     val names = vars.map(_.variable)
     Vector.tabulate(1 << names.size) { i =>
@@ -67,11 +70,11 @@ def truthTable(e: _Expression, vars: List[_Variable], env: Environment = new Env
  *              empty assignment
  *  @param env  base environment for each row's evaluation (row bindings shadow it)
  *  @return one `(assignment, result)` pair per row, or an empty vector when `vars`
- *          exceeds [[MaxKleeneTableVars]]
+ *          exceeds the environment's `Limit.MaxKleeneTableVars`
  */
 def kleeneTable(e: _Expression, vars: List[_Variable], env: Environment = new Environment())
     : Vector[(Map[String, _Value], Option[_Value])] =
-  if vars.size > MaxKleeneTableVars then Vector.empty
+  if vars.size > math.min(env.limits(Limit.MaxKleeneTableVars), 19L) then Vector.empty
   else
     val names  = vars.map(_.variable)
     val radix  = KleeneValues.size

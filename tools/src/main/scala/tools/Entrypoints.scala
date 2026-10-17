@@ -49,3 +49,7 @@ package tools
 
 /** Flags the browser page's inline scripts disagreeing with its policy. See [[CheckCsp]]. */
 @main def csp(args: String*): Unit = sys.exit(CheckCsp.run(args))
+
+/** Writes the architecture diagram as GraphML, or with `--check` refuses what the reader does not
+ *  know and a stale committed copy. See [[PumlGraph]]. */
+@main def graphml(args: String*): Unit = sys.exit(PumlGraph.run(args))

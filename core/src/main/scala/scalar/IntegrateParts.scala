@@ -23,6 +23,10 @@ import scala.annotation.tailrec
  *  applications) so they stay symbolic instead of recursing forever.  Polynomial times
  *  `exp`/`sin`/`cos` terminates well within this bound (the polynomial degree drops by
  *  one per level).
+ *
+ *  **Fixed, not a `core.Limit`** (F_0124 phase C): `integrate(e, v)` takes no environment, and
+ *  this and the other search parameters of the integrator decide *which* antiderivative is
+ *  found rather than how long a found one may take, so they are not a work budget.
  */
 private val MaxPartsDepth = 4
 
@@ -145,7 +149,8 @@ private def partsProduct(f: _Expression, g: _Expression, v: _Variable, depth: In
  *
  *  Matches the Laplace power-rule convention (`transform.LaplaceTransform`): a bound
  *  keeps a pathological `∫ sin^1000(x) dx` from expanding into a huge tree, even though
- *  the recursion always terminates (the exponent drops by two each step).
+ *  the recursion always terminates (the exponent drops by two each step).  Fixed for the
+ *  reason [[MaxPartsDepth]] gives (F_0124 phase C).
  */
 private val MaxReductionPower = 20
 

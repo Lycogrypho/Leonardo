@@ -703,7 +703,8 @@ case class Factorial(e: _Expression) extends _Function with NamedFunction:
       // An exact non-negative integer argument is computed exactly and without the 170!
       // ceiling, which exists only because a Double overflows there.
       case Right(r: _Rational) if exactIntArg(r).isDefined =>
-        exactIntArg(r).flatMap(factorialExact).map(n => Right(_Rational(n))).getOrElse(Left(this))
+        exactIntArg(r).flatMap(multiFactorialExactWithin(_, BigInt(1), env.limits(Limit.MaxExactFactorial)))
+          .map(n => Right(_Rational(n))).getOrElse(Left(this))
       case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x))       => factorialOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => factorialOf(d).getOrElse(Double.NaN))
@@ -737,7 +738,7 @@ case class MultiFactorial(e: _Expression, k: _Expression) extends _Function with
         (for
           n <- exactIntArg(rx)
           s <- exactIntArg(rk)
-          v <- multiFactorialExact(n, s)
+          v <- multiFactorialExactWithin(n, s, env.limits(Limit.MaxExactFactorial))
         yield Right(_Rational(v))).getOrElse(Left(this))
       case (Right(rx: _Rational), Right(sv: _Value)) => viaDouble(List(_Number(rx.toDouble), sv), env)
       case (Right(xv: _Value), Right(rs: _Rational)) => viaDouble(List(xv, _Number(rs.toDouble)), env)
@@ -767,7 +768,8 @@ case class Gamma(e: _Expression) extends _Function with NamedFunction:
       // Gamma(n) = (n-1)! at a positive integer, so the exact factorial covers it; every
       // other argument is genuinely transcendental and goes through Lanczos as before.
       case Right(r: _Rational) if exactIntArg(r).exists(_.signum > 0) =>
-        exactIntArg(r).flatMap(n => factorialExact(n - 1)).map(n => Right(_Rational(n))).getOrElse(Left(this))
+        exactIntArg(r).flatMap(n => multiFactorialExactWithin(n - 1, BigInt(1), env.limits(Limit.MaxExactFactorial)))
+          .map(n => Right(_Rational(n))).getOrElse(Left(this))
       case Right(r: _Rational)     => viaExact(r, env)
       case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))
@@ -914,11 +916,11 @@ case class Binom(n: _Expression, k: _Expression) extends _Function with NamedFun
           for
             an <- a.toBigIntExact
             bn <- b.toBigIntExact
-            v  <- binomExact(an, bn)
+            v  <- binomExactWithin(an, bn, env.limits(Limit.MaxExactSequenceIndex))
           yield Right(_Rational(v))
         exact.getOrElse(viaDouble(List(_Number(a.toDouble), _Number(b.toDouble)), env))
       case (Right(_Number(a)), Right(_Number(b))) =>
-        binomOf(a, b).map(v => Right(_Number(v))).getOrElse(Left(this))
+        binomOfWithin(a, b, env.limits(Limit.MaxExactSequenceIndex)).map(v => Right(_Number(v))).getOrElse(Left(this))
       case _ => Left(this)
 
 
@@ -932,12 +934,13 @@ case class Catalan(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Catalan(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
+    val cap = env.limits(Limit.MaxExactSequenceIndex)
     e.eval(env) match
       case Right(r: _Rational) =>
-        exactIntArg(r).flatMap(catalanExact).map(v => Right(_Rational(v)))
+        exactIntArg(r).flatMap(catalanExactWithin(_, cap)).map(v => Right(_Rational(v)))
           .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
-      case Right(_Number(x))       => catalanOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => catalanOf(d).getOrElse(Double.NaN))
+      case Right(_Number(x))       => catalanOfWithin(x, cap).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => catalanOfWithin(d, cap).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
       case other                   => Left(Catalan(other.toExpression))
 
@@ -956,12 +959,13 @@ case class Harmonic(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Harmonic(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
+    val cap = env.limits(Limit.MaxExactSequenceIndex)
     e.eval(env) match
       case Right(r: _Rational) =>
-        exactIntArg(r).flatMap(harmonicExact).map(Right(_))
+        exactIntArg(r).flatMap(harmonicExactWithin(_, cap)).map(Right(_))
           .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
-      case Right(_Number(x))       => harmonicOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => harmonicOf(d).getOrElse(Double.NaN))
+      case Right(_Number(x))       => harmonicOfWithin(x, cap).map(v => Right(_Number(v))).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => harmonicOfWithin(d, cap).getOrElse(Double.NaN))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
       case other                   => Left(Harmonic(other.toExpression))
 

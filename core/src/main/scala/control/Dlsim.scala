@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package control
 
 import core.*
-import matrix.{_Matrix, MaxMatrixCells}
+import matrix._Matrix
 
 
 /** Why [[dlsim]] declined (F_0052 Decision A: the reason travels as data, the REPL prints it). */
@@ -26,8 +26,11 @@ import SimFailure.*
  *
  *  **Measured** (2026-10-09) just under the cap, at `9.1–9.4·10⁷`: 48–50 ms on the JVM and
  *  250–320 ms on Node, the slowest platform (n = 100, N = 9000 and n = 300, N = 1000). The output
- *  and state cells, capped at [[matrix.MaxMatrixCells]], bind first for most long simulations. */
-val MaxDlsimWork: Long = 100_000_000L
+ *  and state cells, capped at [[matrix.MaxMatrixCells]], bind first for most long simulations.
+ *
+ *  The **default** of [[core.Limit.MaxDlsimWork]] (F_0124): the [[dlsim]] overload taking
+ *  [[core.Limits]] and the `dlsim` node read the caller's value. */
+val MaxDlsimWork: Long = Limit.MaxDlsimWork.default
 
 /** Simulates the discrete-time model `x[k+1] = A·x[k] + B·u[k]`, `y[k] = C·x[k] + D·u[k]` over
  *  the input sequence `u` from `x[0] = x0` (F_0064, MPC T2-07).
@@ -51,7 +54,25 @@ val MaxDlsimWork: Long = 100_000_000L
  */
 def dlsim(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue,
           u: _MatrixValue, x0: _MatrixValue): Either[SimFailure, (_MatrixValue, _MatrixValue)] =
+  dlsim(a, b, c, d, u, x0, Limits.Default)
+
+/** [[dlsim]] under `limits` (F_0124): the cell and work caps are [[core.Limit.MaxMatrixCells]]
+ *  and [[core.Limit.MaxDlsimWork]]. An overload rather than a defaulted parameter, which would
+ *  be a binary break.
+ *
+ *  @param a      the state matrix, `n×n`
+ *  @param b      the input matrix, `n×m`
+ *  @param c      the output matrix, `p×n`
+ *  @param d      the feedthrough matrix, `p×m`
+ *  @param u      the inputs, `m×N`
+ *  @param x0     the initial state, `n×1`
+ *  @param limits the budgets the simulation runs under
+ *  @return `(Y, X)`, or the reason the simulation was declined
+ */
+def dlsim(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue,
+          u: _MatrixValue, x0: _MatrixValue, limits: Limits): Either[SimFailure, (_MatrixValue, _MatrixValue)] =
   val (n, m, p, steps) = (a.rows, b.cols, c.rows, u.cols)
+  val (maxCells, maxWork) = (limits(Limit.MaxMatrixCells), limits(Limit.MaxDlsimWork))
   val work = steps.toLong * (n.toLong * n + n.toLong * m + p.toLong * n + p.toLong * m)
   if a.cols != n then Left(ShapeMismatch(s"A must be square: it is ${n}x${a.cols}"))
   else if b.rows != n then Left(ShapeMismatch(s"B must have $n rows, as A does: it is ${b.rows}x$m"))
@@ -59,9 +80,9 @@ def dlsim(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue,
   else if d.rows != p || d.cols != m then Left(ShapeMismatch(s"D must be ${p}x$m: it is ${d.rows}x${d.cols}"))
   else if u.rows != m then Left(ShapeMismatch(s"u must have $m rows, one per input: it is ${u.rows}x$steps"))
   else if x0.rows != n || x0.cols != 1 then Left(ShapeMismatch(s"x0 must be ${n}x1: it is ${x0.rows}x${x0.cols}"))
-  else if p.toLong * steps > MaxMatrixCells || n.toLong * (steps + 1) > MaxMatrixCells then
-    Left(TooLarge(s"the outputs or states would exceed $MaxMatrixCells cells"))
-  else if work > MaxDlsimWork then Left(TooLarge(s"the recursion would take $work multiply-adds, past $MaxDlsimWork"))
+  else if p.toLong * steps > maxCells || n.toLong * (steps + 1) > maxCells then
+    Left(TooLarge(s"the outputs or states would exceed $maxCells cells"))
+  else if work > maxWork then Left(TooLarge(s"the recursion would take $work multiply-adds, past $maxWork"))
   else run(a.toVector.toArray, b.toVector.toArray, c.toVector.toArray, d.toVector.toArray,
            u.toVector.toArray, x0.toVector.toArray, n, m, p, steps)
 
@@ -182,7 +203,7 @@ case class _Dlsim(sys: _Expression, u: _Expression, x0: _Expression, states: Boo
           ui = if um.rows != b.cols && um.cols == b.cols then um.transpose else um
           x  <- simMatrix(x0.eval(env), "x0", Some((a.rows, 1)))
           xc = if x.rows == 1 && x.cols == a.rows && a.rows > 1 then x.transpose else x
-          r  <- dlsim(a, b, c, d, ui, xc)
+          r  <- dlsim(a, b, c, d, ui, xc, env.limits)
         yield r
       case _ => Left(NotNumeric("sys is not the [[A, B, C, D]] row stateSpace builds"))
 

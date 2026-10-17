@@ -123,7 +123,7 @@ private def levenbergMarquardt(res: Residual, p0: Vector[Double], box: (Vector[D
       else _MatrixValue(m, nf, Array.tabulate(m * nf) { i =>
              val c = free(i % nf)
              if cn(c) == 0.0 then 0.0 else j((i / nf) * n + c) / cn(c)
-           }).svd
+           }).svd(env.limits)
              .map((_, sigma, _) => numericalRank(sigma, rankTolerance(env)))
     rank match
       case Some(q) if q < nf => Left(LsqFailure.NotIdentifiable(q, nf))

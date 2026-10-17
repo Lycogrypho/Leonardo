@@ -31,10 +31,11 @@ private[leonardo] def numericalRank(sigma: Vector[Double], relTol: Double): Int 
  *
  *  @param a      the matrix
  *  @param relTol the tolerance relative to the largest singular value
+ *  @param limits the budgets, for the SVD's work cap
  *  @return the `cols × rows` pseudo-inverse, or `None` when the SVD declines
  */
-private[leonardo] def pseudoInverse(a: _MatrixValue, relTol: Double): Option[_MatrixValue] =
-  a.svd.map { (u, sigma, v) =>
+private[leonardo] def pseudoInverse(a: _MatrixValue, relTol: Double, limits: Limits): Option[_MatrixValue] =
+  a.svd(limits).map { (u, sigma, v) =>
     val r = numericalRank(sigma, relTol)
     _MatrixValue(a.cols, a.rows, Array.tabulate(a.cols * a.rows) { idx =>
       val (i, j) = (idx / a.rows, idx % a.rows)
@@ -68,15 +69,17 @@ private[leonardo] def conditionNumber(sigma: Vector[Double], m: Int, n: Int): Do
  *  appends it as a note, so a refusal never echoes the call back unexplained (the F_0079 rule).
  *
  *  @param operand the evaluated matrix operand
+ *  @param limits  the budgets, for the SVD's work cap
  *  @return the reason, or `None` when the decomposition succeeds or the operand is not numeric
  */
-private[leonardo] def svdDecline(operand: Either[_Expression, _Value]): Option[String] =
+private[leonardo] def svdDecline(operand: Either[_Expression, _Value], limits: Limits): Option[String] =
   _MatrixValue.ofEvaluated(operand).flatMap { a =>
-    if a.svd.isDefined then None
+    val cap = limits(Limit.MaxSvdWork)
+    if a.svd(limits).isDefined then None
     else if !a.isFinite then Some("the matrix has a non-finite entry")
-    else if _MatrixValue.svdWork(a.rows, a.cols) > _MatrixValue.MaxSvdWork then
+    else if _MatrixValue.svdWork(a.rows, a.cols) > cap then
       Some(s"the matrix is ${a.rows}x${a.cols}, past the decomposition's work cap " +
-        s"(max(m, n)·min(m, n)² at most ${_MatrixValue.MaxSvdWork})")
+        s"(max(m, n)·min(m, n)² at most $cap)")
     else Some("the decomposition did not converge to a certified answer")
   }
 
@@ -112,12 +115,13 @@ private def diagonal(sigma: Vector[Double], rows: Int, cols: Int): _MatrixValue 
  *  `m×n`, `V` `n×n`, the extra columns completing orthonormal bases of the left and right null
  *  spaces — the form a null-space or complementary-subspace question reads.
  *
- *  @param a    the matrix
- *  @param full whether to complete `U` and `V` to square orthogonal matrices
+ *  @param a      the matrix
+ *  @param full   whether to complete `U` and `V` to square orthogonal matrices
+ *  @param limits the budgets, for the SVD's work cap
  *  @return `(U, S, V)`, or `None` when the kernel declines
  */
-private[leonardo] def svdFactors(a: _MatrixValue, full: Boolean): Option[(_MatrixValue, _MatrixValue, _MatrixValue)] =
-  a.svd.flatMap { (u, sigma, v) =>
+private[leonardo] def svdFactors(a: _MatrixValue, full: Boolean, limits: Limits): Option[(_MatrixValue, _MatrixValue, _MatrixValue)] =
+  a.svd(limits).flatMap { (u, sigma, v) =>
     if !full then Some((u, diagonal(sigma, sigma.size, sigma.size), v))
     else
       for
@@ -149,7 +153,7 @@ case class _Svd(m: _Expression, full: Boolean = false) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     val r = m.eval(env)
-    _MatrixValue.ofEvaluated(r).flatMap(svdFactors(_, full)) match
+    _MatrixValue.ofEvaluated(r).flatMap(svdFactors(_, full, env.limits)) match
       case Some((u, s, v)) => Left(_Matrix(1, 3, Vector(u, s, v)))
       case None            => Left(unevaluated(r, this, _Svd(r.toExpression, full)))
 
@@ -157,7 +161,7 @@ case class _Svd(m: _Expression, full: Boolean = false) extends _Expression:
    *  @param env the evaluation environment
    *  @return the reason, or `None`
    */
-  def declineReason(env: Environment): Option[String] = svdDecline(m.eval(env))
+  def declineReason(env: Environment): Option[String] = svdDecline(m.eval(env), env.limits)
 
 
 /** Moore–Penrose pseudo-inverse: `pinv(A)`, the `n×m` matrix `V·Σ⁺·Uᵀ` (F_0061).
@@ -180,7 +184,7 @@ case class _PInv(m: _Expression) extends _MatrixOperation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     val r = m.eval(env)
-    _MatrixValue.ofEvaluated(r).flatMap(pseudoInverse(_, rankTolerance(env))) match
+    _MatrixValue.ofEvaluated(r).flatMap(pseudoInverse(_, rankTolerance(env), env.limits)) match
       case Some(p) => Right(p)
       case None    => Left(unevaluated(r, this, _PInv(r.toExpression)))
 
@@ -188,7 +192,7 @@ case class _PInv(m: _Expression) extends _MatrixOperation:
    *  @param env the evaluation environment
    *  @return the reason, or `None`
    */
-  def declineReason(env: Environment): Option[String] = svdDecline(m.eval(env))
+  def declineReason(env: Environment): Option[String] = svdDecline(m.eval(env), env.limits)
 
 
 /** Numerical rank: `rank(A)` or `rank(A, tol)` — the number of singular values above
@@ -219,7 +223,7 @@ case class _Rank(m: _Expression, tol: Option[_Expression] = None) extends _Expre
     (for
       t     <- relTol
       a     <- _MatrixValue.ofEvaluated(r)
-      sigma <- a.svd.map(_._2)
+      sigma <- a.svd(env.limits).map(_._2)
     yield _Rational.literalLike(numericalRank(sigma, t), r.toExpression)) match
       case Some(n) => Right(n)
       case None    => Left(unevaluated(r, this, _Rank(r.toExpression, rt.map(_.toExpression))))
@@ -233,7 +237,7 @@ case class _Rank(m: _Expression, tol: Option[_Expression] = None) extends _Expre
     tol.map(_.eval(env)) match
       case Some(Right(_Number(t))) if !(t >= 0 && t < 1) =>
         Some("the tolerance must be a number in [0, 1), relative to the largest singular value")
-      case _ => svdDecline(m.eval(env))
+      case _ => svdDecline(m.eval(env), env.limits)
 
 
 /** Which subspace a [[_NullSpace]] node asks for. */
@@ -262,11 +266,12 @@ object Subspace:
  *  @param a      the matrix
  *  @param which  the subspace
  *  @param relTol the tolerance relative to the largest singular value
+ *  @param limits the budgets, for the SVD's work cap
  *  @return `Some(Some(B))` for a basis `B`, `Some(None)` for the trivial subspace, `None` when the
  *          decomposition declines
  */
-private[leonardo] def subspaceBasis(a: _MatrixValue, which: Subspace, relTol: Double): Option[Option[_MatrixValue]] =
-  svdFactors(a, full = which == Subspace.Null).map { (u, s, v) =>
+private[leonardo] def subspaceBasis(a: _MatrixValue, which: Subspace, relTol: Double, limits: Limits): Option[Option[_MatrixValue]] =
+  svdFactors(a, full = which == Subspace.Null, limits).map { (u, s, v) =>
     val sigma = (0 until math.min(s.rows, s.cols)).map(i => s(i, i)).toVector
     val r     = numericalRank(sigma, relTol)
     which match
@@ -308,7 +313,7 @@ case class _NullSpace(which: Subspace, m: _Expression, tol: Option[_Expression] 
     (for
       t <- relTol
       a <- _MatrixValue.ofEvaluated(r)
-      b <- subspaceBasis(a, which, t)
+      b <- subspaceBasis(a, which, t, env.limits)
     yield b) match
       case Some(Some(b)) => Right(b)
       case Some(None)    => Right(_Bool(false))
@@ -323,7 +328,7 @@ case class _NullSpace(which: Subspace, m: _Expression, tol: Option[_Expression] 
     tol.map(_.eval(env)) match
       case Some(Right(_Number(t))) if !(t >= 0 && t < 1) =>
         Some("the tolerance must be a number in [0, 1), relative to the largest singular value")
-      case _ => svdDecline(m.eval(env))
+      case _ => svdDecline(m.eval(env), env.limits)
 
 
 /** 2-norm condition number: `cond(A)`, `σ_max/σ_min` over the `min(m, n)` singular values
@@ -343,7 +348,7 @@ case class _Cond(m: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     val r = m.eval(env)
-    _MatrixValue.ofEvaluated(r).flatMap(a => a.svd.map(s => conditionNumber(s._2, a.rows, a.cols))) match
+    _MatrixValue.ofEvaluated(r).flatMap(a => a.svd(env.limits).map(s => conditionNumber(s._2, a.rows, a.cols))) match
       case Some(c) => Right(_Number(c))
       case None    => Left(unevaluated(r, this, _Cond(r.toExpression)))
 
@@ -351,4 +356,4 @@ case class _Cond(m: _Expression) extends _Expression:
    *  @param env the evaluation environment
    *  @return the reason, or `None`
    */
-  def declineReason(env: Environment): Option[String] = svdDecline(m.eval(env))
+  def declineReason(env: Environment): Option[String] = svdDecline(m.eval(env), env.limits)

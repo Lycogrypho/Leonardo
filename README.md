@@ -250,12 +250,10 @@ listed roughly by effort-to-value:
 
 - **Number theory** — primes, `primepi`, continued fractions, modular arithmetic and the
   classical integer functions; the cheapest of the open domains and already half-specified.
-- **Operational research** — adopted in part rather than whole, taking the pieces that belong
-  in a CAS and leaving general MILP solving outside it.
+- **Queueing theory** — the half of operational research still open; its other half, exact
+  linear programming (`lp`), has shipped, and general MILP solving stays outside the library.
 - **Quaternions** — a fifth sibling of `_Number` on the established value pattern, with
   non-commutative multiplication as the design risk to be handled deliberately.
-- **Interval arithmetic** — `_Interval(lo, hi)` as a value, answering the question the exact
-  tier cannot: how far a floating-point result can be trusted.
 - **Tensor algebra** — generalising the matrix domain to N dimensions, with contraction and
   Einstein summation.
 - **Graph plotting and visualization** — a user-facing interface for graphing functions and

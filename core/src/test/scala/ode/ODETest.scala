@@ -97,24 +97,24 @@ class ODETest extends AnyFlatSpec with BeforeAndAfter:
 
   it should "floor the step count at BaseSteps for a short interval" in:
     // span = 1 at default precision → the BaseSteps floor (1000).
-    assert(stepCount(1.0, 5) == 1000)
+    assert(stepCount(1.0, 5, MaxOdeSteps) == 1000)
 
   it should "scale the step count with the interval length" in:
     // span = 100 → ~100× the floor, so h stays ≈ 1e-3 instead of ballooning to 0.1.
-    assert(stepCount(100.0, 5) == 100000)
+    assert(stepCount(100.0, 5, MaxOdeSteps) == 100000)
 
   it should "keep the floor for a tiny interval" in:
-    assert(stepCount(0.001, 5) == 1000)
+    assert(stepCount(0.001, 5, MaxOdeSteps) == 1000)
 
   it should "not collapse to a single step at precision 0" in:
     // The old formula (BaseSteps * precision / DefaultPrecision) gave 0 → 1 step here.
-    assert(stepCount(1.0, 0) == 1000)
+    assert(stepCount(1.0, 0, MaxOdeSteps) == 1000)
 
   it should "refine further at higher precision" in:
-    assert(stepCount(1.0, 10) == 2000)
+    assert(stepCount(1.0, 10, MaxOdeSteps) == 2000)
 
   it should "cap the step count for a very long interval" in:
-    assert(stepCount(1e9, 5) == 1000000)
+    assert(stepCount(1e9, 5, MaxOdeSteps) == 1000000)
 
   it should "stay accurate over a long interval (y' = -y^2, y(0)=1 at t=1000 → 1/1001)" in:
     // Nonlinear rhs (collect → degree 2 → None) forces RK4, not the closed-form tier;

@@ -218,7 +218,7 @@ package "core" {
         MaxQpVariables, MaxLpBits, MaxLpWork, MaxGroebnerBasis, ...
         + default: Long  (the published constant's value)
         one case per work or size budget (F_0124);
-        the optimize package so far
+        every package's, 48 in all
     }
 
     class "Limits" <<data>> [[developer.html]] {
@@ -459,7 +459,7 @@ package "scalar" {
     "_Laurent"       --|> "_Functional"
 
     ' -- Algorithm modules (package-level functions) -
-    class "Limit" <<utility>> [[calculus.html]] {
+    class "EvalLimit" <<utility>> [[calculus.html]] {
         + evalLimit(e, v, point, dir, env): _Expression
         __ tiers __
         1. direct substitution
@@ -711,7 +711,7 @@ package "scalar" {
     "singularitiesOf" ..> "Singularity" : builds
 
     ' Functional nodes call algorithm modules at eval time
-    "_Limit"       ..> "Limit"     : evalLimit() at eval
+    "_Limit"       ..> "EvalLimit" : evalLimit() at eval
     "_Derivative"  ..> "Derive"    : derive() at eval
     "_Integral"    ..> "Integrate" : integrate() at eval
     "_DefIntegral" ..> "Compile"   : compile() fast path
@@ -2090,6 +2090,14 @@ package "tools" <<Rectangle>> {
         script's SHA-256, no stale hash, no unsafe
         script source, one-line scripts (F_0112)
     }
+    class "PumlGraph" <<object>> [[developer.html]] {
+        + read(text): Either[Vector, Diagram]
+        + toGraphML(d): String
+        + offences(source, target): Vector
+        this diagram as GraphML for Gephi (F_0097);
+        refuses what it does not know, and a
+        stale committed structure.graphml
+    }
     class "Files" <<utility>> [[developer.html]] {
         + GuardedRoots: Vector
         + rootsOrDefault(args): Vector
@@ -2109,6 +2117,7 @@ package "tools" <<Rectangle>> {
     "CheckScalaVersion" ..> "Files"
     "CheckDocLinks"     ..> "Files"
     "CheckCsp"          ..> "Files"
+    "PumlGraph"         ..> "Files"
     "FixMojibake"       ..> "CheckCharset" : reads Forbidden,\nso the two cannot drift
 }
 

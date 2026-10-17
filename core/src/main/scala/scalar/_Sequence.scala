@@ -72,10 +72,11 @@ case class _Sequence(kind: SeqKind, n: _Expression, seeds: List[_Expression] = N
             for
               i  <- r.toBigIntExact
               ab <- exactSeeds(vs)
-              x  <- linRecExact(i, ab._1, ab._2, _Rational(kind.p), _Rational(kind.q))
+              x  <- linRecExactWithin(i, ab._1, ab._2, _Rational(kind.p), _Rational(kind.q),
+                                      env.limits(Limit.MaxExactSequenceIndex))
             yield Right(x)
-          exact.getOrElse(inexact(r.toDouble, vs))
-        case Right(_Number(x)) => inexact(x, vs)
+          exact.getOrElse(inexact(r.toDouble, vs, env))
+        case Right(_Number(x)) => inexact(x, vs, env)
         case _                 => Left(this)
 
   /** The seed pair as exact rationals: the node's own defaults, or two exact overrides. */
@@ -85,13 +86,14 @@ case class _Sequence(kind: SeqKind, n: _Expression, seeds: List[_Expression] = N
     case _                                       => None
 
   /** The `Double` path, used for an inexact index or inexact seeds. */
-  private def inexact(x: Double, vs: List[_Value]): Either[_Expression, _Value] =
+  private def inexact(x: Double, vs: List[_Value], env: Environment): Either[_Expression, _Value] =
     val ab = vs match
       case Nil => Some((kind.a.toDouble, kind.b.toDouble))
       case _   => vs.map(v => _Complex.parts(v).collect { case (re, im) if im == 0.0 => re }) match
         case Some(p) :: Some(q) :: Nil => Some((p, q))
         case _                         => None
-    ab.flatMap((a, b) => linRecOf(x, a, b, kind.p.toDouble, kind.q.toDouble))
+    ab.flatMap((a, b) => linRecOfWithin(x, a, b, kind.p.toDouble, kind.q.toDouble,
+                                        env.limits(Limit.MaxExactSequenceIndex)))
       .map(d => Right(_Number(d)))
       .getOrElse(Left(this))
 
@@ -100,9 +102,10 @@ case class _Sequence(kind: SeqKind, n: _Expression, seeds: List[_Expression] = N
  *
  *  A row of a thousand values is already past what a REPL line can show; the cap exists so a
  *  mistyped bound declines instead of building an unbounded matrix, the same reasoning as
- *  `MaxTruthTableVars`.
+ *  `MaxTruthTableVars`.  The **default** of [[core.Limit.MaxTabulateTerms]] (F_0124): the three
+ *  nodes read their environment's value.
  */
-val MaxTabulateTerms: Int = 1000
+val MaxTabulateTerms: Int = Limit.MaxTabulateTerms.default.toInt
 
 /** `tabulate(e, k, lo, hi)` — evaluates `e` at each integer `k` in `[lo, hi]`, as a row
  *  matrix.
@@ -149,7 +152,8 @@ private def indexOf(b: _Expression, env: Environment): Option[Int] =
                               math.abs(d) <= Int.MaxValue => Some(d.toInt)
     case _                                                => None
 
-/** Both bounds as integers, refusing a range longer than [[MaxTabulateTerms]].
+/** Both bounds as integers, refusing a range longer than the environment's
+ *  `Limit.MaxTabulateTerms`.
  *
  *  Shared by [[_Tabulate]] and [[_Reduction]] rather than written twice: the cap is one
  *  decision about how many terms a mistyped bound may build, and two copies of it would only
@@ -161,7 +165,7 @@ private def indexRange(lo: _Expression, hi: _Expression, env: Environment): Opti
     h <- indexOf(hi, env)
     // In Long (F_0079): two Int bounds near opposite ends overflow `h - l + 1` to a negative
     // count, which then passed the cap and asked for four billion terms.
-    if h.toLong - l + 1 <= MaxTabulateTerms
+    if h.toLong - l + 1 <= env.limits(Limit.MaxTabulateTerms)
   yield (l, h)
 
 /** Why a `sum`, `product` or `tabulate` over `lo..hi` declines on account of its range, or
@@ -180,8 +184,8 @@ private[leonardo] def rangeRefusal(lo: _Expression, hi: _Expression, env: Enviro
   (lo.eval(env), hi.eval(env)) match
     case (Right(_Number(a)), Right(_Number(b))) =>
       (indexOf(lo, env), indexOf(hi, env)) match
-        case (Some(l), Some(h)) if h.toLong - l + 1 > MaxTabulateTerms =>
-          Some(s"${h.toLong - l + 1} terms exceed the limit of $MaxTabulateTerms")
+        case (Some(l), Some(h)) if h.toLong - l + 1 > env.limits(Limit.MaxTabulateTerms) =>
+          Some(s"${h.toLong - l + 1} terms exceed the limit of ${env.limits(Limit.MaxTabulateTerms)}")
         case (Some(_), Some(_)) => None
         case _ => Some(s"the bounds must be whole numbers, got ${_Number.render(a)} and ${_Number.render(b)}")
     case _ => None

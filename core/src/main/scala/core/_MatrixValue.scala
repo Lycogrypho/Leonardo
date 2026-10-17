@@ -373,8 +373,11 @@ object _MatrixValue:
    *  against 53 ms. Uncapped, `svd(ones(2000))` — which a share link can carry — would hold a
    *  browser for minutes with no way to interrupt it. The MPC demo's sizes (≤ ~200 rows) sit
    *  inside the cap.
+   *
+   *  The **default** of [[Limit.MaxSvdWork]] (F_0124); [[_MatrixValue.svd]]'s `Limits` overload
+   *  reads the caller's value.
    */
-  private[leonardo] val MaxSvdWork: Long = 10_000_000L
+  private[leonardo] val MaxSvdWork: Long = Limit.MaxSvdWork.default
 
   /** `max(m, n)·min(m, n)²`, the work measure [[MaxSvdWork]] bounds. */
   private[leonardo] def svdWork(m: Int, n: Int): Long =
@@ -1147,11 +1150,21 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
    *  `U` and `V` from orthonormality are below [[_MatrixValue.SvdCertificate]], relative to `‖A‖`.
    *
    *  @return `Some((U, σ, V))`, or `None` for a non-finite entry, non-convergence within
-   *          [[_MatrixValue.SvdMaxSweeps]] sweeps, or a failed certificate
+   *          [[_MatrixValue.SvdMaxSweeps]] sweeps, a failed certificate, or work past the
+   *          default [[Limit.MaxSvdWork]]
    */
-  def svd: Option[(_MatrixValue, Vector[Double], _MatrixValue)] =
-    if !isFinite || _MatrixValue.svdWork(rows, cols) > _MatrixValue.MaxSvdWork then None
-    else if rows < cols then transpose.svd.map((u, s, v) => (v, s, u))
+  def svd: Option[(_MatrixValue, Vector[Double], _MatrixValue)] = svd(Limits.Default)
+
+  /** [[svd]] under `limits` (F_0124): the work `max(m, n)·min(m, n)²` may be at most
+   *  [[Limit.MaxSvdWork]]. An overload rather than a defaulted parameter, which would be a
+   *  binary break.
+   *
+   *  @param limits the budgets
+   *  @return `Some((U, σ, V))`, or `None` as for [[svd]]
+   */
+  def svd(limits: Limits): Option[(_MatrixValue, Vector[Double], _MatrixValue)] =
+    if !isFinite || _MatrixValue.svdWork(rows, cols) > limits(Limit.MaxSvdWork) then None
+    else if rows < cols then transpose.svd(limits).map((u, s, v) => (v, s, u))
     else
       val (m, n) = (rows, cols)
       val w = Array.tabulate(n)(j => Array.tabulate(m)(i => data(i * n + j)))

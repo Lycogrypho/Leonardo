@@ -196,11 +196,11 @@ case class _Taylor(e: _Expression, v: _Variable, point: _Expression, n: _Express
    */
   private[leonardo] def detailed(env: Environment): Either[String, _Expression] =
     n.eval(env) match
-      case Right(_Number(d)) if d.isWhole && d >= 0 && d <= MaxTaylorOrder =>
+      case Right(_Number(d)) if d.isWhole && d >= 0 && d <= env.limits(Limit.MaxTaylorOrder) =>
         // point is NOT required to reduce: expanding about a symbolic centre is
         // meaningful, so it is passed through as it stands.
-        taylorDetailed(e, v, point, d.toInt)
-      case _ => Left(orderRange)
+        taylorDetailed(e, v, point, d.toInt, env.limits)
+      case _ => Left(orderRangeTo(env.limits(Limit.MaxTaylorOrder)))
 
 /** Truncated Fourier series of `e` in `v` over one period centred on zero:
  *  `fourierSeries(e, v, period, n)`.
@@ -230,7 +230,7 @@ case class _FourierSeries(e: _Expression, v: _Variable, period: _Expression, n: 
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (period.eval(env), n.eval(env)) match
-      case (Right(_Number(t)), Right(_Number(d))) if d.isWhole && d >= 0 && d <= MaxFourierOrder =>
+      case (Right(_Number(t)), Right(_Number(d))) if d.isWhole && d >= 0 && d <= env.limits(Limit.MaxFourierOrder) =>
         fourierSeries(e, v, t, d.toInt, env) match
           case Some(series) => series.eval(env)
           case None         => Left(this)
@@ -272,7 +272,7 @@ case class _Pade(e: _Expression, v: _Variable, m: _Expression, n: _Expression)
     (m.eval(env), n.eval(env)) match
       case (Right(_Number(a)), Right(_Number(b))) if a.isWhole && b.isWhole =>
         padeDetailed(e, v, a.toInt, b.toInt, env)
-      case _ => Left(s"the degrees must be whole numbers summing to at most $MaxTaylorOrder")
+      case _ => Left(s"the degrees must be whole numbers summing to at most ${env.limits(Limit.MaxTaylorOrder)}")
 
 /** AST node for `laurent(e, v, point, m, n)`.
  *
@@ -323,7 +323,7 @@ case class _Laurent(e: _Expression, v: _Variable, point: _Expression,
     order.flatMap { mm =>
       n.eval(env) match
         case Right(_Number(nn)) if nn.isWhole && nn >= 0 => laurentDetailed(e, v, point, mm, nn.toInt, env)
-        case _                                           => Left(orderRange)
+        case _                                           => Left(orderRangeTo(env.limits(Limit.MaxTaylorOrder)))
     }
 
   /** The pole order at `point`, from the singularity classifier. */

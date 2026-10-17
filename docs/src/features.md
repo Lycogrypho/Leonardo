@@ -185,7 +185,9 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   binding inequalities with their multipliers. Throughout, an answer that cannot be
   proved complete is not given: a list of stationary points is read as *all* of them. Every
   solver's size and iteration caps are defaults a program can raise on its `Environment`
-  (`env.withLimit(Limit.MaxQpVariables, 2000)`); the REPL keeps them. See
+  (`env.withLimit(Limit.MaxQpVariables, 2000)`); the REPL keeps them. The same holds for every
+  other package's budgets: series orders, `tabulate`/`sum` lengths, exact factorials, truth
+  tables, matrix sizes, simulation and sampling lengths. See
   [Optimization](optimization.md).
 
 - **Probability**: Distributions are first-class values — `normal(0, 1)`, `binomial(10, 0.3)`,

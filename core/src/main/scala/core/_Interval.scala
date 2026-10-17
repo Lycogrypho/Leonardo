@@ -13,8 +13,8 @@ import spire.math.Rational as SpireRational
  *  operands — the *containment* property — by rounding each endpoint outward.
  *
  *  **The first sibling of `_Number` that deliberately does NOT widen** (Decision A).
- *  `_Complex`, `_Truth`, `_Rational` and `_Based` all read as numbers through `_Number`'s
- *  widening extractor; an interval must not, because one read as a single `Double` would
+ *  `_Rational` and `_Based` read as numbers through `_Number`'s widening extractor (`_Complex`
+ *  and `_Truth` are siblings that do not); an interval must not, because one read as a single `Double` would
  *  silently become one endpoint — the worst failure this library has.  So every
  *  `case _Number(x)` site simply does not match an interval, and every pass without an
  *  interval rule leaves the expression symbolic *by construction*.  Intervals are results
@@ -57,8 +57,13 @@ final class _Interval private (val lo: _Value, val hi: _Value) extends _Value:
   def display(precision: Int): String =
     s"[${_Interval.endpointText(lo, precision, down = true)}, ${_Interval.endpointText(hi, precision, down = false)}]"
 
-  /** The display at [[Environment.DefaultPrecision]], outward; `:save` writes the endpoints
-   *  in full instead (the REPL's `serializeValue`). */
+  /** The display at [[Environment.DefaultPrecision]], outward.
+   *
+   *  **Not lossless, unlike most values' `toString`**: parsing it back gives a *wider* interval,
+   *  never a narrower one, so containment survives but the endpoints do not — the
+   *  `_Rational.toString` precedent, whose decimal fallback is also a display form. `:save`
+   *  writes the endpoints in full instead (the REPL's `serializeValue`); the `simplify` command
+   *  and an `_IntervalOf` over interval children print this rounded form. */
   override def toString: String = display(Environment.DefaultPrecision)
 
   override def eval(env: Environment): Either[_Expression, _Value] = Right(this)
@@ -248,7 +253,12 @@ object _Interval:
 
   // ── the field operations ──
 
-  /** `a + b`, when at least one is an interval; `None` otherwise or when not representable. */
+  /** `a + b`, when at least one is an interval; `None` otherwise or when not representable.
+   *  @param a   the left operand
+   *  @param b   the right operand
+   *  @param env the environment, for the exact tier's gcd policy
+   *  @return the sum's interval, or `None`
+   */
   def add(a: _Value, b: _Value, env: Environment): Option[_Value] =
     operands(a, b).flatMap {
       case (E(a1, a2), E(b1, b2)) => make(E(a1.add(b1, env.rationalPolicy), a2.add(b2, env.rationalPolicy)))
@@ -257,7 +267,12 @@ object _Interval:
         make(D(sumDown(a1, b1), sumUp(a2, b2)))
     }
 
-  /** `a · b`, when at least one is an interval. */
+  /** `a · b`, when at least one is an interval.
+   *  @param a   the left operand
+   *  @param b   the right operand
+   *  @param env the environment, for the exact tier's gcd policy
+   *  @return the product's interval, or `None` when neither is an interval or it is not representable
+   */
   def multiply(a: _Value, b: _Value, env: Environment): Option[_Value] =
     operands(a, b).flatMap {
       case (E(a1, a2), E(b1, b2)) =>
@@ -271,7 +286,12 @@ object _Interval:
     }
 
   /** `a / b`, when at least one is an interval; `None` when the divisor contains zero, since
-   *  the quotient is then two disjoint rays, not an interval. */
+   *  the quotient is then two disjoint rays, not an interval.
+   *  @param a   the dividend
+   *  @param b   the divisor
+   *  @param env the environment, for the exact tier's gcd policy
+   *  @return the quotient's interval, or `None`
+   */
   def divide(a: _Value, b: _Value, env: Environment): Option[_Value] =
     operands(a, b).flatMap {
       case (E(a1, a2), E(b1, b2)) =>
@@ -292,24 +312,31 @@ object _Interval:
 
   // ── powers ──
 
-  /** The largest integer exponent an interval is raised to by repeated squaring. */
-  private val MaxIntervalPower = 100000
+  /** The largest integer exponent an interval is raised to by repeated squaring: the default of
+   *  [[Limit.MaxIntervalPower]], which [[power]] reads from its environment (F_0124). */
+  private val MaxIntervalPower = Limit.MaxIntervalPower.default.toInt
 
   /** `a ^ e` for an interval `a` and a numeric exponent; `None` for an interval exponent, a
    *  negative power of an interval containing zero, a fractional power of an interval reaching
    *  below zero, or a result that is not representable.
    *
    *  An integer power keeps the even/odd distinction (`[−2, 1]² = [0, 4]`, not `[1, 4]`); a
-   *  fractional one is monotone on `[0, ∞)`. */
+   *  fractional one is monotone on `[0, ∞)`.
+   *  @param a   the base, an interval
+   *  @param e   the exponent, a number
+   *  @param env the environment, for the exact tier's gcd policy and working precision
+   *  @return the power's interval, or `None`
+   */
   def power(a: _Value, e: _Value, env: Environment): Option[_Value] =
+    val maxPower = env.limits.count(Limit.MaxIntervalPower)
     if !a.isInstanceOf[_Interval] then None
     else (bounds(a), e) match
       case (Some(b), r: _Rational) =>
-        r.toBigIntExact.filter(k => k.abs <= MaxIntervalPower) match
+        r.toBigIntExact.filter(k => k.abs <= maxPower) match
           case Some(k) => integerPower(b, k.toInt, env)
           case None    => fractionalPower(b, Left(r), env)
       case (Some(b), _Number(d)) if !d.isNaN && !d.isInfinite =>
-        if d == math.rint(d) && math.abs(d) <= MaxIntervalPower then integerPower(toDBounds(b), d.toInt, env)
+        if d == math.rint(d) && math.abs(d) <= maxPower then integerPower(toDBounds(b), d.toInt, env)
         else fractionalPower(toDBounds(b), Right(d), env)
       case _ => None
 
@@ -325,8 +352,8 @@ object _Interval:
     else b match
       case E(l, h) =>
         for
-          pl <- l.pow(n, env.rationalPolicy)
-          ph <- h.pow(n, env.rationalPolicy)
+          pl <- l.pow(n, env.rationalPolicy, env.limits(Limit.MaxExactPowerBits))
+          ph <- h.pow(n, env.rationalPolicy, env.limits(Limit.MaxExactPowerBits))
           v  <- {
             val (lo, hi) = if pl.compare(ph) <= 0 then (pl, ph) else (ph, pl)
             if n % 2 == 0 && l.signum < 0 && h.signum > 0 then make(E(_Rational(0), hi)) else make(E(lo, hi))
@@ -588,7 +615,12 @@ object _Interval:
   def comparable(a: _Value, b: _Value): Boolean = operands(a, b).isDefined
 
   /** Whether `a = b` for every pair of points (`Some(true)`), for none (`Some(false)`: the
-   *  intervals are apart by more than `tol`), or neither (`None`, unknown). */
+   *  intervals are apart by more than `tol`), or neither (`None`, unknown).
+   *  @param a   the left operand
+   *  @param b   the right operand
+   *  @param tol the `=` tolerance, `0.5·10⁻ᵖ`
+   *  @return the verdict, or `None` when unknown or not comparable
+   */
   def equal(a: _Value, b: _Value, tol: Double): Option[Boolean] =
     operands(a, b).flatMap { (x, y) =>
       (x, y) match

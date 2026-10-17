@@ -13,11 +13,14 @@ import scala.collection.mutable
  *  can make a large product small.  Measured, not round (the `MaxMatrixCells` rule): on the JVM
  *  a 447×447 product (2·10⁵ pairs) takes ~0.45 s and 1000×1000 ~1.5 s, and a browser is
  *  several times slower — so the bound sits near half a second where the page freezes while it
- *  runs (F_0019).  A legitimate expansion needs more only through massive cancellation. */
-val MaxExpandWork: Long = 250000L
+ *  runs (F_0019).  A legitimate expansion needs more only through massive cancellation.  The
+ *  **default** of [[core.Limit.MaxExpandWork]] (F_0124); the `Limits` overload of [[expand]]
+ *  takes another. */
+val MaxExpandWork: Long = Limit.MaxExpandWork.default
 
-/** The highest integer power [[expand]] multiplies out; above it the power stays as written. */
-val MaxExpandPower: Int = 20
+/** The highest integer power [[expand]] multiplies out; above it the power stays as written.
+ *  The **default** of [[core.Limit.MaxExpandPower]] (F_0124). */
+val MaxExpandPower: Int = Limit.MaxExpandPower.default.toInt
 
 /** Distributes `*` over `+`, multiplies out `(a+b)^n` for integer `1 ≤ n ≤ 20`, and **folds
  *  like terms as it goes** (F_0076).
@@ -45,13 +48,24 @@ val MaxExpandPower: Int = 20
  */
 def expand(e: _Expression): _Expression = expandReporting(e)._1
 
+/** [[expand]] under the caller's budgets (F_0124): `limits(Limit.MaxExpandPower)` and
+ *  `limits(Limit.MaxExpandWork)` in place of the two defaults.
+ *
+ *  @param e      the expression to expand
+ *  @param limits the work budgets
+ *  @return the expanded expression
+ */
+def expand(e: _Expression, limits: Limits): _Expression = expandReporting(e, limits)._1
+
 /** [[expand]], with the reason a product was left undistributed, if one was.
  *
- *  @param e the expression to expand
+ *  @param e      the expression to expand
+ *  @param limits the work budgets: the power and term-pair caps
  *  @return the expansion, and `Some(reason)` when the term budget refused a product
  */
-private[leonardo] def expandReporting(e: _Expression): (_Expression, Option[String]) =
-  val ctx = Expansion(_Rational.containsExact(e))
+private[leonardo] def expandReporting(e: _Expression,
+                                      limits: Limits = Limits.Default): (_Expression, Option[String]) =
+  val ctx = Expansion(_Rational.containsExact(e), limits(Limit.MaxExpandWork), limits(Limit.MaxExpandPower))
   val r   = expandIn(e)(using ctx)
   (r, ctx.refusal)
 
@@ -62,8 +76,9 @@ private type Monomial = Map[_Expression, Int]
 /** A polynomial: monomials with their (non-zero) numeric coefficients, in first-seen order. */
 private type Poly = VectorMap[Monomial, _Value]
 
-/** The state of one [[expand]] call: the tier, the first-seen order of factors, the refusal. */
-private final class Expansion(val exact: Boolean):
+/** The state of one [[expand]] call: the tier, the two budgets, the first-seen order of
+ *  factors, the refusal. */
+private final class Expansion(val exact: Boolean, val maxWork: Long, val maxPower: Long):
   private val order = mutable.HashMap.empty[_Expression, Int]
   var refusal: Option[String] = None
 
@@ -116,7 +131,7 @@ private def polyOf(e: _Expression)(using ctx: Expansion): Part = e match
         multiply(pa, pb).toRight(Product(render(pa), render(pb)))
       case (pa, pb) => Left(ordered(asExpression(pa), asExpression(pb)))
 
-  case Power(base, k @ _Number(n)) if n >= 1 && n <= MaxExpandPower && n == math.floor(n) =>
+  case Power(base, k @ _Number(n)) if n >= 1 && n <= ctx.maxPower && n == math.floor(n) =>
     polyOf(base) match
       case Right(pb) if !nonCommuting(pb) =>
         if pb.size == 1 then Right(raise(pb, n.toInt))
@@ -162,12 +177,12 @@ private def add(a: Poly, b: Poly): Poly =
   b.foreach((m, c) => out.updateWith(m)(old => Some(old.fold(c)(plus(_, c)))))
   VectorMap.from(out.filterNot((_, c) => isZero(c)))
 
-/** `a·b`, or `None` (and a recorded refusal) past [[MaxExpandWork]] or when the result would
+/** `a·b`, or `None` (and a recorded refusal) past the work budget or when the result would
  *  be deeper than `core.MaxExpressionDepth` — judged on the rendered form, since a sum's
  *  depth is its term count plus its deepest term. */
 private def multiply(a: Poly, b: Poly)(using ctx: Expansion): Option[Poly] =
-  if a.size.toLong * b.size > MaxExpandWork then
-    ctx.refuse(s"a product of ${a.size} by ${b.size} terms exceeds the limit of $MaxExpandWork term pairs")
+  if a.size.toLong * b.size > ctx.maxWork then
+    ctx.refuse(s"a product of ${a.size} by ${b.size} terms exceeds the limit of ${ctx.maxWork} term pairs")
     None
   else
     val out = mutable.LinkedHashMap.empty[Monomial, _Value]
@@ -210,8 +225,8 @@ private def ordered(x: _Expression, y: _Expression)(using ctx: Expansion): _Expr
     case (p, Sum(q, r)) => Sum(go(p, q), go(p, r))
     case _              => Product(x, y)
   val (p, q) = (terms(x), terms(y))
-  if p * q > MaxExpandWork then
-    ctx.refuse(s"a product of $p by $q terms exceeds the limit of $MaxExpandWork term pairs")
+  if p * q > ctx.maxWork then
+    ctx.refuse(s"a product of $p by $q terms exceeds the limit of ${ctx.maxWork} term pairs")
     Product(x, y)
   else
     val distributed = go(x, y)

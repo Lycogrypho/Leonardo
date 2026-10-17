@@ -90,18 +90,15 @@ private def isScalarValue(r: Either[_Expression, _Value]): Boolean =
   r.exists { case _Number(_) => true; case _ => false }
 
 
-/** Maximum matrix dimension for symbolic cofactor expansion (n! grows fast above this). */
-private val MaxSymbolicDim = 6
+/** The largest dense dimension any limit can allow: past it `rows * cols` overflows an `Int`,
+ *  the array's own size type, so a raised [[core.Limit.MaxDenseDim]] is honoured up to here. */
+private val DenseDimCeiling = 46340
 
-/** Maximum single dimension for dense constructor results (`eye`/`zeros`).
- *  A dimension >= 46341 overflows `rows * cols` as an `Int`; 4096^2 doubles is ~128 MB.
- *  Above this bound a constructor stays symbolic.
- */
-private val MaxDenseDim = 4096
-
-/** Returns `true` when `d` is a valid dense dimension: a positive integer at most `MaxDenseDim`. */
-private def validDenseDim(d: Double): Boolean =
-  d >= 1.0 && d == d.toLong && d <= MaxDenseDim
+/** Returns `true` when `d` is a valid dense dimension for `eye`/`zeros`/`ones`: a positive
+ *  integer at most the environment's [[core.Limit.MaxDenseDim]] (default 4096, whose square of
+ *  doubles is ~128 MB) and at most [[DenseDimCeiling]]. Above it a constructor stays symbolic. */
+private def validDenseDim(d: Double, env: Environment): Boolean =
+  d >= 1.0 && d == d.toLong && d <= math.min(env.limits(Limit.MaxDenseDim), DenseDimCeiling.toLong)
 
 /** Returns the `(rows-1) x (cols-1)` minor of `m` with row `si` and column `sj` removed. */
 private def minorOf(m: _Matrix, si: Int, sj: Int): _Matrix =
@@ -123,10 +120,11 @@ private def symbolicDet(m: _Matrix): _Expression =
 
 /** Returns the inverse of a symbolic square matrix as `adjugate / determinant`, or `None`.
  *  The 1x1 case is special-cased (a 0x0 minor is not a valid [[_Matrix]]).
- *  Returns `None` when the matrix is non-square or above `MaxSymbolicDim`.
+ *  Returns `None` when the matrix is non-square or above `maxDim`, the environment's
+ *  [[core.Limit.MaxSymbolicDim]] (default 6: the expansion has `n!` terms).
  */
-private def symbolicInverse(m: _Matrix): Option[_Matrix] =
-  if m.rows != m.cols || m.rows > MaxSymbolicDim then None
+private def symbolicInverse(m: _Matrix, maxDim: Long): Option[_Matrix] =
+  if m.rows != m.cols || m.rows > maxDim then None
   else if m.rows == 1 then Some(_Matrix(1, 1, Vector(Ratio(_Number(1), m(0, 0)))))
   else
     val d = symbolicDet(m)
@@ -346,7 +344,7 @@ case class Determinant(m: _Expression) extends _Expression:
         case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
           exactCells(lit).map(c => Right(exactDeterminant(c, lit.rows, env.rationalPolicy)))
             .getOrElse(Left(this))
-        case Some(lit) if lit.rows == lit.cols && lit.rows <= MaxSymbolicDim =>
+        case Some(lit) if lit.rows == lit.cols && lit.rows <= env.limits(Limit.MaxSymbolicDim) =>
           symbolicDet(lit).eval(env)
         case Some(_) => Left(this)   // non-square or over the cofactor cap
         case None    => Left(Determinant(r.toExpression))
@@ -378,7 +376,7 @@ case class Inverse(m: _Expression) extends _MatrixOperation:
           exactCells(lit).flatMap(c => exactInverse(c, lit.rows, env.rationalPolicy)) match
             case Some(inv) => Left(_Matrix(lit.rows, lit.cols, inv.map(x => x: _Expression)))
             case None      => Left(Inverse(r.toExpression))
-        case Some(lit) => symbolicInverse(lit) match
+        case Some(lit) => symbolicInverse(lit, env.limits(Limit.MaxSymbolicDim)) match
           case Some(inv) => inv.eval(env)
           case None      => Left(Inverse(r.toExpression))
         case None => Left(Inverse(r.toExpression))
@@ -399,7 +397,7 @@ case class IdentityMatrix(n: _Expression) extends _MatrixOperation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     n.eval(env) match
-      case Right(_Number(d)) if validDenseDim(d) =>
+      case Right(_Number(d)) if validDenseDim(d, env) =>
         val sz   = d.toInt
         val data = Array.tabulate(sz * sz)(i => if i / sz == i % sz then 1.0 else 0.0)
         Right(_MatrixValue(sz, sz, data))
@@ -423,7 +421,7 @@ case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOpe
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (nRows.eval(env), nCols.eval(env)) match
-      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r) && validDenseDim(c) =>
+      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
         Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(0.0)))
       case (rr, rc) => Left(ZeroMatrix(rr.toExpression, rc.toExpression))
 
@@ -443,7 +441,7 @@ case class _Ones(nRows: _Expression, nCols: _Expression) extends _MatrixOperatio
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (nRows.eval(env), nCols.eval(env)) match
-      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r) && validDenseDim(c) =>
+      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
         Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(1.0)))
       case (rr, rc) => Left(_Ones(rr.toExpression, rc.toExpression))
 

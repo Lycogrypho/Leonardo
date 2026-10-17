@@ -18,7 +18,7 @@ import scala.math
  *
  *  Returns `_Limit(e, v, point, dir)` unchanged when no rule applies (fixpoint convention).
  */
-private val MaxHopitalSteps = 5
+private val MaxHopitalSteps = Limit.MaxHopitalSteps.default.toInt  // the default; evalLimit reads env.limits (F_0124)
 
 /** Evaluates lim_{`v` → `point`[`dir`]} `e`, returning the limit as an expression.
  *
@@ -36,7 +36,7 @@ def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, e
   point.eval(env) match
     case Right(_Number(p)) =>
       if p.isInfinite then limitInfinity(e, v, p, env)
-      else limitFinite(e, v, p, dir, env, MaxHopitalSteps)
+      else limitFinite(e, v, p, dir, env, env.limits.count(Limit.MaxHopitalSteps))
     case _ => _Limit(e, v, point, dir)   // symbolic point — stay symbolic
 
 /** Evaluates `e` with `v` bound to `p`; returns `Some(d)` iff the result is a concrete `_Number`. */

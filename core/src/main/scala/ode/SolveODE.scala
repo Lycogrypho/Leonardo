@@ -28,24 +28,23 @@ private val BaseSteps    = 1000
 /** Target steps per unit of `|target - t0|`; keeps `h` near `1 / StepsPerUnit`. */
 private val StepsPerUnit = 1000
 
-/** Hard ceiling on the step count so a very long interval cannot run away. */
-private val MaxSteps     = 1_000_000
-
 /** Computes the RK4 step count for an interval of length `span` at the given `precision`.
  *
  *  The interval factor `ceil(span * StepsPerUnit)` keeps `h` near `1 / StepsPerUnit`
  *  for any span; `BaseSteps` floors the count so short intervals and `precision 0`
  *  remain well-resolved; the precision factor (>= 1) refines at higher precision;
- *  `MaxSteps` caps the work for very long intervals.
+ *  `maxSteps` caps the work for very long intervals: the environment's [[core.Limit.MaxOdeSteps]],
+ *  the ceiling every ODE tier shares so none can run away differently (F_0124).
  *
  *  @param span      absolute length of the integration interval `|target - t0|`
  *  @param precision the session display precision (from `env.precision`)
+ *  @param maxSteps  the most steps, `Limit.MaxOdeSteps`
  *  @return number of RK4 steps to use
  */
-private[ode] def stepCount(span: Double, precision: Int): Int =
+private[ode] def stepCount(span: Double, precision: Int, maxSteps: Long): Int =
   val precFactor = math.max(1.0, precision.toDouble / Environment.DefaultPrecision)
   (math.max(BaseSteps.toDouble, math.ceil(span * StepsPerUnit)) * precFactor)
-    .min(MaxSteps.toDouble)
+    .min(math.min(maxSteps, Int.MaxValue.toLong).toDouble)
     .max(1.0)
     .toInt
 
@@ -73,7 +72,7 @@ def solveODE(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
 
   if target == t0 then Some(y0)
   else
-    val n = stepCount(math.abs(target - t0), env.precision)
+    val n = stepCount(math.abs(target - t0), env.precision, env.limits(Limit.MaxOdeSteps))
     val h = (target - t0) / n
 
     @annotation.tailrec

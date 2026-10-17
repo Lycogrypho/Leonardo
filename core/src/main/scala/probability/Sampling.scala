@@ -28,13 +28,17 @@ enum SamplingFailure:
  *  uniforms reach the tails, where the bisection's bracket takes longer to set.  T3-03's own
  *  acceptance needs `10⁵` normal draws, which is why the cap is not lower; the figure is also
  *  `Session.MaxSampleCount`'s, the other materialised sequence a user asks for by count.
+ *
+ *  The **default** of [[core.Limit.MaxDrawCount]] (F_0124): the `Limits` overload of
+ *  [[drawSamples]] and the `draw` node read the caller's value.
  */
-val MaxDrawCount: Int = 100_000
+val MaxDrawCount: Int = Limit.MaxDrawCount.default.toInt
 
 /** The most terms one `prbs` produces (F_0067): a step is a few integer operations, so the
  *  cost is the result itself — a million `Double`s, eight megabytes.  **Measured** at the cap:
- *  under 0.35 s on the JVM and on Node, through the library function and through the node. */
-val MaxPrbsLength: Int = 1_000_000
+ *  under 0.35 s on the JVM and on Node, through the library function and through the node.
+ *  The **default** of [[core.Limit.MaxPrbsLength]] (F_0124). */
+val MaxPrbsLength: Int = Limit.MaxPrbsLength.default.toInt
 
 /** The lowest PRBS order (F_0067): order 1 has no maximal sequence worth the name. */
 val MinPrbsOrder: Int = 2
@@ -100,7 +104,21 @@ private[probability] object SplitMix64:
  *  @return the draws, or why there are none
  */
 def drawSamples(d: _Distribution, n: Int, seed: Long, offset: Long = 0L): Either[SamplingFailure, Vector[Double]] =
-  if n < 1 || n > MaxDrawCount then Left(SamplingFailure.InvalidCount(n, MaxDrawCount))
+  drawSamples(d, n, seed, offset, Limits.Default)
+
+/** [[drawSamples]] under `limits` (F_0124): at most [[core.Limit.MaxDrawCount]] draws. An
+ *  overload rather than a defaulted parameter, which would be a binary break.
+ *
+ *  @param d      the distribution
+ *  @param n      how many draws
+ *  @param seed   the seed, any integer
+ *  @param offset the position in the stream to start from, `≥ 0`
+ *  @param limits the budgets
+ *  @return the draws, or why there are none
+ */
+def drawSamples(d: _Distribution, n: Int, seed: Long, offset: Long, limits: Limits): Either[SamplingFailure, Vector[Double]] =
+  val cap = limits.count(Limit.MaxDrawCount)
+  if n < 1 || n > cap then Left(SamplingFailure.InvalidCount(n, cap))
   else if offset < 0 then Left(SamplingFailure.InvalidInteger("the offset"))
   else
     val out = new Array[Double](n)
@@ -157,8 +175,21 @@ private[probability] def lfsrBits(order: Int, state: Int, n: Int): Array[Byte] =
  *  @return the sequence, or why there is none
  */
 def prbsSequence(order: Int, n: Int, seed: Long): Either[SamplingFailure, Vector[Double]] =
+  prbsSequence(order, n, seed, Limits.Default)
+
+/** [[prbsSequence]] under `limits` (F_0124): at most [[core.Limit.MaxPrbsLength]] terms. The
+ *  order range is not a budget but the verified table, and stays fixed.
+ *
+ *  @param order  the register length, `MinPrbsOrder … MaxPrbsOrder`
+ *  @param n      how many terms
+ *  @param seed   the seed, any integer
+ *  @param limits the budgets
+ *  @return the sequence, or why there is none
+ */
+def prbsSequence(order: Int, n: Int, seed: Long, limits: Limits): Either[SamplingFailure, Vector[Double]] =
+  val cap = limits.count(Limit.MaxPrbsLength)
   if order < MinPrbsOrder || order > MaxPrbsOrder then Left(SamplingFailure.InvalidOrder(order))
-  else if n < 1 || n > MaxPrbsLength then Left(SamplingFailure.InvalidCount(n, MaxPrbsLength))
+  else if n < 1 || n > cap then Left(SamplingFailure.InvalidCount(n, cap))
   else
     val period = (1 << order) - 1
     val start  = 1 + ((SplitMix64.mix(seed) >>> 1) % period).toInt
@@ -200,11 +231,11 @@ case class _Draw(dist: _Expression, n: _Expression, seed: _Expression, offset: O
       d <- dist.eval(env) match
              case Right(d: _Distribution) => Right(d)
              case _                       => Left(SamplingFailure.NotADistribution)
-      k <- countOf(n.eval(env)).filter(c => c == math.floor(c) && c >= 1 && c <= MaxDrawCount)
-             .toRight(SamplingFailure.InvalidCount(countOf(n.eval(env)).getOrElse(Double.NaN), MaxDrawCount))
+      k <- countOf(n.eval(env)).filter(c => c == math.floor(c) && c >= 1 && c <= env.limits(Limit.MaxDrawCount))
+             .toRight(SamplingFailure.InvalidCount(countOf(n.eval(env)).getOrElse(Double.NaN), env.limits.count(Limit.MaxDrawCount)))
       s <- exactInteger(seed.eval(env)).toRight(SamplingFailure.InvalidInteger("the seed"))
       o <- offset.fold(Right(0L))(e => exactInteger(e.eval(env)).filter(_ >= 0).toRight(SamplingFailure.InvalidInteger("the offset")))
-      xs <- drawSamples(d, k.toInt, s, o)
+      xs <- drawSamples(d, k.toInt, s, o, env.limits)
     yield column(xs)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
@@ -230,10 +261,10 @@ case class _Prbs(order: _Expression, n: _Expression, seed: _Expression) extends 
     for
       o <- countOf(order.eval(env)).filter(c => c == math.floor(c) && c >= MinPrbsOrder && c <= MaxPrbsOrder)
              .toRight(SamplingFailure.InvalidOrder(countOf(order.eval(env)).getOrElse(Double.NaN)))
-      k <- countOf(n.eval(env)).filter(c => c == math.floor(c) && c >= 1 && c <= MaxPrbsLength)
-             .toRight(SamplingFailure.InvalidCount(countOf(n.eval(env)).getOrElse(Double.NaN), MaxPrbsLength))
+      k <- countOf(n.eval(env)).filter(c => c == math.floor(c) && c >= 1 && c <= env.limits(Limit.MaxPrbsLength))
+             .toRight(SamplingFailure.InvalidCount(countOf(n.eval(env)).getOrElse(Double.NaN), env.limits.count(Limit.MaxPrbsLength)))
       s <- exactInteger(seed.eval(env)).toRight(SamplingFailure.InvalidInteger("the seed"))
-      xs <- prbsSequence(o.toInt, k.toInt, s)
+      xs <- prbsSequence(o.toInt, k.toInt, s, env.limits)
     yield column(xs)
 
   override def eval(env: Environment): Either[_Expression, _Value] =

@@ -9,9 +9,10 @@ import core.*
  *  Distribution is exponential in the worst case (an n-term xor chain yields 2^(n-1)
  *  clauses); past this cap [[toCNF]]/[[toDNF]] return the input unchanged rather than
  *  exhausting the heap -- the same give-up-stay-symbolic convention as `Expand`'s
- *  integer-power cap.
+ *  integer-power cap.  The **default** of [[core.Limit.MaxNormalFormClauses]] (F_0124); the
+ *  `Limits` overloads of [[toCNF]]/[[toDNF]] take another.
  */
-private val MaxNormalFormClauses = 1024
+private val MaxNormalFormClauses = Limit.MaxNormalFormClauses.default.toInt
 
 
 /** Rewrites `e` into conjunctive normal form: a conjunction of disjunctions of literals.
@@ -31,7 +32,19 @@ private val MaxNormalFormClauses = 1024
  *  @param symmetric whether the symmetric ternary digits `{-1, 0, 1}` are in scope
  *  @return the CNF of `e`, or `e` unchanged when it is not crisp or the distribution blows up
  */
-def toCNF(e: _Expression, symmetric: Boolean = false): _Expression = toNormalForm(e, conjunctive = true, symmetric)
+def toCNF(e: _Expression, symmetric: Boolean = false): _Expression =
+  toNormalForm(e, conjunctive = true, symmetric, MaxNormalFormClauses)
+
+
+/** [[toCNF]] under the caller's clause budget, `limits(Limit.MaxNormalFormClauses)` (F_0124).
+ *
+ *  @param e         the expression to normalise
+ *  @param symmetric whether the symmetric ternary digits `{-1, 0, 1}` are in scope
+ *  @param limits    the work budgets; only the clause cap is read
+ *  @return the CNF of `e`, or `e` unchanged when it is not crisp or the distribution passes the cap
+ */
+def toCNF(e: _Expression, symmetric: Boolean, limits: Limits): _Expression =
+  toNormalForm(e, conjunctive = true, symmetric, limits(Limit.MaxNormalFormClauses))
 
 
 /** Rewrites `e` into disjunctive normal form: a disjunction of conjunctions of literals.
@@ -44,7 +57,19 @@ def toCNF(e: _Expression, symmetric: Boolean = false): _Expression = toNormalFor
  *  @param symmetric whether the symmetric ternary digits `{-1, 0, 1}` are in scope
  *  @return the DNF of `e`, or `e` unchanged when it is not crisp or the distribution blows up
  */
-def toDNF(e: _Expression, symmetric: Boolean = false): _Expression = toNormalForm(e, conjunctive = false, symmetric)
+def toDNF(e: _Expression, symmetric: Boolean = false): _Expression =
+  toNormalForm(e, conjunctive = false, symmetric, MaxNormalFormClauses)
+
+
+/** [[toDNF]] under the caller's clause budget, `limits(Limit.MaxNormalFormClauses)` (F_0124).
+ *
+ *  @param e         the expression to normalise
+ *  @param symmetric whether the symmetric ternary digits `{-1, 0, 1}` are in scope
+ *  @param limits    the work budgets; only the clause cap is read
+ *  @return the DNF of `e`, or `e` unchanged when it is not crisp or the distribution passes the cap
+ */
+def toDNF(e: _Expression, symmetric: Boolean, limits: Limits): _Expression =
+  toNormalForm(e, conjunctive = false, symmetric, limits(Limit.MaxNormalFormClauses))
 
 
 /** Shared CNF/DNF pipeline; `conjunctive` selects which connective is the outer level.
@@ -52,11 +77,12 @@ def toDNF(e: _Expression, symmetric: Boolean = false): _Expression = toNormalFor
  *  Returns `e` untouched when it carries a `_Truth` degree: clause-level cleanup rests on
  *  the complement law (`a or not a` is a trivially-true clause), which fails at `unknown`.
  */
-private def toNormalForm(e: _Expression, conjunctive: Boolean, symmetric: Boolean): _Expression =
+private def toNormalForm(e: _Expression, conjunctive: Boolean, symmetric: Boolean,
+                         maxClauses: Long): _Expression =
   if !isCrisp(e, symmetric) then e
   else
     val simplified = simplifyLogicFully(e, identity, symmetric)
-    clauseSet(nnf(simplified, negated = false), conjunctive) match
+    clauseSet(nnf(simplified, negated = false), conjunctive, maxClauses) match
       case Some(clauses) => rebuildNormal(clauses, conjunctive)
       case None          => e
 
@@ -78,18 +104,19 @@ private def nnf(e: _Expression, negated: Boolean): _Expression = e match
 
 /** Distributes an NNF expression into clause sets: `Some(outer clauses of inner literals)`
  *  -- conjunction of disjunctions for CNF, disjunction of conjunctions for DNF -- or
- *  `None` when the clause count exceeds [[MaxNormalFormClauses]].
+ *  `None` when the clause count exceeds `maxClauses`.
  */
-private def clauseSet(e: _Expression, conjunctive: Boolean): Option[Vector[Vector[_Expression]]] =
+private def clauseSet(e: _Expression, conjunctive: Boolean,
+                      maxClauses: Long): Option[Vector[Vector[_Expression]]] =
   def merge(a: _Expression, b: _Expression): Option[Vector[Vector[_Expression]]] =
-    for x <- clauseSet(a, conjunctive); y <- clauseSet(b, conjunctive)
-        r <- Option.when(x.size + y.size <= MaxNormalFormClauses)(x ++ y)
+    for x <- clauseSet(a, conjunctive, maxClauses); y <- clauseSet(b, conjunctive, maxClauses)
+        r <- Option.when(x.size.toLong + y.size <= maxClauses)(x ++ y)
     yield r
   // the product size is checked BEFORE materialising it, so an over-cap distribution
   // costs nothing but the sub-results
   def cross(a: _Expression, b: _Expression): Option[Vector[Vector[_Expression]]] =
-    for x <- clauseSet(a, conjunctive); y <- clauseSet(b, conjunctive)
-        r <- Option.when(x.size.toLong * y.size <= MaxNormalFormClauses)(
+    for x <- clauseSet(a, conjunctive, maxClauses); y <- clauseSet(b, conjunctive, maxClauses)
+        r <- Option.when(x.size.toLong * y.size <= maxClauses)(
                for cx <- x; cy <- y yield (cx ++ cy).distinct)
     yield r
   e match

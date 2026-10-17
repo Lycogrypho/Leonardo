@@ -621,4 +621,10 @@ addCommandAlias("checks",
   ";tools/runMain it.grypho.scala.leonardo.tools.actionPins" +
   ";tools/runMain it.grypho.scala.leonardo.tools.scalaVersion" +
   ";tools/runMain it.grypho.scala.leonardo.tools.docLinks" +
-  ";tools/runMain it.grypho.scala.leonardo.tools.csp")
+  ";tools/runMain it.grypho.scala.leonardo.tools.csp" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.graphml --check")
+
+// The architecture diagram as GraphML for Gephi (F_0097), committed beside it as
+// docs/structure.graphml. Run after editing docs/structure.puml, beside `sbt puml`; the
+// `checks` alias fails while the committed copy is stale.
+addCommandAlias("graphml", ";tools/runMain it.grypho.scala.leonardo.tools.graphml")

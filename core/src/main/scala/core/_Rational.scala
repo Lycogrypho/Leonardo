@@ -202,9 +202,11 @@ object _Rational:
    *  `(123/7)^2000000000` asks for a ~1.4e10-bit operand and hangs or OOMs the session
    *  rather than answering.  The estimate is `maxBitLength × |k|`, which needs no
    *  allocation to compute; past it [[_Rational.pow]] returns `None` and the expression
-   *  stays symbolic, the give-up rule used throughout the library.
+   *  stays symbolic, the give-up rule used throughout the library.  The **default** of
+   *  [[Limit.MaxExactPowerBits]] (F_0124): `Power` and an exact interval's power pass their
+   *  environment's value to the three-argument [[_Rational.pow]].
    */
-  val MaxExactPowerBits: Long = 1L << 20
+  val MaxExactPowerBits: Long = Limit.MaxExactPowerBits.default
 
   /** Brings a `Double` result of a non-closed operation back into the exact tier.
    *
@@ -336,7 +338,18 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
    *  @return `this^k`, `None` for a negative power of zero or a result above the size cap
    */
   def pow(k: Int, policy: GcdPolicy = _Rational.DefaultPolicy): Option[_Rational] =
-    if k != 0 && maxBitLength.toLong * math.abs(k.toLong) > _Rational.MaxExactPowerBits then None
+    pow(k, policy, _Rational.MaxExactPowerBits)
+
+  /** Integer power within the caller's size budget, `maxBits` (F_0124: an environment's
+   *  `Limit.MaxExactPowerBits`).
+   *
+   *  @param k       the exponent; negative exponents invert
+   *  @param policy  reduction policy for the result
+   *  @param maxBits the most bits the result may reach, estimated as `maxBitLength × |k|`
+   *  @return `this^k`, `None` for a negative power of zero or a result above `maxBits`
+   */
+  def pow(k: Int, policy: GcdPolicy, maxBits: Long): Option[_Rational] =
+    if k != 0 && BigInt(maxBitLength) * math.abs(k.toLong) > maxBits then None
     else if k >= 0 then Some(_Rational.make(num.pow(k), den.pow(k), policy))
     else if isZero then None
     else Some(_Rational.make(den.pow(-k), num.pow(-k), policy))

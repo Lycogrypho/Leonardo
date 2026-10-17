@@ -36,7 +36,10 @@ import core.*
 /** Numeric tolerance for treating a polynomial coefficient or discriminant as zero. */
 private[leonardo] val RationalEps = 1e-9
 
-/** Largest polynomial degree [[rationalCoeffs]] will build, guarding against blow-up. */
+/** Largest polynomial degree [[rationalCoeffs]] will build, guarding against blow-up.  Fixed,
+ *  not a `core.Limit` (F_0124 phase C), for the reason `collect`'s power cap is: the pure
+ *  polynomial helpers take no environment, and the degree is part of what a dozen tiers agree
+ *  a rational function is. */
 private[leonardo] val MaxRationalDegree = 24
 
 /** Folds an expression into `(numerator, denominator)` coefficient vectors in `v`.

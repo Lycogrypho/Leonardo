@@ -235,7 +235,8 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
    */
   private def ratPow(b: _Rational, e: _Rational, env: Environment): Either[_Expression, _Value] =
     e.toBigIntExact.filter(_.isValidInt) match
-      case Some(k) => b.pow(k.toInt, env.rationalPolicy).map(Right(_)).getOrElse(Left(this))
+      case Some(k) => b.pow(k.toInt, env.rationalPolicy, env.limits(Limit.MaxExactPowerBits))
+                        .map(Right(_)).getOrElse(Left(this))
       case None    => fractionalPow(b, e, env)
 
   /** A rational base to a genuinely fractional power.

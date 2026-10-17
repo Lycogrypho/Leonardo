@@ -38,7 +38,8 @@ import scalar.*
  *  `_Heaviside` covers the step, which is what the control tier actually needs.
  */
 
-/** Maximum recursion depth for the multiply-by-`n` rule, mirroring `MaxLaplacePowerN`. */
+/** Maximum recursion depth for the multiply-by-`n` rule, mirroring `MaxLaplacePowerN`, and
+ *  fixed for the same reason (F_0124 phase C). */
 private val MaxZPowerN = 20
 
 /** Computes `Z{x}` with index variable `n` and frequency variable `z`.

@@ -26,7 +26,9 @@ import scalar.*
  *  - **Deriv-of-transform** `L{t^n * g(t)} = (-1)^n * d^n G/ds^n`  (`G = L{g}`; `n <= MaxLaplacePowerN`)
  */
 
-/** Maximum power `n` accepted by the power rule and derivative-of-transform rule. */
+/** Maximum power `n` accepted by the power rule and derivative-of-transform rule.  Fixed, not a
+ *  `core.Limit` (F_0124 phase C): `laplaceOf` is a pure rule table with no environment, and the
+ *  cap matches `expand`'s and the series' default orders. */
 private val MaxLaplacePowerN = 20
 
 /** Iterative factorial -- avoids stack overflow; safe for `n` up to `MaxLaplacePowerN`. */

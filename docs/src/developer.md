@@ -384,8 +384,12 @@ The published constant (`optimize.MaxQpVariables`) stays as the default, defined
 tolerances**: raising a budget only lets a slow case finish, and every answer is still
 certified; the one tolerance a caller sets, the certificate's, comes from `precision`. The
 REPL and the browser keep the defaults. **Add a new cap as a `Limit`**, never as a fresh
-hard-coded `Max…`. The `optimize` package reads all of its budgets this way; the other
-packages' move is under way (F_0124), and `DesignNotes.md` keeps the inventory.
+hard-coded `Max…`. Every package reads its budgets this way. Where a public function has no
+`Environment` it gains an overload taking `Limits` (`expand(e, limits)`, `taylorSeries(…,
+limits)`, `dlsim(…, limits)`), never a defaulted parameter. A few caps stay fixed by design,
+each with its reason beside it: `collect`'s power cap and `MaxRationalDegree`, the integrator's
+search parameters, the transform tables' power caps, `MaxRewriteSteps`. `DesignNotes.md` keeps
+the inventory.
 
 Alongside the size caps sit **content** guards, which abort when a sub-result is not good
 enough to build on: `hasDerivative` in `Series.scala` refuses to emit a Taylor polynomial

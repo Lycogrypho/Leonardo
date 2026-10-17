@@ -26,8 +26,11 @@ import matrix.*
  *  **Measured** (F_0055, JVM, warm): a ten-state single-input plant takes 44 ms at `Np = 100`
  *  and 464 ms at `Np = 1000`, `Nc = 10`; MPC horizons are tens to hundreds of steps, so the cap
  *  refuses only a mistyped digit.
+ *
+ *  The **default** of [[core.Limit.MaxMpcHorizon]] (F_0124): [[mpcMatrices]] reads its
+ *  environment's value.
  */
-val MaxMpcHorizon: Int = 1000
+val MaxMpcHorizon: Int = Limit.MaxMpcHorizon.default.toInt
 
 /** The prediction matrices `(Φ, Γ)` of `(A, B, C)` over the horizons `Np` and `Nc`.
  *
@@ -37,12 +40,12 @@ val MaxMpcHorizon: Int = 1000
  *  @param a   the state matrix, `n×n`
  *  @param b   the input matrix, `n×m`
  *  @param c   the output matrix, `p×n`
- *  @param np  the prediction horizon, `1 ≤ Np ≤ MaxMpcHorizon`
+ *  @param np  the prediction horizon, `1 ≤ Np ≤` the environment's `Limit.MaxMpcHorizon`
  *  @param nc  the control horizon, `1 ≤ Nc ≤ Np`
  *  @param env the environment the operands evaluate in
  *  @return `(Φ, Γ)` as evaluated matrices, or `None` when the plant does not conform, a horizon
  *          is out of range, an operand's shape is unknown, or a result would exceed
- *          `matrix.MaxMatrixCells`
+ *          the environment's `Limit.MaxMatrixCells`
  */
 def mpcMatrices(a: _Expression, b: _Expression, c: _Expression, np: Int, nc: Int,
                 env: Environment): Option[(_Expression, _Expression)] =
@@ -58,19 +61,20 @@ def mpcMatrices(a: _Expression, b: _Expression, c: _Expression, np: Int, nc: Int
     n   = am.rows
     (m, p) = (bm.cols, cm.rows)
     if am.cols == n && bm.rows == n && cm.cols == n
-    if 1 <= nc && nc <= np && np <= MaxMpcHorizon
-    if np.toLong * p * math.max(n, nc * m) <= MaxMatrixCells
+    if 1 <= nc && nc <= np && np <= env.limits(Limit.MaxMpcHorizon)
+    maxCells = env.limits(Limit.MaxMatrixCells)
+    if np.toLong * p * math.max(n, nc * m) <= maxCells
     zero    = zeroLike(am.elems ++ bm.elems ++ cm.elems)
     caPow  <- iterate(cm, np + 1)(times(_, am))                   // C·Aᵏ, k = 0..Np
     markov <- caPow.take(np).foldLeft(Option(Vector.empty[_Matrix]))((acc, x) => acc.flatMap(v => times(x, bm).map(v :+ _)))
     // held(k) = Σ C·Aʲ·B for j = 0..k: the last move's accumulated effect, k steps after it starts.
     held   <- markov.tail.foldLeft(Option(Vector(markov.head)))((acc, h) => acc.flatMap(v => plus(v.last, h).map(v :+ _)))
-    phi    <- assembleBlocks(caPow.tail.map(Vector(_)))
+    phi    <- assembleBlocks(caPow.tail.map(Vector(_)), maxCells)
     gamma  <- assembleBlocks(Vector.tabulate(np, nc) { (i, j) =>
                 if i < j then filledBlock(p, m, zero)
                 else if j < nc - 1 then markov(i - j)
                 else held(i - j)
-              })
+              }, maxCells)
   yield (phi.eval(env).toExpression, gamma.eval(env).toExpression)
 
 /** `mpcMatrices(A, B, C, Np, Nc)` — the prediction matrices as the row `[[Phi, Gamma]]`, the

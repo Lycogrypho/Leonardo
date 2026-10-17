@@ -68,6 +68,66 @@ enum Limit(val default: Long):
   /** S-polynomial reductions of one Gröbner basis. */
   case MaxGroebnerReductions extends Limit(2000)
 
+  // ── matrix, control, ode, probability (F_0124 phase B) ──
+
+  /** Cells an assembled matrix may have: block operations, `mpcMatrices`, `dlsim`'s outputs. */
+  case MaxMatrixCells extends Limit(1000000)
+  /** `max(m, n)·min(m, n)²` of one singular value decomposition. */
+  case MaxSvdWork extends Limit(10000000)
+  /** One dimension of `eye`, `zeros` and `ones`. */
+  case MaxDenseDim extends Limit(4096)
+  /** The order of a symbolic matrix whose `det` and `inv` expand by cofactors (`n!` terms). */
+  case MaxSymbolicDim extends Limit(6)
+  /** Multiply-adds of one `dlsim`. */
+  case MaxDlsimWork extends Limit(100000000)
+  /** The prediction horizon of `mpcMatrices`. */
+  case MaxMpcHorizon extends Limit(1000)
+  /** The state (and output) dimension of the Riccati family. */
+  case MaxRiccatiOrder extends Limit(200)
+  /** Runge–Kutta steps of one ODE solve, scalar or vector. */
+  case MaxOdeSteps extends Limit(1000000)
+  /** Rows of one `odeSolve` trajectory. */
+  case MaxTrajectoryRows extends Limit(100000)
+  /** Draws of one `draw`. */
+  case MaxDrawCount extends Limit(100000)
+  /** Terms of one `prbs`. */
+  case MaxPrbsLength extends Limit(1000000)
+
+  // ── scalar, logic, equation, intervals (F_0124 phase C) ──
+
+  /** Term pairs one multiplication inside `expand` may form. */
+  case MaxExpandWork extends Limit(250000)
+  /** The largest integer power `expand` multiplies out. */
+  case MaxExpandPower extends Limit(20)
+  /** The order of a Taylor, Laurent or Padé expansion (`m + n` for the last two). */
+  case MaxTaylorOrder extends Limit(20)
+  /** The order of a Fourier series. */
+  case MaxFourierOrder extends Limit(20)
+  /** Nodes one derivative may have on the series engine's fallback path. */
+  case MaxDerivativeNodes extends Limit(50000)
+  /** The largest `n` whose factorial or multifactorial is computed exactly. */
+  case MaxExactFactorial extends Limit(10000)
+  /** The largest index of an exact sequence term: `fib`, `binom`, `catalan`, `harmonic`. */
+  case MaxExactSequenceIndex extends Limit(10000)
+  /** Bits an exact rational power's operand may reach, estimated before it is computed. */
+  case MaxExactPowerBits extends Limit(1048576)
+  /** Terms of one `tabulate`, `sum` or `product`. */
+  case MaxTabulateTerms extends Limit(1000)
+  /** The largest integer exponent an interval is raised to. */
+  case MaxIntervalPower extends Limit(100000)
+  /** Variables of a boolean truth table (`2ⁿ` rows). */
+  case MaxTruthTableVars extends Limit(16)
+  /** Variables of a three-valued truth table (`3ⁿ` rows). */
+  case MaxKleeneTableVars extends Limit(10)
+  /** Clauses a CNF or DNF may reach while distributing. */
+  case MaxNormalFormClauses extends Limit(1024)
+  /** L'Hôpital steps a limit may take. */
+  case MaxHopitalSteps extends Limit(5)
+  /** Roots `solve`'s numeric fallback keeps. */
+  case MaxNumericRoots extends Limit(8)
+  /** The vectorised dimension of a linear matrix equation `solve` reduces by Kronecker products. */
+  case MaxVectorizedSize extends Limit(400)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

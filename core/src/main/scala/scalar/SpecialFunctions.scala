@@ -1,6 +1,7 @@
 package it.grypho.scala.leonardo
 package scalar
 
+import core.Limit
 import scala.math.{abs, exp, log, sin, sqrt, Pi}
 
 
@@ -21,9 +22,11 @@ val MaxFactorial: Int = 170
  *  it stops being instant.  `10000!` is a 35 660-digit integer and takes a few
  *  milliseconds; a few orders of magnitude more would hang the REPL, and an unbounded
  *  `fact` is exactly the sort of thing a user types by accident.  Past the cap the node
- *  stays symbolic, the same give-up rule the rest of the library uses.
+ *  stays symbolic, the same give-up rule the rest of the library uses.  The **default** of
+ *  [[core.Limit.MaxExactFactorial]] (F_0124): `fact`, `mfact` and `Gamma` pass their
+ *  environment's value.
  */
-val MaxExactFactorial: Int = 10000
+val MaxExactFactorial: Int = Limit.MaxExactFactorial.default.toInt
 
 /** The exact factorial `n!` as an arbitrary-precision integer.
  *
@@ -47,9 +50,13 @@ def factorialExact(n: BigInt): Option[BigInt] =
  *          above [[MaxExactFactorial]]
  */
 def multiFactorialExact(n: BigInt, k: BigInt): Option[BigInt] =
-  if n.signum < 0 || k.signum <= 0 || n > BigInt(MaxExactFactorial) then None
+  multiFactorialExactWithin(n, k, MaxExactFactorial)
+
+/** [[multiFactorialExact]] with `n` capped at `cap`, the caller's `Limit.MaxExactFactorial`. */
+private[scalar] def multiFactorialExactWithin(n: BigInt, k: BigInt, cap: Long): Option[BigInt] =
+  if n.signum < 0 || k.signum <= 0 || n > BigInt(cap) then None
   else
-    // n <= MaxExactFactorial, so the loop count is bounded and the Int conversion is safe.
+    // n <= cap, so the loop count is bounded.
     var acc = BigInt(1)
     var i   = n
     while i.signum > 0 do

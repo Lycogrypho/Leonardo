@@ -64,6 +64,7 @@ d.eval(env)
 | **Control** | Transfer-function algebra, poles and stability, step/impulse response, Bode/Nyquist, state space, discretisation, ARX identification, LQR and the Kalman filter |
 | **ODEs** | First-order initial-value problems: closed forms where possible, Runge–Kutta otherwise |
 | **Exact arithmetic** | Opt-in rational tier with arbitrary-precision transcendentals and a user-settable working precision |
+| **Intervals** | `[lo, hi]` values with rigorous, outward-rounded bounds through arithmetic and the elementary functions; a comparison of overlapping intervals answers `unknown` |
 | **Sampling** | `sample(e, v, lo, hi, n)` → `Vector[(Double, Double)]`; compiled `Double ⇒ Double` fast path |
 | **REPL** | Interactive session with bindings, named functions, session scripts |
 

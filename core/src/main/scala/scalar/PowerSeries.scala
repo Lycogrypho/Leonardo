@@ -22,7 +22,8 @@ import core.*
  *  path ([[seriesDerivatives]], budget included), so coverage never shrinks and a composite pays
  *  the exponential cost only on the part that needs it.
  */
-private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, exact: Boolean):
+private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, exact: Boolean,
+                                 maxNodes: Int):
 
   private type Series = Vector[_Expression]
   private val env = new Environment()
@@ -152,13 +153,16 @@ private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, 
       val prod  = multiply(sg, du)
       norm(e.rebuild(List(su.head))) +: Vector.tabulate(order)(k => over(prod(k), lit(k + 1)))
 
-  /** The derivative path for one subtree: `f⁽ᵏ⁾(a)/k!`, each derivative held to
-   *  [[MaxDerivativeNodes]], so an uncovered node keeps exactly the coverage it had. */
+  /** The derivative path for one subtree: `f⁽ᵏ⁾(a)/k!`, each derivative held to `maxNodes`
+   *  (the caller's `Limit.MaxDerivativeNodes`), so an uncovered node keeps exactly the coverage
+   *  it had. */
   private def fallback(e: _Expression): Either[String, Series] =
-    seriesDerivatives(e, v, order).map(_.zipWithIndex.map((d, k) =>
+    seriesDerivatives(e, v, order, maxNodes).map(_.zipWithIndex.map((d, k) =>
       norm(Ratio(substitute(d, Map(v.variable -> centre)), factorial(k)))))
 
-  /** The largest natural power multiplied out term by term; past it the general recurrence runs. */
+  /** The largest natural power multiplied out term by term; past it the general recurrence runs.
+   *  Fixed, not a `core.Limit` (F_0124 phase C): it chooses between two algorithms that give the
+   *  same series, so it bounds no work a caller could trade for an answer. */
   private val MaxNaturalPower = 64
 
 
@@ -167,9 +171,11 @@ private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, 
  *  @param e      the expression
  *  @param v      the expansion variable
  *  @param centre the centre of the expansion
- *  @param order  the highest power
+ *  @param order    the highest power
+ *  @param maxNodes the derivative path's node budget for an uncovered subtree
  *  @return the coefficients of `(v − centre)ᵏ`, or the reason they cannot all be had
  */
-private[scalar] def powerSeries(e: _Expression, v: _Variable, centre: _Expression,
-                                order: Int): Either[String, Vector[_Expression]] =
-  SeriesEngine(v, centre, order, _Rational.containsExact(e) || _Rational.containsExact(centre)).of(e)
+private[scalar] def powerSeries(e: _Expression, v: _Variable, centre: _Expression, order: Int,
+                                maxNodes: Int = MaxDerivativeNodes): Either[String, Vector[_Expression]] =
+  SeriesEngine(v, centre, order, _Rational.containsExact(e) || _Rational.containsExact(centre),
+               maxNodes).of(e)

@@ -32,19 +32,27 @@ import core.*
  *  should be attempted" line [[MaxExactFactorial]] draws.  Linear iteration is enough under
  *  this bound — fast doubling (`O(log n)`) would only matter if it were raised, and applies
  *  to the integer case alone, since arbitrary seeds need the plain recurrence anyway.
+ *
+ *  The **default** of [[core.Limit.MaxExactSequenceIndex]] (F_0124): the public kernels below
+ *  apply it, while the sequence nodes pass their environment's value to the `…Within` forms.
  */
-val MaxExactSequenceIndex: Int = 10000
+val MaxExactSequenceIndex: Int = Limit.MaxExactSequenceIndex.default.toInt
 
-/** Whether `d` is a non-negative integer index small enough to iterate. */
-private def isIndex(d: Double): Boolean =
-  !d.isNaN && !d.isInfinite && d >= 0.0 && d == Math.floor(d) && d <= MaxExactSequenceIndex
+/** Whether `d` is a non-negative integer index small enough to iterate, `cap` the largest. */
+private def isIndex(d: Double, cap: Long): Boolean =
+  !d.isNaN && !d.isInfinite && d >= 0.0 && d == Math.floor(d) && d <= cap
 
 /** The `n`-th term of `x(k) = p·x(k-1) + q·x(k-2)` in `Double`, from seeds `(a, b)`.
  *
  *  @return `Some(x(n))`, or `None` for a non-index `n` or a non-finite result (overflow)
  */
 def linRecOf(n: Double, a: Double, b: Double, p: Double, q: Double): Option[Double] =
-  if !isIndex(n) then None
+  linRecOfWithin(n, a, b, p, q, MaxExactSequenceIndex)
+
+/** [[linRecOf]] with the index capped at `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def linRecOfWithin(n: Double, a: Double, b: Double, p: Double, q: Double,
+                                   cap: Long): Option[Double] =
+  if !isIndex(n, cap) then None
   else
     var (x, y) = (a, b)                       // x = x(k-2), y = x(k-1)
     for _ <- 0 until n.toInt do
@@ -62,7 +70,12 @@ def linRecOf(n: Double, a: Double, b: Double, p: Double, q: Double): Option[Doub
  */
 def linRecExact(n: BigInt, a: _Rational, b: _Rational,
                 p: _Rational, q: _Rational): Option[_Rational] =
-  if n.signum < 0 || n > BigInt(MaxExactSequenceIndex) then None
+  linRecExactWithin(n, a, b, p, q, MaxExactSequenceIndex)
+
+/** [[linRecExact]] with the index capped at `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def linRecExactWithin(n: BigInt, a: _Rational, b: _Rational,
+                                      p: _Rational, q: _Rational, cap: Long): Option[_Rational] =
+  if n.signum < 0 || n > BigInt(cap) then None
   else
     var x = a
     var y = b
@@ -80,11 +93,14 @@ def linRecExact(n: BigInt, a: _Rational, b: _Rational,
  *
  *  @return `Some(C(n, k))`, or `None` when `k` is not an integer or the result is non-finite
  */
-def binomOf(n: Double, k: Double): Option[Double] =
+def binomOf(n: Double, k: Double): Option[Double] = binomOfWithin(n, k, MaxExactSequenceIndex)
+
+/** [[binomOf]] with `k` capped at `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def binomOfWithin(n: Double, k: Double, cap: Long): Option[Double] =
   if k.isNaN || k.isInfinite || k != Math.floor(k) then None
   else if k < 0 then Some(0.0)
   else if n >= 0 && n == Math.floor(n) && k > n then Some(0.0)
-  else if k > MaxExactSequenceIndex then None
+  else if k > cap then None
   else
     var acc = 1.0
     for i <- 0 until k.toInt do acc = acc * (n - i) / (i + 1)
@@ -97,9 +113,12 @@ def binomOf(n: Double, k: Double): Option[Double] =
  *
  *  @return `Some(C(n, k))`, or `None` when `k` exceeds the cap
  */
-def binomExact(n: BigInt, k: BigInt): Option[BigInt] =
+def binomExact(n: BigInt, k: BigInt): Option[BigInt] = binomExactWithin(n, k, MaxExactSequenceIndex)
+
+/** [[binomExact]] with `k` capped at `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def binomExactWithin(n: BigInt, k: BigInt, cap: Long): Option[BigInt] =
   if k.signum < 0 || (n.signum >= 0 && k > n) then Some(BigInt(0))
-  else if k > BigInt(MaxExactSequenceIndex) then None
+  else if k > BigInt(cap) then None
   else
     // C(n, k) = C(n, n-k): take the cheaper side when both are available
     val kk = if n.signum >= 0 && k > n - k then n - k else k
@@ -108,14 +127,20 @@ def binomExact(n: BigInt, k: BigInt): Option[BigInt] =
 /** The `n`-th Catalan number `C(2n, n)/(n+1)`, exactly.
  *  @return `Some(Cat(n))`, or `None` outside the non-negative integers within the cap
  */
-def catalanExact(n: BigInt): Option[BigInt] =
+def catalanExact(n: BigInt): Option[BigInt] = catalanExactWithin(n, MaxExactSequenceIndex)
+
+/** [[catalanExact]] within `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def catalanExactWithin(n: BigInt, cap: Long): Option[BigInt] =
   if n.signum < 0 then None
-  else binomExact(2 * n, n).map(_ / (n + 1))
+  else binomExactWithin(2 * n, n, cap).map(_ / (n + 1))
 
 /** The `n`-th Catalan number in `Double`. */
-def catalanOf(n: Double): Option[Double] =
-  if !isIndex(n) then None
-  else binomOf(2 * n, n).flatMap(b => finite(b / (n + 1)))
+def catalanOf(n: Double): Option[Double] = catalanOfWithin(n, MaxExactSequenceIndex)
+
+/** [[catalanOf]] within `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def catalanOfWithin(n: Double, cap: Long): Option[Double] =
+  if !isIndex(n, cap) then None
+  else binomOfWithin(2 * n, n, cap).flatMap(b => finite(b / (n + 1)))
 
 /** The `n`-th harmonic number `H(n) = 1 + 1/2 + … + 1/n`, exactly (`H(0) = 0`).
  *
@@ -124,8 +149,11 @@ def catalanOf(n: Double): Option[Double] =
  *
  *  @return `Some(H(n))`, or `None` outside the non-negative integers within the cap
  */
-def harmonicExact(n: BigInt): Option[_Rational] =
-  if n.signum < 0 || n > BigInt(MaxExactSequenceIndex) then None
+def harmonicExact(n: BigInt): Option[_Rational] = harmonicExactWithin(n, MaxExactSequenceIndex)
+
+/** [[harmonicExact]] within `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def harmonicExactWithin(n: BigInt, cap: Long): Option[_Rational] =
+  if n.signum < 0 || n > BigInt(cap) then None
   else
     var acc = _Rational(0)
     for i <- 1 to n.toInt do
@@ -133,6 +161,9 @@ def harmonicExact(n: BigInt): Option[_Rational] =
     Some(acc)
 
 /** The `n`-th harmonic number in `Double`. */
-def harmonicOf(n: Double): Option[Double] =
-  if !isIndex(n) then None
+def harmonicOf(n: Double): Option[Double] = harmonicOfWithin(n, MaxExactSequenceIndex)
+
+/** [[harmonicOf]] within `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
+private[scalar] def harmonicOfWithin(n: Double, cap: Long): Option[Double] =
+  if !isIndex(n, cap) then None
   else finite((1 to n.toInt).foldLeft(0.0)((acc, i) => acc + 1.0 / i))

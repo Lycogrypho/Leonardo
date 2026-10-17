@@ -36,8 +36,11 @@ import RiccatiFailure.*
  *  `n = 50` 48 / 104 ms, `n = 100` 130 / 357 ms, `n = 200` 452 ms / 2.5 s — a few `n³` products per
  *  doubling step and about ten steps. Node is the slowest platform and sets the cap (the F_0077
  *  rule); 2.5 s there matches `lsqfit`'s and `arx`'s caps.
+ *
+ *  The **default** of [[core.Limit.MaxRiccatiOrder]] (F_0124): `dare`, `dlqr`, `dlyap` and
+ *  `kalmanGain` read their environment's value, `kalmanStep` its `Limits` overload's.
  */
-val MaxRiccatiOrder: Int = 200
+val MaxRiccatiOrder: Int = Limit.MaxRiccatiOrder.default.toInt
 
 /** The most doubling steps. The iteration converges quadratically, so a well-posed problem needs
  *  far fewer; past this the certificate still decides. */
@@ -104,7 +107,9 @@ private def checkWeights(q: _MatrixValue, r: _MatrixValue, n: Int, m: Int, qName
  *  `X = AᵀX(I + G·X)⁻¹A + H`, the DARE when `G = B·R⁻¹·Bᵀ` and `H = Q`, and the Stein equation
  *  `X = AᵀXA + H` when `G = 0` (Smith's method). Only products and inverses: no generalised
  *  eigenproblem, which the library does not have. Converges quadratically when a stabilising
- *  solution exists; `None` when a step is singular or leaves the finite numbers.
+ *  solution exists; `None` when a step is singular or leaves the finite numbers. **At
+ *  `MaxDoublingSteps` it returns its last iterate unconverged** rather than `None`: every
+ *  caller certifies the answer by its residual, and that certificate decides.
  *
  *  The answer is symmetrised only when `symmetric` says the solution is symmetric: a Riccati
  *  solution always is, but a Stein solution only for a symmetric `H`, and symmetrising one for a
@@ -182,7 +187,7 @@ private def dlqrNamed(a: _MatrixValue, b: _MatrixValue, q: _MatrixValue, r: _Mat
   val n = a.rows
   for
     _    <- checkSquare(a, "A", n)
-    _    <- Either.cond(n <= MaxRiccatiOrder, (), TooLarge(n))
+    _    <- Either.cond(n <= env.limits(Limit.MaxRiccatiOrder), (), TooLarge(n))
     _    <- Either.cond(b.rows == n, (), ShapeMismatch(s"B must have $n rows, as A does: it is ${b.rows}x${b.cols}"))
     _    <- Either.cond(a.isFinite && b.isFinite && q.isFinite && r.isFinite, (), NotNumeric("an entry is not finite"))
     _    <- checkWeights(q, r, n, b.cols, qName, rName)
@@ -223,7 +228,7 @@ def dlyap(a: _MatrixValue, q: _MatrixValue, env: Environment): Either[RiccatiFai
   for
     _ <- checkSquare(a, "A", n)
     _ <- checkSquare(q, "Q", n)
-    _ <- Either.cond(n <= MaxRiccatiOrder, (), TooLarge(n))
+    _ <- Either.cond(n <= env.limits(Limit.MaxRiccatiOrder), (), TooLarge(n))
     _ <- Either.cond(a.isFinite && q.isFinite, (), NotNumeric("an entry is not finite"))
     _ <- Either.cond(schurStable(a), (), NoStabilisingSolution)
     // doubling solves X = AᵀXA + H; the Stein equation in A is that equation in Aᵀ.
@@ -282,7 +287,30 @@ def kalmanGain(a: _MatrixValue, c: _MatrixValue, qw: _MatrixValue, rv: _MatrixVa
 def kalmanStep(xhat: _MatrixValue, p: _MatrixValue, u: _MatrixValue, y: _MatrixValue,
                a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue,
                qw: _MatrixValue, rv: _MatrixValue): Either[RiccatiFailure, (_MatrixValue, _MatrixValue)] =
+  kalmanStep(xhat, p, u, y, a, b, c, d, qw, rv, Limits.Default)
+
+/** [[kalmanStep]] under `limits` (F_0124): the state and output counts may be at most
+ *  [[core.Limit.MaxRiccatiOrder]]. An overload rather than a defaulted parameter, which would be
+ *  a binary break.
+ *
+ *  @param xhat   the prior state estimate, `n×1`
+ *  @param p      the prior error covariance, `n×n`
+ *  @param u      the input at this step, `m×1`
+ *  @param y      the measurement at this step, `p×1`
+ *  @param a      the state matrix, `n×n`
+ *  @param b      the input matrix, `n×m`
+ *  @param c      the output matrix, `p×n`
+ *  @param d      the feedthrough matrix, `p×m`
+ *  @param qw     the process noise covariance, `n×n`
+ *  @param rv     the measurement noise covariance, `p×p`
+ *  @param limits the budgets
+ *  @return `(x̂', P')`, or why the step cannot be taken
+ */
+def kalmanStep(xhat: _MatrixValue, p: _MatrixValue, u: _MatrixValue, y: _MatrixValue,
+               a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue,
+               qw: _MatrixValue, rv: _MatrixValue, limits: Limits): Either[RiccatiFailure, (_MatrixValue, _MatrixValue)] =
   val (n, m, q) = (a.rows, b.cols, c.rows)
+  val maxOrder  = limits(Limit.MaxRiccatiOrder)
   val shapes = List(
     (a, n, n, "A"), (b, n, m, "B"), (c, q, n, "C"), (d, q, m, "D"), (xhat, n, 1, "xhat"),
     (p, n, n, "P"), (u, m, 1, "u"), (y, q, 1, "y"), (qw, n, n, "Qw"), (rv, q, q, "Rv"))
@@ -292,8 +320,8 @@ def kalmanStep(xhat: _MatrixValue, p: _MatrixValue, u: _MatrixValue, y: _MatrixV
     case Some(f) => Left(f)
     // The Riccati family's size cap, as dlqr and dlyap apply it: a step costs several n³
     // products and an inverse of the q×q innovation covariance (F_0107).
-    case None if n > MaxRiccatiOrder => Left(TooLarge(n))
-    case None if q > MaxRiccatiOrder => Left(TooLarge(q))
+    case None if n > maxOrder => Left(TooLarge(n))
+    case None if q > maxOrder => Left(TooLarge(q))
     case None =>
       for
         s <- c.multiply(p).multiply(c.transpose).add(rv).inverse.toRight(NotDefinite("C·P·Cᵀ + Rv"))
@@ -397,7 +425,7 @@ case class _Riccati(kind: RiccatiKind, args: List[_Expression]) extends _Express
               y  <- mat(3, "y", Some((c.rows, 1)))
               qw <- mat(5, "Qw", Some((a.rows, a.rows)))
               rv <- mat(6, "Rv")
-              ans <- kalmanStep(x, p, u, y, a, b, c, d, qw, rv)
+              ans <- kalmanStep(x, p, u, y, a, b, c, d, qw, rv, env.limits)
             yield Right(ans)
           case _ => Left(NotNumeric("sys is not the [[A, B, C, D]] row stateSpace builds"))
 

@@ -3,7 +3,7 @@ package control
 
 import core.*
 import scalar.*
-import matrix.{_Matrix, MaxMatrixCells, numericalRank, rankTolerance}
+import matrix.{_Matrix, numericalRank, rankTolerance}
 import statistics.leastSquares
 
 
@@ -66,12 +66,28 @@ final case class ArxModel(a: Vector[Double], b: Vector[Vector[Double]])
  *  @return `(X, Y)`, or the reason they cannot be built
  */
 def arxRegressors(u: _MatrixValue, y: _MatrixValue, na: Int, nb: Int, nk: Int): Either[ArxFailure, (_MatrixValue, _MatrixValue)] =
+  arxRegressors(u, y, na, nb, nk, Limits.Default)
+
+/** [[arxRegressors]] under `limits` (F_0124): the regressor matrix may have at most
+ *  [[core.Limit.MaxMatrixCells]] cells. An overload rather than a defaulted parameter, which
+ *  would be a binary break.
+ *
+ *  @param u      the inputs
+ *  @param y      the output
+ *  @param na     the autoregressive order, `≥ 0`
+ *  @param nb     the number of coefficients per input, `≥ 1`
+ *  @param nk     the input delay, `≥ 0`
+ *  @param limits the budgets
+ *  @return `(X, Y)`, or the reason they cannot be built
+ */
+def arxRegressors(u: _MatrixValue, y: _MatrixValue, na: Int, nb: Int, nk: Int,
+                  limits: Limits): Either[ArxFailure, (_MatrixValue, _MatrixValue)] =
   for
     _  <- checkOrders(na, nb, nk)
     ys <- outputOf(y)
     us <- inputsOf(u, ys.size)
     _  <- Either.cond((ys +: us).forall(_.forall(_.isFinite)), (), NotNumeric("a sample is not a finite number"))
-    xy <- layout(us, ys, na, nb, nk)
+    xy <- layout(us, ys, na, nb, nk, limits(Limit.MaxMatrixCells))
   yield xy
 
 /** Identifies an ARX model by least squares (F_0060), in the predictor form of [[ArxModel]].
@@ -87,12 +103,13 @@ def arxRegressors(u: _MatrixValue, y: _MatrixValue, na: Int, nb: Int, nk: Int): 
  *  @param na  the autoregressive order
  *  @param nb  the coefficients per input
  *  @param nk  the input delay
- *  @param env the environment, whose precision sets the rank tolerance
+ *  @param env the environment, whose precision sets the rank tolerance and whose limits the
+ *             regressor size and the SVD's work
  *  @return the model, or the reason it was declined
  */
 def arx(u: _MatrixValue, y: _MatrixValue, na: Int, nb: Int, nk: Int, env: Environment): Either[ArxFailure, ArxModel] =
   for
-    xy   <- arxRegressors(u, y, na, nb, nk)
+    xy   <- arxRegressors(u, y, na, nb, nk, env.limits)
     // Building the regressors needs one row; fitting them needs one per coefficient.
     _    <- Either.cond(xy._1.rows >= xy._1.cols, (),
               TooShort(xy._1.rows + math.max(na, nk + nb - 1), xy._1.rows, xy._1.cols))
@@ -195,13 +212,13 @@ private def inputsOf(u: _MatrixValue, n: Int): Either[ArxFailure, Vector[Vector[
   else Left(ShapeMismatch(s"u has no side as long as y's $n samples: it is ${u.rows}x${u.cols}"))
 
 /** The regressor rows, after the length and size checks. */
-private def layout(us: Vector[Vector[Double]], ys: Vector[Double], na: Int, nb: Int, nk: Int)
+private def layout(us: Vector[Vector[Double]], ys: Vector[Double], na: Int, nb: Int, nk: Int, maxCells: Long)
     : Either[ArxFailure, (_MatrixValue, _MatrixValue)] =
   val k0   = math.max(na.toLong, nk.toLong + nb - 1)
   val cols = na.toLong + us.size.toLong * nb
   val rows = ys.size - k0
   if rows < 1 then Left(TooShort(ys.size, 0, math.min(cols, Int.MaxValue.toLong).toInt))
-  else if rows * cols > MaxMatrixCells then Left(TooLarge(rows.toInt, cols.toInt))
+  else if rows * cols > maxCells then Left(TooLarge(rows.toInt, cols.toInt))
   else
     val (r, c, start) = (rows.toInt, cols.toInt, k0.toInt)
     val x = _MatrixValue(r, c, Array.tabulate(r * c) { idx =>
@@ -215,11 +232,11 @@ private def layout(us: Vector[Vector[Double]], ys: Vector[Double], na: Int, nb: 
 
 /** Full numerical column rank at the session precision, or the reason the data does not have it. */
 private def excited(x: _MatrixValue, env: Environment): Either[ArxFailure, Unit] =
-  x.svd match
+  x.svd(env.limits) match
     case Some((_, sigma, _)) =>
       val r = numericalRank(sigma, rankTolerance(env))
       Either.cond(r == x.cols, (), NotExcited(r, x.cols))
-    case None if _MatrixValue.svdWork(x.rows, x.cols) > _MatrixValue.MaxSvdWork => Left(TooLarge(x.rows, x.cols))
+    case None if _MatrixValue.svdWork(x.rows, x.cols) > env.limits(Limit.MaxSvdWork) => Left(TooLarge(x.rows, x.cols))
     case None => Left(NotNumeric("the regressor matrix could not be decomposed"))
 
 
@@ -280,7 +297,7 @@ case class _ArxRegressors(u: _Expression, y: _Expression, na: _Expression, nb: _
    *  @param env the evaluation environment
    *  @return `(X, Y)` or the reason */
   def detailed(env: Environment): Either[ArxFailure, (_MatrixValue, _MatrixValue)] =
-    arxOperands(u, y, na, nb, nk, env).flatMap((um, ym, a, b, k) => arxRegressors(um, ym, a, b, k))
+    arxOperands(u, y, na, nb, nk, env).flatMap((um, ym, a, b, k) => arxRegressors(um, ym, a, b, k, env.limits))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     detailed(env).fold(_ => Left(this), (x, t) => Left(_Matrix(1, 2, Vector(x, t))))

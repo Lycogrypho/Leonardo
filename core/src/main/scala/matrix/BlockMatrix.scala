@@ -31,8 +31,11 @@ import core.*
  *  one million cells — assembles and collapses in 126 ms, a million-cell `_Matrix` holding
  *  about 96 MB; the next decade, ten million cells, took 1.9 s and about 937 MB. The
  *  `MaxSampleCount` rule: an uncapped size is an out-of-memory error, not a refusal.
+ *
+ *  The **default** of [[core.Limit.MaxMatrixCells]] (F_0124): every node reads its environment's
+ *  value, which a library caller raises through [[core.Environment.withLimit]].
  */
-val MaxMatrixCells: Int = 1_000_000
+val MaxMatrixCells: Int = Limit.MaxMatrixCells.default.toInt
 
 /** An evaluated operand as a grid of cells, or `None` when its shape is not known.
  *
@@ -63,13 +66,14 @@ private[leonardo] def filledBlock(rows: Int, cols: Int, cell: _Expression): _Mat
 /** Assembles a grid of blocks into one matrix.
  *
  *  Every block of a block-row must have that row's height and every block of a block-column
- *  that column's width; the result may not exceed [[MaxMatrixCells]], which is checked before
- *  any cell is copied.
+ *  that column's width; the result may not exceed `maxCells`, which is checked before any cell
+ *  is copied.
  *
- *  @param grid the block rows, each a non-empty row of blocks, all of the same length
+ *  @param grid     the block rows, each a non-empty row of blocks, all of the same length
+ *  @param maxCells the most cells the result may have, `Limit.MaxMatrixCells` of the caller's limits
  *  @return the assembled matrix, or `None` when the blocks do not conform or it is too large
  */
-private[leonardo] def assembleBlocks(grid: Vector[Vector[_Matrix]]): Option[_Matrix] =
+private[leonardo] def assembleBlocks(grid: Vector[Vector[_Matrix]], maxCells: Long): Option[_Matrix] =
   if grid.isEmpty || grid.exists(_.isEmpty) then None
   else
     val heights  = grid.map(_.head.rows)
@@ -77,7 +81,7 @@ private[leonardo] def assembleBlocks(grid: Vector[Vector[_Matrix]]): Option[_Mat
     val conforms = grid.forall(_.size == widths.size) && grid.zip(heights).forall { (row, h) =>
       row.zip(widths).forall((b, w) => b.rows == h && b.cols == w)
     }
-    Option.when(conforms && heights.sum.toLong * widths.sum <= MaxMatrixCells) {
+    Option.when(conforms && heights.sum.toLong * widths.sum <= maxCells) {
       val cells = for (row, h) <- grid.zip(heights); i <- 0 until h; b <- row; j <- 0 until b.cols yield b(i, j)
       _Matrix(heights.sum, widths.sum, cells)
     }
@@ -103,7 +107,7 @@ case class _HCat(blocks: List[_Expression]) extends _MatrixOperation:
   override def children: List[_Expression] = blocks
   override def rebuild(c: List[_Expression]): _Expression = _HCat(c)
   override def eval(env: Environment): Either[_Expression, _Value] =
-    blockEval(blocks, env, scalars = true, _HCat(_))(gs => assembleBlocks(Vector(gs)))
+    blockEval(blocks, env, scalars = true, _HCat(_))(gs => assembleBlocks(Vector(gs), env.limits(Limit.MaxMatrixCells)))
 
 /** Vertical concatenation: `vcat(A, B, …)`, blocks of equal width stacked.
  *
@@ -114,7 +118,7 @@ case class _VCat(blocks: List[_Expression]) extends _MatrixOperation:
   override def children: List[_Expression] = blocks
   override def rebuild(c: List[_Expression]): _Expression = _VCat(c)
   override def eval(env: Environment): Either[_Expression, _Value] =
-    blockEval(blocks, env, scalars = true, _VCat(_))(gs => assembleBlocks(gs.map(Vector(_))))
+    blockEval(blocks, env, scalars = true, _VCat(_))(gs => assembleBlocks(gs.map(Vector(_)), env.limits(Limit.MaxMatrixCells)))
 
 /** Block diagonal: `blkdiag(A, B, …)`, the blocks on the diagonal and zeros elsewhere — zeros
  *  in the blocks' tier, so exact blocks give an exact matrix.
@@ -128,12 +132,13 @@ case class _BlkDiag(blocks: List[_Expression]) extends _MatrixOperation:
   override def eval(env: Environment): Either[_Expression, _Value] =
     blockEval(blocks, env, scalars = true, _BlkDiag(_)) { gs =>
       // The zero blocks cost cells too, so the size is checked before any is built.
-      if gs.map(_.rows).sum.toLong * gs.map(_.cols).sum > MaxMatrixCells then None
+      val maxCells = env.limits(Limit.MaxMatrixCells)
+      if gs.map(_.rows).sum.toLong * gs.map(_.cols).sum > maxCells then None
       else
         val zero = zeroLike(gs.flatMap(_.elems))
         assembleBlocks(gs.indices.toVector.map { i =>
           gs.indices.toVector.map(j => if i == j then gs(i) else filledBlock(gs(i).rows, gs(j).cols, zero))
-        })
+        }, maxCells)
     }
 
 /** Tiling: `repmat(A, m, n)`, `A` repeated `m` times down and `n` times across.
@@ -152,8 +157,8 @@ case class _RepMat(m: _Expression, down: _Expression, across: _Expression) exten
       g <- cellGrid(reduced.head, scalars = false)
       r <- wholeCount(reduced(1))
       c <- wholeCount(reduced(2))
-      if g.rows.toLong * r * g.cols * c <= MaxMatrixCells
-      out <- assembleBlocks(Vector.fill(r)(Vector.fill(c)(g)))
+      if g.rows.toLong * r * g.cols * c <= env.limits(Limit.MaxMatrixCells)
+      out <- assembleBlocks(Vector.fill(r)(Vector.fill(c)(g)), env.limits(Limit.MaxMatrixCells))
     yield out
     built.map(_.eval(env)).getOrElse(Left(rebuild(reduced.map(_.toExpression))))
 
@@ -173,7 +178,7 @@ case class _Kron(a: _Expression, b: _Expression) extends _MatrixOperation:
     val (ra, rb) = (a.eval(env), b.eval(env))
     lazy val unevaluated = Left(_Kron(ra.toExpression, rb.toExpression))
     (cellGrid(ra, scalars = true), cellGrid(rb, scalars = true)) match
-      case (Some(x), Some(y)) if x.rows.toLong * y.rows * x.cols * y.cols <= MaxMatrixCells =>
+      case (Some(x), Some(y)) if x.rows.toLong * y.rows * x.cols * y.cols <= env.limits(Limit.MaxMatrixCells) =>
         (ra, rb) match
           case (Right(dx: _MatrixValue), Right(dy: _MatrixValue)) => dx.kronecker(dy).guarded(this)
           case _ =>

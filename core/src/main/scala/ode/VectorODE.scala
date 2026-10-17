@@ -64,14 +64,16 @@ enum OdeFailure:
 
 
 /** The most steps one integration may take, fixed or adaptive.  The scalar RK4's own ceiling
- *  (`SolveODE.MaxSteps`), so the two tiers cannot run away differently. */
-val MaxOdeSteps: Int = 1_000_000
+ *  too, so the two tiers cannot run away differently.  The **default** of
+ *  [[core.Limit.MaxOdeSteps]] (F_0124): every tier reads its environment's value. */
+val MaxOdeSteps: Int = Limit.MaxOdeSteps.default.toInt
 
 /** The most rows `odeSolve` materialises.  The `Session.MaxSampleCount` rule: the trajectory is
  *  built in full before it is returned, so an uncapped `h` is an out-of-memory error rather
  *  than a refusal.  **Measured** (F_0051, JVM): 99,991 rows of a two-state RK4 trajectory take
- *  0.38 s, and one row past the cap is refused before any work. */
-val MaxTrajectoryRows: Int = 100_000
+ *  0.38 s, and one row past the cap is refused before any work.  The **default** of
+ *  [[core.Limit.MaxTrajectoryRows]] (F_0124). */
+val MaxTrajectoryRows: Int = Limit.MaxTrajectoryRows.default.toInt
 
 
 /** One integration problem: `y' = rhs(t, y)` with the state named by `state`. */
@@ -192,7 +194,7 @@ private[ode] def adaptive(p: VectorProblem, t0: Double, y0: Vector[Double], t1: 
     // Both floors are relative to the run's own time scale (F_0125): against max(1, |t|) a
     // span of 5e-12 needed a step below the 1e-12 floor, and rk45 declined StepSizeUnderflow.
     if dir * (t1 - t) <= 1e-14 * timeScale then Right((y, steps))
-    else if steps >= budget then Left(OdeFailure.MaxSteps(MaxOdeSteps))
+    else if steps >= budget then Left(OdeFailure.MaxSteps(budget))
     else
       val hh = if dir * (t + h - t1) > 0 then t1 - t else h
       if math.abs(hh) < 1e-12 * math.max(timeScale, math.abs(t)) then Left(OdeFailure.StepSizeUnderflow(t))
@@ -226,7 +228,7 @@ def odeStep(rhs: _Expression, state: OdeState, indepVar: _Variable, t0: Double, 
   validated(state, y0, h).flatMap { _ =>
     val p = VectorProblem(rhs, state, indepVar, env)
     method match
-      case OdeMethod.RK45 => adaptive(p, t0, y0, t0 + h, rk45Tolerance(env), MaxOdeSteps).map(_._1)
+      case OdeMethod.RK45 => adaptive(p, t0, y0, t0 + h, rk45Tolerance(env), env.limits.count(Limit.MaxOdeSteps)).map(_._1)
       case m              => fixedSteps(p, m, t0, y0, t0 + h, 1)
   }
 
@@ -246,7 +248,7 @@ def odeSolve(rhs: _Expression, state: OdeState, indepVar: _Variable, t0: Double,
     _    <- Either.cond(t1 != t0 && math.signum(t1 - t0) == math.signum(h), (),
                         OdeFailure.InvalidInput("h must be non-zero and point from t0 towards t1"))
     rows  = math.ceil(math.abs((t1 - t0) / h) - 1e-9).toLong + 1
-    _    <- Either.cond(rows <= MaxTrajectoryRows, (), OdeFailure.TooManyRows(rows))
+    _    <- Either.cond(rows <= env.limits(Limit.MaxTrajectoryRows), (), OdeFailure.TooManyRows(rows))
     path <- trajectory(VectorProblem(rhs, state, indepVar, env), method, t0, y0, t1, h, env)
   yield path
 
@@ -259,7 +261,7 @@ private def trajectory(p: VectorProblem, method: OdeMethod, t0: Double, y0: Vect
       val (ta, tb) = (pair(0), pair(1))
       val y        = rows.last._2
       val next = method match
-        case OdeMethod.RK45 => adaptive(p, ta, y, tb, rk45Tolerance(env), MaxOdeSteps).map(_._1)
+        case OdeMethod.RK45 => adaptive(p, ta, y, tb, rk45Tolerance(env), env.limits.count(Limit.MaxOdeSteps)).map(_._1)
         case m              => fixedSteps(p, m, ta, y, tb, 1)
       next.map(s => rows :+ (tb, s))
     }
@@ -293,7 +295,7 @@ def odeCertified(rhs: _Expression, state: OdeState, indepVar: _Variable, t0: Dou
   if target == t0 then Right(y0)
   else
     val p  = VectorProblem(rhs, state, indepVar, env)
-    val n  = stepCount(math.abs(target - t0), env.precision)
+    val n  = stepCount(math.abs(target - t0), env.precision, env.limits(Limit.MaxOdeSteps))
     for
       coarse <- fixedSteps(p, OdeMethod.RK4, t0, y0, target, n)
       fine   <- fixedSteps(p, OdeMethod.RK4, t0, y0, target, 2 * n)

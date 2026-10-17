@@ -32,10 +32,12 @@ private def denseOf(e: _Expression): Option[_MatrixValue] =
 
 /** Controllability matrix `[B, A*B, A^2*B, …, A^(n-1)*B]`, joined by the shared block assembly
  *  (F_0055) — the private concatenation this file used to carry was a second definition of
- *  `hcat`.  `None` only past `matrix.MaxMatrixCells`. */
+ *  `hcat`.  `None` only past `matrix.MaxMatrixCells`, at its **default**: `controllable` and
+ *  `observable` are published without an `Environment` (F_0124), and the cap binds only past
+ *  `n²·m = 10⁶`, far beyond the plants the Riccati family accepts. */
 private def ctrbOf(a: _MatrixValue, b: _MatrixValue): Option[_MatrixValue] =
   val blocks = (1 until a.rows).foldLeft(Vector(b))((acc, _) => acc :+ a.multiply(acc.last))
-  assembleBlocks(Vector(blocks.map(_Matrix.fromValue))).flatMap(matrix.denseOf)
+  assembleBlocks(Vector(blocks.map(_Matrix.fromValue)), MaxMatrixCells).flatMap(matrix.denseOf)
 
 /** Full row rank test, by QR of the transpose.
  *

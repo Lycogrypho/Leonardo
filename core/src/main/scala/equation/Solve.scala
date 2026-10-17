@@ -41,8 +41,9 @@ private val SearchLo         = -100.0
 private val SearchHi         = 100.0
 /** Number of uniform samples in `[SearchLo, SearchHi]` for sign-change detection. */
 private val SearchSamples    = 10000
-/** Maximum number of roots returned by the numeric tier (periodic functions have infinitely many). */
-private val MaxNumericRoots  = 8
+/** Maximum number of roots returned by the numeric tier (periodic functions have infinitely many).
+ *  The default of `Limit.MaxNumericRoots`; [[numericRoots]] reads its environment's (F_0124). */
+private val MaxNumericRoots  = Limit.MaxNumericRoots.default.toInt
 /** Bisection refinement iterations per detected sign-change interval. */
 private val BisectIterations = 200
 
@@ -220,8 +221,9 @@ private def finalizeSolution(result: Either[_Expression, _Value], v: _Variable):
 // assembling the (p*q) x (p*q) dense system M * vec(v) = vec(C'), then solved via
 // the inverse kernel and reshaped back with unvec. Dense-only.
 
-/** Dimension cap for the Kronecker system (`MaxVectorizedSize = p*q`; up to a 20x20 unknown). */
-private val MaxVectorizedSize = 400
+/** Dimension cap for the Kronecker system (`MaxVectorizedSize = p*q`; up to a 20x20 unknown).
+ *  The default of `Limit.MaxVectorizedSize`; the vectorised tier reads its environment's (F_0124). */
+private val MaxVectorizedSize = Limit.MaxVectorizedSize.default.toInt
 
 /** One additive term linear in `v`: `scale * left * v * right` (absent side = identity).
  *
@@ -290,11 +292,12 @@ private def vectorizedMatrixSolve(withV: _Expression, b: _Expression, v: _Variab
     constants <- allOpt(cTerms.map(t => asMatrixValue(t.eval(env))))
     terms     <- allOpt(vTerms.map(classifyTerm(_, v, env)))
     if terms.nonEmpty
-  yield solveVectorized(terms, bDense, constants, v).getOrElse(Nil)
+  yield solveVectorized(terms, bDense, constants, v, env).getOrElse(Nil)
 
 /** Assembles and solves `M * vec(v) = vec(C')` via the Kronecker identity; `None` on failure. */
 private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
-                            constants: Vector[_MatrixValue], v: _Variable): Option[List[_Equation]] =
+                            constants: Vector[_MatrixValue], v: _Variable,
+                            env: Environment): Option[List[_Equation]] =
   val p = b.rows
   val q = b.cols
   if constants.exists(c => c.rows != p || c.cols != q) then None
@@ -308,7 +311,7 @@ private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
       t.right.forall(r => r.rows == cX && r.cols == q) && (t.right.nonEmpty || cX == q)
     }
     val n = p * q
-    if !conforming || rX * cX != n || n > MaxVectorizedSize then None
+    if !conforming || rX * cX != n || n > env.limits(Limit.MaxVectorizedSize) then None
     else
       val m = terms
         .map { t =>
@@ -453,7 +456,8 @@ private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_
       var a  = SearchLo
       var fa = fn(a)
       var i  = 0
-      while i < SearchSamples && found.size < MaxNumericRoots do
+      val maxRoots = env.limits(Limit.MaxNumericRoots)
+      while i < SearchSamples && found.size < maxRoots do
         val b  = a + step
         val fb = fn(b)
         if fa == 0.0 then

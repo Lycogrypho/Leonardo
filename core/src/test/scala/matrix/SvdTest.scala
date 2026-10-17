@@ -185,10 +185,10 @@ class SvdTest extends AnyFlatSpec:
     assert(_MatrixValue.svdWork(100, 1001) == _MatrixValue.svdWork(1001, 100))
     val big = _MatrixValue(1001, 100, Array.fill(1001 * 100)(1.0))
     assert(big.svd.isEmpty && big.transpose.svd.isEmpty)
-    val reason = svdDecline(Right(big)).getOrElse(fail("expected a reason"))
+    val reason = svdDecline(Right(big), Limits.Default).getOrElse(fail("expected a reason"))
     assert(reason.contains("1001x100") && reason.contains("work cap"), reason)
-    assert(svdDecline(Right(dense(2, 2, 1, Double.NaN, 0, 1))).exists(_.contains("non-finite")))
-    assert(svdDecline(Right(dense(2, 2, 1, 0, 0, 1))).isEmpty)
+    assert(svdDecline(Right(dense(2, 2, 1, Double.NaN, 0, 1)), Limits.Default).exists(_.contains("non-finite")))
+    assert(svdDecline(Right(dense(2, 2, 1, 0, 0, 1)), Limits.Default).isEmpty)
   }
 
   // --- the node ---
@@ -326,7 +326,7 @@ class SvdTest extends AnyFlatSpec:
   it should "satisfy the four Moore–Penrose identities on a rank-deficient matrix" in
   {
     val a = random(6, 2, 12).multiply(random(2, 4, 13))
-    val p = pseudoInverse(a, rankTolerance(env)).getOrElse(fail("expected a pseudo-inverse"))
+    val p = pseudoInverse(a, rankTolerance(env), Limits.Default).getOrElse(fail("expected a pseudo-inverse"))
     assert(p.rows == 4 && p.cols == 6)
     assertClose(a.multiply(p).multiply(a), a, 1e-9)
     assertClose(p.multiply(a).multiply(p), p, 1e-9)
@@ -337,7 +337,7 @@ class SvdTest extends AnyFlatSpec:
   it should "be the least-squares solver (AᵀA)⁻¹Aᵀ for a tall full-rank matrix" in
   {
     val a = random(7, 3, 14)
-    val p = pseudoInverse(a, rankTolerance(env)).getOrElse(fail("expected a pseudo-inverse"))
+    val p = pseudoInverse(a, rankTolerance(env), Limits.Default).getOrElse(fail("expected a pseudo-inverse"))
     val normal = a.transpose.multiply(a).inverse.getOrElse(fail("AᵀA singular")).multiply(a.transpose)
     assertClose(p, normal, 1e-9)
   }

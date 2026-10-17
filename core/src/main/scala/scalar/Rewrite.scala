@@ -179,5 +179,7 @@ extension (c: Condition)
   private[leonardo] def &&(d: Condition): Condition = (b, v) => c(b, v) && d(b, v)
 
 
-/** Step cap for [[rewriteFully]] — a non-terminating rule set must give up, not hang. */
+/** Step cap for [[rewriteFully]] — a non-terminating rule set must give up, not hang.  Fixed,
+ *  not a `core.Limit` (F_0124 phase C): it is a termination guard for the library's own rule
+ *  tables, which reach a fixpoint in a handful of steps, not a budget a caller trades time for. */
 private[leonardo] val MaxRewriteSteps: Int = 100

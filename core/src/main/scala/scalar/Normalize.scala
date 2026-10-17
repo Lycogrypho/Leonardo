@@ -26,6 +26,10 @@ import core.*
  *  (zero terms dropped, unit coefficients elided), so `10x - 2x` becomes `8x`
  *  regardless of tree shape.  Non-polynomial expressions are returned unchanged,
  *  and `_ElementWise` containers (matrices, equations) normalize per element/side.
+ *
+ *  **Fixed, not a `core.Limit`** (F_0124 phase C): `collect` takes no environment and is read
+ *  by a dozen tiers as the definition of "a polynomial in `v`", so a per-call value would let
+ *  two tiers disagree about what a polynomial is.
  */
 private val MaxPowerExpansion = 20
 

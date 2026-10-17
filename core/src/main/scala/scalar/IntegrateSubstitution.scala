@@ -15,10 +15,13 @@ import scala.annotation.tailrec
  */
 
 /** Maximum nesting of u-substitutions before giving up (a substituted integral may itself
- *  need a further substitution; the bound stops the recursion from running away). */
+ *  need a further substitution; the bound stops the recursion from running away).  Fixed, not
+ *  a `core.Limit` (F_0124 phase C): `integrate(e, v)` has no environment, and the integrator's
+ *  search parameters decide which antiderivative is found, not how long one may take. */
 private val MaxSubstitutionDepth = 2
 
-/** Maximum number of candidate inner functions tried per substitution attempt. */
+/** Maximum number of candidate inner functions tried per substitution attempt; fixed for the
+ *  reason [[MaxSubstitutionDepth]] gives. */
 private val MaxSubstitutionCandidates = 8
 
 /** Number of nodes in `e` — used to try the most specific (largest) candidate `g` first. */
@@ -257,7 +260,8 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
 // +/·/÷/integer-power over t (an exp, a bare v, another variable) makes it fail, which is the
 // refusal — nothing is ever half-transformed.
 
-/** Degree cap for the normalised Weierstrass fraction, keeping the linear system solvable. */
+/** Degree cap for the normalised Weierstrass fraction, keeping the linear system solvable;
+ *  fixed for the reason [[MaxSubstitutionDepth]] gives (F_0124 phase C). */
 private val MaxWeierstrassDegree = 24
 
 /** Normalises an arithmetic expression over `t` into one polynomial fraction `num/den`

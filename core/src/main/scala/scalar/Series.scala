@@ -9,8 +9,10 @@ import core.*
  *  Matches `Expand`'s integer-power cap of 20.  **It does not bound the work on its own** —
  *  a composite function's derivatives grow exponentially with the order — which is what
  *  [[MaxDerivativeNodes]] is for (F_0077).  Beyond the cap the `_Taylor` node stays symbolic.
+ *  The **default** of [[core.Limit.MaxTaylorOrder]] (F_0124): the series nodes read their
+ *  environment's value, and so do [[laurentSeries]] and [[padeApproximant]].
  */
-val MaxTaylorOrder: Int = 20
+val MaxTaylorOrder: Int = Limit.MaxTaylorOrder.default.toInt
 
 
 /** Returns `true` when an unevaluated `_Derivative` survives anywhere in `e`.
@@ -38,15 +40,16 @@ private def hasDerivative(e: _Expression): Boolean = e match
  *  suite's timing test ran on Node.  Since F_0085 it bounds only the **fallback**: the
  *  power-series engine computes every covered function without differentiating, and only a
  *  subexpression it does not cover (`erf`, the special functions) pays this cost.  A derivative
- *  past it makes the series decline with a reason.
+ *  past it makes the series decline with a reason.  The **default** of
+ *  [[core.Limit.MaxDerivativeNodes]] (F_0124).
  */
-val MaxDerivativeNodes: Int = 50000
+val MaxDerivativeNodes: Int = Limit.MaxDerivativeNodes.default.toInt
 
-/** The raw (unsimplified) derivative's node budget: refused before `simplifyFully`, which is
- *  the expensive half of a step. */
-private val MaxRawDerivativeNodes: Int = 10 * MaxDerivativeNodes
+/** The raw (unsimplified) derivative's node budget for a simplified budget `maxNodes`: refused
+ *  before `simplifyFully`, which is the expensive half of a step. */
+private def rawNodeBudget(maxNodes: Int): Int = math.min(10L * maxNodes, Int.MaxValue - 1L).toInt
 
-/** `f, f', f'', …` within [[MaxDerivativeNodes]], each **simplified before the next is taken**;
+/** `f, f', f'', …` within `maxNodes` nodes each, each **simplified before the next is taken**;
  *  an element past the budget, and every one after it, is the reason.
  *
  *  [[deriveN]] folds [[derive]] with no simplification between steps, so the `k`-th derivative
@@ -56,22 +59,25 @@ private val MaxRawDerivativeNodes: Int = 10 * MaxDerivativeNodes
  *  aborts early differentiates no further.  `deriveN` itself is unchanged: its result is public
  *  API whose shape callers may rely on.
  */
-private def boundedDerivatives(e: _Expression, v: _Variable): LazyList[Either[String, _Expression]] =
-  def tooLarge(k: Int) = s"the derivative of order $k has more than $MaxDerivativeNodes nodes"
+private def boundedDerivatives(e: _Expression, v: _Variable,
+                               maxNodes: Int): LazyList[Either[String, _Expression]] =
+  def tooLarge(k: Int) = s"the derivative of order $k has more than $maxNodes nodes"
+  val maxRaw = rawNodeBudget(maxNodes)
   LazyList.iterate((Right(e): Either[String, _Expression], 0)) { (prev, k) =>
     val next = prev.flatMap { d =>
       val raw = derive(d, v)
-      if nodeCountUpTo(raw, MaxRawDerivativeNodes) > MaxRawDerivativeNodes then Left(tooLarge(k + 1))
+      if nodeCountUpTo(raw, maxRaw) > maxRaw then Left(tooLarge(k + 1))
       else
         val s = simplifyFully(raw)
-        Either.cond(nodeCountUpTo(s, MaxDerivativeNodes) <= MaxDerivativeNodes, s, tooLarge(k + 1))
+        Either.cond(nodeCountUpTo(s, maxNodes) <= maxNodes, s, tooLarge(k + 1))
     }
     (next, k + 1)
   }.map(_._1)
 
 /** The derivatives of orders `0 .. order`, or why they cannot all be had: the size budget, or
  *  an order at which `derive` has no rule (a series carrying a `_Derivative` is worse than none). */
-private[scalar] def seriesDerivatives(e: _Expression, v: _Variable, order: Int): Either[String, Vector[_Expression]] =
+private[scalar] def seriesDerivatives(e: _Expression, v: _Variable, order: Int,
+                                      maxNodes: Int = MaxDerivativeNodes): Either[String, Vector[_Expression]] =
   @annotation.tailrec
   def go(ds: LazyList[Either[String, _Expression]], k: Int, built: Vector[_Expression]): Either[String, Vector[_Expression]] =
     if k > order then Right(built)
@@ -79,7 +85,7 @@ private[scalar] def seriesDerivatives(e: _Expression, v: _Variable, order: Int):
       case Left(why)                   => Left(why)
       case Right(d) if hasDerivative(d) => Left(s"no derivative rule applies at order $k")
       case Right(d)                    => go(ds.tail, k + 1, built :+ d)
-  go(boundedDerivatives(e, v), 0, Vector.empty)
+  go(boundedDerivatives(e, v, maxNodes), 0, Vector.empty)
 
 /** The node count of `e`, counted no further than `limit + 1`, so counting costs at most the
  *  budget it checks.  Iterative: a derivative is a tree, but a long one must not recurse. */
@@ -119,32 +125,51 @@ def taylorSeries(
 ): Option[_Expression] =
   taylorDetailed(e, v, point, order).toOption
 
+/** [[taylorSeries]] under the caller's budgets (F_0124): the order is capped by
+ *  `limits(Limit.MaxTaylorOrder)` and each fallback derivative by `Limit.MaxDerivativeNodes`.
+ *
+ *  @param e      the expression to expand
+ *  @param v      the expansion variable
+ *  @param point  the centre of the expansion
+ *  @param order  the highest power retained
+ *  @param limits the work budgets
+ *  @return the truncated series, or `None` under the same conditions as [[taylorSeries]]
+ */
+def taylorSeries(
+    e: _Expression, v: _Variable, point: _Expression, order: Int, limits: Limits
+): Option[_Expression] =
+  taylorDetailed(e, v, point, order, limits).toOption
+
 /** [[taylorSeries]], with the reason when there is no series (F_0052 Decision A).
  *
  *  @param e     the expression to expand
  *  @param v     the expansion variable
  *  @param point the centre of the expansion
  *  @param order the highest power retained
+ *  @param limits the work budgets: the order cap and the fallback's derivative nodes
  *  @return the truncated series, or why it was declined
  */
 private[leonardo] def taylorDetailed(
-    e: _Expression, v: _Variable, point: _Expression, order: Int
+    e: _Expression, v: _Variable, point: _Expression, order: Int, limits: Limits = Limits.Default
 ): Either[String, _Expression] =
-  if order < 0 || order > MaxTaylorOrder then Left(orderRange)
+  if order < 0 || order > limits(Limit.MaxTaylorOrder) then Left(orderRangeTo(limits(Limit.MaxTaylorOrder)))
   else
     // F_0085: the coefficients come from the power-series engine, which falls back to the
     // derivative path (and its budget) only for a subtree it does not cover. The constants the
     // assembly invents -- the -1 and each exponent -- are built in the input's tier.
     val exact = _Rational.containsExact(e) || _Rational.containsExact(point)
     def lit(k: Int): _Expression = if exact then _Rational(k) else _Number(k)
-    powerSeries(e, v, point, order).map { cs =>
+    powerSeries(e, v, point, order, limits.count(Limit.MaxDerivativeNodes)).map { cs =>
       val shifted = Sum(v, Product(lit(-1), point))
       val terms = cs.zipWithIndex.map((c, k) => Product(c, Power(shifted, lit(k))): _Expression)
       simplifyFully(terms.reduceLeft(Sum.apply))
     }
 
 /** The reason for an order outside `0 .. MaxTaylorOrder`. */
-private[leonardo] val orderRange: String = s"the order must be a whole number from 0 to $MaxTaylorOrder"
+private[leonardo] val orderRange: String = orderRangeTo(MaxTaylorOrder)
+
+/** The reason for an order outside `0 .. max`, `max` the environment's order cap. */
+private[leonardo] def orderRangeTo(max: Long): String = s"the order must be a whole number from 0 to $max"
 
 
 /** Expands `e` as a Maclaurin polynomial — the Taylor series about zero.
@@ -205,12 +230,13 @@ def laurentSeries(
 private[leonardo] def laurentDetailed(
     e: _Expression, v: _Variable, point: _Expression, m: Int, n: Int, env: Environment
 ): Either[String, _Expression] =
-  if m < 0 || n < 0 || m + n > MaxTaylorOrder then
-    Left(s"the pole order and the order must be whole numbers summing to at most $MaxTaylorOrder")
+  val maxOrder = env.limits(Limit.MaxTaylorOrder)
+  if m < 0 || n < 0 || m.toLong + n > maxOrder then
+    Left(s"the pole order and the order must be whole numbers summing to at most $maxOrder")
   // A removable singularity has no principal part, so this *is* a Taylor series. Returning
   // it beats erroring: the caller asked the right question and there simply are no negative
   // powers.
-  else if m == 0 then taylorDetailed(e, v, point, n)
+  else if m == 0 then taylorDetailed(e, v, point, n, env.limits)
   else
     val shifted = simplifyFully(Sum(v, Product(_Number(-1), point)))
     regularise(e, v, point, shifted, m, env)
@@ -315,7 +341,7 @@ private def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =
 private def laurentCoefficients(
     g: _Expression, v: _Variable, point: _Expression, order: Int, env: Environment
 ): Either[String, Vector[_Expression]] =
-  powerSeries(g, v, point, order).flatMap { cs =>
+  powerSeries(g, v, point, order, env.limits.count(Limit.MaxDerivativeNodes)).flatMap { cs =>
     cs.zipWithIndex.collectFirst { case (c, k) if !isFiniteCoefficient(c, env) => k } match
       case Some(k) => Left(s"the coefficient of order $k is not finite")
       case None    => Right(cs)
@@ -356,9 +382,10 @@ private def assembleLaurent(cs: Vector[_Expression], shifted: _Expression, m: In
  *
  *  Each order costs two definite integrations, so the work is linear in the order but the
  *  constant is large (Simpson uses `max(precision * 200, 100)` intervals per integral).
- *  Capped at the same 20 as [[MaxTaylorOrder]] and `Expand`'s power cap.
+ *  Capped at the same 20 as [[MaxTaylorOrder]] and `Expand`'s power cap.  The **default** of
+ *  [[core.Limit.MaxFourierOrder]] (F_0124), which [[fourierSeries]] reads from its environment.
  */
-val MaxFourierOrder: Int = 20
+val MaxFourierOrder: Int = Limit.MaxFourierOrder.default.toInt
 
 
 /** Expands `e` as a truncated Fourier series in `v` over one period, centred on zero.
@@ -391,7 +418,7 @@ val MaxFourierOrder: Int = 20
 def fourierSeries(
     e: _Expression, v: _Variable, period: Double, order: Int, env: Environment
 ): Option[_Expression] =
-  if order < 0 || order > MaxFourierOrder then None
+  if order < 0 || order > env.limits(Limit.MaxFourierOrder) then None
   else if !(period > 0.0) || period.isInfinite || period.isNaN then None
   else
     val halfT = period / 2.0
@@ -427,7 +454,7 @@ def fourierSeries(
 private def maclaurinCoefficients(
     e: _Expression, v: _Variable, upTo: Int, env: Environment
 ): Either[String, Vector[Double]] =
-  powerSeries(e, v, _Number(0), upTo).flatMap { cs =>
+  powerSeries(e, v, _Number(0), upTo, env.limits.count(Limit.MaxDerivativeNodes)).flatMap { cs =>
     cs.zipWithIndex.foldLeft(Right(Vector.empty): Either[String, Vector[Double]]) { case (acc, (c, k)) =>
       acc.flatMap { built =>
         c.eval(env) match
@@ -479,8 +506,9 @@ def padeApproximant(
 private[leonardo] def padeDetailed(
     e: _Expression, v: _Variable, m: Int, n: Int, env: Environment
 ): Either[String, _Expression] =
-  if m < 0 || n < 0 || m + n > MaxTaylorOrder then
-    Left(s"the degrees must be whole numbers summing to at most $MaxTaylorOrder")
+  val maxOrder = env.limits(Limit.MaxTaylorOrder)
+  if m < 0 || n < 0 || m.toLong + n > maxOrder then
+    Left(s"the degrees must be whole numbers summing to at most $maxOrder")
   else
     maclaurinCoefficients(e, v, m + n, env).flatMap { coeffs =>
       def c(i: Int): Double = if i < 0 then 0.0 else coeffs(i)
