@@ -754,7 +754,12 @@ Rule table over standard forms.  Key rules:
 
 Reference: [Wikipedia — Laplace transform](https://en.wikipedia.org/wiki/Laplace_transform)
 
-Fourier transform is computed as `L{e(t)}|_{s=iω}` (Laplace-to-Fourier substitution).
+The Fourier transform is two-sided, `L{e(t)}(iω) + L{e(−t)}(−iω)`, each part read on `t > 0`
+(`step` and `abs` of a linear argument rewritten), and `fourierCausal` keeps the first term
+(F_0141). **The substitution `s → ±iω` is valid only where the Laplace integral converges on
+the imaginary axis**, so a part whose transform has a pole on or right of the axis declines,
+unless the pole cancels in the whole transform (the Taylor coefficients of `(s − r)ᵐ·F` below
+order `m` vanish against their terms — the centred pulse's `(1 − e^(−s))/s` at `0`).
 
 ### Ordinary differential equations (`SolveODE.scala`, `SolveODESymbolic.scala`)
 

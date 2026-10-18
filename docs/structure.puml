@@ -930,6 +930,14 @@ package "transform" {
         e : _Expression
         t : _Variable
         w : _Variable
+        two-sided (F_0141)
+    }
+
+    class "_FourierCausal" <<case>> [[calculus.html]] {
+        e : _Expression
+        t : _Variable
+        w : _Variable
+        e(t)u(t) only (F_0141)
     }
 
     class "_InverseLaplace" <<case>> [[calculus.html]] {
@@ -951,7 +959,12 @@ package "transform" {
 
     class "FourierTransform" <<utility>> [[calculus.html]] {
         + fourierOf(e, t, w): _Expression
-        unilateral: L{f} at s = i*w
+        + causalFourierOf(e, t, w): _Expression
+        + fourierDecline(e, t, w, causal): Option[String]
+        __ F_0141 __
+        L{x}(iw) + L{x(-t)}(-iw), each read on t > 0
+        declines a pole on or right of the axis
+        unless it cancels in the whole transform
     }
 
     class "InverseLaplaceTransform" <<utility>> [[calculus.html]] {
@@ -1001,6 +1014,7 @@ package "transform" {
 
     "_Laplace"        --|> "_Functional"
     "_Fourier"        --|> "_Functional"
+    "_FourierCausal"  --|> "_Functional"
     "_InverseLaplace" --|> "_Functional"
     "_ZTransform"        --|> "_Functional"
     "_InverseZTransform" --|> "_Functional"
@@ -1010,6 +1024,7 @@ package "transform" {
         __ F_0137: dft / idft / conv __
         direct N^2 sum, twiddles at k n mod N
         N <= Limit.MaxDftLength; conv exact on exact input
+        conv products <= MaxConvWork / MaxConvExactWork (F_0144)
         the reason transform imports matrix
     }
     "_Dft / _Conv" ..> "_Matrix" : complex result cells
@@ -1021,6 +1036,8 @@ package "transform" {
 
     "_Laplace"                ..> "LaplaceTransform"        : laplaceOf() at eval
     "_Fourier"                ..> "FourierTransform"        : fourierOf() at eval
+    "_FourierCausal"          ..> "FourierTransform"        : causalFourierOf() at eval
+    "FourierTransform"        ..> "Polynomial"              : squareFreeFactors / rootsAtScale
     "_InverseLaplace"         ..> "InverseLaplaceTransform" : inverseLaplaceOf() at eval
     "FourierTransform"        ..> "LaplaceTransform"        : delegates, then s -> i*w
     "FourierTransform"        ..> "Substitute"              : s -> i*w substitution

@@ -97,6 +97,11 @@ object _Distribution:
    */
   val MaxHypergeometricSupport: Int = 1000000
 
+  /** The largest population a hypergeometric distribution may have, `2⁵³` (F_0142): past it
+   *  consecutive whole numbers are not distinct doubles, so a support point cannot be named, and
+   *  the table's bounds rounded until it had no points at all — the first query then threw. */
+  private val MaxHypergeometricPopulation: Double = 9007199254740992.0
+
   /** Whether `d` is a whole number. */
   private def whole(d: Double): Boolean = d == Math.floor(d)
 
@@ -131,7 +136,8 @@ object _Distribution:
         case DistKind.Hypergeometric =>
           val (n, k, draws) = (params(0), params(1), params(2))
           whole(n) && whole(k) && whole(draws) && k >= 0.0 && k <= n && draws >= 0.0 && draws <= n &&
-          math.min(draws, k) - math.max(0.0, draws + k - n) + 1 <= MaxHypergeometricSupport
+          n <= MaxHypergeometricPopulation &&
+          math.min(draws, k) - math.max(0.0, draws - (n - k)) + 1 <= MaxHypergeometricSupport
       Option.when(ok)(new _Distribution(kind, params))
 
 
@@ -164,18 +170,25 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
   /** The hypergeometric support's first point and its masses and running totals, built once
    *  (F_0132).  Log-space ratios `p(k+1)/p(k) = (K−k)(n−k) / ((k+1)(N−K−n+k+1))` from the first
    *  point, then normalised by their sum, so no `lgamma` difference has to be accurate to the
-   *  last digit and no mass underflows on the way.  Empty for every other family. */
-  @transient private lazy val hyperTable: (Int, Array[Double], Array[Double]) =
-    if kind != DistKind.Hypergeometric then (0, Array.empty, Array.empty)
+   *  last digit and no mass underflows on the way.  Empty for every other family.
+   *
+   *  **The first point is kept a `Double` and only the offset into the table is an `Int`**
+   *  (F_0142): `of` bounds the support's width, not its position, and `Double.toInt` saturates,
+   *  so a support past `Int.MaxValue` became a one-point table at `2147483647` and every mass
+   *  was read as `0`.  Each ratio is a sum of four logarithms, never a product of two factors,
+   *  which overflowed to `Inf` past `≈ 10³⁰²`; every factor is at least `1` on the support. */
+  @transient private lazy val hyperTable: (Double, Array[Double], Array[Double]) =
+    if kind != DistKind.Hypergeometric then (0.0, Array.empty, Array.empty)
     else
       val (n, k, draws) = (params(0), params(1), params(2))
-      val lo   = math.max(0.0, draws + k - n).toInt
-      val hi   = math.min(draws, k).toInt
-      val logs = new Array[Double](hi - lo + 1)
+      // draws - (n - k), not draws + k - n: the sum may pass 2^53 and round where the
+      // difference of two values below it is exact.
+      val lo   = math.max(0.0, draws - (n - k))
+      val logs = new Array[Double]((math.min(draws, k) - lo).toInt + 1)
       var j = 1
       while j < logs.length do
-        val i = (lo + j - 1).toDouble
-        logs(j) = logs(j - 1) + math.log((k - i) * (draws - i)) - math.log((i + 1) * (n - k - draws + i + 1))
+        val i = lo + (j - 1)
+        logs(j) = logs(j - 1) + math.log(k - i) + math.log(draws - i) - math.log(i + 1) - math.log((n - k) - (draws - i) + 1)
         j += 1
       val top    = logs.max
       val masses = logs.map(l => math.exp(l - top))

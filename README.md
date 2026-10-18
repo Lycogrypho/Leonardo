@@ -178,7 +178,7 @@ leonardo> limit(sin(x)/x, x, 0) -- L'Hôpital: 1.0
 leonardo> limit(1/x, x, 0, +)  -- one-sided: inf
 leonardo> limit(atan(x), x, inf) -- limit at ∞: π/2
 leonardo> laplace(sin(2*t), t, s) -- Laplace transform: 2/(s² + 4)
-leonardo> fourier(exp(-2*t), t, w) -- Fourier transform: 1/(2 + i·w)
+leonardo> fourier(exp(-abs(t)), t, w) -- Fourier transform: 2/(1 + w²)
 leonardo> invlaplace(2/(s^2+4), s, t) -- inverse Laplace: sin(2*t)
 leonardo> ode(y, y, t, 0, 1, 1)   -- solve y'=y, y(0)=1 at t=1: 2.71828 (e)
 leonardo> simplify x + 0       -- structural simplification (ignores bindings)

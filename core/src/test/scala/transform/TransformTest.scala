@@ -182,23 +182,24 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
 
   // ─────────────────────────── Fourier: rule table ─────────────────────────────
 
-  "fourier transform" should "evaluate F{1} = 1/(iw) — pure imaginary at w=2 → im=-0.5" in:
-    evalAt("fourier(1, t, w)", "w" -> 2.0).toExpression match
-      case c: _Complex =>
-        assert(math.abs(c.re) < 1e-5, s"expected zero real part, got ${c.re}")
-        assert(math.abs(c.im + 0.5) < 1e-5, s"expected im=-0.5, got ${c.im}")
-      case other => fail(s"expected _Complex, got $other")
+  // F_0141: this suite pinned F{1} = 1/(iw) as a passing case -- the wrong answer, since the
+  // transform of a constant is a Dirac delta and the pole at 0 sits on the axis the substitution
+  // s -> iw needs inside the region of convergence. Both forms now decline it; the two-sided
+  // transform's own cases are FourierTwoSidedTest.
+  "fourier transform" should "decline F{1}, whose transform is a Dirac delta (F_0141)" in:
+    val r = parse("fourier(1, t, w)").eval(emptyEnv).toExpression
+    assert(r.isInstanceOf[_Fourier], s"expected the call back unevaluated, got $r")
 
-  it should "evaluate F{e^{-2t}} = 1/(2+iw) — real at w=0 → 0.5" in:
-    evalAt("fourier(exp(-2*t), t, w)", "w" -> 0.0).toExpression match
+  it should "evaluate the causal F{e^{-2t}u(t)} = 1/(2+iw) — real at w=0 → 0.5" in:
+    evalAt("fourierCausal(exp(-2*t), t, w)", "w" -> 0.0).toExpression match
       case _Number(d)  => assert(math.abs(d - 0.5) < 1e-5)
       case c: _Complex => assert(math.abs(c.re - 0.5) < 1e-5 && math.abs(c.im) < 1e-5)
       case other       => fail(s"expected numeric ≈ 0.5, got $other")
 
-  it should "evaluate F{e^{-t}*sin(t)} at w=1 to 0.2 - 0.4i" in:
+  it should "evaluate the causal F{e^{-t}*sin(t)} at w=1 to 0.2 - 0.4i" in:
     // F{e^{-t}sin(t)} = L{sin(t)}(s+1) at s=iw: 1/((s+1)^2+1) at s=i:
     // (i+1)^2 = 2i; denominator = 2i+1; 1/(1+2i) = (1-2i)/5 = 0.2 - 0.4i
-    evalAt("fourier(exp(-t)*sin(t), t, w)", "w" -> 1.0).toExpression match
+    evalAt("fourierCausal(exp(-t)*sin(t), t, w)", "w" -> 1.0).toExpression match
       case c: _Complex =>
         assert(math.abs(c.re - 0.2) < 1e-4, s"expected real≈0.2, got ${c.re}")
         assert(math.abs(c.im + 0.4) < 1e-4, s"expected im≈-0.4, got ${c.im}")
@@ -210,17 +211,21 @@ class TransformTest extends AnyFlatSpec with BeforeAndAfter:
 
   it should "not corrupt a free variable whose name matches the old hard-coded sentinel" in:
     // _Variable("__lt_s__") is constructed via the API (the parser rejects names starting
-    // with '_'). fourierOf must pick a different internal variable, so __lt_s__ survives
-    // in the result: F{c} = c/(i*w), i.e. the result contains __lt_s__ unsubstituted.
-    val e      = _Variable("__lt_s__")
-    val result = fourierOf(e, _Variable("t"), _Variable("w"))
+    // with '_'). The transform must pick a different internal variable, so __lt_s__ survives
+    // in the result: F{c·e^(-t)u(t)} = c/(1 + i*w), with __lt_s__ unsubstituted.
+    val t      = _Variable("t")
+    val e      = Product(_Variable("__lt_s__"), Exp(Product(_Number(-1), t)))
+    val result = causalFourierOf(e, t, _Variable("w"))
+    assert(!result.isInstanceOf[_FourierCausal], s"declined: $result")
     assert(result.toString.contains("__lt_s__"), s"__lt_s__ was corrupted: $result")
 
   it should "skip past a free variable named like the generated candidates (__lts0)" in:
     // e contains __lts0, so the fresh-name search must move on to __lts1: the __lts0
-    // in e must survive unsubstituted in F{__lts0} = __lts0/(i*w).
-    val e      = _Variable("__lts0")
-    val result = fourierOf(e, _Variable("t"), _Variable("w"))
+    // in e must survive unsubstituted in F{__lts0·e^(-t)u(t)} = __lts0/(1 + i*w).
+    val t      = _Variable("t")
+    val e      = Product(_Variable("__lts0"), Exp(Product(_Number(-1), t)))
+    val result = causalFourierOf(e, t, _Variable("w"))
+    assert(!result.isInstanceOf[_FourierCausal], s"declined: $result")
     assert(result.toString.contains("__lts0"), s"__lts0 was corrupted: $result")
     assert(!result.toString.contains("__lts1"), s"internal variable leaked: $result")
 

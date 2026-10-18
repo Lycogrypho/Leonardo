@@ -108,7 +108,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
                                "binom", "catalan", "harmonic", "tabulate",
                                "exp", "ln", "log", "transpose", "pow",
                                "integral", "derive", "solve", "solveSystem",
-                               "limit", "laplace", "fourier", "invlaplace", "ode",
+                               "limit", "laplace", "fourier", "fourierCausal", "invlaplace", "ode",
                                "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz",
                                "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",
                                "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",

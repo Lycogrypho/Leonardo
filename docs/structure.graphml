@@ -1221,9 +1221,21 @@ s : _Variable</data>
         <data key="n_url">calculus.html</data>
         <data key="n_members">e : _Expression
 t : _Variable
-w : _Variable</data>
+w : _Variable
+two-sided (F_0141)</data>
     </node>
     <node id="n118">
+        <data key="n_label">_FourierCausal</data>
+        <data key="n_package">transform</data>
+        <data key="n_kind">class</data>
+        <data key="n_stereotype">case</data>
+        <data key="n_url">calculus.html</data>
+        <data key="n_members">e : _Expression
+t : _Variable
+w : _Variable
+e(t)u(t) only (F_0141)</data>
+    </node>
+    <node id="n119">
         <data key="n_label">_InverseLaplace</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1233,7 +1245,7 @@ w : _Variable</data>
 s : _Variable
 t : _Variable</data>
     </node>
-    <node id="n119">
+    <node id="n120">
         <data key="n_label">LaplaceTransform</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1248,16 +1260,21 @@ step u(t) -&gt; 1/s
 2nd-shift u(t-a)g(t-a) -&gt; e^{-as}G(s)
 deriv-of-xfm t^n*g(t) -&gt; (-1)^n d^n G/ds^n</data>
     </node>
-    <node id="n120">
+    <node id="n121">
         <data key="n_label">FourierTransform</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">utility</data>
         <data key="n_url">calculus.html</data>
         <data key="n_members">+ fourierOf(e, t, w): _Expression
-unilateral: L{f} at s = i*w</data>
++ causalFourierOf(e, t, w): _Expression
++ fourierDecline(e, t, w, causal): Option[String]
+__ F_0141 __
+L{x}(iw) + L{x(-t)}(-iw), each read on t &gt; 0
+declines a pole on or right of the axis
+unless it cancels in the whole transform</data>
     </node>
-    <node id="n121">
+    <node id="n122">
         <data key="n_label">InverseLaplaceTransform</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1276,7 +1293,7 @@ repeated irreducible quadratic, k &gt;= 3: declined
 __ second-shift __
 e^{-as}*F(s) -&gt; u(t-a)*f(t-a)</data>
     </node>
-    <node id="n122">
+    <node id="n123">
         <data key="n_label">_ZTransform</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1286,7 +1303,7 @@ e^{-as}*F(s) -&gt; u(t-a)*f(t-a)</data>
 n : _Variable   (binder)
 z : _Variable   (free in the result)</data>
     </node>
-    <node id="n123">
+    <node id="n124">
         <data key="n_label">_InverseZTransform</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1296,7 +1313,7 @@ z : _Variable   (free in the result)</data>
 z : _Variable   (binder)
 n : _Variable   (free in the result)</data>
     </node>
-    <node id="n124">
+    <node id="n125">
         <data key="n_label">ZTransform</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1309,7 +1326,7 @@ sin / cos, linearity
 n*x[n] -&gt; -z dX/dz  (supplies n, n^2, n*a^n)
 no Kronecker delta: core has no node for it</data>
     </node>
-    <node id="n125">
+    <node id="n126">
         <data key="n_label">InverseZTransform</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1321,7 +1338,7 @@ z/(z-r)^j -&gt; binom(n, j-1) r^(n-j+1)
 multiplicities from squareFreeFactors
 complex poles: declined</data>
     </node>
-    <node id="n126">
+    <node id="n127">
         <data key="n_label">_Dft / _Conv</data>
         <data key="n_package">transform</data>
         <data key="n_kind">class</data>
@@ -1330,9 +1347,10 @@ complex poles: declined</data>
         <data key="n_members">__ F_0137: dft / idft / conv __
 direct N^2 sum, twiddles at k n mod N
 N &lt;= Limit.MaxDftLength; conv exact on exact input
+conv products &lt;= MaxConvWork / MaxConvExactWork (F_0144)
 the reason transform imports matrix</data>
     </node>
-    <node id="n127">
+    <node id="n128">
         <data key="n_label">_ODE</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1347,7 +1365,7 @@ target   : _Expression
 __ ode(rhs, y, t, t0, y0, target) __
 y' = rhs(t, y), y(t0) = y0 ; value y(target)</data>
     </node>
-    <node id="n128">
+    <node id="n129">
         <data key="n_label">SolveODE</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1360,7 +1378,7 @@ steps: floor + interval-scaled + precision, capped
 signed h -&gt; backward integration
 tree-eval f(t, y) per stage</data>
     </node>
-    <node id="n129">
+    <node id="n130">
         <data key="n_label">SolveODESymbolic</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1376,7 +1394,7 @@ integrating factor mu = e^{-integral a dt}
 y = (Q(target) - Q(t0) + y0*mu(t0)) / mu(target)
 with Q = integral(mu*b dt)</data>
     </node>
-    <node id="n130">
+    <node id="n131">
         <data key="n_label">SolveODESystem</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1388,7 +1406,7 @@ exp([[A, b], [0, 0]]*tau) = [[Phi, Gamma], [0, 1]]
 y(target) = Phi*y0 + Gamma
 declines A(t), b(t), non-conforming shapes, symbolic tau</data>
     </node>
-    <node id="n131">
+    <node id="n132">
         <data key="n_label">VectorODE</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1402,7 +1420,7 @@ OdeMethod: Euler | RK4 | RK45 (Dormand-Prince)
 ode: RK4, n and 2n steps must agree (certificate)
 odeStep/odeSolve: uncertified, the step is the caller's</data>
     </node>
-    <node id="n132">
+    <node id="n133">
         <data key="n_label">_ODESystem</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1412,7 +1430,7 @@ odeStep/odeSolve: uncertified, the step is the caller's</data>
 a column of state names; separate node,
 since _ODE.depVar is a published _Variable</data>
     </node>
-    <node id="n133">
+    <node id="n134">
         <data key="n_label">_OdeStep</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1420,7 +1438,7 @@ since _ODE.depVar is a published _Variable</data>
         <data key="n_url">calculus.html</data>
         <data key="n_members">__ odeStep(F, y, t, t0, y0, h, method) __</data>
     </node>
-    <node id="n134">
+    <node id="n135">
         <data key="n_label">_OdeSolve</data>
         <data key="n_package">ode</data>
         <data key="n_kind">class</data>
@@ -1429,7 +1447,7 @@ since _ODE.depVar is a published _Variable</data>
         <data key="n_members">__ odeSolve(F, y, t, t0, y0, t1, h, method) __
 rows [t, state...], t1 always the last</data>
     </node>
-    <node id="n135">
+    <node id="n136">
         <data key="n_label">compareSides</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1438,7 +1456,7 @@ rows [t, state...], t1 always the last</data>
         <data key="n_members">+ compareSides(lhs, rhs, env)(wrap): Either
 shared eval logic for _Equation / _EqualityCheck</data>
     </node>
-    <node id="n136">
+    <node id="n137">
         <data key="n_label">_Equation</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1447,7 +1465,7 @@ shared eval logic for _Equation / _EqualityCheck</data>
         <data key="n_members">+ lhs : _Expression
 + rhs : _Expression</data>
     </node>
-    <node id="n137">
+    <node id="n138">
         <data key="n_label">_Comparison</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1465,7 +1483,7 @@ ordering(): exact for _Rational,
 tolerant otherwise -- so exactly
 one of &lt; == &gt; holds</data>
     </node>
-    <node id="n138">
+    <node id="n139">
         <data key="n_label">CompareOp</data>
         <data key="n_package">equation</data>
         <data key="n_kind">enum</data>
@@ -1473,7 +1491,7 @@ one of &lt; == &gt; holds</data>
         <data key="n_url">equations.html</data>
         <data key="n_members">Lt  Gt  Le  Ge  Ne</data>
     </node>
-    <node id="n139">
+    <node id="n140">
         <data key="n_label">_EqualityCheck</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1482,7 +1500,7 @@ one of &lt; == &gt; holds</data>
         <data key="n_members">+ lhs : _Expression
 + rhs : _Expression</data>
     </node>
-    <node id="n140">
+    <node id="n141">
         <data key="n_label">_Solve</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1491,7 +1509,7 @@ one of &lt; == &gt; holds</data>
         <data key="n_members">+ eq : _Expression
 + v  : _Variable</data>
     </node>
-    <node id="n141">
+    <node id="n142">
         <data key="n_label">Solve</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1502,7 +1520,7 @@ __ scalar tiers + __
 matrix unknown: A·X=B → A⁻¹·B
 scalar in matrix eq: element-wise</data>
     </node>
-    <node id="n142">
+    <node id="n143">
         <data key="n_label">SolveInequality</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1514,7 +1532,7 @@ constant / linear / quadratic
 rational: zeros ∪ poles sign chart
 answer is _Comparison / or / and / _Bool</data>
     </node>
-    <node id="n143">
+    <node id="n144">
         <data key="n_label">_SolveSystem</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1523,7 +1541,7 @@ answer is _Comparison / or / and / _Bool</data>
         <data key="n_members">+ equations : _Expression
 + variables : List[_Variable]</data>
     </node>
-    <node id="n144">
+    <node id="n145">
         <data key="n_label">SolveSystem</data>
         <data key="n_package">equation</data>
         <data key="n_kind">class</data>
@@ -1535,14 +1553,14 @@ Gaussian elimination (partial pivot)
 __ symbolic path __
 Row reduction with simplifyFully</data>
     </node>
-    <node id="n145">
+    <node id="n146">
         <data key="n_label">_Connective</data>
         <data key="n_package">logic</data>
         <data key="n_kind">interface</data>
         <data key="n_stereotype">trait</data>
         <data key="n_url">logic.html</data>
     </node>
-    <node id="n146">
+    <node id="n147">
         <data key="n_label">And</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1553,7 +1571,7 @@ b : _Expression
 __ short-circuit __
 false and X = false (X not evaluated)</data>
     </node>
-    <node id="n147">
+    <node id="n148">
         <data key="n_label">Or</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1564,7 +1582,7 @@ b : _Expression
 __ short-circuit __
 true or X = true (X not evaluated)</data>
     </node>
-    <node id="n148">
+    <node id="n149">
         <data key="n_label">Not</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1572,7 +1590,7 @@ true or X = true (X not evaluated)</data>
         <data key="n_url">logic.html</data>
         <data key="n_members">a : _Expression</data>
     </node>
-    <node id="n149">
+    <node id="n150">
         <data key="n_label">Implies</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1583,7 +1601,7 @@ b : _Expression
 __ short-circuit __
 false implies X = true (X not evaluated)</data>
     </node>
-    <node id="n150">
+    <node id="n151">
         <data key="n_label">Xor</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1592,7 +1610,7 @@ false implies X = true (X not evaluated)</data>
         <data key="n_members">a : _Expression
 b : _Expression</data>
     </node>
-    <node id="n151">
+    <node id="n152">
         <data key="n_label">Kleene</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1616,7 +1634,7 @@ kleeneNot = 1 - a
 kleeneImplies = max(1 - a, b)
 kleeneXor = max(min(a,1-b), min(1-a,b))</data>
     </node>
-    <node id="n152">
+    <node id="n153">
         <data key="n_label">SimplifyLogic</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1629,7 +1647,7 @@ constant folding, double negation,
 idempotence, complement, absorption
 leaf pass injected (cli passes scalar simplifyFully)</data>
     </node>
-    <node id="n153">
+    <node id="n154">
         <data key="n_label">NormalForm</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1641,7 +1659,7 @@ __ pipeline __
 desugar implies/xor -&gt; NNF (De Morgan) -&gt; distribute
 clause cap 1024 -&gt; input unchanged</data>
     </node>
-    <node id="n154">
+    <node id="n155">
         <data key="n_label">TruthTableLogic</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1652,14 +1670,14 @@ clause cap 1024 -&gt; input unchanged</data>
 KleeneValues = [false, unknown, true]
 None per non-reducing row</data>
     </node>
-    <node id="n155">
+    <node id="n156">
         <data key="n_label">_Membership</data>
         <data key="n_package">logic</data>
         <data key="n_kind">interface</data>
         <data key="n_stereotype">trait</data>
         <data key="n_url">logic.html</data>
     </node>
-    <node id="n156">
+    <node id="n157">
         <data key="n_label">Very / Somewhat</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1667,7 +1685,7 @@ None per non-reducing row</data>
         <data key="n_url">logic.html</data>
         <data key="n_members">hedges: d^2 and sqrt(d)</data>
     </node>
-    <node id="n157">
+    <node id="n158">
         <data key="n_label">TriMF / TrapMF / GaussMF / SigMF</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1675,7 +1693,7 @@ None per non-reducing row</data>
         <data key="n_url">logic.html</data>
         <data key="n_members">membership curves; eval -&gt; _Truth.of(degree)</data>
     </node>
-    <node id="n158">
+    <node id="n159">
         <data key="n_label">_TruthOf</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1684,7 +1702,7 @@ None per non-reducing row</data>
         <data key="n_members">truth(x): scalar degree -&gt; truth value
 also the printed form of a graded _Truth</data>
     </node>
-    <node id="n159">
+    <node id="n160">
         <data key="n_label">Defuzzify</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1694,7 +1712,7 @@ also the printed form of a graded _Truth</data>
 + meanOfMaxima(...) / bisector(...)
 + sampleDegrees(...): compile fast path, else tree-eval</data>
     </node>
-    <node id="n160">
+    <node id="n161">
         <data key="n_label">_Defuzzify</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1703,7 +1721,7 @@ also the printed form of a graded _Truth</data>
         <data key="n_members">e, v (binder), lo, hi
 defuzz(e, v, lo, hi) -&gt; centroid</data>
     </node>
-    <node id="n161">
+    <node id="n162">
         <data key="n_label">_DefuzzifyBy</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1712,7 +1730,7 @@ defuzz(e, v, lo, hi) -&gt; centroid</data>
         <data key="n_members">__ F_0136 __
 defuzz(e, v, lo, hi, centroid | mom | bisector)</data>
     </node>
-    <node id="n162">
+    <node id="n163">
         <data key="n_label">_NormalForm</data>
         <data key="n_package">logic</data>
         <data key="n_kind">class</data>
@@ -1721,7 +1739,7 @@ defuzz(e, v, lo, hi, centroid | mom | bisector)</data>
         <data key="n_members">__ F_0133: cnf(e) / dnf(e) __
 unevaluated on a refusal, never the input</data>
     </node>
-    <node id="n163">
+    <node id="n164">
         <data key="n_label">_Domain</data>
         <data key="n_package">domain</data>
         <data key="n_kind">class</data>
@@ -1732,7 +1750,7 @@ v : _Variable
 kind : DomainKind = Real
 __ domain(e, v [, real|complex]) __</data>
     </node>
-    <node id="n164">
+    <node id="n165">
         <data key="n_label">_Differentiable</data>
         <data key="n_package">domain</data>
         <data key="n_kind">class</data>
@@ -1743,7 +1761,7 @@ v : _Variable
 kind : DomainKind = Real
 __ differentiable(e, v [, real|complex]) __</data>
     </node>
-    <node id="n165">
+    <node id="n166">
         <data key="n_label">_Singularities</data>
         <data key="n_package">domain</data>
         <data key="n_kind">class</data>
@@ -1755,7 +1773,7 @@ __ singularities(e, v) __
 2xN matrix of location over pole order,
 or false / symbolic</data>
     </node>
-    <node id="n166">
+    <node id="n167">
         <data key="n_label">domainRender</data>
         <data key="n_package">domain</data>
         <data key="n_kind">class</data>
@@ -1766,7 +1784,7 @@ or false / symbolic</data>
 turns the neutral DomainSet into
 _Comparison / and / or nodes</data>
     </node>
-    <node id="n167">
+    <node id="n168">
         <data key="n_label">_VectorOperator</data>
         <data key="n_package">vector</data>
         <data key="n_kind">interface</data>
@@ -1791,7 +1809,7 @@ assumes a RIGHT-handed ordering, and only
 curl (a pseudo-vector) reads the sign
 Cartesian is the h = 1 case</data>
     </node>
-    <node id="n168">
+    <node id="n169">
         <data key="n_label">_Grad</data>
         <data key="n_package">vector</data>
         <data key="n_kind">class</data>
@@ -1799,7 +1817,7 @@ Cartesian is the h = 1 case</data>
         <data key="n_url">calculus.html</data>
         <data key="n_members">grad(f, x..) -&gt; n x 1</data>
     </node>
-    <node id="n169">
+    <node id="n170">
         <data key="n_label">_Div</data>
         <data key="n_package">vector</data>
         <data key="n_kind">class</data>
@@ -1808,7 +1826,7 @@ Cartesian is the h = 1 case</data>
         <data key="n_members">div(F, x..) -&gt; SCALAR
 needs one component per coordinate</data>
     </node>
-    <node id="n170">
+    <node id="n171">
         <data key="n_label">_Curl</data>
         <data key="n_package">vector</data>
         <data key="n_kind">class</data>
@@ -1818,7 +1836,7 @@ needs one component per coordinate</data>
 3-D ONLY; 2-D curl is a scalar,
 a different result type -&gt; refused</data>
     </node>
-    <node id="n171">
+    <node id="n172">
         <data key="n_label">_Laplacian</data>
         <data key="n_package">vector</data>
         <data key="n_kind">class</data>
@@ -1828,7 +1846,7 @@ a different result type -&gt; refused</data>
 DEFINED as div(grad(f)), so the
 two can never disagree</data>
     </node>
-    <node id="n172">
+    <node id="n173">
         <data key="n_label">_Jacobian</data>
         <data key="n_package">vector</data>
         <data key="n_kind">class</data>
@@ -1836,7 +1854,7 @@ two can never disagree</data>
         <data key="n_url">calculus.html</data>
         <data key="n_members">jacobian(F, x..) -&gt; m x n</data>
     </node>
-    <node id="n173">
+    <node id="n174">
         <data key="n_label">_Hessian</data>
         <data key="n_package">vector</data>
         <data key="n_kind">class</data>
@@ -1844,7 +1862,7 @@ two can never disagree</data>
         <data key="n_url">calculus.html</data>
         <data key="n_members">hessian(f, x..) -&gt; n x n (symmetric)</data>
     </node>
-    <node id="n174">
+    <node id="n175">
         <data key="n_label">CoordinateSystem</data>
         <data key="n_package">vector</data>
         <data key="n_kind">enum</data>
@@ -1860,7 +1878,7 @@ two spherical cases differ in argument
 ORDER (t polar vs p polar), not in naming.
 The swap flips handedness -&gt; curl negates</data>
     </node>
-    <node id="n175">
+    <node id="n176">
         <data key="n_label">TransferFunction</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -1886,28 +1904,28 @@ routhTable / dcgain
 bode / nyquist: one substitution s -&gt; i*w
 on the existing _Complex closure</data>
     </node>
-    <node id="n176">
+    <node id="n177">
         <data key="n_label">_Series</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">control.html</data>
     </node>
-    <node id="n177">
+    <node id="n178">
         <data key="n_label">_Parallel</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">control.html</data>
     </node>
-    <node id="n178">
+    <node id="n179">
         <data key="n_label">_Feedback</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">control.html</data>
     </node>
-    <node id="n179">
+    <node id="n180">
         <data key="n_label">_StepResponse</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -1917,14 +1935,14 @@ on the existing _Complex closure</data>
 arity overload: step(x) is Heaviside
 DECLINES an improper G (impulse at t=0)</data>
     </node>
-    <node id="n180">
+    <node id="n181">
         <data key="n_label">_ImpulseResponse</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">control.html</data>
     </node>
-    <node id="n181">
+    <node id="n182">
         <data key="n_label">StateSpace</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -1946,7 +1964,7 @@ NOT A^-1 (A_d - I) B -- the block form is
 defined for a SINGULAR A, and any system
 with an integrator has one</data>
     </node>
-    <node id="n182">
+    <node id="n183">
         <data key="n_label">DiscretisationMethod</data>
         <data key="n_package">control</data>
         <data key="n_kind">enum</data>
@@ -1959,7 +1977,7 @@ ForwardEuler, BackwardEuler (F_0009)
 ALWAYS an explicit argument: two methods give
 DIFFERENT discrete poles</data>
     </node>
-    <node id="n183">
+    <node id="n184">
         <data key="n_label">Discretisation</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -1978,7 +1996,7 @@ Euler: substitutions; c2dPrewarped: Tustin at w
 d2c: Tustin and Euler; the rest would need a
 logarithm -&gt; declined</data>
     </node>
-    <node id="n184">
+    <node id="n185">
         <data key="n_label">Mpc</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -1990,7 +2008,7 @@ Gamma's last column ACCUMULATES: the last
 move is held past Nc (stated convention)
 a number is a 1x1 matrix; exact stays exact</data>
     </node>
-    <node id="n185">
+    <node id="n186">
         <data key="n_label">Linearize</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2002,7 +2020,7 @@ linearize(F, G, x, u, x0, u0[, affine])
 x, u ORDERED tuples; one Jacobian definition
 declines: outside domain, non-real entry</data>
     </node>
-    <node id="n186">
+    <node id="n187">
         <data key="n_label">Arx</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2014,7 +2032,7 @@ arx / arxRegressors / arx2tf / arx2ss
 MISO: u m x N, b nb x m; nk explicit
 declines: too short, not excited (svd rank)</data>
     </node>
-    <node id="n187">
+    <node id="n188">
         <data key="n_label">_ControlAnalysis</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2026,7 +2044,7 @@ isStable / isStableDiscrete, c2d(..., method[, w])
 G read with bound parameters, NEVER the
 frequency variable's own binding</data>
     </node>
-    <node id="n188">
+    <node id="n189">
         <data key="n_label">_Routh</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2036,7 +2054,7 @@ frequency variable's own binding</data>
 jagged array zero-padded into a matrix
 `routh` stays a free variable (shipped in 3.8)</data>
     </node>
-    <node id="n189">
+    <node id="n190">
         <data key="n_label">_Structure</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2046,7 +2064,7 @@ jagged array zero-padded into a matrix
 controllable / observable: QR rank test
 ctrb / obsv: the matrices; or a model row</data>
     </node>
-    <node id="n190">
+    <node id="n191">
         <data key="n_label">_Acker</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2056,7 +2074,7 @@ ctrb / obsv: the matrices; or a model row</data>
 K = e_n' C^-1 phi(A), u = -K x
 certified: eig(A - B K) = poles</data>
     </node>
-    <node id="n191">
+    <node id="n192">
         <data key="n_label">Dlsim</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2067,7 +2085,7 @@ dlsim(sys, u, x0[, states]) -&gt; Y or [[Y, X]]
 X = x[0] .. x[N]: the final state continues a run
 declines: shapes, size, overflow at step k</data>
     </node>
-    <node id="n192">
+    <node id="n193">
         <data key="n_label">Riccati</data>
         <data key="n_package">control</data>
         <data key="n_kind">class</data>
@@ -2081,7 +2099,7 @@ its residual; the STABILISING solution only
 declines: not stabilisable / detectable, Q or R
 not definite, shapes, n &gt; 200</data>
     </node>
-    <node id="n193">
+    <node id="n194">
         <data key="n_label">Elimination</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2101,7 +2119,7 @@ an inexact root: withoutRounding first
 every candidate verified against the originals
 MaxEliminationSteps = 4000 (measured)</data>
     </node>
-    <node id="n194">
+    <node id="n195">
         <data key="n_label">Groebner</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2113,7 +2131,7 @@ Buchberger, EXACT rationals always (spire)
 caps: basis 40, degree 24, 4096 bits, 2000 work
 withoutRounding: drop rounding-level coefficients</data>
     </node>
-    <node id="n195">
+    <node id="n196">
         <data key="n_label">Stationary</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2124,7 +2142,7 @@ classifyStationary: Hessian eigenvalue signs
 (relative zero test; Degenerate = unknown)
 lagrangePoints: multipliers from freshVar</data>
     </node>
-    <node id="n196">
+    <node id="n197">
         <data key="n_label">Convexity</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2137,7 +2155,7 @@ false: a WITNESS -- a minor provably &lt; 0, or a
 grid point where f is real and curvature &lt; 0
 else symbolic</data>
     </node>
-    <node id="n197">
+    <node id="n198">
         <data key="n_label">KKT</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2148,7 +2166,7 @@ else symbolic</data>
 kktPoints: 2^m active sets over Elimination
 MaxKKTInequalities = 10 (measured)</data>
     </node>
-    <node id="n198">
+    <node id="n199">
         <data key="n_label">Minimize</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2160,7 +2178,7 @@ answer only if stationarity = sum|g_i||x_i - x0_i| / (f(x0) - f(x))
 passes 0.5*10^-precision (scale-free, F_0095); else Left(MinimizeFailure)
 MaxMinimizeIterations = 2000 (measured)</data>
     </node>
-    <node id="n199">
+    <node id="n200">
         <data key="n_label">QP</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2175,7 +2193,7 @@ Left(QpFailure) / Right(QpResult incl. active set)
 QpResult.multipliers: QpMultipliers (F_0066)
 MaxQpIterations 2000, MaxQpVariables 500 (measured)</data>
     </node>
-    <node id="n200">
+    <node id="n201">
         <data key="n_label">Nlp</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2190,7 +2208,7 @@ ONE certificate: scale-free KKT residual; a LOCAL point
 Left(NlpFailure) / Right(NlpResult incl. multipliers)
 MaxNlpVariables 100, MaxNlpIterations 200 (measured)</data>
     </node>
-    <node id="n201">
+    <node id="n202">
         <data key="n_label">QpConstraint</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">enum</data>
@@ -2198,7 +2216,7 @@ MaxNlpVariables 100, MaxNlpIterations 200 (measured)</data>
         <data key="n_url">optimization.html</data>
         <data key="n_members">Row(k) | Lower(i) | Upper(i)</data>
     </node>
-    <node id="n202">
+    <node id="n203">
         <data key="n_label">LeastSquares</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2212,35 +2230,35 @@ rank-deficient J declines (NotIdentifiable)
 Left(LsqFailure) / Right(LsqResult incl. covariance)
 MaxLsqIterations 100, MaxLsqWork m*n^2 4e5 (measured)</data>
     </node>
-    <node id="n203">
+    <node id="n204">
         <data key="n_label">_Stationary</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">optimization.html</data>
     </node>
-    <node id="n204">
+    <node id="n205">
         <data key="n_label">_Convex</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">optimization.html</data>
     </node>
-    <node id="n205">
+    <node id="n206">
         <data key="n_label">_Lagrange</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">optimization.html</data>
     </node>
-    <node id="n206">
+    <node id="n207">
         <data key="n_label">_KKT</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">optimization.html</data>
     </node>
-    <node id="n207">
+    <node id="n208">
         <data key="n_label">_Minimize</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2249,7 +2267,7 @@ MaxLsqIterations 100, MaxLsqWork m*n^2 4e5 (measured)</data>
         <data key="n_members">detailed(env): Either[MinimizeFailure, Result]
 what the REPL queries to explain a decline</data>
     </node>
-    <node id="n208">
+    <node id="n209">
         <data key="n_label">_QP</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2258,7 +2276,7 @@ what the REPL queries to explain a decline</data>
         <data key="n_members">qp(H, f, A, b[, Aeq, beq], lb, ub); 0 = absent group
 detailed(env): REPL notes the decline or the active set</data>
     </node>
-    <node id="n209">
+    <node id="n210">
         <data key="n_label">_LsqFit</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2266,7 +2284,7 @@ detailed(env): REPL notes the decline or the active set</data>
         <data key="n_url">optimization.html</data>
         <data key="n_members">lsqfit(r, [[a], [b]], p0[, lb, ub][, cov])</data>
     </node>
-    <node id="n210">
+    <node id="n211">
         <data key="n_label">_CurveFit</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2274,7 +2292,7 @@ detailed(env): REPL notes the decline or the active set</data>
         <data key="n_url">optimization.html</data>
         <data key="n_members">lsqfit(f, t, T, Y, [[a], [b]], p0[, lb, ub][, cov])</data>
     </node>
-    <node id="n211">
+    <node id="n212">
         <data key="n_label">Lp</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2287,7 +2305,7 @@ slack basis where b &gt;= 0; infeasible / unbounded PROVED
 caps: 40 variables, 80 rows, 2048-bit integers;
 MaxLpWork bounds the time (~2 s on Node, measured)</data>
     </node>
-    <node id="n212">
+    <node id="n213">
         <data key="n_label">_LP</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2295,7 +2313,7 @@ MaxLpWork bounds the time (~2 s on Node, measured)</data>
         <data key="n_url">optimization.html</data>
         <data key="n_members">lp(f, A, b[, Aeq, beq], lb, ub); 0 = absent group</data>
     </node>
-    <node id="n213">
+    <node id="n214">
         <data key="n_label">_Nlp</data>
         <data key="n_package">optimize</data>
         <data key="n_kind">class</data>
@@ -2303,7 +2321,7 @@ MaxLpWork bounds the time (~2 s on Node, measured)</data>
         <data key="n_url">optimization.html</data>
         <data key="n_members">nlp(f, [[x], [y]], x0, g, h[, lb, ub], sqp | auglag)</data>
     </node>
-    <node id="n214">
+    <node id="n215">
         <data key="n_label">Descriptive</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2318,7 +2336,7 @@ its digits for a large mean (cf. issue 1.1)
 exact on an exact sample (field ops only);
 stddev needs a root -&gt; core.exactSqrt</data>
     </node>
-    <node id="n215">
+    <node id="n216">
         <data key="n_label">Regression</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2332,7 +2350,7 @@ __ F_0062 __
 ridgeLeastSquares: QR on [X; sqrt(lambda) I]
 weightedLeastSquares: rows scaled by sqrt(w_i)</data>
     </node>
-    <node id="n216">
+    <node id="n217">
         <data key="n_label">_Statistic</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2344,7 +2362,7 @@ matrix       -&gt; sample
 variance(sample) = n-1 (unbiased)
 variance(dist)   = population</data>
     </node>
-    <node id="n217">
+    <node id="n218">
         <data key="n_label">_PairStatistic</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2352,28 +2370,28 @@ variance(dist)   = population</data>
         <data key="n_url">developer.html</data>
         <data key="n_members">+ kind: PairStatKind   (covariance / correlation)</data>
     </node>
-    <node id="n218">
+    <node id="n219">
         <data key="n_label">_Regress</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">developer.html</data>
     </node>
-    <node id="n219">
+    <node id="n220">
         <data key="n_label">_RidgeRegress</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">developer.html</data>
     </node>
-    <node id="n220">
+    <node id="n221">
         <data key="n_label">_WeightedRegress</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">developer.html</data>
     </node>
-    <node id="n221">
+    <node id="n222">
         <data key="n_label">Rls</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2386,14 +2404,14 @@ P symmetrised explicitly each update
 declines lambda outside (0, 1], bad shapes,
 lambda + phi'P phi &lt;= 0</data>
     </node>
-    <node id="n222">
+    <node id="n223">
         <data key="n_label">_Rls</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">developer.html</data>
     </node>
-    <node id="n223">
+    <node id="n224">
         <data key="n_label">_Test</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2402,7 +2420,7 @@ lambda + phi'P phi &lt;= 0</data>
         <data key="n_members">+ kind: TestKind   (ttest / confint / chisqtest)
 p-value as 2*cdf(-|t|), never 2*(1-cdf(|t|))</data>
     </node>
-    <node id="n224">
+    <node id="n225">
         <data key="n_label">StatKind</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">enum</data>
@@ -2411,7 +2429,7 @@ p-value as 2*cdf(-|t|), never 2*(1-cdf(|t|))</data>
         <data key="n_members">mean variance pvariance
 stddev pstddev</data>
     </node>
-    <node id="n225">
+    <node id="n226">
         <data key="n_label">PairStatKind</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">enum</data>
@@ -2419,7 +2437,7 @@ stddev pstddev</data>
         <data key="n_url">developer.html</data>
         <data key="n_members">covariance   correlation</data>
     </node>
-    <node id="n226">
+    <node id="n227">
         <data key="n_label">TestKind</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">enum</data>
@@ -2427,7 +2445,7 @@ stddev pstddev</data>
         <data key="n_url">developer.html</data>
         <data key="n_members">ttest   confint   chisqtest</data>
     </node>
-    <node id="n227">
+    <node id="n228">
         <data key="n_label">_Quantile / _Sort / _BinCounts</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2438,7 +2456,7 @@ quantile dispatches: distribution or sample
 type 7 default, type 6 on request
 bincounts: half-open bins, the last closed</data>
     </node>
-    <node id="n228">
+    <node id="n229">
         <data key="n_label">_TTest / _PropTest / _ChiSqTable / _VarTest / _Anova</data>
         <data key="n_package">statistics</data>
         <data key="n_kind">class</data>
@@ -2448,7 +2466,7 @@ bincounts: half-open bins, the last closed</data>
 Welch / pooled, less / greater slot words
 every tail read directly, never 1 - cdf</data>
     </node>
-    <node id="n229">
+    <node id="n230">
         <data key="n_label">_Distribution</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2462,7 +2480,7 @@ __ companion __
 a _Value, but cheap to add: nothing has to
 read it AS a number (contrast _Rational)</data>
     </node>
-    <node id="n230">
+    <node id="n231">
         <data key="n_label">DistKind</data>
         <data key="n_package">probability</data>
         <data key="n_kind">enum</data>
@@ -2473,7 +2491,7 @@ Binomial  Poisson
 StudentT  ChiSquared   (added by 4.Q)
 BetaDist  GammaDist    (F_0050; gammadist is SHAPE-RATE)</data>
     </node>
-    <node id="n231">
+    <node id="n232">
         <data key="n_label">Query</data>
         <data key="n_package">probability</data>
         <data key="n_kind">enum</data>
@@ -2481,7 +2499,7 @@ BetaDist  GammaDist    (F_0050; gammadist is SHAPE-RATE)</data>
         <data key="n_url">developer.html</data>
         <data key="n_members">Pdf  Cdf  Prob  Quantile</data>
     </node>
-    <node id="n232">
+    <node id="n233">
         <data key="n_label">_DistributionOf</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2490,7 +2508,7 @@ BetaDist  GammaDist    (F_0050; gammadist is SHAPE-RATE)</data>
         <data key="n_members">symbolic constructor: normal(m, s)
 evals to _Distribution once params are numeric</data>
     </node>
-    <node id="n233">
+    <node id="n234">
         <data key="n_label">_DistributionQuery</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2498,7 +2516,7 @@ evals to _Distribution once params are numeric</data>
         <data key="n_url">developer.html</data>
         <data key="n_members">query: Query   (pdf / cdf / prob / quantile)</data>
     </node>
-    <node id="n234">
+    <node id="n235">
         <data key="n_label">Predicate</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2508,7 +2526,7 @@ evals to _Distribution once params are numeric</data>
 reads a comparison as Bounds; the random
 variable is the one name bound to a _Distribution</data>
     </node>
-    <node id="n235">
+    <node id="n236">
         <data key="n_label">_Expectation</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2517,14 +2535,14 @@ variable is the one name bound to a _Distribution</data>
         <data key="n_members">expect(e, X)  or  expect(d)
 X is a BINDER (excluded from children)</data>
     </node>
-    <node id="n236">
+    <node id="n237">
         <data key="n_label">_Variance</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">developer.html</data>
     </node>
-    <node id="n237">
+    <node id="n238">
         <data key="n_label">Moments</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2535,7 +2553,7 @@ E[a+b]=E[a]+E[b]   E[cX]=cE[X]   Var(aX+b)=a^2 Var(X)
 isConstant: NOT merely &quot;free of X&quot; --
 another random variable is not a constant</data>
     </node>
-    <node id="n238">
+    <node id="n239">
         <data key="n_label">_Bayes</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2549,7 +2567,7 @@ _MatrixShaped node with rational cells
 refuses: shape mismatch, negative entry,
 zero evidence (no posterior at all)</data>
     </node>
-    <node id="n239">
+    <node id="n240">
         <data key="n_label">_Posterior</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2561,7 +2579,7 @@ Beta-Binomial / Gamma-Poisson / Normal-Normal (sigma known)
 result: an ordinary _Distribution (Double params)
 outside the table -&gt; stays symbolic</data>
     </node>
-    <node id="n240">
+    <node id="n241">
         <data key="n_label">_Draw</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2572,7 +2590,7 @@ by INVERSION through quantileOf: no family
 needs a sampler of its own
 the seed is the state; offset continues a stream</data>
     </node>
-    <node id="n241">
+    <node id="n242">
         <data key="n_label">_Prbs</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2582,7 +2600,7 @@ the seed is the state; offset continues a stream</data>
 Fibonacci LFSR, primitive polynomial per order
 orders 2..20, each verified over a full period</data>
     </node>
-    <node id="n242">
+    <node id="n243">
         <data key="n_label">Sampling</data>
         <data key="n_package">probability</data>
         <data key="n_kind">class</data>
@@ -2595,7 +2613,7 @@ scala.util.Random (the DoubleRender rule)
 seed HASHED into the counter, never a position
 MaxDrawCount = 100 000   MaxPrbsLength = 10^6</data>
     </node>
-    <node id="n243">
+    <node id="n244">
         <data key="n_label">SamplingFailure</data>
         <data key="n_package">probability</data>
         <data key="n_kind">enum</data>
@@ -2604,7 +2622,7 @@ MaxDrawCount = 100 000   MaxPrbsLength = 10^6</data>
         <data key="n_members">NotADistribution  InvalidInteger
 InvalidCount  InvalidOrder  Undefined</data>
     </node>
-    <node id="n244">
+    <node id="n245">
         <data key="n_label">Parser</data>
         <data key="n_package">parser</data>
         <data key="n_kind">class</data>
@@ -2618,7 +2636,7 @@ refuses a tree deeper than core.MaxExpressionDepth = 200 (F_0078)
 variable ::= [a-zA-Z][a-zA-Z0-9_]*
 exact mode: literal -&gt; _Rational (Option[Int])</data>
     </node>
-    <node id="n245">
+    <node id="n246">
         <data key="n_label">FixMojibake</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2635,7 +2653,7 @@ Lossy: damage that lost a byte outright
 fixpoint: some text was damaged twice
 plausible(): the repair is NOT injective</data>
     </node>
-    <node id="n246">
+    <node id="n247">
         <data key="n_label">CheckCharset</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2647,7 +2665,7 @@ __ __
 a BLACKLIST: enumerating what mathematics
 may look like is a losing game</data>
     </node>
-    <node id="n247">
+    <node id="n248">
         <data key="n_label">CheckActionPins</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2656,7 +2674,7 @@ may look like is a losing game</data>
         <data key="n_members">+ offences(roots): (Vector, Int)
 every `uses:` must name a commit SHA</data>
     </node>
-    <node id="n248">
+    <node id="n249">
         <data key="n_label">CheckScalaVersion</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2665,7 +2683,7 @@ every `uses:` must name a commit SHA</data>
         <data key="n_members">+ offences(roots): Vector
 no .github file may spell scala-&lt;version&gt;</data>
     </node>
-    <node id="n249">
+    <node id="n250">
         <data key="n_label">CheckDocLinks</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2677,7 +2695,7 @@ must resolve, in the right letter CASE
 (mdoc only warns; Linux 404s a case slip)
 the one guard NOT defaulting to GuardedRoots</data>
     </node>
-    <node id="n250">
+    <node id="n251">
         <data key="n_label">CheckCsp</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2688,7 +2706,7 @@ web/index.html's policy lists every inline
 script's SHA-256, no stale hash, no unsafe
 script source, one-line scripts (F_0112)</data>
     </node>
-    <node id="n251">
+    <node id="n252">
         <data key="n_label">PumlGraph</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2701,7 +2719,7 @@ this diagram as GraphML for Gephi (F_0097);
 refuses what it does not know, and a
 stale committed structure.graphml</data>
     </node>
-    <node id="n252">
+    <node id="n253">
         <data key="n_label">Files</data>
         <data key="n_package">tools</data>
         <data key="n_kind">class</data>
@@ -2718,7 +2736,7 @@ was written three times — and missed the
 four CrossType.Pure platform trees — is
 written once</data>
     </node>
-    <node id="n253">
+    <node id="n254">
         <data key="n_label">ToLatex</data>
         <data key="n_package">latex</data>
         <data key="n_kind">class</data>
@@ -2739,7 +2757,7 @@ Transformed : the five L / F / Z shapes
 __ fallback __
 no rule -&gt; \\mathrm{escaped toString}</data>
     </node>
-    <node id="n254">
+    <node id="n255">
         <data key="n_label">Session</data>
         <data key="n_package">cli</data>
         <data key="n_kind">class</data>
@@ -2761,7 +2779,7 @@ ReservedConstants: Set = {pi, e}
 + saveFile(session, path): String
 + step(session, line): Option</data>
     </node>
-    <node id="n255">
+    <node id="n256">
         <data key="n_label">ColorScheme</data>
         <data key="n_package">cli</data>
         <data key="n_kind">class</data>
@@ -2775,7 +2793,7 @@ Dark / Light / Plain schemes
 All: Map[String, ColorScheme]
 + named(name): ColorScheme</data>
     </node>
-    <node id="n256">
+    <node id="n257">
         <data key="n_label">LeonardoHighlighter</data>
         <data key="n_package">cli</data>
         <data key="n_kind">class</data>
@@ -2784,7 +2802,7 @@ All: Map[String, ColorScheme]
         <data key="n_members">schemeName: () =&gt; String
 + highlight(reader, buffer): AttributedString</data>
     </node>
-    <node id="n257">
+    <node id="n258">
         <data key="n_label">repl()</data>
         <data key="n_package">cli</data>
         <data key="n_kind">class</data>
@@ -3295,1049 +3313,1060 @@ drives the pure Session.step</data>
     <edge id="e147" source="n118" target="n48">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e148" source="n122" target="n48">
+    <edge id="e148" source="n119" target="n48">
         <data key="e_relation">inheritance</data>
     </edge>
     <edge id="e149" source="n123" target="n48">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e150" source="n122" target="n124">
+    <edge id="e150" source="n124" target="n48">
+        <data key="e_relation">inheritance</data>
+    </edge>
+    <edge id="e151" source="n123" target="n125">
         <data key="e_relation">dependency</data>
         <data key="e_label">zTransformOf() at eval</data>
     </edge>
-    <edge id="e151" source="n126" target="n95">
+    <edge id="e152" source="n127" target="n95">
         <data key="e_relation">dependency</data>
         <data key="e_label">complex result cells</data>
     </edge>
-    <edge id="e152" source="n123" target="n125">
+    <edge id="e153" source="n124" target="n126">
         <data key="e_relation">dependency</data>
         <data key="e_label">inverseZTransformOf() at eval</data>
     </edge>
-    <edge id="e153" source="n124" target="n59">
+    <edge id="e154" source="n125" target="n59">
         <data key="e_relation">dependency</data>
         <data key="e_label">-z dX/dz rule</data>
     </edge>
-    <edge id="e154" source="n125" target="n67">
+    <edge id="e155" source="n126" target="n67">
         <data key="e_relation">dependency</data>
         <data key="e_label">squareFreeFactors</data>
     </edge>
-    <edge id="e155" source="n125" target="n16">
+    <edge id="e156" source="n126" target="n16">
         <data key="e_relation">dependency</data>
         <data key="e_label">inverse() for the coefficients</data>
     </edge>
-    <edge id="e156" source="n125" target="n93">
+    <edge id="e157" source="n126" target="n93">
         <data key="e_relation">dependency</data>
         <data key="e_label">binom for repeated poles</data>
     </edge>
-    <edge id="e157" source="n116" target="n119">
+    <edge id="e158" source="n116" target="n120">
         <data key="e_relation">dependency</data>
         <data key="e_label">laplaceOf() at eval</data>
     </edge>
-    <edge id="e158" source="n117" target="n120">
+    <edge id="e159" source="n117" target="n121">
         <data key="e_relation">dependency</data>
         <data key="e_label">fourierOf() at eval</data>
     </edge>
-    <edge id="e159" source="n118" target="n121">
+    <edge id="e160" source="n118" target="n121">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">causalFourierOf() at eval</data>
+    </edge>
+    <edge id="e161" source="n121" target="n67">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">squareFreeFactors / rootsAtScale</data>
+    </edge>
+    <edge id="e162" source="n119" target="n122">
         <data key="e_relation">dependency</data>
         <data key="e_label">inverseLaplaceOf() at eval</data>
     </edge>
-    <edge id="e160" source="n120" target="n119">
+    <edge id="e163" source="n121" target="n120">
         <data key="e_relation">dependency</data>
         <data key="e_label">delegates, then s -&gt; i*w</data>
     </edge>
-    <edge id="e161" source="n120" target="n64">
+    <edge id="e164" source="n121" target="n64">
         <data key="e_relation">dependency</data>
         <data key="e_label">s -&gt; i*w substitution</data>
     </edge>
-    <edge id="e162" source="n120" target="n9">
+    <edge id="e165" source="n121" target="n9">
         <data key="e_relation">dependency</data>
         <data key="e_label">imaginary unit i</data>
     </edge>
-    <edge id="e163" source="n121" target="n63">
+    <edge id="e166" source="n122" target="n63">
         <data key="e_relation">dependency</data>
         <data key="e_label">collect() poly coeffs</data>
     </edge>
-    <edge id="e164" source="n121" target="n67">
+    <edge id="e167" source="n122" target="n67">
         <data key="e_relation">dependency</data>
         <data key="e_label">squareFreeFactors / rootsOfSquareFree</data>
     </edge>
-    <edge id="e165" source="n121" target="n61">
+    <edge id="e168" source="n122" target="n61">
         <data key="e_relation">dependency</data>
         <data key="e_label">simplifyFully() output</data>
     </edge>
-    <edge id="e166" source="n121" target="n16">
+    <edge id="e169" source="n122" target="n16">
         <data key="e_relation">dependency</data>
         <data key="e_label">inverse() for the coefficients</data>
     </edge>
-    <edge id="e167" source="n119" target="n20">
+    <edge id="e170" source="n120" target="n20">
         <data key="e_relation">dependency</data>
         <data key="e_label">matches step(t) / u(t-a)</data>
     </edge>
-    <edge id="e168" source="n121" target="n20">
+    <edge id="e171" source="n122" target="n20">
         <data key="e_relation">dependency</data>
         <data key="e_label">wraps result in u(t-a)</data>
     </edge>
-    <edge id="e169" source="n121" target="n64">
+    <edge id="e172" source="n122" target="n64">
         <data key="e_relation">dependency</data>
         <data key="e_label">t -&gt; t-a shift substitution</data>
     </edge>
-    <edge id="e170" source="n127" target="n48">
+    <edge id="e173" source="n128" target="n48">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e171" source="n127" target="n130">
+    <edge id="e174" source="n128" target="n131">
         <data key="e_relation">dependency</data>
         <data key="e_label">system tier first (y0 a column)</data>
     </edge>
-    <edge id="e172" source="n127" target="n129">
+    <edge id="e175" source="n128" target="n130">
         <data key="e_relation">dependency</data>
         <data key="e_label">closed-form scalar tier</data>
     </edge>
-    <edge id="e173" source="n130" target="n16">
+    <edge id="e176" source="n131" target="n16">
         <data key="e_relation">dependency</data>
         <data key="e_label">augmentedExp() -- shared with c2dExact</data>
     </edge>
-    <edge id="e174" source="n130" target="n4">
+    <edge id="e177" source="n131" target="n4">
         <data key="e_relation">dependency</data>
         <data key="e_label">reads A*y</data>
     </edge>
-    <edge id="e175" source="n130" target="n5">
+    <edge id="e178" source="n131" target="n5">
         <data key="e_relation">dependency</data>
         <data key="e_label">reads A*y + b</data>
     </edge>
-    <edge id="e176" source="n127" target="n128">
+    <edge id="e179" source="n128" target="n129">
         <data key="e_relation">dependency</data>
         <data key="e_label">RK4 fallback at eval</data>
     </edge>
-    <edge id="e177" source="n127" target="n131">
+    <edge id="e180" source="n128" target="n132">
         <data key="e_relation">dependency</data>
         <data key="e_label">vector tier (y0 a column)</data>
     </edge>
-    <edge id="e178" source="n132" target="n0">
+    <edge id="e181" source="n133" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e179" source="n133" target="n0">
+    <edge id="e182" source="n134" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e180" source="n134" target="n0">
+    <edge id="e183" source="n135" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e181" source="n132" target="n131">
+    <edge id="e184" source="n133" target="n132">
         <data key="e_relation">dependency</data>
         <data key="e_label">odeCertified</data>
     </edge>
-    <edge id="e182" source="n133" target="n131">
+    <edge id="e185" source="n134" target="n132">
         <data key="e_relation">dependency</data>
         <data key="e_label">odeStep</data>
     </edge>
-    <edge id="e183" source="n134" target="n131">
+    <edge id="e186" source="n135" target="n132">
         <data key="e_relation">dependency</data>
         <data key="e_label">odeSolve</data>
     </edge>
-    <edge id="e184" source="n129" target="n63">
+    <edge id="e187" source="n130" target="n63">
         <data key="e_relation">dependency</data>
         <data key="e_label">collect() linear-in-y coeffs</data>
     </edge>
-    <edge id="e185" source="n129" target="n60">
+    <edge id="e188" source="n130" target="n60">
         <data key="e_relation">dependency</data>
         <data key="e_label">integral(a), integral(mu*b) (variable-coeff tier)</data>
     </edge>
-    <edge id="e186" source="n129" target="n61">
+    <edge id="e189" source="n130" target="n61">
         <data key="e_relation">dependency</data>
         <data key="e_label">simplifyFully() output</data>
     </edge>
-    <edge id="e187" source="n137" target="n0">
+    <edge id="e190" source="n138" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e188" source="n137" target="n138">
+    <edge id="e191" source="n138" target="n139">
         <data key="e_relation">dependency</data>
         <data key="e_label">relation operator</data>
     </edge>
-    <edge id="e189" source="n143" target="n0">
+    <edge id="e192" source="n144" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e190" source="n143" target="n144">
+    <edge id="e193" source="n144" target="n145">
         <data key="e_relation">dependency</data>
         <data key="e_label">solve() at eval</data>
     </edge>
-    <edge id="e191" source="n144" target="n63">
+    <edge id="e194" source="n145" target="n63">
         <data key="e_relation">dependency</data>
         <data key="e_label">collect() coefficient extraction</data>
     </edge>
-    <edge id="e192" source="n135" target="n7">
+    <edge id="e195" source="n136" target="n7">
         <data key="e_relation">dependency</data>
         <data key="e_label">produces at eval</data>
     </edge>
-    <edge id="e193" source="n136" target="n0">
+    <edge id="e196" source="n137" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e194" source="n136" target="n2">
+    <edge id="e197" source="n137" target="n2">
         <data key="e_relation">realisation</data>
     </edge>
-    <edge id="e195" source="n136" target="n135">
+    <edge id="e198" source="n137" target="n136">
         <data key="e_relation">dependency</data>
         <data key="e_label">delegates eval</data>
     </edge>
-    <edge id="e196" source="n136" target="n7">
+    <edge id="e199" source="n137" target="n7">
         <data key="e_relation">dependency</data>
         <data key="e_label">reduces to at eval</data>
     </edge>
-    <edge id="e197" source="n139" target="n0">
+    <edge id="e200" source="n140" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e198" source="n139" target="n2">
+    <edge id="e201" source="n140" target="n2">
         <data key="e_relation">realisation</data>
     </edge>
-    <edge id="e199" source="n139" target="n135">
+    <edge id="e202" source="n140" target="n136">
         <data key="e_relation">dependency</data>
         <data key="e_label">delegates eval</data>
     </edge>
-    <edge id="e200" source="n139" target="n7">
+    <edge id="e203" source="n140" target="n7">
         <data key="e_relation">dependency</data>
         <data key="e_label">reduces to at eval</data>
     </edge>
-    <edge id="e201" source="n140" target="n0">
+    <edge id="e204" source="n141" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e202" source="n140" target="n141">
+    <edge id="e205" source="n141" target="n142">
         <data key="e_relation">dependency</data>
         <data key="e_label">solve() at eval (an _Equation)</data>
     </edge>
-    <edge id="e203" source="n140" target="n142">
+    <edge id="e206" source="n141" target="n143">
         <data key="e_relation">dependency</data>
         <data key="e_label">a _Comparison, and/or of them</data>
     </edge>
-    <edge id="e204" source="n142" target="n68">
+    <edge id="e207" source="n143" target="n68">
         <data key="e_relation">dependency</data>
         <data key="e_label">direction flip</data>
     </edge>
-    <edge id="e205" source="n142" target="n67">
+    <edge id="e208" source="n143" target="n67">
         <data key="e_relation">dependency</data>
         <data key="e_label">polyRoots() critical points</data>
     </edge>
-    <edge id="e206" source="n141" target="n63">
+    <edge id="e209" source="n142" target="n63">
         <data key="e_relation">dependency</data>
         <data key="e_label">collect() linear/quadratic tiers</data>
     </edge>
-    <edge id="e207" source="n141" target="n66">
+    <edge id="e210" source="n142" target="n66">
         <data key="e_relation">dependency</data>
         <data key="e_label">numeric fallback</data>
     </edge>
-    <edge id="e208" source="n141" target="n95">
+    <edge id="e211" source="n142" target="n95">
         <data key="e_relation">dependency</data>
         <data key="e_label">element-wise matrix-equation decompose</data>
     </edge>
-    <edge id="e209" source="n141" target="n16">
+    <edge id="e212" source="n142" target="n16">
         <data key="e_relation">dependency</data>
         <data key="e_label">inverse kernel (matrix unknown);\nkronecker/vec/unvec (Sylvester tier)</data>
     </edge>
-    <edge id="e210" source="n145" target="n0">
+    <edge id="e213" source="n146" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e211" source="n146" target="n145">
+    <edge id="e214" source="n147" target="n146">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e212" source="n147" target="n145">
+    <edge id="e215" source="n148" target="n146">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e213" source="n148" target="n145">
+    <edge id="e216" source="n149" target="n146">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e214" source="n149" target="n145">
+    <edge id="e217" source="n150" target="n146">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e215" source="n150" target="n145">
+    <edge id="e218" source="n151" target="n146">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e216" source="n155" target="n0">
+    <edge id="e219" source="n156" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e217" source="n156" target="n155">
+    <edge id="e220" source="n157" target="n156">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e218" source="n157" target="n155">
+    <edge id="e221" source="n158" target="n156">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e219" source="n158" target="n155">
+    <edge id="e222" source="n159" target="n156">
         <data key="e_relation">inheritance</data>
-    </edge>
-    <edge id="e220" source="n160" target="n0">
-        <data key="e_relation">inheritance</data>
-    </edge>
-    <edge id="e221" source="n155" target="n8">
-        <data key="e_relation">dependency</data>
-        <data key="e_label">eval -&gt; _Truth.of(degree)</data>
-    </edge>
-    <edge id="e222" source="n160" target="n159">
-        <data key="e_relation">dependency</data>
-        <data key="e_label">centroid() at eval</data>
     </edge>
     <edge id="e223" source="n161" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e224" source="n162" target="n0">
+    <edge id="e224" source="n156" target="n8">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">eval -&gt; _Truth.of(degree)</data>
+    </edge>
+    <edge id="e225" source="n161" target="n160">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">centroid() at eval</data>
+    </edge>
+    <edge id="e226" source="n162" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e225" source="n161" target="n159">
+    <edge id="e227" source="n163" target="n0">
+        <data key="e_relation">inheritance</data>
+    </edge>
+    <edge id="e228" source="n162" target="n160">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e226" source="n162" target="n153">
+    <edge id="e229" source="n163" target="n154">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e227" source="n159" target="n66">
+    <edge id="e230" source="n160" target="n66">
         <data key="e_relation">dependency</data>
         <data key="e_label">compile() fast path (logic -&gt; scalar)</data>
     </edge>
-    <edge id="e228" source="n145" target="n151">
+    <edge id="e231" source="n146" target="n152">
         <data key="e_relation">dependency</data>
         <data key="e_label">asTruth + min-max kernels at eval</data>
     </edge>
-    <edge id="e229" source="n145" target="n17">
+    <edge id="e232" source="n146" target="n17">
         <data key="e_relation">dependency</data>
         <data key="e_label">reads symmetricLogic + semantics</data>
     </edge>
-    <edge id="e230" source="n145" target="n7">
+    <edge id="e233" source="n146" target="n7">
         <data key="e_relation">dependency</data>
         <data key="e_label">crisp result</data>
     </edge>
-    <edge id="e231" source="n145" target="n8">
+    <edge id="e234" source="n146" target="n8">
         <data key="e_relation">dependency</data>
         <data key="e_label">graded result (_Truth.of collapses 0/1 to _Bool)</data>
     </edge>
-    <edge id="e232" source="n152" target="n151">
+    <edge id="e235" source="n153" target="n152">
         <data key="e_relation">dependency</data>
         <data key="e_label">constant folding + isCrisp gate</data>
     </edge>
-    <edge id="e233" source="n153" target="n151">
+    <edge id="e236" source="n154" target="n152">
         <data key="e_relation">dependency</data>
         <data key="e_label">isCrisp gate</data>
     </edge>
-    <edge id="e234" source="n154" target="n151">
+    <edge id="e237" source="n155" target="n152">
         <data key="e_relation">dependency</data>
         <data key="e_label">asTruth on each row</data>
     </edge>
-    <edge id="e235" source="n163" target="n0">
+    <edge id="e238" source="n164" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e236" source="n164" target="n0">
+    <edge id="e239" source="n165" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e237" source="n165" target="n0">
+    <edge id="e240" source="n166" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e238" source="n163" target="n69">
+    <edge id="e241" source="n164" target="n69">
         <data key="e_relation">dependency</data>
         <data key="e_label">domainOf() analysis at eval</data>
     </edge>
-    <edge id="e239" source="n164" target="n69">
+    <edge id="e242" source="n165" target="n69">
         <data key="e_relation">dependency</data>
         <data key="e_label">differentiableDomainOf() at eval</data>
     </edge>
-    <edge id="e240" source="n165" target="n71">
+    <edge id="e243" source="n166" target="n71">
         <data key="e_relation">dependency</data>
         <data key="e_label">at eval</data>
     </edge>
-    <edge id="e241" source="n163" target="n166">
+    <edge id="e244" source="n164" target="n167">
         <data key="e_relation">dependency</data>
         <data key="e_label">DomainSet -&gt; nodes</data>
     </edge>
-    <edge id="e242" source="n166" target="n79">
+    <edge id="e245" source="n167" target="n79">
         <data key="e_relation">dependency</data>
         <data key="e_label">neutral input</data>
     </edge>
-    <edge id="e243" source="n166" target="n137">
+    <edge id="e246" source="n167" target="n138">
         <data key="e_relation">dependency</data>
         <data key="e_label">rendered relation</data>
     </edge>
-    <edge id="e244" source="n166" target="n145">
+    <edge id="e247" source="n167" target="n146">
         <data key="e_relation">dependency</data>
         <data key="e_label">and / or of constraints</data>
     </edge>
-    <edge id="e245" source="n167" target="n0">
+    <edge id="e248" source="n168" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e246" source="n168" target="n167">
+    <edge id="e249" source="n169" target="n168">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e247" source="n169" target="n167">
+    <edge id="e250" source="n170" target="n168">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e248" source="n170" target="n167">
+    <edge id="e251" source="n171" target="n168">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e249" source="n171" target="n167">
+    <edge id="e252" source="n172" target="n168">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e250" source="n172" target="n167">
+    <edge id="e253" source="n173" target="n168">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e251" source="n173" target="n167">
+    <edge id="e254" source="n174" target="n168">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e252" source="n167" target="n174">
+    <edge id="e255" source="n168" target="n175">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e253" source="n167" target="n59">
+    <edge id="e256" source="n168" target="n59">
         <data key="e_relation">dependency</data>
         <data key="e_label">every operator is a composition of derive()</data>
     </edge>
-    <edge id="e254" source="n167" target="n95">
+    <edge id="e257" source="n168" target="n95">
         <data key="e_relation">dependency</data>
         <data key="e_label">field carrier (n x 1) and matrix results</data>
     </edge>
-    <edge id="e255" source="n171" target="n169">
+    <edge id="e258" source="n172" target="n170">
         <data key="e_relation">dependency</data>
         <data key="e_label">div(grad(f))</data>
     </edge>
-    <edge id="e256" source="n171" target="n168">
+    <edge id="e259" source="n172" target="n169">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e257" source="n176" target="n0">
+    <edge id="e260" source="n177" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e258" source="n177" target="n0">
+    <edge id="e261" source="n178" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e259" source="n178" target="n0">
+    <edge id="e262" source="n179" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e260" source="n179" target="n0">
+    <edge id="e263" source="n180" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e261" source="n180" target="n0">
+    <edge id="e264" source="n181" target="n0">
         <data key="e_relation">inheritance</data>
     </edge>
-    <edge id="e262" source="n175" target="n67">
+    <edge id="e265" source="n176" target="n67">
         <data key="e_relation">dependency</data>
         <data key="e_label">rationalCoeffs: one fraction, then cancel</data>
     </edge>
-    <edge id="e263" source="n179" target="n121">
+    <edge id="e266" source="n180" target="n122">
         <data key="e_relation">dependency</data>
         <data key="e_label">3.17, re-spelled</data>
     </edge>
-    <edge id="e264" source="n183" target="n124">
+    <edge id="e267" source="n184" target="n125">
         <data key="e_relation">dependency</data>
         <data key="e_label">zTransformOf, the ZOH prerequisite (6.33)</data>
     </edge>
-    <edge id="e265" source="n183" target="n175">
+    <edge id="e268" source="n184" target="n176">
         <data key="e_relation">dependency</data>
         <data key="e_label">normaliseTf (single definition)</data>
     </edge>
-    <edge id="e266" source="n181" target="n16">
+    <edge id="e269" source="n182" target="n16">
         <data key="e_relation">dependency</data>
         <data key="e_label">expm (6.39)</data>
     </edge>
-    <edge id="e267" source="n181" target="n113">
+    <edge id="e270" source="n182" target="n113">
         <data key="e_relation">dependency</data>
         <data key="e_label">ctrb assembled, no private hcat</data>
     </edge>
-    <edge id="e268" source="n184" target="n113">
+    <edge id="e271" source="n185" target="n113">
         <data key="e_relation">dependency</data>
         <data key="e_label">cellGrid / assembleBlocks</data>
     </edge>
-    <edge id="e269" source="n185" target="n181">
+    <edge id="e272" source="n186" target="n182">
         <data key="e_relation">dependency</data>
         <data key="e_label">stateSpace row</data>
     </edge>
-    <edge id="e270" source="n186" target="n181">
+    <edge id="e273" source="n187" target="n182">
         <data key="e_relation">dependency</data>
         <data key="e_label">stateSpace row</data>
     </edge>
-    <edge id="e271" source="n187" target="n175">
+    <edge id="e274" source="n188" target="n176">
         <data key="e_relation">dependency</data>
         <data key="e_label">poles / zeros / isStable / coeffsOf</data>
     </edge>
-    <edge id="e272" source="n187" target="n183">
+    <edge id="e275" source="n188" target="n184">
         <data key="e_relation">dependency</data>
         <data key="e_label">c2d</data>
     </edge>
-    <edge id="e273" source="n188" target="n175">
+    <edge id="e276" source="n189" target="n176">
         <data key="e_relation">dependency</data>
         <data key="e_label">routhTable</data>
     </edge>
-    <edge id="e274" source="n189" target="n181">
+    <edge id="e277" source="n190" target="n182">
         <data key="e_relation">dependency</data>
         <data key="e_label">ctrbOf / fullRowRank</data>
     </edge>
-    <edge id="e275" source="n190" target="n181">
+    <edge id="e278" source="n191" target="n182">
         <data key="e_relation">dependency</data>
         <data key="e_label">acker</data>
     </edge>
-    <edge id="e276" source="n191" target="n181">
+    <edge id="e279" source="n192" target="n182">
         <data key="e_relation">dependency</data>
         <data key="e_label">the [[A, B, C, D]] row</data>
     </edge>
-    <edge id="e277" source="n186" target="n175">
+    <edge id="e280" source="n187" target="n176">
         <data key="e_relation">dependency</data>
         <data key="e_label">normaliseTf</data>
     </edge>
-    <edge id="e278" source="n192" target="n191">
+    <edge id="e281" source="n193" target="n192">
         <data key="e_relation">dependency</data>
         <data key="e_label">matrixOperand / modelRow</data>
     </edge>
-    <edge id="e279" source="n192" target="n16">
+    <edge id="e282" source="n193" target="n16">
         <data key="e_relation">dependency</data>
         <data key="e_label">cholesky (definiteness), inverse</data>
     </edge>
-    <edge id="e280" source="n185" target="n172">
+    <edge id="e283" source="n186" target="n173">
         <data key="e_relation">dependency</data>
         <data key="e_label">the four blocks</data>
     </edge>
-    <edge id="e281" source="n186" target="n215">
+    <edge id="e284" source="n187" target="n216">
         <data key="e_relation">dependency</data>
         <data key="e_label">leastSquares (QR)</data>
     </edge>
-    <edge id="e282" source="n186" target="n112">
+    <edge id="e285" source="n187" target="n112">
         <data key="e_relation">dependency</data>
         <data key="e_label">numerical rank</data>
     </edge>
-    <edge id="e283" source="n212" target="n211">
+    <edge id="e286" source="n213" target="n212">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e284" source="n211" target="n201">
+    <edge id="e287" source="n212" target="n202">
         <data key="e_relation">dependency</data>
         <data key="e_label">names the active set</data>
     </edge>
-    <edge id="e285" source="n203" target="n195">
+    <edge id="e288" source="n204" target="n196">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e286" source="n205" target="n195">
+    <edge id="e289" source="n206" target="n196">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e287" source="n204" target="n196">
+    <edge id="e290" source="n205" target="n197">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e288" source="n206" target="n197">
+    <edge id="e291" source="n207" target="n198">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e289" source="n207" target="n198">
+    <edge id="e292" source="n208" target="n199">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e290" source="n208" target="n199">
+    <edge id="e293" source="n209" target="n200">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e291" source="n209" target="n202">
+    <edge id="e294" source="n210" target="n203">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e292" source="n210" target="n202">
+    <edge id="e295" source="n211" target="n203">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e293" source="n213" target="n200">
+    <edge id="e296" source="n214" target="n201">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e294" source="n200" target="n199">
+    <edge id="e297" source="n201" target="n200">
         <data key="e_relation">dependency</data>
         <data key="e_label">SQP subproblems, multipliers</data>
     </edge>
-    <edge id="e295" source="n200" target="n202">
+    <edge id="e298" source="n201" target="n203">
         <data key="e_relation">dependency</data>
         <data key="e_label">evaluator (compiled cells)</data>
     </edge>
-    <edge id="e296" source="n200" target="n172">
+    <edge id="e299" source="n201" target="n173">
         <data key="e_relation">dependency</data>
         <data key="e_label">one definition of the Jacobian</data>
     </edge>
-    <edge id="e297" source="n202" target="n172">
+    <edge id="e300" source="n203" target="n173">
         <data key="e_relation">dependency</data>
         <data key="e_label">one definition of the Jacobian</data>
     </edge>
-    <edge id="e298" source="n199" target="n201">
+    <edge id="e301" source="n200" target="n202">
         <data key="e_relation">dependency</data>
         <data key="e_label">active set = warm start</data>
     </edge>
-    <edge id="e299" source="n199" target="n16">
+    <edge id="e302" source="n200" target="n16">
         <data key="e_relation">dependency</data>
         <data key="e_label">cholesky = convexity test</data>
     </edge>
-    <edge id="e300" source="n195" target="n193">
+    <edge id="e303" source="n196" target="n194">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e301" source="n197" target="n193">
+    <edge id="e304" source="n198" target="n194">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e302" source="n195" target="n173">
+    <edge id="e305" source="n196" target="n174">
         <data key="e_relation">dependency</data>
         <data key="e_label">one definition of the Hessian</data>
     </edge>
-    <edge id="e303" source="n196" target="n173">
+    <edge id="e306" source="n197" target="n174">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e304" source="n193" target="n67">
+    <edge id="e307" source="n194" target="n67">
         <data key="e_relation">dependency</data>
         <data key="e_label">rationalCoeffs, squareFreeFactors</data>
     </edge>
-    <edge id="e305" source="n193" target="n194">
+    <edge id="e308" source="n194" target="n195">
         <data key="e_relation">dependency</data>
         <data key="e_label">when the steps give up</data>
     </edge>
-    <edge id="e306" source="n197" target="n137">
+    <edge id="e309" source="n198" target="n138">
         <data key="e_relation">dependency</data>
         <data key="e_label">the conditions are relations</data>
     </edge>
-    <edge id="e307" source="n222" target="n221">
+    <edge id="e310" source="n223" target="n222">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e308" source="n216" target="n214">
+    <edge id="e311" source="n217" target="n215">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e309" source="n216" target="n224">
+    <edge id="e312" source="n217" target="n225">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e310" source="n217" target="n214">
+    <edge id="e313" source="n218" target="n215">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e311" source="n217" target="n225">
+    <edge id="e314" source="n218" target="n226">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e312" source="n218" target="n215">
+    <edge id="e315" source="n219" target="n216">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e313" source="n219" target="n215">
+    <edge id="e316" source="n220" target="n216">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e314" source="n220" target="n215">
+    <edge id="e317" source="n221" target="n216">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e315" source="n223" target="n214">
+    <edge id="e318" source="n224" target="n215">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e316" source="n223" target="n226">
+    <edge id="e319" source="n224" target="n227">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e317" source="n227" target="n214">
+    <edge id="e320" source="n228" target="n215">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e318" source="n228" target="n214">
+    <edge id="e321" source="n229" target="n215">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e319" source="n216" target="n237">
+    <edge id="e322" source="n217" target="n238">
         <data key="e_relation">dependency</data>
         <data key="e_label">distribution arg -&gt; probability.Moments</data>
     </edge>
-    <edge id="e320" source="n229" target="n1">
+    <edge id="e323" source="n230" target="n1">
         <data key="e_relation">realisation</data>
     </edge>
-    <edge id="e321" source="n240" target="n242">
+    <edge id="e324" source="n241" target="n243">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e322" source="n241" target="n242">
+    <edge id="e325" source="n242" target="n243">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e323" source="n242" target="n229">
+    <edge id="e326" source="n243" target="n230">
         <data key="e_relation">dependency</data>
         <data key="e_label">quantileOf, one uniform per draw</data>
     </edge>
-    <edge id="e324" source="n242" target="n243">
+    <edge id="e327" source="n243" target="n244">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e325" source="n229" target="n230">
+    <edge id="e328" source="n230" target="n231">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e326" source="n232" target="n229">
+    <edge id="e329" source="n233" target="n230">
         <data key="e_relation">dependency</data>
         <data key="e_label">eval</data>
     </edge>
-    <edge id="e327" source="n233" target="n229">
+    <edge id="e330" source="n234" target="n230">
         <data key="e_relation">dependency</data>
         <data key="e_label">pdf/cdf/quantile</data>
     </edge>
-    <edge id="e328" source="n233" target="n231">
+    <edge id="e331" source="n234" target="n232">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e329" source="n233" target="n234">
+    <edge id="e332" source="n234" target="n235">
         <data key="e_relation">dependency</data>
         <data key="e_label">prob(X &lt; c) form</data>
     </edge>
-    <edge id="e330" source="n235" target="n237">
+    <edge id="e333" source="n236" target="n238">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e331" source="n236" target="n237">
+    <edge id="e334" source="n237" target="n238">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e332" source="n239" target="n229">
+    <edge id="e335" source="n240" target="n230">
         <data key="e_relation">dependency</data>
         <data key="e_label">conjugate table, validating factory</data>
     </edge>
-    <edge id="e333" source="n239" target="n230">
+    <edge id="e336" source="n240" target="n231">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e334" source="n238" target="n3">
+    <edge id="e337" source="n239" target="n3">
         <data key="e_relation">dependency</data>
         <data key="e_label">exact row rebuilt in place</data>
     </edge>
-    <edge id="e335" source="n244" target="n0">
+    <edge id="e338" source="n245" target="n0">
         <data key="e_relation">dependency</data>
         <data key="e_label">produces AST nodes</data>
     </edge>
-    <edge id="e336" source="n244" target="n95">
+    <edge id="e339" source="n245" target="n95">
         <data key="e_relation">dependency</data>
         <data key="e_label">matrix row literals</data>
     </edge>
-    <edge id="e337" source="n244" target="n96">
+    <edge id="e340" source="n245" target="n96">
         <data key="e_relation">dependency</data>
         <data key="e_label">structural + - * dispatch</data>
     </edge>
-    <edge id="e338" source="n244" target="n115">
+    <edge id="e341" source="n245" target="n115">
         <data key="e_relation">dependency</data>
         <data key="e_label">at(A, i, j) element access</data>
     </edge>
-    <edge id="e339" source="n244" target="n102">
+    <edge id="e342" source="n245" target="n102">
         <data key="e_relation">dependency</data>
         <data key="e_label">det(A)</data>
     </edge>
-    <edge id="e340" source="n244" target="n101">
+    <edge id="e343" source="n245" target="n101">
         <data key="e_relation">dependency</data>
         <data key="e_label">inv(A)</data>
     </edge>
-    <edge id="e341" source="n244" target="n103">
+    <edge id="e344" source="n245" target="n103">
         <data key="e_relation">dependency</data>
         <data key="e_label">eye(n)</data>
     </edge>
-    <edge id="e342" source="n244" target="n104">
+    <edge id="e345" source="n245" target="n104">
         <data key="e_relation">dependency</data>
         <data key="e_label">zeros(r,c)</data>
     </edge>
-    <edge id="e343" source="n244" target="n105">
+    <edge id="e346" source="n245" target="n105">
         <data key="e_relation">dependency</data>
         <data key="e_label">lu(A)</data>
     </edge>
-    <edge id="e344" source="n244" target="n106">
+    <edge id="e347" source="n245" target="n106">
         <data key="e_relation">dependency</data>
         <data key="e_label">qr(A)</data>
     </edge>
-    <edge id="e345" source="n244" target="n107">
+    <edge id="e348" source="n245" target="n107">
         <data key="e_relation">dependency</data>
         <data key="e_label">eigen(A)</data>
     </edge>
-    <edge id="e346" source="n244" target="n108">
+    <edge id="e349" source="n245" target="n108">
         <data key="e_relation">dependency</data>
         <data key="e_label">eig(A)</data>
     </edge>
-    <edge id="e347" source="n244" target="n109">
+    <edge id="e350" source="n245" target="n109">
         <data key="e_relation">dependency</data>
         <data key="e_label">jordan(A)</data>
     </edge>
-    <edge id="e348" source="n244" target="n110">
+    <edge id="e351" source="n245" target="n110">
         <data key="e_relation">dependency</data>
         <data key="e_label">expm(A)</data>
     </edge>
-    <edge id="e349" source="n244" target="n111">
+    <edge id="e352" source="n245" target="n111">
         <data key="e_relation">dependency</data>
         <data key="e_label">chol(A)</data>
     </edge>
-    <edge id="e350" source="n244" target="n112">
+    <edge id="e353" source="n245" target="n112">
         <data key="e_relation">dependency</data>
         <data key="e_label">svd pinv rank cond nullspace orth</data>
     </edge>
-    <edge id="e351" source="n244" target="n113">
+    <edge id="e354" source="n245" target="n113">
         <data key="e_relation">dependency</data>
         <data key="e_label">hcat vcat blkdiag repmat kron submatrix</data>
     </edge>
-    <edge id="e352" source="n244" target="n114">
+    <edge id="e355" source="n245" target="n114">
         <data key="e_relation">dependency</data>
         <data key="e_label">ones(r, c)</data>
     </edge>
-    <edge id="e353" source="n244" target="n184">
+    <edge id="e356" source="n245" target="n185">
         <data key="e_relation">dependency</data>
         <data key="e_label">mpcMatrices(...)</data>
     </edge>
-    <edge id="e354" source="n244" target="n185">
+    <edge id="e357" source="n245" target="n186">
         <data key="e_relation">dependency</data>
         <data key="e_label">linearize(...)</data>
     </edge>
-    <edge id="e355" source="n244" target="n186">
+    <edge id="e358" source="n245" target="n187">
         <data key="e_relation">dependency</data>
         <data key="e_label">arx / arxRegressors / arx2tf / arx2ss</data>
     </edge>
-    <edge id="e356" source="n244" target="n187">
+    <edge id="e359" source="n245" target="n188">
         <data key="e_relation">dependency</data>
         <data key="e_label">tfpoles / tfzeros / isStable(Discrete) / c2d</data>
     </edge>
-    <edge id="e357" source="n244" target="n181">
+    <edge id="e360" source="n245" target="n182">
         <data key="e_relation">dependency</data>
         <data key="e_label">stateSpace(A, B, C, D) (sugar for the row)</data>
     </edge>
-    <edge id="e358" source="n244" target="n191">
+    <edge id="e361" source="n245" target="n192">
         <data key="e_relation">dependency</data>
         <data key="e_label">dlsim(sys, u, x0[, states])</data>
     </edge>
-    <edge id="e359" source="n244" target="n192">
+    <edge id="e362" source="n245" target="n193">
         <data key="e_relation">dependency</data>
         <data key="e_label">dare / dlqr / dlyap / kalmanGain / kalmanStep</data>
     </edge>
-    <edge id="e360" source="n244" target="n116">
+    <edge id="e363" source="n245" target="n116">
         <data key="e_relation">dependency</data>
         <data key="e_label">laplace(e, t, s)</data>
     </edge>
-    <edge id="e361" source="n244" target="n117">
+    <edge id="e364" source="n245" target="n117">
         <data key="e_relation">dependency</data>
         <data key="e_label">fourier(e, t, w)</data>
     </edge>
-    <edge id="e362" source="n244" target="n118">
+    <edge id="e365" source="n245" target="n119">
         <data key="e_relation">dependency</data>
         <data key="e_label">invlaplace(f, s, t)</data>
     </edge>
-    <edge id="e363" source="n244" target="n127">
+    <edge id="e366" source="n245" target="n128">
         <data key="e_relation">dependency</data>
         <data key="e_label">ode(rhs, y, t, t0, y0, target)</data>
     </edge>
-    <edge id="e364" source="n244" target="n132">
+    <edge id="e367" source="n245" target="n133">
         <data key="e_relation">dependency</data>
         <data key="e_label">ode(rhs, [[x], [v]], t, t0, y0, target)</data>
     </edge>
-    <edge id="e365" source="n244" target="n133">
+    <edge id="e368" source="n245" target="n134">
         <data key="e_relation">dependency</data>
         <data key="e_label">odeStep(..., method)</data>
     </edge>
-    <edge id="e366" source="n244" target="n134">
+    <edge id="e369" source="n245" target="n135">
         <data key="e_relation">dependency</data>
         <data key="e_label">odeSolve(..., method)</data>
     </edge>
-    <edge id="e367" source="n244" target="n20">
+    <edge id="e370" source="n245" target="n20">
         <data key="e_relation">dependency</data>
         <data key="e_label">step(expr)</data>
     </edge>
-    <edge id="e368" source="n244" target="n145">
+    <edge id="e371" source="n245" target="n146">
         <data key="e_relation">dependency</data>
         <data key="e_label">and / or / not / implies / xor</data>
     </edge>
-    <edge id="e369" source="n244" target="n8">
+    <edge id="e372" source="n245" target="n8">
         <data key="e_relation">dependency</data>
         <data key="e_label">unknown literal (true / false -&gt; _Bool)</data>
     </edge>
-    <edge id="e370" source="n244" target="n155">
+    <edge id="e373" source="n245" target="n156">
         <data key="e_relation">dependency</data>
         <data key="e_label">truth / very / somewhat / trimf / trapmf / gaussmf / sigmf</data>
     </edge>
-    <edge id="e371" source="n244" target="n160">
+    <edge id="e374" source="n245" target="n161">
         <data key="e_relation">dependency</data>
         <data key="e_label">defuzz(e, v, lo, hi)</data>
     </edge>
-    <edge id="e372" source="n244" target="n137">
+    <edge id="e375" source="n245" target="n138">
         <data key="e_relation">dependency</data>
         <data key="e_label">&lt; &gt; &lt;= &gt;= != (4.R)</data>
     </edge>
-    <edge id="e373" source="n244" target="n140">
+    <edge id="e376" source="n245" target="n141">
         <data key="e_relation">dependency</data>
         <data key="e_label">solve(eq | ineq, v)</data>
     </edge>
-    <edge id="e374" source="n244" target="n143">
+    <edge id="e377" source="n245" target="n144">
         <data key="e_relation">dependency</data>
         <data key="e_label">solveSystem(eqs, v...)</data>
     </edge>
-    <edge id="e375" source="n244" target="n54">
+    <edge id="e378" source="n245" target="n54">
         <data key="e_relation">dependency</data>
         <data key="e_label">taylor / maclaurin</data>
     </edge>
-    <edge id="e376" source="n244" target="n55">
+    <edge id="e379" source="n245" target="n55">
         <data key="e_relation">dependency</data>
         <data key="e_label">fourierSeries(e, v, T, n)</data>
     </edge>
-    <edge id="e377" source="n244" target="n56">
+    <edge id="e380" source="n245" target="n56">
         <data key="e_relation">dependency</data>
         <data key="e_label">pade(e, v, m, n)</data>
     </edge>
-    <edge id="e378" source="n244" target="n57">
+    <edge id="e381" source="n245" target="n57">
         <data key="e_relation">dependency</data>
         <data key="e_label">laurent(e, v, a [, m], n)</data>
     </edge>
-    <edge id="e379" source="n244" target="n72">
+    <edge id="e382" source="n245" target="n72">
         <data key="e_relation">dependency</data>
         <data key="e_label">tobase(n, b)</data>
     </edge>
-    <edge id="e380" source="n244" target="n73">
+    <edge id="e383" source="n245" target="n73">
         <data key="e_relation">dependency</data>
         <data key="e_label">balanced(n)</data>
     </edge>
-    <edge id="e381" source="n244" target="n163">
+    <edge id="e384" source="n245" target="n164">
         <data key="e_relation">dependency</data>
         <data key="e_label">domain(e, v [, real|complex])</data>
     </edge>
-    <edge id="e382" source="n244" target="n164">
+    <edge id="e385" source="n245" target="n165">
         <data key="e_relation">dependency</data>
         <data key="e_label">differentiable(e, v [, ...])</data>
     </edge>
-    <edge id="e383" source="n244" target="n165">
+    <edge id="e386" source="n245" target="n166">
         <data key="e_relation">dependency</data>
         <data key="e_label">singularities(e, v)</data>
     </edge>
-    <edge id="e384" source="n244" target="n232">
+    <edge id="e387" source="n245" target="n233">
         <data key="e_relation">dependency</data>
         <data key="e_label">normal / uniform / ... (params)</data>
     </edge>
-    <edge id="e385" source="n244" target="n233">
+    <edge id="e388" source="n245" target="n234">
         <data key="e_relation">dependency</data>
         <data key="e_label">pdf / cdf / prob / quantile</data>
     </edge>
-    <edge id="e386" source="n244" target="n235">
+    <edge id="e389" source="n245" target="n236">
         <data key="e_relation">dependency</data>
         <data key="e_label">expect(e [, X])</data>
     </edge>
-    <edge id="e387" source="n244" target="n236">
+    <edge id="e390" source="n245" target="n237">
         <data key="e_relation">dependency</data>
         <data key="e_label">variance(e [, X])</data>
     </edge>
-    <edge id="e388" source="n244" target="n216">
+    <edge id="e391" source="n245" target="n217">
         <data key="e_relation">dependency</data>
         <data key="e_label">mean / variance / stddev (sample)</data>
     </edge>
-    <edge id="e389" source="n244" target="n217">
+    <edge id="e392" source="n245" target="n218">
         <data key="e_relation">dependency</data>
         <data key="e_label">covariance / correlation</data>
     </edge>
-    <edge id="e390" source="n244" target="n218">
+    <edge id="e393" source="n245" target="n219">
         <data key="e_relation">dependency</data>
         <data key="e_label">regress(X, y)</data>
     </edge>
-    <edge id="e391" source="n244" target="n219">
+    <edge id="e394" source="n245" target="n220">
         <data key="e_relation">dependency</data>
         <data key="e_label">regress(X, y, lambda)</data>
     </edge>
-    <edge id="e392" source="n244" target="n220">
+    <edge id="e395" source="n245" target="n221">
         <data key="e_relation">dependency</data>
         <data key="e_label">wregress(X, y, w)</data>
     </edge>
-    <edge id="e393" source="n244" target="n223">
+    <edge id="e396" source="n245" target="n224">
         <data key="e_relation">dependency</data>
         <data key="e_label">ttest / confint / chisqtest</data>
     </edge>
-    <edge id="e394" source="n244" target="n227">
+    <edge id="e397" source="n245" target="n228">
         <data key="e_relation">dependency</data>
         <data key="e_label">quantile (dispatching) / median / sort / bincounts</data>
     </edge>
-    <edge id="e395" source="n244" target="n228">
+    <edge id="e398" source="n245" target="n229">
         <data key="e_relation">dependency</data>
         <data key="e_label">ttest options / proptest / chisqtest(t) / vartest / anova</data>
     </edge>
-    <edge id="e396" source="n244" target="n162">
+    <edge id="e399" source="n245" target="n163">
         <data key="e_relation">dependency</data>
         <data key="e_label">cnf / dnf</data>
     </edge>
-    <edge id="e397" source="n244" target="n161">
+    <edge id="e400" source="n245" target="n162">
         <data key="e_relation">dependency</data>
         <data key="e_label">defuzz(e, v, lo, hi, method)</data>
     </edge>
-    <edge id="e398" source="n244" target="n189">
+    <edge id="e401" source="n245" target="n190">
         <data key="e_relation">dependency</data>
         <data key="e_label">controllable / observable / ctrb / obsv</data>
     </edge>
-    <edge id="e399" source="n244" target="n188">
+    <edge id="e402" source="n245" target="n189">
         <data key="e_relation">dependency</data>
         <data key="e_label">routhTable(G, s)</data>
     </edge>
-    <edge id="e400" source="n244" target="n190">
+    <edge id="e403" source="n245" target="n191">
         <data key="e_relation">dependency</data>
         <data key="e_label">acker(A, B, poles)</data>
     </edge>
-    <edge id="e401" source="n244" target="n126">
+    <edge id="e404" source="n245" target="n127">
         <data key="e_relation">dependency</data>
         <data key="e_label">dft / idft / conv</data>
     </edge>
-    <edge id="e402" source="n244" target="n12">
+    <edge id="e405" source="n245" target="n12">
         <data key="e_relation">dependency</data>
         <data key="e_label">0x.. / 0b.. / 0o.. / 0t.. literals</data>
     </edge>
-    <edge id="e403" source="n244" target="n74">
+    <edge id="e406" source="n245" target="n74">
         <data key="e_relation">dependency</data>
         <data key="e_label">[lo, hi] literal (after the matrix rule)</data>
     </edge>
-    <edge id="e404" source="n244" target="n167">
+    <edge id="e407" source="n245" target="n168">
         <data key="e_relation">dependency</data>
         <data key="e_label">grad / div / curl / laplacian / jacobian / hessian (6.24)</data>
     </edge>
-    <edge id="e405" source="n244" target="n90">
+    <edge id="e408" source="n245" target="n90">
         <data key="e_relation">dependency</data>
         <data key="e_label">fib / lucas / pell / jacobsthal (6.28)</data>
     </edge>
-    <edge id="e406" source="n244" target="n92">
+    <edge id="e409" source="n245" target="n92">
         <data key="e_relation">dependency</data>
         <data key="e_label">tabulate(e, k, lo, hi)</data>
     </edge>
-    <edge id="e407" source="n244" target="n46">
+    <edge id="e410" source="n245" target="n46">
         <data key="e_relation">dependency</data>
         <data key="e_label">Si / Ci / Ei / li (3.15)</data>
     </edge>
-    <edge id="e408" source="n244" target="n47">
+    <edge id="e411" source="n245" target="n47">
         <data key="e_relation">dependency</data>
         <data key="e_label">fresnelS / fresnelC</data>
     </edge>
-    <edge id="e409" source="n245" target="n252">
+    <edge id="e412" source="n246" target="n253">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e410" source="n246" target="n252">
+    <edge id="e413" source="n247" target="n253">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e411" source="n247" target="n252">
+    <edge id="e414" source="n248" target="n253">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e412" source="n248" target="n252">
+    <edge id="e415" source="n249" target="n253">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e413" source="n249" target="n252">
+    <edge id="e416" source="n250" target="n253">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e414" source="n250" target="n252">
+    <edge id="e417" source="n251" target="n253">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e415" source="n251" target="n252">
+    <edge id="e418" source="n252" target="n253">
         <data key="e_relation">dependency</data>
     </edge>
-    <edge id="e416" source="n245" target="n246">
+    <edge id="e419" source="n246" target="n247">
         <data key="e_relation">dependency</data>
         <data key="e_label">reads Forbidden,\nso the two cannot drift</data>
     </edge>
-    <edge id="e417" source="n253" target="n0">
+    <edge id="e420" source="n254" target="n0">
         <data key="e_relation">dependency</data>
         <data key="e_label">renders any node</data>
     </edge>
-    <edge id="e418" source="n253" target="n3">
+    <edge id="e421" source="n254" target="n3">
         <data key="e_relation">dependency</data>
         <data key="e_label">pmatrix, without importing matrix</data>
     </edge>
-    <edge id="e419" source="n253" target="n27">
+    <edge id="e422" source="n254" target="n27">
         <data key="e_relation">dependency</data>
         <data key="e_label">one rule for 41 function nodes</data>
     </edge>
-    <edge id="e420" source="n256" target="n255">
+    <edge id="e423" source="n257" target="n256">
         <data key="e_relation">dependency</data>
         <data key="e_label">named()</data>
     </edge>
-    <edge id="e421" source="n257" target="n254">
+    <edge id="e424" source="n258" target="n255">
         <data key="e_relation">association</data>
         <data key="e_label">creates and drives</data>
     </edge>
-    <edge id="e422" source="n254" target="n244">
+    <edge id="e425" source="n255" target="n245">
         <data key="e_relation">association</data>
         <data key="e_label">parses every input line</data>
     </edge>
-    <edge id="e423" source="n254" target="n17">
+    <edge id="e426" source="n255" target="n17">
         <data key="e_relation">association</data>
         <data key="e_label">builds per command</data>
     </edge>
-    <edge id="e424" source="n254" target="n59">
+    <edge id="e427" source="n255" target="n59">
         <data key="e_relation">dependency</data>
         <data key="e_label">derive command</data>
     </edge>
-    <edge id="e425" source="n254" target="n61">
+    <edge id="e428" source="n255" target="n61">
         <data key="e_relation">dependency</data>
         <data key="e_label">simplify command</data>
     </edge>
-    <edge id="e426" source="n254" target="n62">
+    <edge id="e429" source="n255" target="n62">
         <data key="e_relation">dependency</data>
         <data key="e_label">expand command</data>
     </edge>
-    <edge id="e427" source="n254" target="n64">
+    <edge id="e430" source="n255" target="n64">
         <data key="e_relation">dependency</data>
         <data key="e_label">resolves definitions</data>
     </edge>
-    <edge id="e428" source="n254" target="n152">
+    <edge id="e431" source="n255" target="n153">
         <data key="e_relation">dependency</data>
         <data key="e_label">simplify post-pass</data>
     </edge>
-    <edge id="e429" source="n254" target="n154">
+    <edge id="e432" source="n255" target="n155">
         <data key="e_relation">dependency</data>
         <data key="e_label">truth command</data>
     </edge>
-    <edge id="e430" source="n254" target="n253">
+    <edge id="e433" source="n255" target="n254">
         <data key="e_relation">dependency</data>
         <data key="e_label">latex on -&gt; lastLatex (a SECOND channel;\nthe printed text is unchanged)</data>
     </edge>

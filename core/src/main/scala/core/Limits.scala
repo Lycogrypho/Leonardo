@@ -132,6 +132,15 @@ enum Limit(val default: Long):
 
   /** The length of a `dft`/`idft`, by the direct `N²` sum; `DftTest` bounds the time at it. */
   case MaxDftLength extends Limit(8192)
+  /** The products `n·m` a floating-point `conv` may form (F_0144), set by **Node**: at the cap,
+   *  5000 × 5000, 0.78 s there against 32 ms on the JVM; `10⁸` took 4.1 s on Node and 194 ms on
+   *  the JVM.  The output's own size is `MaxMatrixCells`. */
+  case MaxConvWork extends Limit(25000000)
+  /** The products `n·m` an exact `conv` may form (F_0144): sums of fractions grow their
+   *  denominators, so the cost per product grows with the length.  Measured on distinct
+   *  denominators: at the cap, 200 × 200, 0.42 s on Node and 92 ms on the JVM; 300 × 300, 1.9 s and
+   *  0.70 s; 1000 × 1000, 170 s and 29 s. */
+  case MaxConvExactWork extends Limit(40000)
 
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.

@@ -28,12 +28,13 @@ case class _Laplace(e: _Expression, t: _Variable, s: _Variable) extends _Functio
     else result.eval(env)
 
 
-/** AST node for the Fourier transform: `fourier(e, t, w)` in the grammar.
+/** AST node for the two-sided Fourier transform: `fourier(e, t, w)` in the grammar.
  *
- *  Computes the unilateral Fourier transform `F{e(t)}` with frequency variable `w`
- *  via the Laplace-to-Fourier substitution `s -> i*w` (see [[fourierOf]]).
- *  Results are generally complex-valued.  The binder `t` is excluded from `children`;
- *  `w` appears free in the result.
+ *  Computes `F{e(t)} = ∫ e(t)·e^(−iwt) dt` over the whole line (F_0141; it was the one-sided
+ *  transform, unchecked, until then) as the Laplace transforms of the causal and the reflected
+ *  anti-causal part at `s = ±i·w`, and stays unevaluated unless both converge on the imaginary
+ *  axis — see [[fourierOf]].  The binder `t` is excluded from `children`; `w` appears free in the
+ *  result.
  *
  *  `eval` applies [[fourierOf]] and guards against the fixpoint.
  *
@@ -49,6 +50,39 @@ case class _Fourier(e: _Expression, t: _Variable, w: _Variable) extends _Functio
     val result = fourierOf(e, t, w)
     if result == this then Left(this)
     else result.eval(env)
+
+  /** Why this transform stays unevaluated, or `None` when it answers; see [[fourierDecline]].
+   *  @param env the evaluation environment (unused: the transform reads no bindings)
+   *  @return the reason, or `None`
+   */
+  def declineReason(env: Environment): Option[String] = fourierDecline(e, t, w, causal = false)
+
+
+/** AST node for the causal Fourier transform: `fourierCausal(e, t, w)` in the grammar (F_0141).
+ *
+ *  The transform of `e(t)·u(t)`, `L{e}(i·w)`, which is what `fourier` answered before it became
+ *  two-sided — now only when every pole of `L{e}` lies strictly left of the imaginary axis; see
+ *  [[causalFourierOf]].  The binder `t` is excluded from `children`; `w` appears free in the
+ *  result.
+ *
+ *  @param e the time-domain expression to transform
+ *  @param t the time variable (binder -- excluded from `children`)
+ *  @param w the angular frequency variable (free in the result)
+ */
+case class _FourierCausal(e: _Expression, t: _Variable, w: _Variable) extends _Functional:
+  override def toString: String = s"fourierCausal($e, $t, $w)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = _FourierCausal(c.head, t, w)
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val result = causalFourierOf(e, t, w)
+    if result == this then Left(this)
+    else result.eval(env)
+
+  /** Why this transform stays unevaluated, or `None` when it answers; see [[fourierDecline]].
+   *  @param env the evaluation environment (unused: the transform reads no bindings)
+   *  @return the reason, or `None`
+   */
+  def declineReason(env: Environment): Option[String] = fourierDecline(e, t, w, causal = true)
 
 
 /** AST node for the z-transform: `ztrans(x, n, z)` in the grammar.

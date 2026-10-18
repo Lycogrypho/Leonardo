@@ -82,6 +82,39 @@ class DftTest extends AnyFlatSpec:
     assert(near(cells(ev(circular.map(_._1).mkString("dft([[", ", ", "]])"))), product, 1e-10))
   }
 
+  it should "bound its products, not only its output (F_0144)" in {
+    // 4 x 4 = 16 products against a budget of 10: the output, 7 cells, was all that was checked.
+    val tight = env.withLimit(Limit.MaxConvWork, 10)
+    assert(Parser.parse("conv([[1, 2, 3, 4]], [[1, 2, 3, 4]])").get.eval(tight).isLeft)
+    assert(Parser.parse("conv([[1, 2, 3]], [[1, 2, 3]])").get.eval(tight).isRight)
+    Parser.parse("conv([[1, 2, 3, 4]], [[1, 2, 3, 4]])").get match
+      case c: _Conv => assert(c.declineReason(tight).exists(_.contains("MaxConvWork")), c.declineReason(tight))
+      case other    => fail(s"not a conv: $other")
+  }
+
+  it should "hold an exact convolution to its own, smaller budget (F_0144)" in {
+    val tight = env.withLimit(Limit.MaxConvExactWork, 4)
+    assert(Parser.parse("conv([[1/2, 1/3, 1/5]], [[3, 6, 7]])", Some(30)).get.eval(tight).isLeft)
+    assert(Parser.parse("conv([[0.5, 0.25, 0.2]], [[3, 6, 7]])").get.eval(tight).isRight)
+  }
+
+  it should "convolve at the default work budget within a few seconds, on every platform (F_0144)" in {
+    val n = math.sqrt(Limit.MaxConvWork.default.toDouble).toInt
+    val xs = Vector.tabulate(n)(i => _Number(math.sin(i * 0.1)): _Value)
+    val start = System.nanoTime()
+    val out = convolve(xs, xs, env)
+    val seconds = (System.nanoTime() - start) / 1e9
+    assert(out.size == 2 * n - 1)
+    assert(seconds < 5.0, s"took $seconds s")
+  }
+
+  "dft" should "say which budget refused it (F_0144)" in {
+    val tight = env.withLimit(Limit.MaxDftLength, 4)
+    Parser.parse("dft([[1, 2, 3, 4, 5]])").get match
+      case d: _Dft => assert(d.declineReason(tight).exists(_.contains("MaxDftLength")), d.declineReason(tight))
+      case other   => fail(s"not a dft: $other")
+  }
+
   "the new forms" should "round-trip and reserve their words" in {
     for s <- List("dft(x)", "idft(X)", "conv(x, h)") do
       val e = Parser.parse(s).get

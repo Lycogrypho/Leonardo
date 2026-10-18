@@ -117,6 +117,30 @@ class DiscreteFamiliesTest extends AnyFlatSpec:
     assert(ev("hypergeometric(20, 7, 12)").map(_.toString) == Right("hypergeometric(20.0, 7.0, 12.0)"))
   }
 
+  it should "read a support positioned past Int.MaxValue (F_0142)" in {
+    // N = 1e10, K = N - 5, n = N - 3: four support points from n - 5 = 1e10 - 8. The table's
+    // first point was taken through Double.toInt, which saturates at 2147483647, so every query
+    // read a one-point table there: the mass at the support answered 0 and the cdf 1 below it.
+    val (bigN, k, n) = (1e10, 1e10 - 5, 1e10 - 3)
+    val call = "hypergeometric(10000000000, 9999999995, 9999999997)"
+    // The 3 undrawn items are all successes unless a failure is among them.
+    val expected = (bigN - 5) * (bigN - 6) * (bigN - 7) / (bigN * (bigN - 1) * (bigN - 2))
+    assert(close(num(s"pdf($call, 9999999992)"), expected))
+    val masses = (9999999992L to 9999999995L).map(x => num(s"pdf($call, $x)"))
+    assert(close(masses.sum, 1.0))
+    assert(num(s"cdf($call, 3000000000)") == 0.0)
+    assert(num(s"cdf($call, 9999999995)") == 1.0)
+    assert(math.abs(num(s"expect($call)") - n * k / bigN) <= 1e-6)
+  }
+
+  it should "answer at 2^53 and decline past it, where whole numbers stop being distinct (F_0142)" in {
+    // N = K = 2^53, n = 2^53 - 1: one support point. Before F_0142 the table's bounds rounded so
+    // that it had no points at all, and the first query threw from an empty max.
+    assert(num("pdf(hypergeometric(9007199254740992, 9007199254740992, 9007199254740991), 9007199254740991)") == 1.0)
+    // Past 2^53 consecutive integers are not distinct doubles, so the support cannot be read.
+    assert(ev("hypergeometric(9007199254740994, 9007199254740992, 3)").isLeft)
+  }
+
   it should "answer a quantile at the support cap within a few seconds, on every platform" in {
     // A support of 999 999 points, one short of MaxHypergeometricSupport: the table is built
     // once and the quantile's bisection reads it.

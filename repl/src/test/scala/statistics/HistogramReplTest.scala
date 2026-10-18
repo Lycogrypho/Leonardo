@@ -31,6 +31,30 @@ class HistogramReplTest extends AnyFlatSpec:
       case Left(why) => fail(why)
   }
 
+  it should "read a trailing integer as part of the expression when the rest is not a sample (F_0143)" in {
+    // `y * 2` used to split into the sample `y *` with 2 bins and fail with a parse error that
+    // never said the 2 had been taken as the count.
+    val s = Session()
+    s.execute("y := [[1, 2, 3]]")
+    s.histogramBins("y * 2") match
+      case Right(h)  => assert(h.edges.head == 2.0 && h.edges.last == 6.0 && h.counts.sum == 3, h)
+      case Left(why) => fail(why)
+    // a sample before the integer keeps the documented reading: the integer is the count
+    assert(s.histogramBins("y 2").map(_.counts.size) == Right(2))
+  }
+
+  it should "refuse a sample with a cell that is not a real number, rather than drop it (F_0143)" in {
+    // [[1, 2, 3+2i]] was drawn as a histogram of two values.
+    assert(Session().histogramBins("[[1, 2, 3 + 2i]]").left.exists(_.contains("real")))
+    assert(Session().histogramBins("[[1, true, 3]]").isLeft)
+  }
+
+  it should "refuse a bin count it cannot read, rather than fall back to Sturges' rule (F_0143)" in {
+    Session().histogramBins("[[1, 2, 3]] 99999999999") match
+      case Left(why) => assert(why.contains("99999999999"), why)
+      case Right(h)  => fail(s"drew ${h.counts.size} bins")
+  }
+
   it should "explain itself when there is no sample or no argument" in {
     assert(Session().histogramBins("").left.exists(_.startsWith("usage:")))
     assert(Session().histogramBins("y").isLeft)

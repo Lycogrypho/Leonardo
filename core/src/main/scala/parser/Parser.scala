@@ -110,6 +110,7 @@ object Parser extends JavaTokenParsers:
                                                          // when a production needs it, and
                                                          // never one already given away
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
+    "fourierCausal",                                                                        // F_0141 one-sided Fourier
     "ztrans", "invztrans",                                                                  // z-transform
     "dft", "idft", "conv",                                                                  // F_0137 discrete Fourier, convolution
     "domain", "differentiable", "singularities",         // domain analysis
@@ -886,6 +887,10 @@ object Parser extends JavaTokenParsers:
     // two are different operations -- a series in t versus a transform into w.
     "fourierSeries(" ~> guardedExpr ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ p ~ _ ~ n      => _FourierSeries(e, v, p, n)
+    }                                                                                             |
+    // F_0141: fourierCausal is the transform of x(t)·u(t); fourier is two-sided.
+    "fourierCausal(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
+      case e ~ _ ~ t ~ _ ~ w              => _FourierCausal(e, t, w)
     }                                                                                             |
     "fourier(" ~> guardedExpr ~ "," ~ variable ~ "," ~ variable <~ ")" ^^ {
       case e ~ _ ~ t ~ _ ~ w              => _Fourier(e, t, w)

@@ -938,6 +938,15 @@ final class Session:
       case (t: _Taylor, Left(_: _Taylor))   => t.detailed(env).left.toOption.map(w => s"taylor declined: $w")
       case (l: _Laurent, Left(_: _Laurent)) => l.detailed(env).left.toOption.map(w => s"laurent declined: $w")
       case (p: _Pade, Left(_: _Pade))       => p.detailed(env).left.toOption.map(w => s"pade declined: $w")
+      // F_0141: a Fourier transform that does not converge on the imaginary axis says where the
+      // pole is, rather than echoing the call as though no rule had fired.
+      case (f: transform._Fourier, Left(_: transform._Fourier)) => f.declineReason(env).map(w => s"fourier declined: $w")
+      case (f: transform._FourierCausal, Left(_: transform._FourierCausal)) =>
+        f.declineReason(env).map(w => s"fourierCausal declined: $w")
+      // F_0144: a dft or conv refused on its budget says which budget, rather than echoing back.
+      case (d: transform._Dft, Left(_: transform._Dft)) =>
+        d.declineReason(env).map(w => s"${if d.inverse then "idft" else "dft"} declined: $w")
+      case (c: transform._Conv, Left(_: transform._Conv)) => c.declineReason(env).map(w => s"conv declined: $w")
       // F_0061: an SVD-based call on a real matrix that was refused -- past the work cap, a
       // non-finite entry, no certified convergence, or a bad rank tolerance -- says which.
       case (s: matrix._Svd, Left(_: matrix._Svd))   => s.declineReason(env).map(w => s"svd declined: $w")
@@ -1455,7 +1464,12 @@ final class Session:
    *  binned over its own range in `k` equal bins, Sturges' `⌈log₂ n⌉ + 1` when `k` is not given.
    *
    *  **The trailing count is read before the expression**, since `x 10` would otherwise parse as
-   *  the product `x·10`.  A constant sample is given the unit range around its value, the one
+   *  the product `x·10` — **but only when what precedes it is a sample** (F_0143): `y * 2` split
+   *  into the sample `y *` and failed with a parse error that never said the `2` had been taken,
+   *  so when the text before the integer is not a sample the whole text is read, with Sturges'
+   *  bins.  A count that cannot be read is refused, never replaced by Sturges' rule, and a cell
+   *  that is not a real number refuses the sample rather than being dropped from it.  A constant
+   *  sample is given the unit range around its value, the one
    *  bin it fills.  The counts come from `statistics.binCounts`, so the figure and
    *  `bincounts(x, lo, hi, k)` at the prompt cannot disagree; the data is returned rather than
    *  printed, the [[samplePoints]] split, so a plotter never re-reads rounded text.
@@ -1467,24 +1481,35 @@ final class Session:
     // The LAST whitespace-separated token, when it is a whole number: an `s"$e $k"` pattern
     // splits at the first space, which reads `[[2, 2, 2]] 1` as `[[2,` and `2, 2]] 1`.
     val trailingCount = """^(.*\S)\s+(\d+)$""".r
-    val (exprStr, kStr) = rest.trim match
-      case trailingCount(e, k) => (e.trim, Some(k))
-      case other               => (other, None)
-    if exprStr.isEmpty then Left("usage: hist <sample> [<bins>]")
-    else parsed(exprStr) { e =>
-      val values = statistics.sampleOf(withDefinitions(e).eval(env)).map(_.collect { case _Number(d) => d })
-      values match
-        case Some(xs) if xs.nonEmpty && xs.forall(d => !d.isNaN && !d.isInfinite) =>
-          val k = kStr.flatMap(_.toIntOption).getOrElse(math.ceil(math.log(xs.size.toDouble) / math.log(2.0)).toInt + 1)
-          if k < 1 || k > Session.MaxSampleCount then
-            Left(s"hist: <bins> must be between 1 and ${Session.MaxSampleCount}, got: ${kStr.getOrElse(k)}")
-          else
-            val (lo, hi) = if xs.min < xs.max then (xs.min, xs.max) else (xs.min - 0.5, xs.max + 0.5)
-            statistics.binCounts(xs, lo, hi, k)
-              .map(cs => Session.Histogram(exprStr, Vector.tabulate(k + 1)(i => if i == k then hi else lo + i * (hi - lo) / k), cs))
-              .toRight("hist: the sample could not be binned")
-        case _ => Left(s"hist: $exprStr is not a sample of numbers (a row, a column or a matrix)")
-    }
+
+    // The sample's values, every cell a finite real number, or why not.
+    def sample(exprStr: String): Either[String, Vector[Double]] =
+      parsed(exprStr) { e =>
+        val cells  = statistics.sampleOf(withDefinitions(e).eval(env))
+        val values = cells.map(_.collect { case _Number(d) if !d.isNaN && !d.isInfinite => d })
+        (cells, values) match
+          case (Some(cs), Some(xs)) if xs.nonEmpty && xs.size == cs.size => Right(xs)
+          case _ => Left(s"hist: $exprStr is not a sample of real numbers (a row, a column or a matrix)")
+      }
+
+    def binned(exprStr: String, xs: Vector[Double], kStr: Option[String]): Either[String, Session.Histogram] =
+      val sturges = math.ceil(math.log(xs.size.toDouble) / math.log(2.0)).toInt + 1
+      kStr.fold(Option(sturges))(_.toIntOption).filter(k => k >= 1 && k <= Session.MaxSampleCount) match
+        case None => Left(s"hist: <bins> must be between 1 and ${Session.MaxSampleCount}, got: ${kStr.getOrElse(sturges)}")
+        case Some(k) =>
+          val (lo, hi) = if xs.min < xs.max then (xs.min, xs.max) else (xs.min - 0.5, xs.max + 0.5)
+          statistics.binCounts(xs, lo, hi, k)
+            .map(cs => Session.Histogram(exprStr, Vector.tabulate(k + 1)(i => if i == k then hi else lo + i * (hi - lo) / k), cs))
+            .toRight("hist: the sample could not be binned")
+
+    rest.trim match
+      case "" => Left("usage: hist <sample> [<bins>]")
+      case whole @ trailingCount(e, k) =>
+        sample(e.trim) match
+          case Right(xs) => binned(e.trim, xs, Some(k))
+          // Not a sample before the integer: the integer belongs to the expression.
+          case Left(why) => sample(whole).fold(_ => Left(why), xs => binned(whole, xs, None))
+      case whole => sample(whole).flatMap(binned(whole, _, None))
 
   /** How many samples the sweeping commands will attempt for `rest` (issue F_0044).
    *
@@ -2140,12 +2165,15 @@ object Session:
          |  laplace(exp(2*t)*cos(t), t, s) -> (s-2)/((s-2)^2+1) via first-shift
          |Stays symbolic when no rule applies.""".stripMargin,
     "fourier" ->
-      """|Compute the unilateral Fourier transform F{e(t)} = L{e(t)}|_{s=i*w}.
-         |Result is generally complex-valued (contains i, the imaginary unit).
-         |  fourier(exp(-2*t), t, w)     -> 1/(2 + i*w)
-         |  fourier(1, t, w)             -> 1/(i*w)
-         |  fourier(exp(-t)*sin(t), t, w) -> 1/((i*w+1)^2+1) via first-shift
-         |Stays symbolic when the Laplace transform is not in the table.""".stripMargin,
+      """|Compute the two-sided Fourier transform F{e(t)} = integral of e(t)*exp(-i*w*t) over
+         |the whole line, as L{e(t)}(i*w) + L{e(-t)}(-i*w).  fourierCausal(e, t, w) is the
+         |transform of e(t)*u(t), L{e(t)}(i*w).
+         |  fourier(exp(-abs(t)), t, w)          -> 2/(1 + w^2)
+         |  fourier(step(t + 1) - step(t - 1), t, w)   the pulse: 2*sin(w)/w
+         |  fourierCausal(exp(-2*t), t, w)       -> 1/(2 + i*w)
+         |Stays unevaluated, with a note, when a Laplace transform has a pole on or right of
+         |the imaginary axis: fourier(1), fourier(cos(t)) and fourier(exp(-t)) do not converge
+         |(their transforms need Dirac deltas, or do not exist).""".stripMargin,
     "invlaplace" ->
       """|Compute the inverse Laplace transform L-1{f(s)} with output variable t.
          |Rational f(s) = N(s)/D(s) with degree of D <= 2: linear, repeated, and complex

@@ -391,7 +391,7 @@ Six commands exist **only** there, because a terminal cannot honour them:
 | `bode <expr> <var> <wMin> <wMax> [<n>]` | gain and **unwrapped** phase over a logarithmic frequency axis |
 | `nyquist <expr> <var> <wMin> <wMax> [<n>]` | the same sweep in the complex plane, axes locked |
 | `rlocus <G> <var> <kMin> <kMax> [<n>]` | the root locus: the closed-loop poles of `G` over a gain band (geometric when `kMin > 0`), one continuous line per branch, axes locked |
-| `hist <sample> [<bins>]` | a histogram over the sample's range, Sturges' number of bins unless given; `bincounts(x, lo, hi, k)` computes the same counts anywhere |
+| `hist <sample> [<bins>]` | a histogram over the sample's range, Sturges' number of bins unless given — a trailing integer is the count only when what precedes it is a sample, so `hist y * 2` draws `y * 2`; a cell that is not a real number refuses the sample; `bincounts(x, lo, hi, k)` computes the same counts anywhere |
 
 For `bode` and `nyquist` the bounds are a frequency **band**, so `wMin` must be greater than
 zero — a geometric grid cannot start at zero. See

@@ -44,7 +44,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `bode <expr> <v> <wMin> <wMax> [n]` | **Browser only** — Bode diagram: dB and unwrapped degrees, log frequency axis (`wMin > 0`) |
 | `nyquist <expr> <v> <wMin> <wMax> [n]` | **Browser only** — Nyquist diagram in the complex plane, axes locked |
 | `rlocus <G> <v> <kMin> <kMax> [n]` | **Browser only** — root locus: the closed-loop poles of `G` over a gain band (geometric when `kMin > 0`), one continuous line per branch, axes locked |
-| `hist <sample> [bins]` | **Browser only** — histogram over the sample's range; the bin count defaults to Sturges' rule. `bincounts` gives the same counts anywhere |
+| `hist <sample> [bins]` | **Browser only** — histogram over the sample's range; the bin count defaults to Sturges' rule. A trailing integer is the count only when what precedes it is a sample (`hist y * 2` is the sample `y * 2`); every cell must be a real number. `bincounts` gives the same counts anywhere |
 
 ---
 
@@ -834,12 +834,22 @@ laplace(exp(2*t)*cos(t), t, s)  -> (s-2)/((s-2)^2+1)  first-shift
 laplace(t^3*exp(-t), t, s)      derivative-of-transform rule
 ```
 
-### Fourier transform  `F{e(t)} = L{e(t)}|_{s=iω}`
+### Fourier transform  `F{e(t)} = ∫ e(t)·e^(−iωt) dt` over the whole line
+
+**Two-sided**: `L{e(t)}(iω) + L{e(−t)}(−iω)`. `fourierCausal` is the transform of `e(t)·u(t)`.
 
 ```
-fourier(exp(-2*t), t, w)        -> 1/(2 + i*w)
-fourier(1, t, w)                -> 1/(i*w)
+fourier(exp(-abs(t)), t, w)          -> 2/(1 + w^2)
+fourier(step(t+1) - step(t-1), t, w)    the centred pulse, 2*sin(w)/w
+fourier(step(t)*exp(-2*t), t, w)     -> 1/(2 + i*w)
+fourierCausal(exp(-2*t), t, w)       -> 1/(2 + i*w)
+fourier(1, t, w)                        unevaluated, with a note: a pole on the axis
 ```
+
+Answered only when every pole of each Laplace part lies strictly left of the imaginary axis
+(a pole there cancelled in the whole transform, as the pulse's, is fine). `1`, `cos(t)` and
+`step(t)` need Dirac deltas, `exp(-t)` diverges as `t → −∞`, and a pole whose side depends on
+a free parameter cannot be placed: all stay unevaluated with a note saying why.
 
 ### Inverse Laplace transform  `L⁻¹{f(s)}`
 
@@ -874,7 +884,8 @@ invztrans(z/(z-2)^2, z, n)      -> n*2^(n-1)
 dft(x)                          X[k] = sum x[n] e^(-2 pi i k n / N): a row or column,
                                 real or complex; the shape is kept; N <= 8192
 idft(X)                         the inverse, with the 1/N
-conv(x, h)                      linear convolution, length n + m - 1; exact on exact input
+conv(x, h)                      linear convolution, length n + m - 1; exact on exact input;
+                                n*m <= 2.5e7 products, or 4e4 when exact
 ```
 
 The DTFT needs no function of its own: it is `ztrans` with `z := exp(i*w)`.

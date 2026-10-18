@@ -328,6 +328,8 @@ object ToLatex:
       case _Laplace(f, _, s)           => Some(Transformed("L", inverse = false, f, s))
       case _InverseLaplace(f, _, t)    => Some(Transformed("L", inverse = true,  f, t))
       case _Fourier(f, _, w)           => Some(Transformed("F", inverse = false, f, w))
+      // F_0141: the causal transform carries a `+` subscript, the one-sided half of F.
+      case _FourierCausal(f, _, w)     => Some(Transformed("F", inverse = false, f, w, "_{+}"))
       case _ZTransform(f, _, z)        => Some(Transformed("Z", inverse = false, f, z))
       case _InverseZTransform(f, _, n) => Some(Transformed("Z", inverse = true,  f, n))
       case _                           => None
@@ -336,10 +338,10 @@ object ToLatex:
    *  and the variable the result is a function of.
    */
   private case class Transformed(symbol: String, inverse: Boolean,
-                                 operand: _Expression, result: _Variable):
+                                 operand: _Expression, result: _Variable, subscript: String = ""):
     /** `\mathcal{L}\{f\}(s)` — the braces are escaped, since bare ones would group silently. */
     def latex: String =
-      val op = if inverse then s"\\mathcal{$symbol}^{-1}" else s"\\mathcal{$symbol}"
+      val op = if inverse then s"\\mathcal{$symbol}^{-1}" else s"\\mathcal{$symbol}$subscript"
       s"$op\\left\\{${at(operand, Grouped)}\\right\\}(${greek(result.variable)})"
 
   /** Matches an exponent that denotes an `n`-th root, answering `n`.
