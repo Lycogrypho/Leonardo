@@ -1437,6 +1437,55 @@ final class Session:
                                            a.lo, a.hi, a.n, env))
     }
 
+  /** The root locus behind the browser's `rlocus` command (F_0140): `samples`' argument syntax
+   *  through the shared `sweepArgs`, read as a band of gains — geometric when it starts above
+   *  zero — answering continuous branches with the open-loop poles and zeros for markers.
+   *
+   *  @param rest the command's arguments: `<G> <var> <kMin> <kMax> [<n>]`
+   *  @return the locus, or the message explaining why there is none
+   */
+  def rootLocusPoints(rest: String): Either[String, Session.Locus] =
+    sweepArgs(rest, "rlocus").flatMap { a =>
+      control.rootLocusSweep(a.resolved, _Variable(a.variable), a.lo, a.hi, a.n, env)
+        .map((bs, ps, zs) => Session.Locus(a.expr, a.variable, bs, ps, zs))
+        .toRight(s"rlocus: ${a.expr} is not a proper rational function of ${a.variable} with numeric coefficients")
+    }
+
+  /** The binned sample behind the browser's `hist` command (F_0135): `<expr> [<k>]`, the sample
+   *  binned over its own range in `k` equal bins, Sturges' `⌈log₂ n⌉ + 1` when `k` is not given.
+   *
+   *  **The trailing count is read before the expression**, since `x 10` would otherwise parse as
+   *  the product `x·10`.  A constant sample is given the unit range around its value, the one
+   *  bin it fills.  The counts come from `statistics.binCounts`, so the figure and
+   *  `bincounts(x, lo, hi, k)` at the prompt cannot disagree; the data is returned rather than
+   *  printed, the [[samplePoints]] split, so a plotter never re-reads rounded text.
+   *
+   *  @param rest the command's arguments: `<expr> [<k>]`
+   *  @return the bin edges and counts, or the message explaining why there are none
+   */
+  def histogramBins(rest: String): Either[String, Session.Histogram] =
+    // The LAST whitespace-separated token, when it is a whole number: an `s"$e $k"` pattern
+    // splits at the first space, which reads `[[2, 2, 2]] 1` as `[[2,` and `2, 2]] 1`.
+    val trailingCount = """^(.*\S)\s+(\d+)$""".r
+    val (exprStr, kStr) = rest.trim match
+      case trailingCount(e, k) => (e.trim, Some(k))
+      case other               => (other, None)
+    if exprStr.isEmpty then Left("usage: hist <sample> [<bins>]")
+    else parsed(exprStr) { e =>
+      val values = statistics.sampleOf(withDefinitions(e).eval(env)).map(_.collect { case _Number(d) => d })
+      values match
+        case Some(xs) if xs.nonEmpty && xs.forall(d => !d.isNaN && !d.isInfinite) =>
+          val k = kStr.flatMap(_.toIntOption).getOrElse(math.ceil(math.log(xs.size.toDouble) / math.log(2.0)).toInt + 1)
+          if k < 1 || k > Session.MaxSampleCount then
+            Left(s"hist: <bins> must be between 1 and ${Session.MaxSampleCount}, got: ${kStr.getOrElse(k)}")
+          else
+            val (lo, hi) = if xs.min < xs.max then (xs.min, xs.max) else (xs.min - 0.5, xs.max + 0.5)
+            statistics.binCounts(xs, lo, hi, k)
+              .map(cs => Session.Histogram(exprStr, Vector.tabulate(k + 1)(i => if i == k then hi else lo + i * (hi - lo) / k), cs))
+              .toRight("hist: the sample could not be binned")
+        case _ => Left(s"hist: $exprStr is not a sample of numbers (a row, a column or a matrix)")
+    }
+
   /** How many samples the sweeping commands will attempt for `rest` (issue F_0044).
    *
    *  **Additive rather than a field on [[Session.Samples]]**, which is what it looks like it
@@ -1785,6 +1834,25 @@ object Session:
    */
   final case class Sweep(expr: String, variable: String,
                          points: Vector[(Double, Double, Double)])
+
+  /** A root locus — see `Session.rootLocusPoints` (F_0140).
+   *
+   *  @param expr     the plant as the user typed it
+   *  @param variable the frequency variable
+   *  @param branches one sequence of `(re, im)` closed-loop poles per branch, in gain order
+   *  @param poles    the open-loop poles
+   *  @param zeros    the open-loop zeros
+   */
+  final case class Locus(expr: String, variable: String, branches: Vector[Vector[(Double, Double)]],
+                         poles: Vector[(Double, Double)], zeros: Vector[(Double, Double)])
+
+  /** A binned sample — see `Session.histogramBins` (F_0135).
+   *
+   *  @param expr   the sample as the user typed it, for labelling the figure
+   *  @param edges  the `k + 1` bin edges, ascending
+   *  @param counts the `k` counts
+   */
+  final case class Histogram(expr: String, edges: Vector[Double], counts: Vector[Int])
 
   /** The parsed arguments the sweeping commands share — see `Session.sweepArgs`.
    *

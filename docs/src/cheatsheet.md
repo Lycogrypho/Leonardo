@@ -43,6 +43,8 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `points <expr> <v> <lo> <hi> [n]` | **Browser only** — draw the samples as points, axes locked to the same scale |
 | `bode <expr> <v> <wMin> <wMax> [n]` | **Browser only** — Bode diagram: dB and unwrapped degrees, log frequency axis (`wMin > 0`) |
 | `nyquist <expr> <v> <wMin> <wMax> [n]` | **Browser only** — Nyquist diagram in the complex plane, axes locked |
+| `rlocus <G> <v> <kMin> <kMax> [n]` | **Browser only** — root locus: the closed-loop poles of `G` over a gain band (geometric when `kMin > 0`), one continuous line per branch, axes locked |
+| `hist <sample> [bins]` | **Browser only** — histogram over the sample's range; the bin count defaults to Sturges' rule. `bincounts` gives the same counts anywhere |
 
 ---
 
@@ -221,7 +223,11 @@ betaI(x, a, b)                  regularised incomplete beta
 ```
 normal(m, s)   uniform(a, b)   exponential(l)     continuous families
 binomial(n, p) poisson(l)                         discrete families
-studentt(nu)   chisq(k)                           Student-t and chi-squared
+geometric(p)                                      trials up to and including the first
+                                                  success, support 1, 2, ...
+hypergeometric(N, K, n)                           successes in n draws without replacement
+                                                  from N items, K of them successes
+studentt(nu)   chisq(k)   fdist(d1, d2)           Student-t, chi-squared and Fisher's F
 betadist(a, b) gammadist(k, rate)                 Beta and Gamma; gammadist is SHAPE-RATE,
                                                   not shape-scale (its mean is k/rate)
 pdf(d, x)      cdf(d, x)                          density / mass and cumulative distribution
@@ -276,9 +282,27 @@ wregress(X, y, w)                    weighted: min sum w_i (x_i b - y_i)^2, each
 rls(theta, P, phi, y, lambda)        one recursive-least-squares update -> [[theta', P']]
                                      theta n x m, P n x n, phi n x 1, y m x 1 (or a number),
                                      lambda in (0, 1]; use  theta, P := rls(theta, P, ...)
+median(x)                            the middle order statistic; for a distribution,
+                                     its 0.5 quantile
+quantile(x, p)                       sample quantile, Hyndman-Fan type 7 (R, numpy);
+quantile(x, p, 6)                    type 6, the (n+1)p percentile of most textbooks;
+                                     a distribution's quantile as before
+sort(x)                              ascending; a row stays a row, a column a column
+bincounts(x, lo, hi, k)              counts in k equal bins over [lo, hi], a k x 1 column;
+                                     half-open bins, the last one closed
 ttest(sample, mu)                    two-sided one-sample t-test p-value
+ttest(x, y)                          two-sample: Welch's test (unequal variances)
+ttest(x, y, pooled)                  two-sample with a pooled variance, n1 + n2 - 2 dof
+ttest(..., less)  ttest(..., greater)   one-sided alternatives (slot words)
+proptest(x, n, p0)                   one-proportion z-test p-value
+proptest(x1, n1, x2, n2)             two-proportion z-test, pooled proportion;
+                                     less / greater as for ttest
 confint(sample, level)               confidence interval for the mean, as [[lo, hi]]
 chisqtest(obs, exp)                  Pearson goodness-of-fit p-value
+chisqtest(table)                     test of independence (or homogeneity) on an r x c
+                                     table of counts, (r-1)(c-1) dof
+vartest(x, y)                        F-test of two variances; less / greater allowed
+anova(g1, g2, ...)                   one-way ANOVA p-value over two or more samples
 ```
 
 ---
@@ -578,9 +602,12 @@ a xor b                         exclusive or
 a or b and c                    = a or (b and c)
 x = 1 and y = 2                 connectives bind looser than "="
 false and (1/0 = 0)             -> false   (short-circuit: right side never evaluated)
+cnf(a xor b)                    conjunctive normal form: ((a or b) and ((not b) or (not a)))
+dnf((a or b) and not a)         disjunctive normal form: (b and (not a))
 ```
 
-Precedence (tightest to loosest): `not` > `and` > `xor` > `or` > `implies`.
+Precedence (tightest to loosest): `not` > `and` > `xor` > `or` > `implies`.  `cnf`/`dnf`
+stay as written for a graded truth value, or past the clause budget.
 
 ### Three-valued (Kleene) logic
 
@@ -622,6 +649,8 @@ trapmf(x, a, b, c, d)           trapezoidal
 gaussmf(x, mean, sigma)         gaussian
 sigmf(x, a, c)                  sigmoid
 defuzz(trimf(x,0,5,10), x, 0, 10)  -> 5.0   crisp value by centre of gravity
+defuzz(e, x, lo, hi, mom)       by the mean of the maxima; `bisector` splits the area,
+                                `centroid` is the default (slot words, not reserved)
 ```
 
 ### Custom membership curves
@@ -839,6 +868,17 @@ invztrans(z/((z-1)*(z-2)), z, n) -> 2^n - 1
 invztrans(z/(z-2)^2, z, n)      -> n*2^(n-1)
 ```
 
+### Discrete Fourier transform and convolution
+
+```
+dft(x)                          X[k] = sum x[n] e^(-2 pi i k n / N): a row or column,
+                                real or complex; the shape is kept; N <= 8192
+idft(X)                         the inverse, with the 1/N
+conv(x, h)                      linear convolution, length n + m - 1; exact on exact input
+```
+
+The DTFT needs no function of its own: it is `ztrans` with `z := exp(i*w)`.
+
 `Z{c} = c·z/(z−1)`, **not** `c/z` — the Laplace `L{c} = c/s` does not carry over, because a
 constant *sequence* is `c` at every index. Complex poles, the Kronecker delta and the bilateral
 transform are not supported and stay symbolic.
@@ -860,7 +900,16 @@ tfpoles(g, s)  tfzeros(g, s)    roots as a row, sorted; false for provably none.
                                 tfzeros, not zeros: zeros(r, c) is the zero matrix
 isStable(g, s)                  every pole strictly in the LEFT HALF-PLANE
 isStableDiscrete(g, z)          every pole strictly INSIDE THE UNIT CIRCLE
+routhTable(g, s)                the Routh array of the denominator as a matrix, rows padded
+                                with zeros; `routh` itself stays a legal variable name
 stateSpace(A, B, C, D)          [[A, B, C, D]], the model row
+controllable(A, B)              true when the input reaches every state (QR rank test);
+observable(A, C)                observability, by the duality; both also take the model
+                                row: controllable(sys)
+ctrb(A, B)  obsv(A, C)          the controllability and observability matrices
+acker(A, B, poles)              single-input pole placement by Ackermann: K with the
+                                eigenvalues of A - B*K at the poles (a row, conjugate
+                                pairs together); u = -K*x; certified, else declined
 dlsim(sys, u, x0)               outputs p x N of x[k+1] = Ax + Bu, y = Cx + Du; u is m x N;
                                 x0 = 0 is rest, D = 0 no feedthrough
 dlsim(sys, u, x0, states)       [[Y, X]], X = x[0] .. x[N]: the LAST column continues a run
@@ -904,8 +953,9 @@ zeros(g, s)      Option[Vector[_Value]]   numerator roots      (_Complex when os
 dcgain(g, s)     Option[Double]           G(0)
 isStable(g, s)   Option[Boolean]          every pole strictly in the LEFT HALF-PLANE
 isStableDiscrete(g, z)                    every pole strictly INSIDE THE UNIT CIRCLE
-routhTable(g, s) Option[Vector[Vector[Double]]]   jagged rows; no grammar form, so
-                                          `routh` stays a legal variable name
+routhTable(g, s) Option[Vector[Vector[Double]]]   jagged rows; at the prompt the same
+                                          name answers a padded matrix
+rootLocus(g, s, gains)   Option[branches]  closed-loop poles per gain, matched into branches
 bode(g, s, w)    Option[(magnitude, phase-radians)]     one frequency
 nyquist(g, s, w) Option[(real, imaginary)]               one frequency
 

@@ -164,9 +164,54 @@ case class _Defuzzify(e: _Expression, v: _Variable, lo: _Expression, hi: _Expres
   override def rebuild(cs: List[_Expression]): _Expression = _Defuzzify(cs.head, v, cs(1), cs(2))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (lo.eval(env), hi.eval(env)) match
-      case (Right(_Number(l)), Right(_Number(h))) if l < h =>
-        centroid(e, v, l, h, DefaultDefuzzSamples, env) match
-          case Some(x) => Right(_Number(x))
-          case None    => Left(this)
-      case _ => Left(this)
+    defuzzBy(DefuzzMethod.Centroid, e, v, lo, hi, env).toRight(this)
+
+
+/** A defuzzification method, with the slot word that names it at the prompt (F_0136).
+ *
+ *  The words are matched only in `defuzz`'s last slot and are **not** reserved, the `c2d`
+ *  precedent: `mom` and `bisector` are plausible variable names elsewhere.
+ */
+enum DefuzzMethod(val word: String):
+  /** The centre of gravity, [[centroid]]: what the four-argument `defuzz` uses. */
+  case Centroid extends DefuzzMethod("centroid")
+  /** The mean of the maximal points, [[meanOfMaxima]]. */
+  case MeanOfMaxima extends DefuzzMethod("mom")
+  /** The point splitting the area in two, [[bisector]]. */
+  case Bisector extends DefuzzMethod("bisector")
+
+
+/** One defuzzification over numeric bounds `lo < hi`, or `None`. */
+private def defuzzBy(method: DefuzzMethod, e: _Expression, v: _Variable, lo: _Expression,
+                     hi: _Expression, env: Environment): Option[_Value] =
+  (lo.eval(env), hi.eval(env)) match
+    case (Right(_Number(l)), Right(_Number(h))) if l < h =>
+      val f = method match
+        case DefuzzMethod.Centroid     => centroid
+        case DefuzzMethod.MeanOfMaxima => meanOfMaxima
+        case DefuzzMethod.Bisector     => bisector
+      f(e, v, l, h, DefaultDefuzzSamples, env).map(_Number(_))
+    case _ => None
+
+
+/** Defuzzification by a named method: `defuzz(e, v, lo, hi, centroid | mom | bisector)`
+ *  (F_0136).
+ *
+ *  A node of its own rather than a widened [[_Defuzzify]], because that case class is published
+ *  and a new field would be a binary break -- the `_RidgeRegress` precedent.  The four-argument
+ *  form keeps meaning the centroid, so every existing call is unchanged.
+ *
+ *  @param method the defuzzification method
+ *  @param e      the membership expression
+ *  @param v      the variable ranging over the universe of discourse (a binder)
+ *  @param lo     left endpoint of the universe
+ *  @param hi     right endpoint
+ */
+case class _DefuzzifyBy(method: DefuzzMethod, e: _Expression, v: _Variable, lo: _Expression, hi: _Expression)
+    extends _Expression:
+  override def toString: String = s"defuzz($e, $v, $lo, $hi, ${method.word})"
+  override def children: List[_Expression] = List(e, lo, hi)
+  override def rebuild(cs: List[_Expression]): _Expression = _DefuzzifyBy(method, cs.head, v, cs(1), cs(2))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    defuzzBy(method, e, v, lo, hi, env).toRight(this)

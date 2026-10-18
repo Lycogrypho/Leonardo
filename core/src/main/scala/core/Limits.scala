@@ -128,6 +128,11 @@ enum Limit(val default: Long):
   /** The vectorised dimension of a linear matrix equation `solve` reduces by Kronecker products. */
   case MaxVectorizedSize extends Limit(400)
 
+  // ── transforms (F_0137) ──
+
+  /** The length of a `dft`/`idft`, by the direct `N²` sum; `DftTest` bounds the time at it. */
+  case MaxDftLength extends Limit(8192)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

@@ -373,8 +373,9 @@ class ControlTest extends AnyFlatSpec:
 
   "routh" should "be an ordinary variable name, not a reserved word" in
   {
-    // 2.13 decision 3: `routhTable` is library-only, so reserving the word taxed every user
-    // a plausible variable name and bought nothing. Settled before 3.8.0 published it --
+    // 2.13 decision 3: `routhTable` was library-only, so reserving the word taxed every user
+    // a plausible variable name and bought nothing. Since F_0139 the table is at the prompt as
+    // `routhTable(G, s)`, and `routh` stays free because it shipped free. Settled before 3.8.0 published it --
     // releasing an unpublished reservation is free, reclaiming a released one is not.
     Parser.parse("routh") match
       case r if r.successful => assert(r.get == _Variable("routh"), s"got ${r.get}")

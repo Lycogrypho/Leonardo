@@ -427,9 +427,11 @@ Weigh this whenever a new keyword is added.  Names that merely *start* with a re
 (`gamma1`, `betaX`, `sina`) are always still legal.
 
 **Reserve a word when a production needs it, never in anticipation of one.**  The control
-domain once reserved `routh` alongside its four real keywords, but `routhTable` is a library
-function with no grammar production — so the word was taxed from every user and bought
-nothing, and the reservation was released.  The asymmetry is what makes this worth getting
+domain once reserved `routh` alongside its four real keywords, but `routhTable` was then a
+library function with no grammar production — so the word was taxed from every user and bought
+nothing, and the reservation was released.  When the table did reach the prompt (F_0139) it came
+under its Scala name, `routhTable(G, s)`: `routh` had shipped as a free name by then, and
+reclaiming a released word breaks every saved script that uses it.  The asymmetry is what makes this worth getting
 right at the time: a reservation that has not yet appeared in a published release can be
 dropped for free, while reclaiming a name users have bound breaks their saved scripts.  If a
 production is merely *planned*, leave the name alone until it exists.

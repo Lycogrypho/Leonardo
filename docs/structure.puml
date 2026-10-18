@@ -915,7 +915,8 @@ package "matrix" {
 }
 
 ' ===================================================
-' PACKAGE: transform - Laplace / Fourier / inverse Laplace / z-transform (imports core + scalar)
+' PACKAGE: transform - Laplace / Fourier / inverse Laplace / z-transform / DFT
+' (imports core + scalar + matrix; the matrix edge is F_0137's)
 ' ===================================================
 package "transform" {
 
@@ -1004,6 +1005,14 @@ package "transform" {
     "_ZTransform"        --|> "_Functional"
     "_InverseZTransform" --|> "_Functional"
     "_ZTransform"        ..> "ZTransform"        : zTransformOf() at eval
+
+    class "_Dft / _Conv" <<case>> [[developer.html]] {
+        __ F_0137: dft / idft / conv __
+        direct N^2 sum, twiddles at k n mod N
+        N <= Limit.MaxDftLength; conv exact on exact input
+        the reason transform imports matrix
+    }
+    "_Dft / _Conv" ..> "_Matrix" : complex result cells
     "_InverseZTransform" ..> "InverseZTransform" : inverseZTransformOf() at eval
     "ZTransform"         ..> "Derive"            : -z dX/dz rule
     "InverseZTransform"  ..> "Polynomial"        : squareFreeFactors
@@ -1323,6 +1332,19 @@ package "logic" {
     "_Defuzzify" --|> "_Expression"
     "_Membership" ..> "_Truth"        : eval -> _Truth.of(degree)
     "_Defuzzify"  ..> "Defuzzify"     : centroid() at eval
+
+    class "_DefuzzifyBy" <<case>> [[logic.html]] {
+        __ F_0136 __
+        defuzz(e, v, lo, hi, centroid | mom | bisector)
+    }
+    class "_NormalForm" <<case>> [[logic.html]] {
+        __ F_0133: cnf(e) / dnf(e) __
+        unevaluated on a refusal, never the input
+    }
+    "_DefuzzifyBy" --|> "_Expression"
+    "_NormalForm"  --|> "_Expression"
+    "_DefuzzifyBy" ..> "Defuzzify"
+    "_NormalForm"  ..> "NormalForm"
     "Defuzzify"   ..> "Compile"       : compile() fast path (logic -> scalar)
 
     "_Connective" ..> "Kleene"        : asTruth + min-max kernels at eval
@@ -1591,6 +1613,25 @@ package "control" {
     "_ControlAnalysis" ..> "TransferFunction" : poles / zeros / isStable / coeffsOf
     "_ControlAnalysis" ..> "Discretisation" : c2d
 
+    class "_Routh" <<case>> [[control.html]] {
+        __ F_0139: routhTable(G, s) __
+        jagged array zero-padded into a matrix
+        `routh` stays a free variable (shipped in 3.8)
+    }
+    "_Routh" ..> "TransferFunction" : routhTable
+    class "_Structure" <<case>> [[control.html]] {
+        __ F_0134 __
+        controllable / observable: QR rank test
+        ctrb / obsv: the matrices; or a model row
+    }
+    "_Structure" ..> "StateSpace" : ctrbOf / fullRowRank
+    class "_Acker" <<case>> [[control.html]] {
+        __ F_0138: acker(A, B, poles) __
+        K = e_n' C^-1 phi(A), u = -K x
+        certified: eig(A - B K) = poles
+    }
+    "_Acker" ..> "StateSpace" : acker
+
     class "Dlsim" <<object>> [[control.html]] {
         __ F_0064: x[k+1] = Ax + Bu, y = Cx + Du __
         dlsim(sys, u, x0[, states]) -> Y or [[Y, X]]
@@ -1847,6 +1888,20 @@ package "statistics" <<Rectangle>> {
     "_WeightedRegress" ..> "Regression"
     "_Test"          ..> "Descriptive"
     "_Test"          ..> "TestKind"
+
+    class "_Quantile / _Sort / _BinCounts" <<case>> [[developer.html]] {
+        __ F_0129, F_0135 __
+        quantile dispatches: distribution or sample
+        type 7 default, type 6 on request
+        bincounts: half-open bins, the last closed
+    }
+    class "_TTest / _PropTest / _ChiSqTable / _VarTest / _Anova" <<case>> [[developer.html]] {
+        __ F_0130, F_0131 __
+        Welch / pooled, less / greater slot words
+        every tail read directly, never 1 - cdf
+    }
+    "_Quantile / _Sort / _BinCounts" ..> "Descriptive"
+    "_TTest / _PropTest / _ChiSqTable / _VarTest / _Anova" ..> "Descriptive"
     "_Statistic"     ..> "Moments" : distribution arg -> probability.Moments
 }
 
@@ -2034,6 +2089,14 @@ package "parser" {
 "Parser" ..> "_RidgeRegress"   : regress(X, y, lambda)
 "Parser" ..> "_WeightedRegress" : wregress(X, y, w)
 "Parser" ..> "_Test"           : ttest / confint / chisqtest
+"Parser" ..> "_Quantile / _Sort / _BinCounts" : quantile (dispatching) / median / sort / bincounts
+"Parser" ..> "_TTest / _PropTest / _ChiSqTable / _VarTest / _Anova" : ttest options / proptest / chisqtest(t) / vartest / anova
+"Parser" ..> "_NormalForm"     : cnf / dnf
+"Parser" ..> "_DefuzzifyBy"    : defuzz(e, v, lo, hi, method)
+"Parser" ..> "_Structure"      : controllable / observable / ctrb / obsv
+"Parser" ..> "_Routh"          : routhTable(G, s)
+"Parser" ..> "_Acker"          : acker(A, B, poles)
+"Parser" ..> "_Dft / _Conv"    : dft / idft / conv
 "Parser" ..> "_Based"          : 0x.. / 0b.. / 0o.. / 0t.. literals
 "Parser" ..> "_IntervalOf"     : [lo, hi] literal (after the matrix rule)
 "Parser" ..> "_VectorOperator" : grad / div / curl / laplacian / jacobian / hessian (6.24)

@@ -311,14 +311,20 @@ simplifyLogicFully(And(_Truth.of(0.3), _Truth.of(0.3)), identity, false, LogicSe
 
 [Defuzzifying](https://en.wikipedia.org/wiki/Defuzzification) collapses a membership curve
 back to one crisp value. `centroid` (the centre of gravity) is what `defuzz(e, v, lo, hi)`
-uses in the grammar; `meanOfMaxima` and `bisector` are available as library functions:
+uses in the grammar; a fifth argument chooses another method — `mom` for the mean of the
+maxima, `bisector` for the point that splits the area — and `meanOfMaxima` and `bisector` are
+the library functions behind them:
 
 ```scala mdoc
 val tri = Parser.parse("trimf(x, 0, 5, 10)").get
 centroid(tri, _Variable("x"), 0.0, 10.0)
 meanOfMaxima(tri, _Variable("x"), 0.0, 10.0)
 Parser.parse("defuzz(trimf(x, 0, 5, 10), x, 0, 10)").get.eval(env)
+Parser.parse("defuzz(trapmf(x, 0, 2, 4, 10), x, 0, 10, mom)").get.eval(env)
 ```
+
+The method words are matched only in that last slot, so `mom` and `bisector` stay usable as
+variable names everywhere else.
 
 Sampling takes `scalar.compile`'s fast path when the curve is pure scalar arithmetic
 and falls back to tree evaluation for membership and connective nodes — this is where
@@ -358,6 +364,18 @@ toCNF(Or(a, Not(a)))
 
 These algorithms are crisp-only: they treat non-connective sub-expressions as
 opaque atoms and are valid for boolean operands only.
+
+At the prompt they are the functions `cnf(e)` and `dnf(e)`, so a normal form composes inside an
+expression and survives `:save`.  Where the library functions hand their input back — a graded
+truth value, or a distribution past the clause budget — the prompt form stays as written instead,
+since an input returned unchanged cannot be told from one that was already in normal form:
+
+```
+> cnf(a xor b)
+((a or b) and ((not b) or (not a)))
+> dnf((a or b) and not a)
+(b and (not a))
+```
 
 ## Truth tables
 

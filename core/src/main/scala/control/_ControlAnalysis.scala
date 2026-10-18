@@ -24,7 +24,7 @@ import matrix._Matrix
 /** `G` with every bound name but `v` replaced by its value, then evaluated with no bindings at
  *  all — so a nested node such as `arx2tf(…)` or `feedback(…)` folds to its rational, while
  *  `v` stays free even when the session happens to bind it. */
-private def resolved(g: _Expression, v: _Variable, env: Environment): _Expression =
+private[control] def resolved(g: _Expression, v: _Variable, env: Environment): _Expression =
   val bound = substitute(g, (g.freeVars - v.variable).flatMap(n => env.get(n).map(value => n -> (value: _Expression))).toMap)
   bound.eval(new Environment(env.precision, Map(), env.symmetricLogic, env.semantics, env.workingPrecision, env.limits)).toExpression
 
@@ -91,6 +91,34 @@ case class _TfZeros(g: _Expression, v: _Variable) extends _Expression:
    *  @return the reason */
   def declineReason(env: Environment): Option[String] =
     Option.when(eval(env) == Left(this))(rootsDecline(resolved(g, v, env), v))
+
+
+/** `routhTable(G, s)` -- the Routh array of `G`'s denominator, [[routhTable]] at the prompt
+ *  (F_0139), under the Scala name: `routh` shipped as a free variable name in 3.8 and stays one.
+ *
+ *  A matrix whose rows are the array's, from the highest power down, each padded with zeros to
+ *  the width of the first: the zeros are the entries a hand-built table leaves blank.  The
+ *  degenerate cases are shown, not repaired, as [[routhTable]] keeps them -- an exhausted row is
+ *  the last row, since a zero row is itself the diagnostic.  [[isStable]] still decides from
+ *  the poles, for the reason its note gives; this node is for reading the table.
+ *
+ *  @param g the transfer function
+ *  @param v the frequency variable, excluded from `children` */
+case class _Routh(g: _Expression, v: _Variable) extends _Expression:
+  override def toString: String = s"routhTable($g, $v)"
+  override def children: List[_Expression] = List(g)
+  override def rebuild(c: List[_Expression]): _Expression = _Routh(c.head, v)
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    routhTable(resolved(g, v, env), v).filter(_.nonEmpty).map { rows =>
+      val width = rows.map(_.size).max
+      _MatrixValue(rows.size, width, rows.flatMap(_.padTo(width, 0.0)).toArray)
+    }.toRight(this)
+
+  /** Why this call stays unevaluated, or `None` when it answers.
+   *  @param env the evaluation environment
+   *  @return the reason */
+  def declineReason(env: Environment): Option[String] =
+    Option.when(eval(env).isLeft)(rootsDecline(resolved(g, v, env), v))
 
 
 /** `isStable(G, s)` or `isStableDiscrete(G, z)` — [[isStable]] / [[isStableDiscrete]] at the

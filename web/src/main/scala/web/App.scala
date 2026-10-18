@@ -45,6 +45,12 @@ object App:
   private val EmptySweep =
     "(no response over that band — the frequency grid is logarithmic, so wMin must be > 0)"
 
+  /** Shown for a bare `hist` (F_0135); the bin count defaults to Sturges' rule. */
+  private val HistUsage = "usage: hist <sample> [<bins>]"
+
+  /** Shown for a bare `rlocus` (F_0140): a band of gains, geometric when it starts above zero. */
+  private val LocusUsage = "usage: rlocus <G> <var> <kMin> <kMax> [<n>]"
+
   private val session = new Session()
   private var history: Vector[String] = Vector.empty
   private var cursor: Int             = 0
@@ -164,6 +170,10 @@ object App:
         // they mean nothing, for a feature it does not have (the issue-2.13 rule).
         case "plot" | "points"   => PlotUsage
         case "bode" | "nyquist"  => SweepUsage
+        case "hist"              => HistUsage
+        case "rlocus"            => LocusUsage
+        case s"rlocus $rest"     => rootLocus(rest)
+        case s"hist $rest"       => histogram(rest)
         case s"plot $rest"       => plot(rest, geometric = false)
         case s"points $rest"     => plot(rest, geometric = true)
         case s"bode $rest"       => bode(rest)
@@ -208,6 +218,29 @@ object App:
           if geometric then PlotSpec.coordinates(r.points, r.expr)
           else PlotSpec.line(r.points, r.expr, r.variable)
         draw(spec, r.points.size, session.requestedSampleCount(rest))
+
+  /** Draws a root locus (F_0140): the branches `Session.rootLocusPoints` matched point to point,
+   *  with the open-loop poles and zeros marked.  Intercepted here like `bode`, never reserved. */
+  private def rootLocus(rest: String): String =
+    session.rootLocusPoints(rest) match
+      case Left(why) if why.startsWith("usage:") => LocusUsage
+      case Left(why)                             => why
+      case Right(l) =>
+        Plot.draw(PlotSpec.locus(l.branches, l.poles, l.zeros, s"${l.expr}   (gain sweep)"), byId("figure")) match
+          case Right(_)  => s"(root locus: ${l.branches.size} branches over ${l.branches.headOption.fold(0)(_.size)} gains)"
+          case Left(why) => why
+
+  /** Draws a histogram of a sample (F_0135): the counts `Session.histogramBins` returns, as bars
+   *  over their bins.  `hist` is intercepted here like `plot`, never reserved, since a terminal
+   *  REPL cannot draw it; `bincounts(x, lo, hi, k)` is the same data everywhere. */
+  private def histogram(rest: String): String =
+    session.histogramBins(rest) match
+      case Left(why) if why.startsWith("usage:") => HistUsage
+      case Left(why)                             => why
+      case Right(h) =>
+        Plot.draw(PlotSpec.histogram(h.edges, h.counts, h.expr), byId("figure")) match
+          case Right(_)  => s"(histogram of ${h.counts.sum} values in ${h.counts.size} bins)"
+          case Left(why) => why
 
   /** Draws a Bode diagram — gain and unwrapped phase over a logarithmic frequency axis. */
   private def bode(rest: String): String =

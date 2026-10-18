@@ -94,30 +94,33 @@ object Parser extends JavaTokenParsers:
     "linearize",                                                                            // F_0059; `affine` is a slot word
     "arx", "arxRegressors", "arx2tf", "arx2ss",                                           // F_0060 ARX identification
     "tfpoles", "tfzeros", "isStable", "isStableDiscrete", "stateSpace", "c2d",           // F_0092 control analysis;
+    "controllable", "observable", "ctrb", "obsv",                                           // F_0134 structural tests
+    "acker",                                                                                // F_0138; NOT "place"
                                                          // `zoh`/`tustin` are slot words, NOT reserved
     "dlsim",                                                                                // F_0064; `states` is a slot word
     "dare", "dlqr", "dlyap", "kalmanGain", "kalmanStep",                                    // F_0065 Riccati / LQR / Kalman
     "rls",                                                                                  // F_0057 recursive least squares
     "series", "parallel", "feedback", "impulse",                                            // control theory
-                                                         // NOT "routh": `routhTable` is a
-                                                         // library function with no grammar
-                                                         // production, so reserving the word
-                                                         // taxed a plausible variable name
-                                                         // and bought nothing.
-                                                         // Reserve a word when a production
-                                                         // needs it, not in anticipation of
-                                                         // one -- releasing an unpublished
-                                                         // reservation is free, reclaiming a
-                                                         // released one breaks saved scripts
+    "routhTable",                                        // F_0139: the prompt form keeps the
+                                                         // Scala name (F_0092 Decision B).
+                                                         // NOT "routh": it shipped free in 3.8
+                                                         // (2.13), and reclaiming a released
+                                                         // word breaks saved scripts that use
+                                                         // it as a variable -- reserve a word
+                                                         // when a production needs it, and
+                                                         // never one already given away
     "derive", "integral", "solve", "solveSystem", "limit", "laplace", "fourier", "invlaplace", "ode", // functionals
     "ztrans", "invztrans",                                                                  // z-transform
+    "dft", "idft", "conv",                                                                  // F_0137 discrete Fourier, convolution
     "domain", "differentiable", "singularities",         // domain analysis
     "taylor", "maclaurin", "fourierSeries", "pade", "laurent",
     "tobase", "balanced",                                // base conversion            // series expansions
     "and", "or", "not", "implies", "xor",                // logic connectives
+    "cnf", "dnf",                                        // F_0133 normal forms at the prompt
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions;
     "normal", "uniform", "exponential", "binomial", "poisson",  // distributions
+    "geometric", "hypergeometric",                             // F_0132 discrete families
     "pdf", "cdf", "prob", "quantile", "expect", "variance",     // queries + moments
     "studentt", "chisq",                                       // t / chi-squared distributions
     "draw", "prbs",                                            // F_0067 seeded sampling and PRBS
@@ -126,7 +129,11 @@ object Parser extends JavaTokenParsers:
                                                          // and gamma stay free as variables)
                                                          // and Bayesian updating
     "mean", "pvariance", "stddev", "pstddev", "covariance", "correlation",  // descriptive statistics
+    "median", "sort",                                          // F_0129 order statistics
+    "bincounts",                                               // F_0135; `hist` is browser-only, NOT reserved
     "regress", "ttest", "confint", "chisqtest",                // regression + inference
+    "proptest",                                                // F_0130; less/greater/pooled are slot words
+    "fdist", "vartest", "anova",                               // F_0131 F distribution and its tests
     "wregress",                                                // F_0062 weighted least squares
     "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",  // analytic tier; lowercase-safe --
                                                          // none is a plausible variable
@@ -635,9 +642,16 @@ object Parser extends JavaTokenParsers:
     // "isStable(" cannot match "isStableDiscrete(": the literal needs the parenthesis next.
     "tfpoles(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ { case g ~ v => _TfPoles(g, v) }               |
     "tfzeros(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ { case g ~ v => _TfZeros(g, v) }               |
+    "routhTable(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ { case g ~ v => _Routh(g, v) }              |
     "isStable(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ { case g ~ v => _IsStable(g, v) }             |
     "isStableDiscrete(" ~> guardedExpr ~ ("," ~> variable) <~ ")" ^^ {
       case g ~ v => _IsStable(g, v, discrete = true) }                                                    |
+    // F_0134: the structural tests and their matrices, from (A, B) / (A, C) or a model row.
+    // "obsv(" before "observable(" is not needed: the literals differ at the third letter.
+    StructureKind.values.toList.map { k =>
+      (k.word + "(") ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ { case a ~ x => _Structure(k, a, x) }
+    }.reduceLeft(_ | _)                                                                                   |
+    "acker(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ { case a ~ b ~ p => _Acker(a, b, p) } |
     // The model IS the 1x4 row, so stateSpace needs no node: the dfact -> mfact sugar precedent.
     "stateSpace(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
       case a ~ b ~ c ~ d => stateSpace(a, b, c, d) }                                                       |
@@ -673,6 +687,11 @@ object Parser extends JavaTokenParsers:
     "binomial("    ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _DistributionOf(DistKind.Binomial, List(a, b)) } |
     "exponential(" ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Exponential, List(a)) }                            |
     "poisson("     ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Poisson, List(a)) }                                |
+    // F_0132.  "hypergeometric(" cannot be shadowed by "geometric(": the literal is matched from
+    // the start of the token, so the two never compete.
+    "geometric("   ~> guardedExpr <~ ")"       ^^ { a => _DistributionOf(DistKind.Geometric, List(a)) }                              |
+    "hypergeometric(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case n ~ k ~ d => _DistributionOf(DistKind.Hypergeometric, List(n, k, d)) }                                                     |
     // Statistics.  `mean` and `variance` accept a sample OR a distribution.
     "mean("        ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.Mean, e) }          |
     "pvariance("   ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.PVariance, e) }     |
@@ -690,9 +709,29 @@ object Parser extends JavaTokenParsers:
     // F_0057: one recursive-least-squares update, state in and state out as [[theta', P']].
     "rls(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
       ("," ~> guardedExpr) <~ ")" ^^ { case t ~ p ~ f ~ y ~ l => _Rls(t, p, f, y, l) }                          |
-    "ttest("       ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.TTest, a, b) }     |
+    // F_0130: the options are slot words after the two operands, never reserved; with none the
+    // published _Test is built as before.
+    "ttest("       ~> guardedExpr ~ ("," ~> guardedExpr) ~ opt("," ~> slotWord("pooled")) ~ opt("," ~> alternativeWord) <~ ")" ^^ {
+      case a ~ b ~ None ~ None => _Test(TestKind.TTest, a, b)
+      case a ~ b ~ p ~ alt     => _TTest(a, b, p.isDefined, alt.getOrElse(Alternative.TwoSided)) }               |
     "confint("     ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ConfInt, a, b) }   |
     "chisqtest("   ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case a ~ _ ~ b => _Test(TestKind.ChiSqTest, a, b) } |
+    "chisqtest("   ~> guardedExpr <~ ")" ^^ _ChiSqTable.apply                                                         |
+    // F_0131: the F distribution and its two tests.
+    "fdist("       ~> guardedExpr ~ ("," ~> guardedExpr) <~ ")" ^^ { case a ~ b => _DistributionOf(DistKind.FDist, List(a, b)) } |
+    "vartest("     ~> guardedExpr ~ ("," ~> guardedExpr) ~ opt("," ~> alternativeWord) <~ ")" ^^ {
+      case a ~ b ~ alt => _VarTest(a, b, alt.getOrElse(Alternative.TwoSided)) }                                  |
+    "anova("       ~> guardedExpr ~ rep1("," ~> guardedExpr) <~ ")" ^^ { case g ~ gs => _Anova(g :: gs) }          |
+    // proptest: the forms ending in an alternative are tried FIRST, since `less` would otherwise
+    // parse as a free variable in an operand slot.
+    "proptest(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> alternativeWord) <~ ")" ^^ {
+      case x ~ n ~ p ~ alt => _PropTest(List(x, n, p), alt) }                                                    |
+    "proptest(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> alternativeWord) <~ ")" ^^ {
+      case x1 ~ n1 ~ x2 ~ n2 ~ alt => _PropTest(List(x1, n1, x2, n2), alt) }                                   |
+    "proptest(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case x1 ~ n1 ~ x2 ~ n2 => _PropTest(List(x1, n1, x2, n2), Alternative.TwoSided) }                        |
+    "proptest(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case x ~ n ~ p => _PropTest(List(x, n, p), Alternative.TwoSided) }                                         |
     // F_0050: the conjugate families and Bayesian updating.  `posterior` takes the likelihood
     // as a family with its unknown parameter left FREE (`binomial(10, p)`), so its second
     // argument is an ordinary expression that the node reads structurally at eval time.
@@ -712,7 +751,19 @@ object Parser extends JavaTokenParsers:
     "studentt("    ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.StudentT, List(a)) }   |
     "chisq("       ~> guardedExpr <~ ")" ^^ { a => _DistributionOf(DistKind.ChiSquared, List(a)) } |    "pdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Pdf, d, List(x)) }      |
     "cdf("      ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Cdf, d, List(x)) }      |
-    "quantile(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case d ~ _ ~ x => _DistributionQuery(Query.Quantile, d, List(x)) } |
+    // F_0129: quantile dispatches on its first argument, a distribution or a sample, the
+    // `variance` precedent; the optional third argument chooses type 6 or 7 for a sample.
+    "quantile(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ opt("," ~> guardedExpr) <~ ")" ^^ {
+      case x ~ p ~ m => _Quantile(x, p, m) }                                                                                         |
+    "median("   ~> guardedExpr <~ ")" ^^ { e => _Statistic(StatKind.Median, e) }                                                     |
+    "sort("     ~> guardedExpr <~ ")" ^^ _Sort.apply                                                                               |
+    // F_0137: discrete-time Fourier analysis. "idft(" and "dft(" never compete: a literal is
+    // matched from the start of the token.
+    "dft("      ~> guardedExpr <~ ")" ^^ { x => _Dft(x, inverse = false) }                                                     |
+    "idft("     ~> guardedExpr <~ ")" ^^ { x => _Dft(x, inverse = true) }                                                      |
+    "conv("     ~> guardedExpr ~ ("," ~> guardedExpr) <~ ")" ^^ { case x ~ h => _Conv(x, h) }                                  |
+    "bincounts(" ~> guardedExpr ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) <~ ")" ^^ {
+      case x ~ lo ~ hi ~ k => _BinCounts(x, lo, hi, k) }                                                                           |
     "prob("     ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case d ~ _ ~ lo ~ _ ~ hi => _DistributionQuery(Query.Prob, d, List(lo, hi)) }                                               |
     // The predicate form: `prob(X < 2)`, `prob(0 < X and X < 1)`.  Takes a full LOGIC
@@ -786,6 +837,9 @@ object Parser extends JavaTokenParsers:
     // Fuzzy tier: truth(x) converts a scalar degree into a truth value (and is the
     // printed form of a graded _Truth); the hedges and curves produce degrees directly.
     "truth("    ~> guardedExpr <~ ")"                                     ^^ _TruthOf.apply                |
+    // F_0133: the normal forms, taking a full logic expression like the hedges do.
+    "cnf("      ~> guardedMembership <~ ")" ^^ (e => _NormalForm(NormalKind.CNF, e))                  |
+    "dnf("      ~> guardedMembership <~ ")" ^^ (e => _NormalForm(NormalKind.DNF, e))                  |
     "very("     ~> guardedMembership <~ ")"                               ^^ Very.apply                    |
     "somewhat(" ~> guardedMembership <~ ")"                               ^^ Somewhat.apply                |
     "trimf("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
@@ -800,6 +854,18 @@ object Parser extends JavaTokenParsers:
     "sigmf(" ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case x ~ _ ~ a ~ _ ~ c => SigMF(x, a, c)
     }
+
+  /** A slot word, matched whole: `pooledly` is not `pooled`. */
+  private def slotWord(w: String): Parser[String] = s"$w(?![a-zA-Z0-9_])".r
+
+  /** A one-sided alternative in a test's trailing slot (F_0130): `less` or `greater`. */
+  private lazy val alternativeWord: Parser[Alternative] =
+    (slotWord("less") ^^^ Alternative.Less) | (slotWord("greater") ^^^ Alternative.Greater)
+
+  /** The method word in `defuzz`'s last slot (F_0136), word-boundary guarded so `momentum`
+   *  is not read as `mom`. */
+  private lazy val defuzzMethod: Parser[DefuzzMethod] =
+    DefuzzMethod.values.toList.map[Parser[DefuzzMethod]](m => slotWord(m.word) ^^^ m).reduceLeft(_ | _)
 
   /** Direction token for `limit(expr, var, point, +/-)`. */
   private lazy val limitDir: Parser[LimitDir] = ("+" | "-") ^^ {
@@ -860,6 +926,11 @@ object Parser extends JavaTokenParsers:
     // defuzz(e, v, lo, hi): centre-of-gravity defuzzification over [lo, hi].
     // The bounds are expressions for the same reason the integral's are (F_0040): a
     // defuzzification over `0` to `2*pi` is as ordinary as one over `0` to `10`.
+    // F_0136: the method form is tried FIRST, the fib/step arity precedent; the method words
+    // are slot-matched and not reserved.
+    "defuzz(" ~> guardedMembership ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ defuzzMethod <~ ")" ^^ {
+      case e ~ _ ~ v ~ _ ~ l ~ _ ~ h ~ _ ~ m => _DefuzzifyBy(m, e, v, l, h)
+    }                                                                                             |
     "defuzz(" ~> guardedMembership ~ "," ~ variable ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
       case e ~ _ ~ v ~ _ ~ l ~ _ ~ h => _Defuzzify(e, v, l, h)
     }                                                                                             |

@@ -159,6 +159,82 @@ def sampleCorrelation(xs: Vector[_Value], ys: Vector[_Value], env: Environment):
     r   <- finite(math.max(-1.0, math.min(1.0, raw)))
   yield r
 
+/** The sample in ascending order (F_0129) — compared exactly when every entry is exact, else as
+ *  `Double`s.  Selection is not arithmetic, so an exact sample stays exact.
+ *
+ *  @param xs the sample
+ *  @return the entries sorted, or `None` when an entry is not a real number
+ */
+def sortedSample(xs: Vector[_Value]): Option[Vector[_Value]] =
+  exactly(xs).map(_.sorted: Vector[_Value]).orElse(doubles(xs).map(_.sorted.map(d => _Number(d))))
+
+/** The `p`-quantile of a sample by Hyndman and Fan's type 7 or type 6 (F_0129, Decision 3).
+ *
+ *  Both interpolate linearly between neighbouring order statistics; they differ in where `p`
+ *  falls.  **Type 7** (the default, R's and numpy's) puts it at the 0-based position `(n − 1)p`,
+ *  so `p = 0` and `p = 1` are the extremes.  **Type 6** puts it at the 1-based position
+ *  `(n + 1)p`, the percentile formula of *Introductory Statistics 2e*, clamped to the extremes
+ *  below 1 and past `n`.  The median is the same under both.
+ *
+ *  @param xs     the sample, non-empty
+ *  @param p      the probability, in `[0, 1]`
+ *  @param method `7` or `6`
+ *  @param env    supplies the reduction policy for the exact path
+ *  @return the quantile — exact when the sample and `p` are — or `None` for an empty sample, a
+ *          `p` outside `[0, 1]` or another method
+ */
+def sampleQuantile(xs: Vector[_Value], p: _Value, method: Int, env: Environment): Option[_Value] =
+  if xs.isEmpty || (method != 6 && method != 7) then None
+  else
+    val n = xs.size
+    (exactly(xs), p) match
+      case (Some(rs), q: _Rational) =>
+        Option.when(q.signum >= 0 && q <= _Rational(1)) {
+          val pol    = env.rationalPolicy
+          val sorted = rs.sorted
+          val raw    = if method == 7 then _Rational(n - 1).multiply(q, pol)
+                       else _Rational(n + 1).multiply(q, pol).subtract(_Rational(1), pol)
+          val h      = if raw.signum < 0 then _Rational(0) else if raw > _Rational(n - 1) then _Rational(n - 1) else raw
+          val j      = (h.num / h.den).toInt       // floor, since h >= 0
+          val g      = h.subtract(_Rational(j), pol)
+          if g.isZero || j + 1 >= n then sorted(j)
+          else sorted(j).add(g.multiply(sorted(j + 1).subtract(sorted(j), pol), pol), pol)
+        }
+      case _ =>
+        for
+          ds <- doubles(xs)
+          pd <- p match { case _Number(d) => Some(d); case _ => None }
+          if pd >= 0.0 && pd <= 1.0
+          sorted = ds.sorted
+          raw    = if method == 7 then (n - 1) * pd else (n + 1) * pd - 1.0
+          h      = math.max(0.0, math.min((n - 1).toDouble, raw))
+          j      = math.floor(h).toInt
+          g      = h - j
+          v     <- finite(if g == 0.0 || j + 1 >= n then sorted(j) else sorted(j) + g * (sorted(j + 1) - sorted(j)))
+        yield v
+
+/** The counts of a sample in `k` equal bins over `[lo, hi]` (F_0135).
+ *
+ *  Each bin is half-open, `[lo + i·w, lo + (i+1)·w)`, except the last, which is closed so that
+ *  `hi` itself — typically the sample's maximum — is counted.  Values outside `[lo, hi]` are left
+ *  out.  A value's bin is computed, not searched for, so the cost is one pass.
+ *
+ *  @param xs the sample
+ *  @param lo the lower edge
+ *  @param hi the upper edge, above `lo`
+ *  @param k  the number of bins, at least 1
+ *  @return the `k` counts, or `None` for `lo ≥ hi`, `k < 1` or a non-finite edge
+ */
+def binCounts(xs: Vector[Double], lo: Double, hi: Double, k: Int): Option[Vector[Int]] =
+  Option.when(k >= 1 && lo < hi && !lo.isInfinite && !hi.isInfinite) {
+    val counts = new Array[Int](k)
+    val width  = (hi - lo) / k
+    xs.foreach { x =>
+      if x >= lo && x <= hi then counts(math.min(k - 1, ((x - lo) / width).toInt)) += 1
+    }
+    counts.toVector
+  }
+
 /** The square root of a value, exact-tier aware. */
 private def rootOf(v: _Value, env: Environment): Option[_Value] = v match
   case r: _Rational => exactSqrt(r, env.workingPrecision)

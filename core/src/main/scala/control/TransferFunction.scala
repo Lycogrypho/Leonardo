@@ -345,6 +345,69 @@ private def logGrid(wMin: Double, wMax: Double, points: Int): Vector[Double] =
       case k                    => math.exp(lo + k * step)
     }
 
+/** The root locus of `G` over `gains` (F_0140): the roots of `den + K·num` at each gain, as
+ *  **continuous branches**, one per closed-loop pole.
+ *
+ *  **The matching is the substance.**  A root finder returns its roots in no particular order,
+ *  and the order changes wherever two roots meet — at every breakaway point — so connecting the
+ *  `i`-th root of one gain to the `i`-th of the next cross-connects the branches.  Each gain's
+ *  roots are therefore matched to the previous gain's by nearest continuation, the globally
+ *  closest pair first.  A gain where the degree drops (`K = −denₙ/numₙ` for a biproper plant) or
+ *  the roots do not resolve is dropped from **every** branch at once — the point, never the
+ *  axis (the F_0022 rule), or later points would pair with the wrong partners.
+ *
+ *  @param g     the open-loop transfer function, proper and rational with numeric coefficients
+ *  @param v     the frequency variable
+ *  @param gains the gains, in the order the branches should run
+ *  @return the branches, each a sequence of `(re, im)` points, or `None` for an improper or
+ *          non-rational `G`, or when no gain resolved
+ */
+def rootLocus(g: _Expression, v: _Variable, gains: Vector[Double]): Option[Vector[Vector[(Double, Double)]]] =
+  coeffsOf(g, v).filter((num, den) => degreeOf(den) >= 1 && degreeOf(num) <= degreeOf(den)).flatMap { (num, den) =>
+    val n = degreeOf(den)
+    val samples = gains.flatMap { k =>
+      val c = Vector.tabulate(n + 1)(i => den.lift(i).getOrElse(0.0) + k * num.lift(i).getOrElse(0.0))
+      if degreeOf(c) != n then None
+      else rootsAtScale(c).map(_.flatMap(_Complex.parts)).filter(_.size == n)
+    }
+    Option.when(samples.nonEmpty) {
+      samples.tail.scanLeft(samples.head)(continueBranches).transpose
+    }
+  }
+
+/** `next` reordered so that its `i`-th root continues `prev`'s `i`-th: the globally closest
+ *  remaining pair is matched first. */
+private def continueBranches(prev: Vector[(Double, Double)], next: Vector[(Double, Double)]): Vector[(Double, Double)] =
+  val pairs = (for i <- prev.indices; j <- next.indices
+               yield (math.hypot(prev(i)._1 - next(j)._1, prev(i)._2 - next(j)._2), i, j)).sortBy(_._1)
+  val chosen = pairs.foldLeft(Map.empty[Int, Int]) { case (m, (_, i, j)) =>
+    if m.contains(i) || m.values.exists(_ == j) then m else m + (i -> j)
+  }
+  prev.indices.toVector.map(i => next(chosen(i)))
+
+/** The root-locus sweep behind the browser's `rlocus` command (F_0140): `G` with the
+ *  environment's parameters substituted (never `v`), swept over `points` gains from `kMin` to
+ *  `kMax` — geometric when `kMin > 0`, since a locus is read across decades of gain as a Bode plot
+ *  is across decades of frequency, linear otherwise.
+ *
+ *  @param g      the open-loop transfer function
+ *  @param v      the frequency variable
+ *  @param kMin   the lowest gain
+ *  @param kMax   the highest gain, above `kMin`
+ *  @param points how many gains, at least 2
+ *  @param env    the bindings for `G`'s parameters
+ *  @return the branches with the open-loop poles and zeros as `(re, im)`, or `None`
+ */
+def rootLocusSweep(g: _Expression, v: _Variable, kMin: Double, kMax: Double, points: Int,
+                   env: Environment): Option[(Vector[Vector[(Double, Double)]], Vector[(Double, Double)], Vector[(Double, Double)])] =
+  val plant = resolved(g, v, env)
+  val gains =
+    if kMin > 0.0 then logGrid(kMin, kMax, points)
+    else if points >= 2 && kMax > kMin then Vector.tabulate(points)(i => kMin + i * (kMax - kMin) / (points - 1))
+    else Vector.empty
+  def parts(vs: Option[Vector[_Value]]): Vector[(Double, Double)] = vs.getOrElse(Vector.empty).flatMap(_Complex.parts)
+  rootLocus(plant, v, gains).map(bs => (bs, parts(poles(plant, v)), parts(zeros(plant, v))))
+
 /** The Bode sweep: magnitude in decibels and **unwrapped** phase in degrees, over a
  *  logarithmically spaced grid (issue F_0004).
  *

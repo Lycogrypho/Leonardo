@@ -79,12 +79,56 @@ def toDNF(e: _Expression, symmetric: Boolean, limits: Limits): _Expression =
  */
 private def toNormalForm(e: _Expression, conjunctive: Boolean, symmetric: Boolean,
                          maxClauses: Long): _Expression =
-  if !isCrisp(e, symmetric) then e
-  else
-    val simplified = simplifyLogicFully(e, identity, symmetric)
-    clauseSet(nnf(simplified, negated = false), conjunctive, maxClauses) match
-      case Some(clauses) => rebuildNormal(clauses, conjunctive)
-      case None          => e
+  normalForm(e, conjunctive, symmetric, maxClauses).getOrElse(e)
+
+
+/** The normal form of `e`, or `None` when there is none to give: `e` carries a graded truth
+ *  value, or the distribution passes `maxClauses`.
+ *
+ *  [[toCNF]] and [[toDNF]] answer `e` itself in both cases, which cannot be told apart from an
+ *  input already in normal form; [[_NormalForm]] needs the difference, so it stays unevaluated
+ *  on a refusal rather than presenting the input as its own normal form (F_0133).
+ */
+private def normalForm(e: _Expression, conjunctive: Boolean, symmetric: Boolean,
+                       maxClauses: Long): Option[_Expression] =
+  Option.when(isCrisp(e, symmetric))(simplifyLogicFully(e, identity, symmetric)).flatMap { simplified =>
+    clauseSet(nnf(simplified, negated = false), conjunctive, maxClauses).map(rebuildNormal(_, conjunctive))
+  }
+
+
+/** Which normal form a [[_NormalForm]] asks for (F_0133), with its grammar keyword. */
+enum NormalKind(val word: String):
+  /** `cnf(e)` -- a conjunction of disjunctions of literals. */
+  case CNF extends NormalKind("cnf")
+  /** `dnf(e)` -- a disjunction of conjunctions of literals. */
+  case DNF extends NormalKind("dnf")
+
+
+/** `cnf(e)` / `dnf(e)` -- the conjunctive or disjunctive normal form of a logical expression
+ *  at the prompt (F_0133).
+ *
+ *  The library has had [[toCNF]] and [[toDNF]] since 4.E; this node is their prompt form,
+ *  chosen over a REPL command (Decision 1, 2026-10-17) so that it composes inside an expression
+ *  and round-trips through `:save`.  The operand is evaluated first, so a bound name takes its
+ *  value; a concrete truth value is its own normal form.  On a refusal -- a graded truth value
+ *  anywhere in the operand, or more than the environment's `Limit.MaxNormalFormClauses`
+ *  clauses -- the node stays unevaluated rather than answering the operand as though it were
+ *  already in normal form.
+ *
+ *  @param kind which normal form
+ *  @param e    the logical expression
+ */
+case class _NormalForm(kind: NormalKind, e: _Expression) extends _Expression:
+  override def toString: String = s"${kind.word}($e)"
+  override def children: List[_Expression] = List(e)
+  override def rebuild(c: List[_Expression]): _Expression = _NormalForm(kind, c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    e.eval(env) match
+      case Right(v) => Right(v)
+      case Left(x)  =>
+        normalForm(x, kind == NormalKind.CNF, env.symmetricLogic, env.limits(Limit.MaxNormalFormClauses))
+          .fold(Left(_NormalForm(kind, x)))(Left(_))
 
 
 /** Negation normal form: desugars `implies`/`xor` and pushes `not` down to the leaves

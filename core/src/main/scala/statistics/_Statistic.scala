@@ -3,7 +3,7 @@ package statistics
 
 import core.*
 import matrix._Matrix
-import probability.{_Distribution, DistKind}
+import probability.{_Distribution, _DistributionQuery, DistKind, Query}
 
 
 /** The single-sample statistics. */
@@ -13,6 +13,7 @@ enum StatKind:
   /** `pvariance(x)` — population, `n` */            case PVariance
   /** `stddev(x)` — the root of `variance` */        case StdDev
   /** `pstddev(x)` — the root of `pvariance` */      case PStdDev
+  /** `median(x)` — the middle order statistic (F_0129); a distribution's 0.5 quantile */ case Median
 
 object StatKind:
   /** The grammar keyword. */
@@ -22,6 +23,7 @@ object StatKind:
     case PVariance => "pvariance"
     case StdDev    => "stddev"
     case PStdDev   => "pstddev"
+    case Median    => "median"
 
 
 /** A statistic of one argument, which may be a **sample or a distribution**.
@@ -64,6 +66,9 @@ case class _Statistic(kind: StatKind, arg: _Expression) extends _Expression:
       probability.Moments.variance(d, None, env).flatMap(_.toOption).collect {
         case _Number(v) if v >= 0.0 => _Number(math.sqrt(v))
       }
+    // The distribution's own quantile query, so the two cannot disagree about where 0.5 falls.
+    case StatKind.Median =>
+      _DistributionQuery(Query.Quantile, d, List(_Number(0.5))).eval(env).toOption
 
   /** The statistic of a sample. */
   private def fromSample(xs: Vector[_Value], env: Environment): Option[_Value] = kind match
@@ -72,6 +77,97 @@ case class _Statistic(kind: StatKind, arg: _Expression) extends _Expression:
     case StatKind.PVariance => sampleVariance(xs, 0, env)
     case StatKind.StdDev    => sampleStdDev(xs, 1, env)
     case StatKind.PStdDev   => sampleStdDev(xs, 0, env)
+    // The same under type 6 and type 7; one half is exact, so an exact sample stays exact.
+    case StatKind.Median    => _Rational(2).reciprocal(env.rationalPolicy).flatMap(sampleQuantile(xs, _, 7, env))
+
+
+/** `bincounts(x, lo, hi, k)` — [[binCounts]] at the prompt (F_0135): a `k × 1` column of counts,
+ *  the data behind a histogram.  An exact sample is read as the numbers it holds.  `k` is capped
+ *  by the environment's `Limit.MaxMatrixCells`, the size of the column it builds.
+ *
+ *  @param x  the sample
+ *  @param lo the lower edge
+ *  @param hi the upper edge
+ *  @param k  the number of bins
+ */
+case class _BinCounts(x: _Expression, lo: _Expression, hi: _Expression, k: _Expression) extends _Expression:
+  override def toString: String = s"bincounts($x, $lo, $hi, $k)"
+  override def children: List[_Expression] = List(x, lo, hi, k)
+  override def rebuild(c: List[_Expression]): _Expression = _BinCounts(c.head, c(1), c(2), c(3))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val rs = List(x, lo, hi, k).map(_.eval(env))
+    val counts = for
+      xs <- sampleOf(rs.head).flatMap(asDoubles)
+      l  <- numberOf(rs(1))
+      h  <- numberOf(rs(2))
+      n  <- numberOf(rs(3))
+      if n == math.floor(n) && n >= 1 && n <= env.limits(Limit.MaxMatrixCells)
+      cs <- binCounts(xs, l, h, n.toInt)
+    yield _MatrixValue(cs.size, 1, cs.map(_.toDouble).toArray)
+    counts.toRight(_BinCounts(rs.head.toExpression, rs(1).toExpression, rs(2).toExpression, rs(3).toExpression))
+
+
+/** `quantile(x, p)` or `quantile(x, p, method)` — dispatching on its first argument like
+ *  [[_Statistic]] (F_0129): a distribution answers its inverse cdf, exactly as before, and a
+ *  sample its order-statistic quantile by [[sampleQuantile]], type 7 unless `method` is `6`.
+ *  A method given with a distribution is refused: there is nothing for it to choose between.
+ *
+ *  @param x      the sample or distribution
+ *  @param p      the probability
+ *  @param method `6` or `7`, when given
+ */
+case class _Quantile(x: _Expression, p: _Expression, method: Option[_Expression]) extends _Expression:
+  override def toString: String = s"quantile($x, $p${method.fold("")(m => s", $m")})"
+  override def children: List[_Expression] = x :: p :: method.toList
+  override def rebuild(c: List[_Expression]): _Expression = _Quantile(c.head, c(1), method.map(_ => c(2)))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val (rx, rp) = (x.eval(env), p.eval(env))
+    val rm       = method.map(_.eval(env))
+    val answer: Option[Either[_Expression, _Value]] = rx match
+      case Right(d: _Distribution) =>
+        Option.when(rm.isEmpty)(_DistributionQuery(Query.Quantile, d, List(rp.toExpression)).eval(env))
+      case other =>
+        for
+          xs <- sampleOf(other)
+          pv <- rp.toOption
+          m  <- rm.fold(Option(7)) {
+                  case Right(_Number(k)) if k == 6.0 || k == 7.0 => Some(k.toInt)
+                  case _                                          => None
+                }
+          q  <- sampleQuantile(xs, pv, m, env)
+        yield Right(q)
+    answer.getOrElse(Left(_Quantile(rx.toExpression, rp.toExpression, rm.map(_.toExpression))))
+
+
+/** `sort(x)` — the entries of a sample in ascending order (F_0129): a row as a row, a column as
+ *  a column, any other matrix as a column of all its entries.  An exact sample stays exact, on
+ *  the symbolic `_Matrix` carrier exact matrices use.
+ *
+ *  @param x the sample
+ */
+case class _Sort(x: _Expression) extends _Expression:
+  override def toString: String = s"sort($x)"
+  override def children: List[_Expression] = List(x)
+  override def rebuild(c: List[_Expression]): _Expression = _Sort(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val r = x.eval(env)
+    val shape = r match
+      case Right(m: _MatrixValue) => Some((m.rows, m.cols))
+      case Left(m: _Matrix)       => Some((m.rows, m.cols))
+      case _                      => None
+    val sorted = for
+      (rows, cols) <- shape
+      xs           <- sampleOf(r)
+      ys           <- sortedSample(xs)
+    yield
+      val (rr, cc) = if rows == 1 then (1, ys.size) else (ys.size, 1)
+      ys.collect { case _Number(d) => d } match
+        case ds if ds.size == ys.size && !ys.exists(_.isInstanceOf[_Rational]) => Right(_MatrixValue(rr, cc, ds.toArray))
+        case _                                                                  => Left(_Matrix(rr, cc, ys))
+    sorted.getOrElse(Left(_Sort(r.toExpression)))
 
 
 /** The two-sample statistics. */
@@ -218,29 +314,237 @@ private def numberOf(r: Either[_Expression, _Value]): Option[Double] = r match
   case Right(_Number(d)) => Some(d)
   case _                 => None
 
-/** The two-sided one-sample t-test, returning the p-value.
+
+/** The alternative hypothesis of a test (F_0130), with the slot word that names it.  The words
+ *  are matched only in a test's trailing slots and are **not** reserved (the `c2d` precedent). */
+enum Alternative(val word: String):
+  /** `≠`: both tails, the default and what the two-argument forms have always answered. */
+  case TwoSided extends Alternative("two.sided")
+  /** `<`: the lower tail. */
+  case Less extends Alternative("less")
+  /** `>`: the upper tail. */
+  case Greater extends Alternative("greater")
+
+
+/** The p-value of a statistic whose null distribution is symmetric about zero with cdf `cdf`.
  *
- *  `t = (x̄ − μ₀) / (s / √n)` on `n − 1` degrees of freedom, where `s` is the **unbiased**
- *  sample standard deviation — which is why `variance(sample)` divides by `n − 1`.  The
- *  p-value is `2·(1 − F(|t|))`, computed from the far tail so the subtraction does not eat
- *  the answer for a strongly significant result.
- */
-private def tTest(ra: Either[_Expression, _Value], rb: Either[_Expression, _Value],
-                  env: Environment): Option[Either[_Expression, _Value]] =
+ *  Each tail is read directly — `cdf(−|t|)` and `cdf(−t)`, never `1 − cdf(…)`, which subtracts two
+ *  nearly equal quantities exactly where a p-value matters (the conditioning rule). */
+private def symmetricTail(stat: Double, alt: Alternative, cdf: Double => Option[Double]): Option[Double] =
+  alt match
+    case Alternative.TwoSided => cdf(-math.abs(stat)).map(p => math.min(1.0, 2.0 * p))
+    case Alternative.Less     => cdf(stat)
+    case Alternative.Greater  => cdf(-stat)
+
+/** The p-value of a t statistic on `df` degrees of freedom. */
+private def tTail(t: Double, df: Double, alt: Alternative): Option[Double] =
+  _Distribution.of(DistKind.StudentT, Vector(df)).flatMap(d => symmetricTail(t, alt, d.cdf))
+
+/** The p-value of a standard-normal statistic. */
+private def zTail(z: Double, alt: Alternative): Option[Double] =
+  _Distribution.of(DistKind.Normal, Vector(0.0, 1.0)).flatMap(d => symmetricTail(z, alt, d.cdf))
+
+/** The mean, the unbiased variance and the size of a sample of plain numbers. */
+private def moments(xs: Vector[_Value], env: Environment): Option[(Double, Double, Int)] =
   for
-    xs   <- sampleOf(ra)
-    mu0  <- numberOf(rb)
-    n     = xs.size
-    if n >= 2
-    mean <- sampleMean(xs, env).collect { case _Number(d) => d }
-    sd   <- sampleStdDev(xs, 1, env).collect { case _Number(d) => d }
-    if sd > 0.0
-    t     = (mean - mu0) / (sd / math.sqrt(n.toDouble))
-    d    <- _Distribution.of(DistKind.StudentT, Vector((n - 1).toDouble))
-    // 2 * cdf(-|t|) rather than 2 * (1 - cdf(|t|)): the second form subtracts two nearly
-    // equal quantities far out in the tail, which is exactly where a p-value matters most.
-    p    <- d.cdf(-math.abs(t))
-  yield Right(_Number(math.min(1.0, 2.0 * p)))
+    m <- sampleMean(xs, env).collect { case _Number(d) => d }
+    v <- sampleVariance(xs, 1, env).collect { case _Number(d) => d }
+  yield (m, v, xs.size)
+
+/** The t-test (F_0130 widens it): one sample against `μ₀` when `rb` is a number, two samples
+ *  when it is a matrix — Welch's test, or the pooled-variance test on `n₁ + n₂ − 2` degrees of
+ *  freedom when `pooled`.  Welch's degrees of freedom are Welch-Satterthwaite's, not an integer.
+ *
+ *  `t = (x̄ − μ₀) / (s / √n)` for one sample, `s` the **unbiased** sample standard deviation —
+ *  which is why `variance(sample)` divides by `n − 1`.  A constant sample has no t statistic.
+ */
+private def tTest(ra: Either[_Expression, _Value], rb: Either[_Expression, _Value], env: Environment,
+                  pooled: Boolean = false, alt: Alternative = Alternative.TwoSided): Option[Either[_Expression, _Value]] =
+  val p = numberOf(rb) match
+    case Some(mu0) if !pooled =>
+      for
+        xs        <- sampleOf(ra)
+        (m, v, n) <- moments(xs, env)
+        if n >= 2 && v > 0.0
+        p         <- tTail((m - mu0) / math.sqrt(v / n), n - 1.0, alt)
+      yield p
+    case Some(_) => None
+    case None =>
+      for
+        xs           <- sampleOf(ra)
+        ys           <- sampleOf(rb)
+        (m1, v1, n1) <- moments(xs, env)
+        (m2, v2, n2) <- moments(ys, env)
+        if n1 >= 2 && n2 >= 2
+        p            <- twoSampleTail(m1, v1, n1, m2, v2, n2, pooled, alt)
+      yield p
+  p.map(v => Right(_Number(v)))
+
+/** The two-sample t-test's p-value: pooled on `n₁ + n₂ − 2`, or Welch's on the
+ *  Welch-Satterthwaite degrees of freedom. */
+private def twoSampleTail(m1: Double, v1: Double, n1: Int, m2: Double, v2: Double, n2: Int,
+                          pooled: Boolean, alt: Alternative): Option[Double] =
+  if pooled then
+    val sp2 = ((n1 - 1) * v1 + (n2 - 1) * v2) / (n1 + n2 - 2)
+    Option.when(sp2 > 0.0)((m1 - m2) / math.sqrt(sp2 * (1.0 / n1 + 1.0 / n2)))
+      .flatMap(tTail(_, n1 + n2 - 2.0, alt))
+  else
+    val (a, b) = (v1 / n1, v2 / n2)
+    Option.when(a + b > 0.0)((a, b)).flatMap { (a, b) =>
+      tTail((m1 - m2) / math.sqrt(a + b), (a + b) * (a + b) / (a * a / (n1 - 1) + b * b / (n2 - 1)), alt)
+    }
+
+
+/** `ttest(x, m_or_y [, pooled] [, less | greater])` — a t-test with its options written (F_0130).
+ *  A node of its own because the published [[_Test]] has two fields; `ttest(a, b)` with no
+ *  option still builds `_Test`, which answers the two-sample test too.
+ *
+ *  @param a      the sample
+ *  @param b      the null mean, or the second sample
+ *  @param pooled whether two samples share a variance
+ *  @param alt    the alternative hypothesis
+ */
+case class _TTest(a: _Expression, b: _Expression, pooled: Boolean, alt: Alternative) extends _Expression:
+  override def toString: String =
+    s"ttest($a, $b${if pooled then ", pooled" else ""}${if alt == Alternative.TwoSided then "" else s", ${alt.word}"})"
+  override def children: List[_Expression] = List(a, b)
+  override def rebuild(c: List[_Expression]): _Expression = _TTest(c.head, c(1), pooled, alt)
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val (ra, rb) = (a.eval(env), b.eval(env))
+    tTest(ra, rb, env, pooled, alt).getOrElse(Left(_TTest(ra.toExpression, rb.toExpression, pooled, alt)))
+
+
+/** `proptest(x, n, p0 [, alt])` or `proptest(x1, n1, x2, n2 [, alt])` — the one- and two-proportion
+ *  z-tests of *Introductory Statistics 2e* (F_0130): the normal approximation, the two-sample
+ *  form on the pooled proportion `(x₁ + x₂)/(n₁ + n₂)`.  Counts must be whole and within their
+ *  trial counts, `p0` strictly inside `(0, 1)`; otherwise the node stays unevaluated.
+ *
+ *  @param args `x, n, p0` or `x1, n1, x2, n2`
+ *  @param alt  the alternative hypothesis
+ */
+case class _PropTest(args: List[_Expression], alt: Alternative) extends _Expression:
+  override def toString: String =
+    s"proptest(${args.mkString(", ")}${if alt == Alternative.TwoSided then "" else s", ${alt.word}"})"
+  override def children: List[_Expression] = args
+  override def rebuild(c: List[_Expression]): _Expression = _PropTest(c, alt)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val rs = args.map(_.eval(env))
+    def count(x: Double, n: Double): Boolean = x == math.floor(x) && n == math.floor(n) && x >= 0 && n > 0 && x <= n
+    val p = rs.map(numberOf) match
+      case List(Some(x), Some(n), Some(p0)) if count(x, n) && p0 > 0.0 && p0 < 1.0 =>
+        zTail((x / n - p0) / math.sqrt(p0 * (1 - p0) / n), alt)
+      case List(Some(x1), Some(n1), Some(x2), Some(n2)) if count(x1, n1) && count(x2, n2) =>
+        val pool = (x1 + x2) / (n1 + n2)
+        Option.when(pool > 0.0 && pool < 1.0) {
+          (x1 / n1 - x2 / n2) / math.sqrt(pool * (1 - pool) * (1 / n1 + 1 / n2))
+        }.flatMap(zTail(_, alt))
+      case _ => None
+    p.map(v => Right(_Number(v))).getOrElse(Left(_PropTest(rs.map(_.toExpression), alt)))
+
+
+/** `chisqtest(table)` — Pearson's test of independence (or homogeneity, the same computation) on
+ *  an `r × c` table of observed counts (F_0130): expected counts from the margins,
+ *  `(r − 1)(c − 1)` degrees of freedom.  A single row or column, or a zero margin, has no test.
+ *
+ *  @param table the observed counts
+ */
+case class _ChiSqTable(table: _Expression) extends _Expression:
+  override def toString: String = s"chisqtest($table)"
+  override def children: List[_Expression] = List(table)
+  override def rebuild(c: List[_Expression]): _Expression = _ChiSqTable(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val r = table.eval(env)
+    val p = for
+      m <- _MatrixValue.ofEvaluated(r)
+      if m.rows >= 2 && m.cols >= 2
+      rows   = (0 until m.rows).map(i => (0 until m.cols).map(m(i, _)).sum)
+      cols   = (0 until m.cols).map(j => (0 until m.rows).map(m(_, j)).sum)
+      total  = rows.sum
+      if rows.forall(_ > 0.0) && cols.forall(_ > 0.0)
+      stat   = (for i <- 0 until m.rows; j <- 0 until m.cols yield
+                  val e = rows(i) * cols(j) / total
+                  (m(i, j) - e) * (m(i, j) - e) / e).sum
+      p     <- chiSquaredTail(stat, (m.rows - 1.0) * (m.cols - 1.0))
+    yield p
+    p.map(v => Right(_Number(v))).getOrElse(Left(_ChiSqTable(r.toExpression)))
+
+
+/** `P(F ≤ f)` and `P(F > f)` for Fisher's F on `(d1, d2)`, each read directly from the
+ *  regularised incomplete beta — the upper tail as `I_{d2/(d2+d1·f)}(d2/2, d1/2)` rather than
+ *  `1 − cdf` (F_0131, the conditioning rule). */
+private def fTails(f: Double, d1: Double, d2: Double): Option[(Double, Double)] =
+  for
+    lower <- scalar.incompleteBetaOf(d1 * f / (d1 * f + d2), d1 / 2.0, d2 / 2.0)
+    upper <- scalar.incompleteBetaOf(d2 / (d2 + d1 * f), d2 / 2.0, d1 / 2.0)
+  yield (lower, upper)
+
+
+/** `vartest(x, y[, less | greater])` — the F-test of two variances (F_0131): `F = s₁²/s₂²` on
+ *  `(n₁ − 1, n₂ − 1)`; `greater` is `P(F ≥ f)`, `less` is `P(F ≤ f)`, and the two-sided p-value is
+ *  twice the smaller tail.
+ *
+ *  @param a   the first sample
+ *  @param b   the second sample
+ *  @param alt the alternative hypothesis
+ */
+case class _VarTest(a: _Expression, b: _Expression, alt: Alternative) extends _Expression:
+  override def toString: String =
+    s"vartest($a, $b${if alt == Alternative.TwoSided then "" else s", ${alt.word}"})"
+  override def children: List[_Expression] = List(a, b)
+  override def rebuild(c: List[_Expression]): _Expression = _VarTest(c.head, c(1), alt)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val (ra, rb) = (a.eval(env), b.eval(env))
+    val p = for
+      xs             <- sampleOf(ra)
+      ys             <- sampleOf(rb)
+      (_, v1, n1)    <- moments(xs, env)
+      (_, v2, n2)    <- moments(ys, env)
+      if n1 >= 2 && n2 >= 2 && v1 > 0.0 && v2 > 0.0
+      (lower, upper) <- fTails(v1 / v2, n1 - 1.0, n2 - 1.0)
+    yield alt match
+      case Alternative.TwoSided => math.min(1.0, 2.0 * math.min(lower, upper))
+      case Alternative.Less     => lower
+      case Alternative.Greater  => upper
+    p.map(v => Right(_Number(v))).getOrElse(Left(_VarTest(ra.toExpression, rb.toExpression, alt)))
+
+
+/** `anova(g1, g2, …)` — one-way analysis of variance over two or more samples (F_0131),
+ *  answering the p-value of `F = MSB/MSW` on `(k − 1, N − k)`, the upper tail read directly.  With
+ *  two groups it is the pooled two-sample t-test (`F = t²`), which the tests pin.  A single group,
+ *  or groups with no spread inside them, has no test.
+ *
+ *  @param groups the samples, one per group
+ */
+case class _Anova(groups: List[_Expression]) extends _Expression:
+  override def toString: String = s"anova(${groups.mkString(", ")})"
+  override def children: List[_Expression] = groups
+  override def rebuild(c: List[_Expression]): _Expression = _Anova(c)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val rs = groups.map(_.eval(env))
+    val samples = rs.map(r => sampleOf(r).flatMap(asDoubles))
+    val p = for
+      gs <- Option.when(samples.forall(_.isDefined))(samples.flatten)
+      k   = gs.size
+      n   = gs.map(_.size).sum
+      if k >= 2 && n > k
+      grand = gs.flatten.sum / n
+      ssb   = gs.map(g => { val m = g.sum / g.size; g.size * (m - grand) * (m - grand) }).sum
+      ssw   = gs.map(g => { val m = g.sum / g.size; g.map(x => (x - m) * (x - m)).sum }).sum
+      if ssw > 0.0
+      (_, upper) <- fTails((ssb / (k - 1)) / (ssw / (n - k)), k - 1.0, n - k.toDouble)
+    yield upper
+    p.map(v => Right(_Number(v))).getOrElse(Left(_Anova(rs.map(_.toExpression))))
+
+
+/** `P(X > stat)` for a chi-squared variable on `df` degrees of freedom: the upper incomplete
+ *  gamma `Q(df/2, stat/2)` directly, never `1 − cdf`, which cancels to zero far in the tail
+ *  (F_0130; the conditioning rule's `erfc` row). */
+private def chiSquaredTail(stat: Double, df: Double): Option[Double] =
+  if stat <= 0.0 then Some(1.0) else scalar.upperGammaQ(df / 2.0, stat / 2.0)
 
 /** A two-sided confidence interval for the mean, returned as a `1 × 2` matrix `[[lo, hi]]`.
  *
@@ -257,7 +561,7 @@ private def confidenceInterval(ra: Either[_Expression, _Value], rb: Either[_Expr
     mean  <- sampleMean(xs, env).collect { case _Number(d) => d }
     sd    <- sampleStdDev(xs, 1, env).collect { case _Number(d) => d }
     d     <- _Distribution.of(DistKind.StudentT, Vector((n - 1).toDouble))
-    crit  <- quantileOfDistribution(d, 1.0 - (1.0 - level) / 2.0)
+    crit  <- quantileOfDistribution(d, 1.0 - (1.0 - level) / 2.0, env)
     half   = crit * sd / math.sqrt(n.toDouble)
     m     <- _MatrixValue(1, 2, Array(mean - half, mean + half)).guarded(_Number(0)).toOption
   yield Right(m)
@@ -274,29 +578,16 @@ private def chiSquaredTest(ra: Either[_Expression, _Value], rb: Either[_Expressi
     exp <- sampleOf(rb).flatMap(asDoubles)
     if obs.size == exp.size && obs.size >= 2 && exp.forall(_ > 0.0)
     stat = obs.zip(exp).map((o, e) => (o - e) * (o - e) / e).sum
-    d   <- _Distribution.of(DistKind.ChiSquared, Vector((obs.size - 1).toDouble))
-    c   <- d.cdf(stat)
-  yield Right(_Number(math.max(0.0, 1.0 - c)))
+    p   <- chiSquaredTail(stat, obs.size - 1.0)
+  yield Right(_Number(p))
 
-/** The inverse cdf, reached through the `probability` grammar node's own kernel. */
-private def quantileOfDistribution(d: _Distribution, p: Double): Option[Double] =
-  // Bracket-and-bisect on the cdf, which is monotone for every family.
-  if p <= 0.0 || p >= 1.0 then None
-  else
-    val centre = d.mean.getOrElse(0.0)
-    val spread = d.variance.map(math.sqrt).filter(_ > 0.0).getOrElse(1.0)
-    var lo = centre - spread
-    var hi = centre + spread
-    var i  = 0
-    while i < 200 && d.cdf(lo).exists(_ > p) do { lo -= spread * 2.0; i += 1 }
-    i = 0
-    while i < 200 && d.cdf(hi).exists(_ < p) do { hi += spread * 2.0; i += 1 }
-    var k = 0
-    while k < 200 && (hi - lo) > 1e-13 * math.max(1.0, math.abs(lo)) do
-      val m = 0.5 * (lo + hi)
-      if d.cdf(m).exists(_ < p) then lo = m else hi = m
-      k += 1
-    Some(0.5 * (lo + hi))
+/** The inverse cdf, read from the distribution's own quantile query (F_0130): this file carried a
+ *  private copy of the bisection with the `max(1, |x|)` floor F_0125 removed from `quantileOf`,
+ *  a second definition that had already drifted from the first. */
+private def quantileOfDistribution(d: _Distribution, p: Double, env: Environment): Option[Double] =
+  _DistributionQuery(Query.Quantile, d, List(_Number(p))).eval(env) match
+    case Right(_Number(q)) => Some(q)
+    case _                 => None
 
 private def asDoubles(xs: Vector[_Value]): Option[Vector[Double]] =
   val ds = xs.collect { case _Number(d) => d }

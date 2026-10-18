@@ -138,6 +138,30 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     assert(lastOutput().contains("0 100 101"), lastOutput())
   }
 
+  "rlocus" should "draw one locked-axes line per branch, with the open-loop poles marked (F_0140)" in
+  {
+    typeLine("rlocus 1/(s*(s + 2)) s 0.1 10 40")
+    assert(lastOutput().contains("2 branches"), lastOutput())
+    val traces = drawn.data.asInstanceOf[js.Array[js.Dynamic]]
+    assert(traces.count(_.mode.asInstanceOf[String] == "lines") == 2)
+    assert(drawn.layout.yaxis.scaleanchor.asInstanceOf[String] == "x")
+  }
+
+  "hist" should "draw the bins as bars and say how many values went into how many bins (F_0135)" in
+  {
+    typeLine("hist [[1, 2, 2, 3, 4, 5]] 4")
+    assert(lastOutput().contains("6 values in 4 bins"), lastOutput())
+    val trace = drawn.data.asInstanceOf[js.Array[js.Dynamic]](0)
+    assert(trace.`type`.asInstanceOf[String] == "bar")
+    assert(trace.y.asInstanceOf[js.Array[Double]].toVector == Vector(1.0, 2.0, 1.0, 2.0))
+  }
+
+  it should "answer its usage line when typed bare, not echo a free variable" in
+  {
+    typeLine("hist")
+    assert(lastOutput().startsWith("usage: hist"), lastOutput())
+  }
+
   "points" should "lock the axes, which is why Plotly was chosen over Vega-Lite" in
   {
     typeLine("points x x -1 1 3")

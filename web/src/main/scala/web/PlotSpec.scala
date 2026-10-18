@@ -63,6 +63,57 @@ object PlotSpec:
     )
     document(trace, title = label, xTitle = "Re", yTitle = "Im", equalAxes = true)
 
+  /** A root locus (F_0140): one line per branch, the open-loop poles as crosses and zeros as
+   *  circles, **axes locked** — the locus is geometry in the s-plane, where how close a branch
+   *  runs to the imaginary axis is read by eye, the reason [[coordinates]] locks them too.
+   *
+   *  @param branches the closed-loop poles, one `(re, im)` sequence per branch
+   *  @param poles    the open-loop poles
+   *  @param zeros    the open-loop zeros
+   *  @param label    the plant, the title
+   *  @return a Plotly `{data, layout}` document
+   */
+  def locus(branches: Seq[Seq[(Double, Double)]], poles: Seq[(Double, Double)], zeros: Seq[(Double, Double)],
+            label: String): String =
+    def line(b: Seq[(Double, Double)], i: Int): String =
+      val drawn = finitePairs(b)
+      obj("type" -> str("scatter"), "mode" -> str("lines"), "name" -> str(s"branch ${i + 1}"),
+          "x" -> arr(drawn.map(_._1)), "y" -> arr(drawn.map(_._2)))
+    def marks(ps: Seq[(Double, Double)], symbol: String, name: String): String =
+      val drawn = finitePairs(ps)
+      obj("type" -> str("scatter"), "mode" -> str("markers"), "name" -> str(name),
+          "marker" -> obj("symbol" -> str(symbol), "size" -> "11"),
+          "x" -> arr(drawn.map(_._1)), "y" -> arr(drawn.map(_._2)))
+    val traces = branches.zipWithIndex.map(line) :+ marks(poles, "x", "poles") :+ marks(zeros, "circle-open", "zeros")
+    val layout = obj(
+      "title"      -> str(label),
+      "xaxis"      -> obj("title" -> str("Re"), "zeroline" -> "true"),
+      "yaxis"      -> obj("title" -> str("Im"), "zeroline" -> "true", "scaleanchor" -> str("x"), "scaleratio" -> "1"),
+      "margin"     -> obj("t" -> "40", "r" -> "20", "b" -> "45", "l" -> "60"),
+      "showlegend" -> "false"
+    )
+    obj("data" -> traces.mkString("[", ",", "]"), "layout" -> layout)
+
+  /** A histogram (F_0135): one bar per bin, centred on the bin and as wide as it, so adjacent
+   *  bars touch — the shape a histogram has, and what tells it apart from a bar chart of
+   *  categories.  The bins come from `cli.Session.histogramBins`.
+   *
+   *  @param edges  the `k + 1` bin edges, ascending
+   *  @param counts the `k` counts
+   *  @param label  the sample as typed; the title
+   *  @return a Plotly `{data, layout}` document
+   */
+  def histogram(edges: Seq[Double], counts: Seq[Int], label: String): String =
+    val bins  = edges.zip(edges.drop(1)).zip(counts).filter { case ((a, b), _) => finite(a) && finite(b) }
+    val trace = obj(
+      "type"  -> str("bar"),
+      "name"  -> str(label),
+      "x"     -> arr(bins.map { case ((a, b), _) => (a + b) / 2 }),
+      "y"     -> arr(bins.map(_._2.toDouble)),
+      "width" -> arr(bins.map { case ((a, b), _) => b - a })
+    )
+    document(trace, title = label, xTitle = label, yTitle = "count", equalAxes = false)
+
   /** A Bode diagram: magnitude and phase stacked over one shared logarithmic frequency axis.
    *
    *  **Three things make this a Bode plot rather than two line charts** (issue F_0004), and

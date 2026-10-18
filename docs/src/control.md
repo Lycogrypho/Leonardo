@@ -441,9 +441,11 @@ and z-transform it, and the z-transform table has no entry for a damped oscillat
 answered in part: `tustin`, `matched` and the two Euler methods are substitutions and take it
 unchanged.
 
-Also absent, deliberately: `d2c` by zero-order hold (it needs a matrix logarithm), root-locus
-and margin *plots* (the numbers are here; plotting is not this library's job), and a discrete
-Kronecker delta, which `core` has no node for.
+Also absent, deliberately: `d2c` by zero-order hold (it needs a matrix logarithm), margin
+*plots* (the numbers are here), multi-input pole placement (`acker` is Ackermann's single-input
+formula), and a discrete Kronecker delta, which `core` has no node for.  The root locus is
+`rootLocus(G, s, gains)` — the closed-loop poles at each gain, matched into continuous branches
+so a breakaway point does not cross-connect them — and the browser REPL draws it with `rlocus`.
 
 ## From the REPL
 
@@ -460,7 +462,17 @@ Kronecker delta, which `core` has no node for.
 > c2d(1/(s+1), s, z, 0.1, zoh)
 > A, B, C, D := stateSpace([[0, 1], [-2, -3]], [[0], [1]], [[1, 0]], [[0]])
 > Y, X := dlsim(arx2ss(a, b, 1), u, 0, states)
+> routhTable(1/(s^3 + 2*s^2 + 3*s + 4), s)
+> controllable([[0, 1], [0, 0]], [[0], [1]])
+> ctrb([[0, 1], [0, 0]], [[0], [1]])
+> acker([[0, 1], [0, 0]], [[0], [1]], [[-1 + i, -1 - i]])
+> rlocus 1/(s*(s + 2)) s 0.1 10            (browser only: draws the locus)
 ```
+
+`routhTable` keeps its Scala name at the prompt: `routh` shipped as a free variable name and
+stays one.  `controllable`/`observable` also take the model row, `controllable(sys)`, and
+`acker` answers the gain of `u = −K·x` only after checking that `A − B·K` really has the
+requested eigenvalues — Ackermann's formula is badly conditioned as the order grows.
 
 The poles and zeros are **`tfpoles`/`tfzeros`** at the prompt, because `zeros(r, c)` already
 builds a zero matrix and `zeros(G, s)` could not be told from `zeros(3, n)`; in Scala they keep
