@@ -97,7 +97,9 @@ private def normalForm(e: _Expression, conjunctive: Boolean, symmetric: Boolean,
 
 
 /** Which normal form a [[_NormalForm]] asks for (F_0133), with its grammar keyword. */
-enum NormalKind(val word: String):
+enum NormalKind(val word: String) extends Keyworded:
+  /** The grammar keyword (F_0148). */
+  def keyword: String = word
   /** `cnf(e)` -- a conjunction of disjunctions of literals. */
   case CNF extends NormalKind("cnf")
   /** `dnf(e)` -- a disjunction of conjunctions of literals. */

@@ -123,7 +123,7 @@ private def rationalCoeffsM(e: _Expression, v: _Variable, env: Environment): Opt
     Option.when(p._1.size <= MaxRationalDegree + 1 && p._2.size <= MaxRationalDegree + 1)(p)
 
   def numeric(x: _Expression): Option[Double] = x.eval(env) match
-    case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+    case Right(_Number(d)) if d.isFinite => Some(d)
     case _                                             => None
 
   e match

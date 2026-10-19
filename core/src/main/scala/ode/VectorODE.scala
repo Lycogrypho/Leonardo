@@ -9,7 +9,9 @@ import core.*
  *  **Never a hidden default**, the `c2d` / `minimize` rule: two methods give different answers
  *  at the same step, so a silent choice would make two correct-looking results disagree.
  */
-enum OdeMethod:
+enum OdeMethod extends Keyworded:
+  /** The slot word (F_0148); the table is the companion's. */
+  def keyword: String = OdeMethod.keyword(this)
   /** Explicit Euler: first order, one stage. */
   case Euler
   /** The classic fourth-order Runge–Kutta method. */
@@ -103,7 +105,7 @@ private[ode] final class VectorProblem(rhs: _Expression, state: OdeState, indepV
       case _ => Left(OdeFailure.NotEvaluable(t))
 
   private def finite(v: Vector[Double], t: Double): Either[OdeFailure, Vector[Double]] =
-    if v.forall(d => !d.isNaN && !d.isInfinite) then Right(v) else Left(OdeFailure.NonFinite(t))
+    if v.forall(d => d.isFinite) then Right(v) else Left(OdeFailure.NonFinite(t))
 
 
 // ── state arithmetic ──
@@ -140,7 +142,7 @@ private[ode] def fixedSteps(p: VectorProblem, method: OdeMethod, t0: Double, y0:
     if i >= n then Right(y)
     else step(t0 + i * h, y) match
       case Left(fail)                                           => Left(fail)
-      case Right(next) if next.exists(d => d.isNaN || d.isInfinite) => Left(OdeFailure.NonFinite(t0 + (i + 1) * h))
+      case Right(next) if next.exists(d => !d.isFinite) => Left(OdeFailure.NonFinite(t0 + (i + 1) * h))
       case Right(next)                                          => loop(i + 1, next)
   loop(0, y0)
 
@@ -203,7 +205,7 @@ private[ode] def adaptive(p: VectorProblem, t0: Double, y0: Vector[Double], t1: 
         case Right((y5, err)) =>
           val scale  = tol * (1.0 + y.map(math.abs).maxOption.getOrElse(0.0))
           val factor = if err == 0.0 then 5.0 else math.min(5.0, math.max(0.2, 0.9 * math.pow(scale / err, 0.2)))
-          if err <= scale && y5.forall(d => !d.isNaN && !d.isInfinite) then loop(t + hh, y5, hh * factor, steps + 1)
+          if err <= scale && y5.forall(d => d.isFinite) then loop(t + hh, y5, hh * factor, steps + 1)
           else loop(t, y, hh * factor, steps + 1)
   if t1 == t0 then Right((y0, 0)) else loop(t0, y0, t1 - t0, 0)
 
@@ -270,8 +272,8 @@ private def trajectory(p: VectorProblem, method: OdeMethod, t0: Double, y0: Vect
 private def validated(state: OdeState, y0: Vector[Double], h: Double): Either[OdeFailure, Unit] =
   val n = y0.size
   if n == 0 then Left(OdeFailure.InvalidInput("the initial state is empty"))
-  else if y0.exists(d => d.isNaN || d.isInfinite) then Left(OdeFailure.InvalidInput("the initial state must be finite"))
-  else if h == 0.0 || h.isNaN || h.isInfinite then Left(OdeFailure.InvalidInput("h must be a finite non-zero number"))
+  else if y0.exists(d => !d.isFinite) then Left(OdeFailure.InvalidInput("the initial state must be finite"))
+  else if h == 0.0 || !h.isFinite then Left(OdeFailure.InvalidInput("h must be a finite non-zero number"))
   else state match
     case OdeState.Components(vs) if vs.size != n =>
       Left(OdeFailure.InvalidInput(s"${vs.size} state names for an initial state of $n entries"))

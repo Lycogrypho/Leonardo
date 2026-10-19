@@ -150,7 +150,7 @@ private[leonardo] def violatedAt(e: _Expression, v: _Variable, x: Double,
 private def valueAt(arg: _Expression, v: _Variable, x: Double,
                     env: Environment): Option[Double] =
   arg.eval(env.withBinding(v.variable, _Number(x))) match
-    case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+    case Right(_Number(d)) if d.isFinite => Some(d)
     case _                                              => None
 
 /** Whether a concrete value meets a requirement. */
@@ -288,28 +288,24 @@ private def polySatisfying(arg: _Expression, v: _Variable, env: Environment,
 
     if cuts.isEmpty then
       // No crossing anywhere: one sample decides the whole line.
-      if holds(polyValue(cs, 0.0)) then Vector(Interval.All) else Vector.empty
+      if holds(evalCoeffsReal(cs, 0.0)) then Vector(Interval.All) else Vector.empty
     else
       val samples = (cuts.head - 1.0) +:
                     cuts.sliding(2).collect { case Vector(a, b) => (a + b) / 2 }.toVector :+
                     (cuts.last + 1.0)
-      val pieces  = samples.zipWithIndex.filter((s, _) => holds(polyValue(cs, s))).map { (_, i) =>
+      val pieces  = samples.zipWithIndex.filter((s, _) => holds(evalCoeffsReal(cs, s))).map { (_, i) =>
         val lo = if i == 0 then Double.NegativeInfinity else cuts(i - 1)
         val hi = if i == cuts.size then Double.PositiveInfinity else cuts(i)
         Interval(lo, false, hi, false)
       }
       // A crossing point itself belongs when the relation admits equality there.
-      val atCuts = cuts.filter(r => holds(polyValue(cs, r))).map(r => Interval(r, true, r, true))
+      val atCuts = cuts.filter(r => holds(evalCoeffsReal(cs, r))).map(r => Interval(r, true, r, true))
       merge(pieces ++ atCuts)
   }
 
 /** `cs` with `delta` added to its constant term, i.e. the coefficients of `p(v) + delta`. */
 private def shiftBy(cs: Vector[Double], delta: Double): Vector[Double] =
   if cs.isEmpty then Vector(delta) else cs.updated(0, cs(0) + delta)
-
-/** Horner evaluation. */
-private def polyValue(cs: Vector[Double], x: Double): Double =
-  cs.foldRight(0.0)((c, acc) => acc * x + c)
 
 /** The numeric coefficients of a polynomial in `v`, trimmed by magnitude (F_0121); `None` if
  *  `e` is not a polynomial with numeric coefficients. */

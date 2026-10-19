@@ -41,7 +41,7 @@ object _Complex:
     case _            => None
 
   private def finiteVal(re: Double, im: Double): Option[_Value] =
-    if re.isNaN || re.isInfinite || im.isNaN || im.isInfinite then None else Some(of(re, im))
+    if !re.isFinite || !im.isFinite then None else Some(of(re, im))
 
   /** Complex addition `a + b`; `None` when either operand is non-numeric or the result
    *  is non-finite.

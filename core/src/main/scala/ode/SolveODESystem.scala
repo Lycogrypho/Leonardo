@@ -90,5 +90,5 @@ private def denseOf(e: _Expression, env: Environment): Option[_MatrixValue] =
 
 /** Evaluates `e` to a finite `Double`, or `None`. */
 private def finiteNumber(e: _Expression, env: Environment): Option[Double] = e.eval(env) match
-  case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+  case Right(_Number(d)) if d.isFinite => Some(d)
   case _                                              => None

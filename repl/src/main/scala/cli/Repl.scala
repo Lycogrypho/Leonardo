@@ -1455,9 +1455,12 @@ final class Session:
    */
   def rootLocusPoints(rest: String): Either[String, Session.Locus] =
     sweepArgs(rest, "rlocus").flatMap { a =>
-      control.rootLocusSweep(a.resolved, _Variable(a.variable), a.lo, a.hi, a.n, env)
-        .map((bs, ps, zs) => Session.Locus(a.expr, a.variable, bs, ps, zs))
-        .toRight(s"rlocus: ${a.expr} is not a proper rational function of ${a.variable} with numeric coefficients")
+      // A locus needs two gains (F_0150): every refusal used to be reported as an improper plant.
+      if a.n < 2 then Left(s"rlocus: <n> must be at least 2, got: ${a.n}")
+      else
+        control.rootLocusSweep(a.resolved, _Variable(a.variable), a.lo, a.hi, a.n, env)
+          .map((bs, ps, zs) => Session.Locus(a.expr, a.variable, bs, ps, zs))
+          .toRight(s"rlocus: ${a.expr} is not a proper rational function of ${a.variable} with numeric coefficients, or no gain in the band gave a full set of closed-loop poles")
     }
 
   /** The binned sample behind the browser's `hist` command (F_0135): `<expr> [<k>]`, the sample
@@ -2271,8 +2274,11 @@ object Session:
    *  @return a confirmation, or a message explaining why it could not be written
    */
   def saveFile(session: Session, path: String): String =
+    // Overwriting stays the behaviour (owner, F_0151) -- a session saved repeatedly under one
+    // name is the normal case -- but the answer says so, since it is the one data loss here.
+    val replacing = SessionIO.exists(path)
     SessionIO.write(path, session.script) match
-      case Right(_)  => s"saved to $path"
+      case Right(_)  => if replacing then s"saved to $path (replacing the session saved there before)" else s"saved to $path"
       case Left(why) => s"could not write $path: $why"
 
   /** Interprets one line read by the REPL loop, resolving the commands `execute` cannot:

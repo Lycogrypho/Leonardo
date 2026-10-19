@@ -137,7 +137,7 @@ case class _IsStable(g: _Expression, v: _Variable, discrete: Boolean = false) ex
     if discrete then isStableDiscrete(b, v) else isStable(b, v)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    verdict(env).map(ok => Right(_Bool(ok))).getOrElse(Left(this))
+    verdict(env).map(ok => _Bool(ok)).toRight(this)
 
   /** Why this call stays unevaluated, or `None` when it answers.
    *  @param env the evaluation environment

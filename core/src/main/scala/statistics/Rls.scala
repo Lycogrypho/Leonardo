@@ -126,7 +126,7 @@ private def inTier(n: Int, m: Int, values: Vector[_Value], env: Environment): Op
   else
     val (t, p, f, y, l) = split(values.collect { case _Number(d) => d })
     rlsStep(DoubleField, t, p, f, y, l)
-      .filter((t1, p1) => (t1.flatten ++ p1.flatten).forall(d => !d.isNaN && !d.isInfinite))
+      .filter((t1, p1) => (t1.flatten ++ p1.flatten).forall(d => d.isFinite))
       .map((t1, p1) => (_MatrixValue(n, m, t1.flatten.toArray), _MatrixValue(n, n, p1.flatten.toArray)))
 
 /** `rls(theta, P, phi, y, lambda)` — one update, as the row `[[theta', P']]` (the `lu` shape), so

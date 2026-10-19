@@ -1,7 +1,7 @@
 package it.grypho.scala.leonardo
 package scalar
 
-import core.Limit
+import core.{Limit, finiteOption}
 import scala.math.{abs, exp, log, sin, sqrt, Pi}
 
 
@@ -92,11 +92,9 @@ private val LanczosCoefficients: Array[Double] = Array(
 
 /** Whether `d` is a whole number (and small enough for that to be meaningful). */
 private def isWholeNumber(d: Double): Boolean =
-  !d.isNaN && !d.isInfinite && d == Math.floor(d)
+  d.isFinite && d == Math.floor(d)
 
 /** Wraps a computed result, rejecting non-finite values so the caller stays symbolic. */
-private def finite(d: Double): Option[Double] =
-  Option.when(!d.isNaN && !d.isInfinite)(d)
 
 
 /** The factorial `n!`.
@@ -111,7 +109,7 @@ private def finite(d: Double): Option[Double] =
  *  @return `Some(n!)` when defined and representable, `None` otherwise
  */
 def factorialOf(n: Double): Option[Double] =
-  if n.isNaN || n.isInfinite then None
+  if !n.isFinite then None
   else if isWholeNumber(n) then
     // exact path for the integers: keeps small factorials bit-accurate
     if n < 0.0 then None                                  // pole of Gamma at 0, -1, -2, ...
@@ -140,7 +138,7 @@ def multiFactorialOf(n: Double, k: Double): Option[Double] =
     while i > 1.0 && !acc.isInfinite do
       acc *= i
       i -= k
-    finite(acc)
+    finiteOption(acc)
 
 
 /** The gamma function `Γ(z)`, the analytic continuation of the factorial
@@ -154,13 +152,13 @@ def multiFactorialOf(n: Double, k: Double): Option[Double] =
  *  @return `Some(Γ(z))` when defined and representable, `None` otherwise
  */
 def gammaOf(z: Double): Option[Double] =
-  if z.isNaN || z.isInfinite then None
+  if !z.isFinite then None
   else if isWholeNumber(z) && z <= 0.0 then None          // poles
   else if z < 0.5 then
     // reflection: valid because the poles were already excluded above
     val s = sin(Pi * z)
     if s == 0.0 then None
-    else gammaOf(1.0 - z).flatMap(g => finite(Pi / (s * g)))
+    else gammaOf(1.0 - z).flatMap(g => finiteOption(Pi / (s * g)))
   else
     val zz = z - 1.0
     var x  = LanczosCoefficients(0)
@@ -169,7 +167,7 @@ def gammaOf(z: Double): Option[Double] =
       x += LanczosCoefficients(i) / (zz + i)
       i += 1
     val t = zz + LanczosG + 0.5
-    finite(sqrt(2.0 * Pi) * Math.pow(t, zz + 0.5) * exp(-t) * x)
+    finiteOption(sqrt(2.0 * Pi) * Math.pow(t, zz + 0.5) * exp(-t) * x)
 
 
 /** The log-gamma function `ln|Γ(z)|`.
@@ -182,13 +180,13 @@ def gammaOf(z: Double): Option[Double] =
  *  @return `Some(ln|Γ(z)|)` when defined, `None` otherwise
  */
 def lgammaOf(z: Double): Option[Double] =
-  if z.isNaN || z.isInfinite then None
+  if !z.isFinite then None
   else if isWholeNumber(z) && z <= 0.0 then None          // poles
   else if z < 0.5 then
     // reflection in log space: ln|Γ(z)| = ln(π) − ln|sin(πz)| − ln|Γ(1−z)|
     val s = abs(sin(Pi * z))
     if s == 0.0 then None
-    else lgammaOf(1.0 - z).flatMap(lg => finite(log(Pi) - log(s) - lg))
+    else lgammaOf(1.0 - z).flatMap(lg => finiteOption(log(Pi) - log(s) - lg))
   else
     val zz = z - 1.0
     var x  = LanczosCoefficients(0)
@@ -197,7 +195,7 @@ def lgammaOf(z: Double): Option[Double] =
       x += LanczosCoefficients(i) / (zz + i)
       i += 1
     val t = zz + LanczosG + 0.5
-    finite(0.5 * log(2.0 * Pi) + (zz + 0.5) * log(t) - t + log(abs(x)))
+    finiteOption(0.5 * log(2.0 * Pi) + (zz + 0.5) * log(t) - t + log(abs(x)))
 
 
 /** The beta function `B(x, y) = Γ(x)Γ(y) / Γ(x+y)`.
@@ -214,11 +212,11 @@ def lgammaOf(z: Double): Option[Double] =
 def betaOf(x: Double, y: Double): Option[Double] =
   if x > 0.0 && y > 0.0 then
     for lx <- lgammaOf(x); ly <- lgammaOf(y); lxy <- lgammaOf(x + y)
-        r <- finite(exp(lx + ly - lxy))
+        r <- finiteOption(exp(lx + ly - lxy))
     yield r
   else
     for gx <- gammaOf(x); gy <- gammaOf(y); gxy <- gammaOf(x + y)
-        r <- finite(gx * gy / gxy)
+        r <- finiteOption(gx * gy / gxy)
     yield r
 
 
@@ -269,7 +267,7 @@ def lowerGammaP(a: Double, x: Double): Option[Double] =
   if a.isNaN || x.isNaN || a <= 0.0 || x < 0.0 then None
   else if x == 0.0 then Some(0.0)
   else if x < a + 1.0 then gammaSeries(a, x)
-  else gammaContinuedFraction(a, x).flatMap(q => finite(1.0 - q))
+  else gammaContinuedFraction(a, x).flatMap(q => finiteOption(1.0 - q))
 
 /** The regularised upper incomplete gamma function `Q(a, x) = 1 − P(a, x)`.
  *
@@ -285,7 +283,7 @@ def lowerGammaP(a: Double, x: Double): Option[Double] =
 def upperGammaQ(a: Double, x: Double): Option[Double] =
   if a.isNaN || x.isNaN || a <= 0.0 || x < 0.0 then None
   else if x == 0.0 then Some(1.0)
-  else if x < a + 1.0 then gammaSeries(a, x).flatMap(p => finite(1.0 - p))
+  else if x < a + 1.0 then gammaSeries(a, x).flatMap(p => finiteOption(1.0 - p))
   else gammaContinuedFraction(a, x)
 
 /** `P(a, x)` by its series `e^-x x^a / Γ(a) · Σ x^n / (a(a+1)…(a+n))`. */
@@ -302,7 +300,7 @@ private def gammaSeries(a: Double, x: Double): Option[Double] =
       sum += del
       if abs(del) < abs(sum) * SeriesEpsilon then done = true
       i += 1
-    if !done then None else finite(sum * exp(-x + a * log(x) - lg))
+    if !done then None else finiteOption(sum * exp(-x + a * log(x) - lg))
   }
 
 /** `Q(a, x)` by its continued fraction, evaluated with the modified [[https://en.wikipedia.org/wiki/Lentz%27s_algorithm Lentz algorithm]]. */
@@ -326,7 +324,7 @@ private def gammaContinuedFraction(a: Double, x: Double): Option[Double] =
       h *= del
       if abs(del - 1.0) < SeriesEpsilon then done = true
       i += 1
-    if !done then None else finite(exp(-x + a * log(x) - lg) * h)
+    if !done then None else finiteOption(exp(-x + a * log(x) - lg) * h)
   }
 
 /** The error function `erf(x) = 2/√π ∫₀ˣ e^(−t²) dt`.
@@ -357,7 +355,7 @@ def erfcOf(x: Double): Option[Double] =
   if x.isNaN then None
   else if x.isInfinite then Some(if x > 0.0 then 0.0 else 2.0)
   else if x >= 0.0 then upperGammaQ(0.5, x * x)
-  else lowerGammaP(0.5, x * x).flatMap(p => finite(1.0 + p))
+  else lowerGammaP(0.5, x * x).flatMap(p => finiteOption(1.0 + p))
 
 /** The digamma function `ψ(z) = Γ'(z) / Γ(z)`.
  *
@@ -373,11 +371,11 @@ def erfcOf(x: Double): Option[Double] =
  *  @see [[https://en.wikipedia.org/wiki/Digamma_function Digamma function]]
  */
 def digammaOf(z: Double): Option[Double] =
-  if z.isNaN || z.isInfinite then None
+  if !z.isFinite then None
   else if isWholeNumber(z) && z <= 0.0 then None          // poles, as for Γ
   else if z < 0.0 then
     val t = Math.tan(Pi * z)
-    if t == 0.0 then None else digammaOf(1.0 - z).flatMap(d => finite(d - Pi / t))
+    if t == 0.0 then None else digammaOf(1.0 - z).flatMap(d => finiteOption(d - Pi / t))
   else
     // Recur up to DigammaAsymptoticFloor, then apply the asymptotic expansion.
     var x   = z
@@ -390,7 +388,7 @@ def digammaOf(z: Double): Option[Double] =
     // ln x − 1/(2x) − Σ B₂ₙ/(2n x^2n); five Bernoulli terms is ample past the floor.
     val series = inv2 * (1.0 / 12.0 - inv2 * (1.0 / 120.0 - inv2 * (1.0 / 252.0 -
                  inv2 * (1.0 / 240.0 - inv2 / 132.0))))
-    finite(acc + log(x) - 0.5 * inv - series)
+    finiteOption(acc + log(x) - 0.5 * inv - series)
 
 /** Argument above which the digamma asymptotic series is used directly; below it the
  *  recurrence walks up to here first.  Ten is the usual choice — far enough out that five
@@ -419,7 +417,7 @@ def incompleteBetaOf(x: Double, a: Double, b: Double): Option[Double] =
     val front =
       for
         la <- lgammaOf(a + b); lb <- lgammaOf(a); lc <- lgammaOf(b)
-        f  <- finite(exp(la - lb - lc + a * log(x) + b * log(1.0 - x)))
+        f  <- finiteOption(exp(la - lb - lc + a * log(x) + b * log(1.0 - x)))
       yield f
     // The fraction converges quickly only below x = (a+1)/(a+b+2); reflect above it.
     //
@@ -428,9 +426,9 @@ def incompleteBetaOf(x: Double, a: Double, b: Double): Option[Double] =
     // the same point -- so it reflects straight back and recurses until the stack dies.
     // `I_0.5(1, 1)` is exactly that case, and it is not an exotic one.
     if x <= (a + 1.0) / (a + b + 2.0) then
-      front.flatMap(f => betaContinuedFraction(x, a, b).flatMap(cf => finite(f * cf / a)))
+      front.flatMap(f => betaContinuedFraction(x, a, b).flatMap(cf => finiteOption(f * cf / a)))
     else
-      incompleteBetaOf(1.0 - x, b, a).flatMap(i => finite(1.0 - i))
+      incompleteBetaOf(1.0 - x, b, a).flatMap(i => finiteOption(1.0 - i))
 
 /** The continued fraction of the incomplete beta, by modified Lentz. */
 private def betaContinuedFraction(x: Double, a: Double, b: Double): Option[Double] =
@@ -465,7 +463,7 @@ private def betaContinuedFraction(x: Double, a: Double, b: Double): Option[Doubl
     h *= del
     if abs(del - 1.0) < SeriesEpsilon then done = true
     m += 1
-  if !done then None else finite(h)
+  if !done then None else finiteOption(h)
 
 
 /** The gamma function over a **complex** argument, as a `(re, im)` pair.
@@ -519,7 +517,7 @@ private def finitePair(p: (Double, Double)): Option[(Double, Double)] = finitePa
 
 /** Rejects a non-finite complex result, so the caller stays symbolic. */
 private def finitePair(r: Double, i: Double): Option[(Double, Double)] =
-  Option.when(!r.isNaN && !i.isNaN && !r.isInfinite && !i.isInfinite)((r, i))
+  Option.when(r.isFinite && i.isFinite)((r, i))
 
 private def cMul(ar: Double, ai: Double, br: Double, bi: Double): (Double, Double) =
   (ar * br - ai * bi, ar * bi + ai * br)
@@ -587,7 +585,7 @@ private def siCiAuxiliary(x: Double): (Double, Double) =
  *  @return `Some(Si(x))`, or `None` for a non-finite argument
  */
 def siOf(x: Double): Option[Double] =
-  if x.isNaN || x.isInfinite then None
+  if !x.isFinite then None
   else if x < 0 then siOf(-x).map(-_)
   else if x == 0.0 then Some(0.0)
   else if x <= SiCiSeriesLimit then
@@ -599,10 +597,10 @@ def siOf(x: Double): Option[Double] =
       u *= -x * x / ((2 * n) * (2 * n + 1))
       sum += u / (2 * n + 1)
       n += 1
-    finite(sum)
+    finiteOption(sum)
   else
     val (f, g) = siCiAuxiliary(x)
-    finite(math.Pi / 2 - f * math.cos(x) - g * math.sin(x))
+    finiteOption(math.Pi / 2 - f * math.cos(x) - g * math.sin(x))
 
 /** The cosine integral `Ci(x) = γ + ln x + ∫₀ˣ (cos t − 1)/t dt`.  Real only for `x > 0`.
  *
@@ -610,7 +608,7 @@ def siOf(x: Double): Option[Double] =
  *  @return `Some(Ci(x))` for `x > 0`, `None` otherwise
  */
 def ciOf(x: Double): Option[Double] =
-  if x.isNaN || x.isInfinite || x <= 0.0 then None
+  if !x.isFinite || x <= 0.0 then None
   else if x <= SiCiSeriesLimit then
     // γ + ln x + Σ_{n≥1} (−1)ⁿ x^(2n) / ((2n)·(2n)!)
     var w   = 1.0     // (−1)ⁿ x^(2n) / (2n)!
@@ -623,10 +621,10 @@ def ciOf(x: Double): Option[Double] =
       sum += t
       go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
       n += 1
-    finite(sum)
+    finiteOption(sum)
   else
     val (f, g) = siCiAuxiliary(x)
-    finite(f * math.sin(x) - g * math.cos(x))
+    finiteOption(f * math.sin(x) - g * math.cos(x))
 
 /** The exponential integral `E₁(y) = ∫_y^∞ e^(−t)/t dt` for `y > 0` — series below 1,
  *  modified-Lentz continued fraction above. */
@@ -644,7 +642,7 @@ private def e1Of(y: Double): Option[Double] =
       sum += t
       go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
       k += 1
-    finite(sum)
+    finiteOption(sum)
   else
     // E₁(y) = e^(−y) · 1/(y+1− 1²/(y+3− 2²/(y+5− …)))   (modified Lentz)
     var b = y + 1.0
@@ -662,7 +660,7 @@ private def e1Of(y: Double): Option[Double] =
       h *= del
       go = math.abs(del - 1.0) > 1e-15
       i += 1
-    finite(h * math.exp(-y))
+    finiteOption(h * math.exp(-y))
 
 /** The exponential integral `Ei(x)`, the principal value of `∫_{−∞}^x e^t/t dt`.
  *
@@ -673,7 +671,7 @@ private def e1Of(y: Double): Option[Double] =
  *  @return `Some(Ei(x))` for finite non-zero `x` (until `e^x` overflows), `None` otherwise
  */
 def eiOf(x: Double): Option[Double] =
-  if x.isNaN || x.isInfinite || x == 0.0 then None
+  if !x.isFinite || x == 0.0 then None
   else if x < 0 then e1Of(-x).map(-_)
   else if x <= 40.0 then
     // γ + ln x + Σ_{k≥1} x^k / (k·k!)
@@ -687,7 +685,7 @@ def eiOf(x: Double): Option[Double] =
       sum += t
       go = t > 1e-17 * sum
       k += 1
-    finite(sum)
+    finiteOption(sum)
   else
     // e^x/x · Σ_{k≥0} k!/x^k, truncated at the optimally small term
     var term = 1.0
@@ -699,7 +697,7 @@ def eiOf(x: Double): Option[Double] =
       if nt >= term then go = false
       else
         term = nt; sum += nt; k += 1
-    finite(math.exp(x) / x * sum)
+    finiteOption(math.exp(x) / x * sum)
 
 /** The logarithmic integral `li(x) = Ei(ln x)` for `x > 0`, `x ≠ 1` (`x = 1` is the pole).
  *
@@ -707,7 +705,7 @@ def eiOf(x: Double): Option[Double] =
  *  @return `Some(li(x))`, or `None` outside the domain
  */
 def liOf(x: Double): Option[Double] =
-  if x.isNaN || x.isInfinite || x <= 0.0 || x == 1.0 then None
+  if !x.isFinite || x <= 0.0 || x == 1.0 then None
   else eiOf(math.log(x))
 
 /** Boundary between the power series and the asymptotic pair for the Fresnel integrals. */
@@ -740,7 +738,7 @@ private def fresnelAuxiliary(x: Double): (Double, Double) =
  *  @return `Some(S(x))`, or `None` for a non-finite argument
  */
 def fresnelSOf(x: Double): Option[Double] =
-  if x.isNaN || x.isInfinite then None
+  if !x.isFinite then None
   else if x < 0 then fresnelSOf(-x).map(-_)
   else if x == 0.0 then Some(0.0)
   else if x <= FresnelSeriesLimit then
@@ -756,11 +754,11 @@ def fresnelSOf(x: Double): Option[Double] =
       sum += t
       go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
       n += 1
-    finite(sum)
+    finiteOption(sum)
   else
     val (f, g) = fresnelAuxiliary(x)
     val z      = math.Pi * x * x / 2
-    finite(0.5 - f * math.cos(z) - g * math.sin(z))
+    finiteOption(0.5 - f * math.cos(z) - g * math.sin(z))
 
 /** The Fresnel cosine integral `C(x) = ∫₀ˣ cos(π t²/2) dt`.  Odd; defined everywhere.
  *
@@ -768,7 +766,7 @@ def fresnelSOf(x: Double): Option[Double] =
  *  @return `Some(C(x))`, or `None` for a non-finite argument
  */
 def fresnelCOf(x: Double): Option[Double] =
-  if x.isNaN || x.isInfinite then None
+  if !x.isFinite then None
   else if x < 0 then fresnelCOf(-x).map(-_)
   else if x == 0.0 then Some(0.0)
   else if x <= FresnelSeriesLimit then
@@ -784,8 +782,8 @@ def fresnelCOf(x: Double): Option[Double] =
       sum += t
       go = math.abs(t) > 1e-17 * (math.abs(sum) + 1.0)
       n += 1
-    finite(sum)
+    finiteOption(sum)
   else
     val (f, g) = fresnelAuxiliary(x)
     val z      = math.Pi * x * x / 2
-    finite(0.5 + f * math.sin(z) - g * math.cos(z))
+    finiteOption(0.5 + f * math.sin(z) - g * math.cos(z))

@@ -50,12 +50,10 @@ private final case class Cells(rows: Int, cols: Int, cells: Vector[_Expression])
 
 /** Reads an evaluated operand as a vector of numbers, or `None` when it is neither a dense
  *  nor a fully numeric symbolic vector. */
-private def vectorCells(r: Either[_Expression, _Value]): Option[Cells] = r match
-  case Right(m: _MatrixValue) if m.rows == 1 || m.cols == 1 =>
-    Some(Cells(m.rows, m.cols, m.toVector.map(_Number(_))))
-  case Left(m: _MatrixShaped) if (m.rows == 1 || m.cols == 1) && m.children.forall(isNumber) =>
-    Some(Cells(m.rows, m.cols, m.children.toVector))
-  case _ => None
+private def vectorCells(r: Either[_Expression, _Value]): Option[Cells] =
+  _MatrixValue.cellsOf(r).collect {
+    case (rows, cols, vs) if (rows == 1 || cols == 1) && vs.forall(isNumber) => Cells(rows, cols, vs)
+  }
 
 private def isNumber(e: _Expression): Boolean = e match
   case _Number(_) => true
@@ -140,7 +138,7 @@ case class _Posterior(prior: _Expression, likelihood: _Expression, data: _Expres
         lk <- likelihoodShape(likelihood, env)
         d  <- conjugateUpdate(pd, lk, rd)
       yield d
-    updated.map(Right(_)).getOrElse(Left(_Posterior(rp.toExpression, likelihood, rd.toExpression)))
+    updated.toRight(_Posterior(rp.toExpression, likelihood, rd.toExpression))
 
 
 /** A likelihood as the table reads it: the family, which parameter slot is free, and the
@@ -201,11 +199,6 @@ private def normalUpdate(mu0: Double, s0: Double, sigma: Double, xs: Vector[Doub
   val tau  = 1.0 / (sigma * sigma)
   val prec = tau0 + xs.size * tau
   _Distribution.of(DistKind.Normal, Vector((tau0 * mu0 + tau * xs.sum) / prec, 1.0 / math.sqrt(prec)))
-
-/** A single number, when the data is one. */
-private def numberOf(r: Either[_Expression, _Value]): Option[Double] = r match
-  case Right(_Number(d)) => Some(d)
-  case _                 => None
 
 /** The observations: a number is a sample of one, otherwise a row or column of numbers. */
 private def sampleOf(r: Either[_Expression, _Value]): Option[Vector[Double]] =

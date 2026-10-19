@@ -119,7 +119,7 @@ case class TriMF(x: _Expression, a: _Expression, b: _Expression, c: _Expression)
   override def rebuild(cs: List[_Expression]): _Expression = TriMF(cs.head, cs(1), cs(2), cs(3))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    reduceMembership(List(x, a, b, c), env, numberOf, {
+    reduceMembership(List(x, a, b, c), env, crispOf, {
       case xv :: av :: bv :: cv :: Nil if av <= bv && bv <= cv =>
         Some(triangle(xv, av, bv, cv))
       case _ => None
@@ -143,7 +143,7 @@ case class TrapMF(x: _Expression, a: _Expression, b: _Expression, c: _Expression
   override def rebuild(cs: List[_Expression]): _Expression = TrapMF(cs.head, cs(1), cs(2), cs(3), cs(4))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    reduceMembership(List(x, a, b, c, d), env, numberOf, {
+    reduceMembership(List(x, a, b, c, d), env, crispOf, {
       case xv :: av :: bv :: cv :: dv :: Nil if av <= bv && bv <= cv && cv <= dv =>
         if xv >= bv && xv <= cv then Some(1.0)
         else if xv <= av || xv >= dv then Some(0.0)
@@ -166,7 +166,7 @@ case class GaussMF(x: _Expression, mean: _Expression, sigma: _Expression) extend
   override def rebuild(cs: List[_Expression]): _Expression = GaussMF(cs.head, cs(1), cs(2))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    reduceMembership(List(x, mean, sigma), env, numberOf, {
+    reduceMembership(List(x, mean, sigma), env, crispOf, {
       case xv :: m :: s :: Nil if s > 0.0 =>
         val z = (xv - m) / s
         Some(math.exp(-0.5 * z * z))
@@ -187,7 +187,7 @@ case class SigMF(x: _Expression, a: _Expression, c: _Expression) extends _Member
   override def rebuild(cs: List[_Expression]): _Expression = SigMF(cs.head, cs(1), cs(2))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    reduceMembership(List(x, a, c), env, numberOf, {
+    reduceMembership(List(x, a, c), env, crispOf, {
       case xv :: av :: cv :: Nil =>
         val d = 1.0 / (1.0 + math.exp(-av * (xv - cv)))
         Option.when(!d.isNaN)(d)
@@ -196,8 +196,8 @@ case class SigMF(x: _Expression, a: _Expression, c: _Expression) extends _Member
 
 
 /** Reads a plain real from a reduced value; the curves take crisp inputs, not degrees. */
-private def numberOf(v: _Value): Option[Double] = v match
-  case _Number(d) if !d.isNaN && !d.isInfinite => Some(d)
+private def crispOf(v: _Value): Option[Double] = v match
+  case _Number(d) if d.isFinite => Some(d)
   case _                                       => None
 
 /** Rising shoulder from `lo` (degree 0) to `hi` (degree 1); vertical when `lo == hi`. */

@@ -138,7 +138,7 @@ abstract class _Function extends _Expression:
   protected def viaDouble(args: List[_Expression], env: Environment): Either[_Expression, _Value] =
     rebuild(args).eval(env) match
       case Right(_Number(d)) =>
-        _Rational.fromApproximation(d, env.workingPrecision).map(Right(_)).getOrElse(Left(this))
+        _Rational.fromApproximation(d, env.workingPrecision).toRight(this)
       case other => other
 
   /** The image of an interval argument (F_0008), for the functions [[core._Interval.function]]
@@ -152,7 +152,7 @@ abstract class _Function extends _Expression:
     val image = this match
       case n: NamedFunction => _Interval.function(n.name, i, env)
       case _                => None
-    image.map(Right(_)).getOrElse(Left(rebuild(List(i))))
+    image.toRight(rebuild(List(i)))
 
   /** Applies this single-argument function element-wise over a symbolic matrix argument.
    *
@@ -166,6 +166,64 @@ abstract class _Function extends _Expression:
    */
   protected def mapMatrixExpr(m: _MatrixShaped, env: Environment): Either[_Expression, _Value] =
     m.rebuild(m.children.map(el => rebuild(List(el)))).eval(env)
+
+  /** The one evaluation of a single-argument function (F_0149): every one-argument node is this
+   *  call with its kernels.
+   *
+   *  **The arm order is the substance, and why it lives here rather than in 35 copies**: an
+   *  exact argument first (the node's own `exact` arm, else [[viaExact]]) — before the real arm,
+   *  because `_Number` is a widening extractor and would read a `_Rational` as a `Double` (the
+   *  ordering trap `CLAUDE.md` names); then a real, a dense matrix element-wise through the same
+   *  real kernel, a complex argument, a symbolic matrix cell by cell, an interval through
+   *  [[intervalImage]]; anything else stays as written.  A node without a complex extension
+   *  leaves `complex` at its default and stays unevaluated on one, the `Asin` convention.
+   *
+   *  @param arg     the argument
+   *  @param env     the evaluation environment
+   *  @param real    the value at a real point, `None` where it is undefined there
+   *  @param complex the value at a complex point, `None` where it is not computed
+   *  @param exact   the node's own exact arm, consulted before [[viaExact]]
+   *  @return the value, or the node unevaluated
+   */
+  protected final def evalUnary(arg: _Expression, env: Environment)(
+      real: Double => Option[_Value],
+      complex: _Complex => Option[_Value] = _ => None,
+      exact: PartialFunction[_Rational, Either[_Expression, _Value]] = PartialFunction.empty): Either[_Expression, _Value] =
+    arg.eval(env) match
+      case Right(r: _Rational)     => exact.applyOrElse(r, (q: _Rational) => viaExact(q, env))
+      case Right(_Number(x))       => real(x).toRight(this)
+      case Right(mv: _MatrixValue) => mapMatrix(mv, d => real(d).collect { case _Number(v) => v }.getOrElse(Double.NaN))
+      case Right(c: _Complex)      => complex(c).toRight(rebuild(List(c)))
+      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
+      case Right(i: _Interval)     => intervalImage(i, env)
+      case other                   => Left(rebuild(List(other.toExpression)))
+
+  /** The one evaluation of a two-argument function with a real kernel and no matrix or complex
+   *  extension (F_0149): an exact argument goes through [[viaDouble]], two reals through `kernel`.
+   *
+   *  @param a      the first argument
+   *  @param b      the second
+   *  @param env    the evaluation environment
+   *  @param kernel the value at a real pair, `None` where it is undefined
+   *  @return the value, or the node unevaluated
+   */
+  protected final def evalBinary(a: _Expression, b: _Expression, env: Environment)(
+      kernel: (Double, Double) => Option[Double]): Either[_Expression, _Value] =
+    (a.eval(env), b.eval(env)) match
+      // Exact tier first -- `_Number` widens, so anything below it never sees a `_Rational`. Two
+      // cases, not a guard: by the second, the first argument is known inexact.
+      case (Right(ra: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(ra.toDouble), bv), env)
+      case (Right(av: _Value), Right(rb: _Rational)) => viaDouble(List(av, _Number(rb.toDouble)), env)
+      case (Right(_Number(x)), Right(_Number(y)))    => kernel(x, y).map(v => _Number(v)).toRight(this)
+      case (ra, rb)                                  => Left(rebuild(List(ra.toExpression, rb.toExpression)))
+
+
+// The real-arm shapes the nodes share: a kernel defined everywhere it is finite or not, one
+// undefined where it is NaN, and one undefined where it is not finite (a pole).
+private def realAny(d: Double): Option[_Value]     = Some(_Number(d))
+private def realNotNaN(d: Double): Option[_Value]  = Option.when(!d.isNaN)(_Number(d))
+private def realFinite(d: Double): Option[_Value]  = Option.when(d.isFinite)(_Number(d))
+private def realOf(d: Option[Double]): Option[_Value] = d.map(v => _Number(v))
 
 
 /** The natural exponential function `exp(e)`.
@@ -185,14 +243,7 @@ case class Exp(e: _Expression) extends _Function with NamedFunction:
     Some(r => Some(Real.exp(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) => Right(_Number(exp(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, exp)
-      case Right(c: _Complex) => _Complex.expc(c).map(Right(_)).getOrElse(Left(Exp(c)))
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Exp(other.toExpression))
+    evalUnary(e, env)(x => realAny(exp(x)), _Complex.expc)
 
 
 /** The natural logarithm `ln(e)`.
@@ -215,20 +266,10 @@ case class Ln(e: _Expression) extends _Function with NamedFunction:
     Some(r => if r.signum > 0 then Some(Real.log(toReal(r))) else None)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) =>
-        val r = log(x)
-        // ln of a negative number is now the principal complex value ln|x| + i*pi;
-        // ln(0) is still undefined (_Complex.logc returns None) -> stays symbolic.
-        if r.isNaN || r.isInfinite then
-          _Complex.logc(_Number(x)).map(Right(_)).getOrElse(Left(this))
-        else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, log)
-      case Right(c: _Complex) => _Complex.logc(c).map(Right(_)).getOrElse(Left(Ln(c)))
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Ln(other.toExpression))
+    // ln of a negative number is the principal complex value ln|x| + i*pi; ln(0) is undefined
+    // (_Complex.logc answers None) and stays symbolic. A matrix entry reads only the real
+    // value, so a negative one leaves the dense matrix unevaluated, as before.
+    evalUnary(e, env)(x => realFinite(log(x)).orElse(_Complex.logc(_Number(x))), _Complex.logc)
 
 
 /** The general-base logarithm `log(e, base)`.
@@ -251,13 +292,13 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
       // Matrix argument with a real base: distribute log_b element-wise.
       case (Right(mv: _MatrixValue), Right(_Number(b))) =>
         val lb = log(b)
-        if lb.isNaN || lb.isInfinite then Left(this) else mapMatrix(mv, x => log(x) / lb)
+        if !lb.isFinite then Left(this) else mapMatrix(mv, x => log(x) / lb)
       // Symbolic matrix argument (any base): distribute log_base element-wise.
       case (Left(m: _MatrixShaped), rb) =>
         m.rebuild(m.children.map(el => LogBase(el, rb.toExpression))).eval(env)
       // F_0008: an interval argument (or base), as ln(x) / ln(b) over rigorous bounds.
       case (Right(ev: _Value), Right(bv: _Value)) if ev.isInstanceOf[_Interval] || bv.isInstanceOf[_Interval] =>
-        _Interval.logBase(ev, bv, env).map(Right(_)).getOrElse(Left(LogBase(ev, bv)))
+        _Interval.logBase(ev, bv, env).toRight(LogBase(ev, bv))
       // Exact tier: two cases, not a guard -- the first catches an exact argument under
       // any base, so by the second the argument is known inexact and only the base is exact.
       case (Right(re: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(re.toDouble), bv), env)
@@ -265,7 +306,7 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
       case (Right(ev: _Value), Right(bv: _Value)) =>
         (_Complex.logc(ev), _Complex.logc(bv)) match
           case (Some(le), Some(lb)) =>
-            _Complex.div(le, lb).map(Right(_)).getOrElse(Left(this))
+            _Complex.div(le, lb).toRight(this)
           case _ => Left(this)
       case (re, rb) => Left(LogBase(re.toExpression, rb.toExpression))
 
@@ -286,16 +327,8 @@ case class Abs(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Abs(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      // Before the _Number arm, as everywhere: the widening extractor would read the exact
-      // value as a Double first and the closure over the rationals would silently vanish.
-      case Right(r: _Rational)     => Right(r.abs)
-      case Right(_Number(x))       => Right(_Number(abs(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, abs)
-      case Right(c: _Complex)      => Right(_Number(hypot(c.re, c.im)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other                   => Left(Abs(other.toExpression))
+    // The exact arm answers r.abs itself: abs is closed over the rationals.
+    evalUnary(e, env)(x => realAny(abs(x)), c => realAny(hypot(c.re, c.im)), { case r => Right(r.abs) })
 
 
 /** The sine function `sin(e)`.
@@ -314,14 +347,7 @@ case class Sin(e: _Expression) extends _Function with NamedFunction:
     Some(r => Some(Real.sin(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) => Right(_Number(sin(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, sin)
-      case Right(c: _Complex) => _Complex.sinc(c).map(Right(_)).getOrElse(Left(Sin(c)))
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Sin(other.toExpression))
+    evalUnary(e, env)(x => realAny(sin(x)), _Complex.sinc)
 
 
 /** The cosine function `cos(e)`.
@@ -340,14 +366,7 @@ case class Cos(e: _Expression) extends _Function with NamedFunction:
     Some(r => Some(Real.cos(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) => Right(_Number(cos(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, cos)
-      case Right(c: _Complex) => _Complex.cosc(c).map(Right(_)).getOrElse(Left(Cos(c)))
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Cos(other.toExpression))
+    evalUnary(e, env)(x => realAny(cos(x)), _Complex.cosc)
 
 
 /** The tangent function `tan(e)` (also parsed as `tg(e)`).
@@ -369,16 +388,7 @@ case class Tg(e: _Expression) extends _Function with NamedFunction:
     Some(r => Some(Real.tan(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) =>
-        val r = tan(x)
-        if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, tan)
-      case Right(c: _Complex) => _Complex.tanc(c).map(Right(_)).getOrElse(Left(Tg(c)))
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Tg(other.toExpression))
+    evalUnary(e, env)(x => realFinite(tan(x)), _Complex.tanc)
 
 
 /** The arcsine function `asin(e)`.
@@ -399,15 +409,7 @@ case class Asin(e: _Expression) extends _Function with NamedFunction:
     Some(r => if r.abs <= _Rational.One then Some(Real.asin(toReal(r))) else None)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) =>
-        val r = asin(x)
-        if r.isNaN then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, asin)
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Asin(other.toExpression))
+    evalUnary(e, env)(x => realNotNaN(asin(x)))
 
 
 /** The arccosine function `acos(e)`.
@@ -427,15 +429,7 @@ case class Acos(e: _Expression) extends _Function with NamedFunction:
     Some(r => if r.abs <= _Rational.One then Some(Real.acos(toReal(r))) else None)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) =>
-        val r = acos(x)
-        if r.isNaN then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, acos)
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Acos(other.toExpression))
+    evalUnary(e, env)(x => realNotNaN(acos(x)))
 
 
 /** The arctangent function `atan(e)`.
@@ -455,13 +449,7 @@ case class Atan(e: _Expression) extends _Function with NamedFunction:
     Some(r => Some(Real.atan(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x)) => Right(_Number(atan(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, atan)
-      case Left(m: _MatrixShaped) => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other             => Left(Atan(other.toExpression))
+    evalUnary(e, env)(x => realAny(atan(x)))
 
 
 // ── hyperbolic and reciprocal-trigonometric functions ────────────
@@ -486,14 +474,7 @@ case class Sinh(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Sinh(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => Right(_Number(math.sinh(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, math.sinh)
-      case Right(c: _Complex)      => _Complex.sinhc(c).map(Right(_)).getOrElse(Left(Sinh(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other                   => Left(Sinh(other.toExpression))
+    evalUnary(e, env)(x => realAny(math.sinh(x)), _Complex.sinhc)
 
 
 /** The hyperbolic cosine `cosh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
@@ -503,14 +484,7 @@ case class Cosh(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Cosh(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => Right(_Number(math.cosh(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, math.cosh)
-      case Right(c: _Complex)      => _Complex.coshc(c).map(Right(_)).getOrElse(Left(Cosh(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other                   => Left(Cosh(other.toExpression))
+    evalUnary(e, env)(x => realAny(math.cosh(x)), _Complex.coshc)
 
 
 /** The hyperbolic tangent `tanh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
@@ -520,14 +494,7 @@ case class Tanh(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Tanh(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => Right(_Number(math.tanh(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, math.tanh)
-      case Right(c: _Complex)      => _Complex.tanhc(c).map(Right(_)).getOrElse(Left(Tanh(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case Right(i: _Interval) => intervalImage(i, env)
-      case other                   => Left(Tanh(other.toExpression))
+    evalUnary(e, env)(x => realAny(math.tanh(x)), _Complex.tanhc)
 
 
 /** The inverse hyperbolic sine `asinh(e)`.  Defined on all reals; complex inputs stay symbolic
@@ -538,12 +505,7 @@ case class Asinh(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Asinh(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => Right(_Number(asinhD(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, asinhD)
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Asinh(other.toExpression))
+    evalUnary(e, env)(x => realAny(asinhD(x)))
 
 
 /** The inverse hyperbolic cosine `acosh(e)`.  Real only for `e ≥ 1`; out-of-domain and complex
@@ -554,12 +516,7 @@ case class Acosh(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Acosh(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => val r = acoshD(x); if r.isNaN then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, acoshD)
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Acosh(other.toExpression))
+    evalUnary(e, env)(x => realNotNaN(acoshD(x)))
 
 
 /** The inverse hyperbolic tangent `atanh(e)`.  Real only for `|e| < 1`; out-of-domain and
@@ -570,12 +527,7 @@ case class Atanh(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Atanh(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => val r = atanhD(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, atanhD)
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Atanh(other.toExpression))
+    evalUnary(e, env)(x => realFinite(atanhD(x)))
 
 
 /** The secant `sec(e) = 1/cos(e)`.  Symbolic at the poles (`cos = 0`); accepts `_MatrixValue`
@@ -586,13 +538,7 @@ case class Sec(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Sec(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => val r = 1.0 / cos(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / cos(x))
-      case Right(c: _Complex)      => _Complex.secc(c).map(Right(_)).getOrElse(Left(Sec(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Sec(other.toExpression))
+    evalUnary(e, env)(x => realFinite(1.0 / cos(x)), _Complex.secc)
 
 
 /** The cosecant `csc(e) = 1/sin(e)`.  Symbolic at the poles (`sin = 0`); accepts `_MatrixValue`
@@ -603,13 +549,7 @@ case class Csc(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Csc(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => val r = 1.0 / sin(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / sin(x))
-      case Right(c: _Complex)      => _Complex.cscc(c).map(Right(_)).getOrElse(Left(Csc(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Csc(other.toExpression))
+    evalUnary(e, env)(x => realFinite(1.0 / sin(x)), _Complex.cscc)
 
 
 /** The cotangent `cot(e) = cos(e)/sin(e)`.  Symbolic at the poles (`sin = 0`); accepts
@@ -620,13 +560,7 @@ case class Cot(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Cot(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => val r = cos(x) / sin(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, x => cos(x) / sin(x))
-      case Right(c: _Complex)      => _Complex.cotc(c).map(Right(_)).getOrElse(Left(Cot(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Cot(other.toExpression))
+    evalUnary(e, env)(x => realFinite(cos(x) / sin(x)), _Complex.cotc)
 
 
 /** The hyperbolic secant `sech(e) = 1/cosh(e)`.  Entire (`cosh ≥ 1`); accepts `_MatrixValue`
@@ -637,13 +571,7 @@ case class Sech(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Sech(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => Right(_Number(1.0 / math.cosh(x)))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / math.cosh(x))
-      case Right(c: _Complex)      => _Complex.sechc(c).map(Right(_)).getOrElse(Left(Sech(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Sech(other.toExpression))
+    evalUnary(e, env)(x => realAny(1.0 / math.cosh(x)), _Complex.sechc)
 
 
 /** The hyperbolic cosecant `csch(e) = 1/sinh(e)`.  Symbolic at `e = 0`; accepts `_MatrixValue`
@@ -654,13 +582,7 @@ case class Csch(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Csch(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => val r = 1.0 / math.sinh(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, x => 1.0 / math.sinh(x))
-      case Right(c: _Complex)      => _Complex.cschc(c).map(Right(_)).getOrElse(Left(Csch(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Csch(other.toExpression))
+    evalUnary(e, env)(x => realFinite(1.0 / math.sinh(x)), _Complex.cschc)
 
 
 /** The hyperbolic cotangent `coth(e) = cosh(e)/sinh(e)`.  Symbolic at `e = 0`; accepts
@@ -671,13 +593,7 @@ case class Coth(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Coth(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => val r = math.cosh(x) / math.sinh(x); if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, x => math.cosh(x) / math.sinh(x))
-      case Right(c: _Complex)      => _Complex.cothc(c).map(Right(_)).getOrElse(Left(Coth(c)))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Coth(other.toExpression))
+    evalUnary(e, env)(x => realFinite(math.cosh(x) / math.sinh(x)), _Complex.cothc)
 
 
 /** The factorial `fact(e)` = `e!`.
@@ -699,17 +615,13 @@ case class Factorial(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Factorial(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      // An exact non-negative integer argument is computed exactly and without the 170!
-      // ceiling, which exists only because a Double overflows there.
-      case Right(r: _Rational) if exactIntArg(r).isDefined =>
+    // An exact non-negative integer argument is computed exactly and without the 170!
+    // ceiling, which exists only because a Double overflows there.
+    evalUnary(e, env)(x => realOf(factorialOf(x)), exact = {
+      case r if exactIntArg(r).isDefined =>
         exactIntArg(r).flatMap(multiFactorialExactWithin(_, BigInt(1), env.limits(Limit.MaxExactFactorial)))
-          .map(n => Right(_Rational(n))).getOrElse(Left(this))
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => factorialOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => factorialOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Factorial(other.toExpression))
+          .map(n => _Rational(n)).toRight(this)
+    })
 
 
 /** The multifactorial `mfact(e, k)` = `e * (e-k) * (e-2k) * ...`.
@@ -743,7 +655,7 @@ case class MultiFactorial(e: _Expression, k: _Expression) extends _Function with
       case (Right(rx: _Rational), Right(sv: _Value)) => viaDouble(List(_Number(rx.toDouble), sv), env)
       case (Right(xv: _Value), Right(rs: _Rational)) => viaDouble(List(xv, _Number(rs.toDouble)), env)
       case (Right(_Number(x)), Right(_Number(s))) =>
-        multiFactorialOf(x, s).map(r => Right(_Number(r))).getOrElse(Left(this))
+        multiFactorialOf(x, s).map(r => _Number(r)).toRight(this)
       case (ra, rk) => Left(MultiFactorial(ra.toExpression, rk.toExpression))
 
 
@@ -764,21 +676,15 @@ case class Gamma(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Gamma(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      // Gamma(n) = (n-1)! at a positive integer, so the exact factorial covers it; every
-      // other argument is genuinely transcendental and goes through Lanczos as before.
-      case Right(r: _Rational) if exactIntArg(r).exists(_.signum > 0) =>
-        exactIntArg(r).flatMap(n => multiFactorialExactWithin(n - 1, BigInt(1), env.limits(Limit.MaxExactFactorial)))
-          .map(n => Right(_Rational(n))).getOrElse(Left(this))
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => gammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => gammaOf(d).getOrElse(Double.NaN))
-      // Lanczos generalises to the complex plane, so Gamma no longer has to
-      // give up on a complex argument the way Asin and friends still do.
-      case Right(c: _Complex)      =>
-        gammaComplex(c.re, c.im).map((r, i) => Right(_Complex.of(r, i))).getOrElse(Left(this))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Gamma(other.toExpression))
+    // Gamma(n) = (n-1)! at a positive integer, so the exact factorial covers it; every other
+    // argument is genuinely transcendental and goes through Lanczos. Lanczos generalises to the
+    // complex plane, so Gamma does not give up on a complex argument the way Asin does.
+    evalUnary(e, env)(
+      x => realOf(gammaOf(x)),
+      c => gammaComplex(c.re, c.im).map((r, i) => _Complex.of(r, i)),
+      { case r if exactIntArg(r).exists(_.signum > 0) =>
+          exactIntArg(r).flatMap(n => multiFactorialExactWithin(n - 1, BigInt(1), env.limits(Limit.MaxExactFactorial)))
+            .map(n => _Rational(n)).toRight(this) })
 
 
 /** The log-gamma function `lgamma(e)` = `ln|Gamma(e)|`.
@@ -794,12 +700,7 @@ case class LogGamma(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = LogGamma(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => lgammaOf(x).map(r => Right(_Number(r))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => lgammaOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(LogGamma(other.toExpression))
+    evalUnary(e, env)(x => realOf(lgammaOf(x)))
 
 
 /** The beta function `Beta(a, b)` = `Gamma(a)Gamma(b) / Gamma(a+b)`.
@@ -817,13 +718,7 @@ case class Beta(a: _Expression, b: _Expression) extends _Function with NamedFunc
   override def rebuild(c: List[_Expression]): _Expression = Beta(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), b.eval(env)) match
-      // Exact tier first -- see MultiFactorial.
-      case (Right(rx: _Rational), Right(yv: _Value)) => viaDouble(List(_Number(rx.toDouble), yv), env)
-      case (Right(xv: _Value), Right(ry: _Rational)) => viaDouble(List(xv, _Number(ry.toDouble)), env)
-      case (Right(_Number(x)), Right(_Number(y))) =>
-        betaOf(x, y).map(r => Right(_Number(r))).getOrElse(Left(this))
-      case (ra, rb) => Left(Beta(ra.toExpression, rb.toExpression))
+    evalBinary(a, b, env)(betaOf)
 
 
 /** The error function `erf(e)`.
@@ -840,12 +735,7 @@ case class Erf(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Erf(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => erfOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => erfOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Erf(other.toExpression))
+    evalUnary(e, env)(x => realOf(erfOf(x)))
 
 
 /** The complementary error function `erfc(e) = 1 − erf(e)`.
@@ -861,12 +751,7 @@ case class Erfc(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Erfc(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => erfcOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => erfcOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Erfc(other.toExpression))
+    evalUnary(e, env)(x => realOf(erfcOf(x)))
 
 
 /** The digamma function `digamma(e) = Γ'(e)/Γ(e)`.
@@ -882,12 +767,7 @@ case class Digamma(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Digamma(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => digammaOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => digammaOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Digamma(other.toExpression))
+    evalUnary(e, env)(x => realOf(digammaOf(x)))
 
 
 // ── Combinatorial functions ─────────────────────────────────────
@@ -920,7 +800,7 @@ case class Binom(n: _Expression, k: _Expression) extends _Function with NamedFun
           yield Right(_Rational(v))
         exact.getOrElse(viaDouble(List(_Number(a.toDouble), _Number(b.toDouble)), env))
       case (Right(_Number(a)), Right(_Number(b))) =>
-        binomOfWithin(a, b, env.limits(Limit.MaxExactSequenceIndex)).map(v => Right(_Number(v))).getOrElse(Left(this))
+        binomOfWithin(a, b, env.limits(Limit.MaxExactSequenceIndex)).map(v => _Number(v)).toRight(this)
       case _ => Left(this)
 
 
@@ -935,14 +815,10 @@ case class Catalan(e: _Expression) extends _Function with NamedFunction:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     val cap = env.limits(Limit.MaxExactSequenceIndex)
-    e.eval(env) match
-      case Right(r: _Rational) =>
-        exactIntArg(r).flatMap(catalanExactWithin(_, cap)).map(v => Right(_Rational(v)))
-          .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
-      case Right(_Number(x))       => catalanOfWithin(x, cap).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => catalanOfWithin(d, cap).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Catalan(other.toExpression))
+    evalUnary(e, env)(x => realOf(catalanOfWithin(x, cap)), exact = {
+      case r => exactIntArg(r).flatMap(catalanExactWithin(_, cap)).map(v => Right(_Rational(v)))
+                  .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
+    })
 
 
 /** The `n`-th harmonic number `harmonic(n) = 1 + 1/2 + ... + 1/n` (`harmonic(0) = 0`).
@@ -960,14 +836,10 @@ case class Harmonic(e: _Expression) extends _Function with NamedFunction:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     val cap = env.limits(Limit.MaxExactSequenceIndex)
-    e.eval(env) match
-      case Right(r: _Rational) =>
-        exactIntArg(r).flatMap(harmonicExactWithin(_, cap)).map(Right(_))
-          .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
-      case Right(_Number(x))       => harmonicOfWithin(x, cap).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => harmonicOfWithin(d, cap).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Harmonic(other.toExpression))
+    evalUnary(e, env)(x => realOf(harmonicOfWithin(x, cap)), exact = {
+      case r => exactIntArg(r).flatMap(harmonicExactWithin(_, cap)).map(Right(_))
+                  .getOrElse(viaDouble(List(_Number(r.toDouble)), env))
+    })
 
 
 // ── Special integral functions ──────────────────────────────────
@@ -988,12 +860,7 @@ case class Si(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Si(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => siOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => siOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Si(other.toExpression))
+    evalUnary(e, env)(x => realOf(siOf(x)))
 
 
 /** The cosine integral `Ci(e)` — the antiderivative of `cos(v)/v`; real only for `e > 0`.
@@ -1006,12 +873,7 @@ case class Ci(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Ci(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => ciOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => ciOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Ci(other.toExpression))
+    evalUnary(e, env)(x => realOf(ciOf(x)))
 
 
 /** The exponential integral `Ei(e)` — the antiderivative of `e^v/v`; `e = 0` is the pole.
@@ -1024,12 +886,7 @@ case class Ei(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Ei(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => eiOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => eiOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Ei(other.toExpression))
+    evalUnary(e, env)(x => realOf(eiOf(x)))
 
 
 /** The logarithmic integral `li(e) = Ei(ln e)` — the antiderivative of `1/ln(v)`;
@@ -1043,12 +900,7 @@ case class Li(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Li(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => liOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => liOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(Li(other.toExpression))
+    evalUnary(e, env)(x => realOf(liOf(x)))
 
 
 /** The Fresnel sine integral `fresnelS(e) = ∫₀ᵉ sin(π t²/2) dt`.
@@ -1061,12 +913,7 @@ case class FresnelS(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = FresnelS(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => fresnelSOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => fresnelSOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(FresnelS(other.toExpression))
+    evalUnary(e, env)(x => realOf(fresnelSOf(x)))
 
 
 /** The Fresnel cosine integral `fresnelC(e) = ∫₀ᵉ cos(π t²/2) dt`.
@@ -1079,12 +926,7 @@ case class FresnelC(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = FresnelC(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    e.eval(env) match
-      case Right(r: _Rational)     => viaExact(r, env)
-      case Right(_Number(x))       => fresnelCOf(x).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case Right(mv: _MatrixValue) => mapMatrix(mv, d => fresnelCOf(d).getOrElse(Double.NaN))
-      case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
-      case other                   => Left(FresnelC(other.toExpression))
+    evalUnary(e, env)(x => realOf(fresnelCOf(x)))
 
 
 /** The regularised lower incomplete gamma `gammaP(a, x) = P(a, x)`.
@@ -1101,13 +943,7 @@ case class GammaP(a: _Expression, x: _Expression) extends _Function with NamedFu
   override def rebuild(c: List[_Expression]): _Expression = GammaP(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), x.eval(env)) match
-      // Exact tier first -- `_Number` widens, so anything below it never sees a `_Rational`.
-      case (Right(ra: _Rational), Right(xv: _Value)) => viaDouble(List(_Number(ra.toDouble), xv), env)
-      case (Right(av: _Value), Right(rx: _Rational)) => viaDouble(List(av, _Number(rx.toDouble)), env)
-      case (Right(_Number(av)), Right(_Number(xv)))  =>
-        lowerGammaP(av, xv).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case (ra, rx) => Left(GammaP(ra.toExpression, rx.toExpression))
+    evalBinary(a, x, env)(lowerGammaP)
 
 
 /** The regularised upper incomplete gamma `gammaQ(a, x) = Q(a, x) = 1 − P(a, x)`.
@@ -1121,12 +957,7 @@ case class GammaQ(a: _Expression, x: _Expression) extends _Function with NamedFu
   override def rebuild(c: List[_Expression]): _Expression = GammaQ(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), x.eval(env)) match
-      case (Right(ra: _Rational), Right(xv: _Value)) => viaDouble(List(_Number(ra.toDouble), xv), env)
-      case (Right(av: _Value), Right(rx: _Rational)) => viaDouble(List(av, _Number(rx.toDouble)), env)
-      case (Right(_Number(av)), Right(_Number(xv)))  =>
-        upperGammaQ(av, xv).map(v => Right(_Number(v))).getOrElse(Left(this))
-      case (ra, rx) => Left(GammaQ(ra.toExpression, rx.toExpression))
+    evalBinary(a, x, env)(upperGammaQ)
 
 
 /** The regularised incomplete beta `betaI(x, a, b) = I_x(a, b)`.
@@ -1148,5 +979,5 @@ case class BetaI(x: _Expression, a: _Expression, b: _Expression) extends _Functi
       case (Right(_Number(xv)), Right(_Number(av)), Right(_Number(bv))) =>
         // `_Number` widens over `_Rational`, so exact arguments are read as Doubles here --
         // correct for this tier, which has no arbitrary-precision kernel to offer.
-        incompleteBetaOf(xv, av, bv).map(v => Right(_Number(v))).getOrElse(Left(this))
+        incompleteBetaOf(xv, av, bv).map(v => _Number(v)).toRight(this)
       case (rx, ra, rb) => Left(BetaI(rx.toExpression, ra.toExpression, rb.toExpression))

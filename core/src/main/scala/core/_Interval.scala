@@ -108,7 +108,7 @@ object _Interval:
         case (_Number(a), _Number(b))     => Some(D(a, b))
         case _                            => None
     case r: _Rational => Some(E(r, r))
-    case _Number(d) if !d.isNaN && !d.isInfinite => Some(D(d, d))
+    case _Number(d) if d.isFinite => Some(D(d, d))
     case _            => None
 
   /** The bounds as `Double`s, an exact one rounded outward. */
@@ -335,7 +335,7 @@ object _Interval:
         r.toBigIntExact.filter(k => k.abs <= maxPower) match
           case Some(k) => integerPower(b, k.toInt, env)
           case None    => fractionalPower(b, Left(r), env)
-      case (Some(b), _Number(d)) if !d.isNaN && !d.isInfinite =>
+      case (Some(b), _Number(d)) if d.isFinite =>
         if d == math.rint(d) && math.abs(d) <= maxPower then integerPower(toDBounds(b), d.toInt, env)
         else fractionalPower(toDBounds(b), Right(d), env)
       case _ => None

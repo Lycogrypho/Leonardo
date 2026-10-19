@@ -109,7 +109,7 @@ private def cancelCommon(num: Vector[Double], den: Vector[Double]): (Vector[Doub
         // before F_0118 — and so feedback(1e-6/(s + 1e-6), 1) reads 1e-6/(s + 2e-6), not
         // 3e-12/(3e-6·s + 6e-12).
         val k = den(degreeOf(den)) / rd0.last
-        if k == 0.0 || k.isNaN || k.isInfinite then (rn0, rd0) else (rn0.map(_ * k), rd0.map(_ * k))
+        if k == 0.0 || !k.isFinite then (rn0, rd0) else (rn0.map(_ * k), rd0.map(_ * k))
 
 /** Rebuilds an expression as one rational `N(v)/D(v)`, or simplifies it if it is not rational.
  *
@@ -165,7 +165,7 @@ def zeros(g: _Expression, v: _Variable): Option[Vector[_Value]] =
  */
 def dcgain(g: _Expression, v: _Variable): Option[Double] =
   g.eval(new Environment().withBinding(v.variable, _Number(0))) match
-    case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+    case Right(_Number(d)) if d.isFinite => Some(d)
     case _                                              => None
 
 /** Real part of a pole, for the stability tests. */
@@ -345,6 +345,21 @@ private def logGrid(wMin: Double, wMax: Double, points: Int): Vector[Double] =
       case k                    => math.exp(lo + k * step)
     }
 
+/** The linear counterpart of [[logGrid]] (F_0147): `points` evenly spaced values from `lo` to
+ *  `hi`, both endpoints written verbatim; empty for fewer than two points or unordered bounds.
+ *  @param lo     the first value
+ *  @param hi     the last, above `lo`
+ *  @param points how many, at least 2
+ *  @return the grid, ascending */
+private def linGrid(lo: Double, hi: Double, points: Int): Vector[Double] =
+  if points < 2 || !(hi > lo) || !lo.isFinite || !hi.isFinite then Vector.empty
+  else
+    Vector.tabulate(points) {
+      case 0                    => lo
+      case k if k == points - 1 => hi
+      case k                    => lo + k * (hi - lo) / (points - 1)
+    }
+
 /** The root locus of `G` over `gains` (F_0140): the roots of `den + K·num` at each gain, as
  *  **continuous branches**, one per closed-loop pole.
  *
@@ -383,7 +398,9 @@ private def continueBranches(prev: Vector[(Double, Double)], next: Vector[(Doubl
   val chosen = pairs.foldLeft(Map.empty[Int, Int]) { case (m, (_, i, j)) =>
     if m.contains(i) || m.values.exists(_ == j) then m else m + (i -> j)
   }
-  prev.indices.toVector.map(i => next(chosen(i)))
+  // Every prev index is matched: rootLocus hands over samples of exactly n roots each, so the
+  // greedy pass always pairs all of them. Read through get so that precondition is not silent.
+  prev.indices.toVector.flatMap(i => chosen.get(i).map(next))
 
 /** The root-locus sweep behind the browser's `rlocus` command (F_0140): `G` with the
  *  environment's parameters substituted (never `v`), swept over `points` gains from `kMin` to
@@ -402,9 +419,7 @@ def rootLocusSweep(g: _Expression, v: _Variable, kMin: Double, kMax: Double, poi
                    env: Environment): Option[(Vector[Vector[(Double, Double)]], Vector[(Double, Double)], Vector[(Double, Double)])] =
   val plant = resolved(g, v, env)
   val gains =
-    if kMin > 0.0 then logGrid(kMin, kMax, points)
-    else if points >= 2 && kMax > kMin then Vector.tabulate(points)(i => kMin + i * (kMax - kMin) / (points - 1))
-    else Vector.empty
+    if kMin > 0.0 then logGrid(kMin, kMax, points) else linGrid(kMin, kMax, points)
   def parts(vs: Option[Vector[_Value]]): Vector[(Double, Double)] = vs.getOrElse(Vector.empty).flatMap(_Complex.parts)
   rootLocus(plant, v, gains).map(bs => (bs, parts(poles(plant, v)), parts(zeros(plant, v))))
 

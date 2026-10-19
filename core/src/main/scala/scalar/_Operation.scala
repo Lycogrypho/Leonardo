@@ -59,10 +59,10 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
         if x.rows == y.rows && x.cols == y.cols then x.add(y).guarded(this) else Left(this)
       // F_0008: an interval operand, outward-rounded; anything without bounds stays symbolic.
       case (Right(av: _Value), Right(bv: _Value)) if eitherInterval(av, bv) =>
-        _Interval.add(av, bv, env).map(Right(_)).getOrElse(Left(Sum(av, bv)))
+        _Interval.add(av, bv, env).toRight(Sum(av, bv))
       // Both operands are concrete: try complex field addition; None → stay symbolic.
       case (Right(av: _Value), Right(bv: _Value)) =>
-        _Complex.add(av, bv).map(Right(_)).getOrElse(Left(Sum(av, bv)))
+        _Complex.add(av, bv).toRight(Sum(av, bv))
       case (ra, rb)                               => Left(Sum(ra.toExpression, rb.toExpression))
 
 
@@ -101,10 +101,10 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
       case (Right(_Number(0.0)), _) | (_, Right(_Number(0.0))) => Right(_Number(0.0))
       case (Right(_Number(x)), Right(_Number(y)))           => Right(_Number(x * y))
       case (Right(av: _Value), Right(bv: _Value)) if eitherInterval(av, bv) =>
-        _Interval.multiply(av, bv, env).map(Right(_)).getOrElse(Left(Product(av, bv)))
+        _Interval.multiply(av, bv, env).toRight(Product(av, bv))
       // Both operands are concrete: try complex field multiplication; None → stay symbolic.
       case (Right(av: _Value), Right(bv: _Value)) =>
-        _Complex.mul(av, bv).map(Right(_)).getOrElse(Left(Product(av, bv)))
+        _Complex.mul(av, bv).toRight(Product(av, bv))
       case (ra, rb) => Left(Product(ra.toExpression, rb.toExpression))
 
 
@@ -127,11 +127,11 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
       // Exact tier first — see the ORDER note in Sum.  A zero denominator is the same
       // domain error as below: `divide` returns None and the node stays symbolic.
       case (Right(x: _Rational), Right(y: _Rational)) =>
-        x.divide(y, env.rationalPolicy).map(Right(_)).getOrElse(Left(this))
+        x.divide(y, env.rationalPolicy).toRight(this)
       case (Right(_Number(x)), Right(_Number(y))) =>
         val r = x / y
         // x/0 and 0/0 are domain errors: stay symbolic instead of propagating ±Infinity/NaN
-        if r.isNaN || r.isInfinite then Left(this) else Right(_Number(r))
+        if !r.isFinite then Left(this) else Right(_Number(r))
       // M / k = (1/k) · M; k = 0 yields non-finite elements → the guard stays symbolic
       case (Right(m: _MatrixValue), Right(_Number(k))) => m.scale(1.0 / k).guarded(this)
       // k / M = k · M⁻¹ (scalar over matrix); singular/non-square → stays symbolic
@@ -157,10 +157,10 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
           case _                                        => Left(this)
       // An interval divisor containing zero is two rays, not an interval: stays symbolic.
       case (Right(av: _Value), Right(bv: _Value)) if eitherInterval(av, bv) =>
-        _Interval.divide(av, bv, env).map(Right(_)).getOrElse(Left(Ratio(av, bv)))
+        _Interval.divide(av, bv, env).toRight(Ratio(av, bv))
       // Both operands are concrete: try complex field division; None on non-numeric or zero denominator.
       case (Right(av: _Value), Right(bv: _Value)) =>
-        _Complex.div(av, bv).map(Right(_)).getOrElse(Left(Ratio(av, bv)))
+        _Complex.div(av, bv).toRight(Ratio(av, bv))
       case (ra, rb)                               => Left(Ratio(ra.toExpression, rb.toExpression))
 
 
@@ -191,8 +191,8 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
         // A non-finite real result means the real power is undefined: fall back to the
         // principal complex value ((negative)^fractional → complex; 0^negative → still
         // undefined, so _Complex.pow returns None and we stay symbolic as before).
-        if r.isNaN || r.isInfinite then
-          _Complex.pow(_Number(b), _Number(e)).map(Right(_)).getOrElse(Left(this))
+        if !r.isFinite then
+          _Complex.pow(_Number(b), _Number(e)).toRight(this)
         else Right(_Number(r))
       // Square dense matrix raised to an integer power: A^n by binary exponentiation
       // (A^0 = I, A^-n = (A⁻¹)^n). Non-square, non-integer exponent, or a singular base
@@ -214,10 +214,10 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       case (Left(m: _MatrixShaped), Right(_Number(e))) =>
         denseFromShaped(m).flatMap(mv => matrixPower(mv, e)).getOrElse(Left(this))
       case (Right(bv: _Value), Right(ev: _Value)) if eitherInterval(bv, ev) =>
-        _Interval.power(bv, ev, env).map(Right(_)).getOrElse(Left(Power(bv, ev)))
+        _Interval.power(bv, ev, env).toRight(Power(bv, ev))
       // Both operands are concrete: try principal complex power; None → stay symbolic.
       case (Right(bv: _Value), Right(ev: _Value)) =>
-        _Complex.pow(bv, ev).map(Right(_)).getOrElse(Left(Power(bv, ev)))
+        _Complex.pow(bv, ev).toRight(Power(bv, ev))
       case (rb, re)                               => Left(Power(rb.toExpression, re.toExpression))
 
   /** Raises an exact rational to an exact rational power.
@@ -236,7 +236,7 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
   private def ratPow(b: _Rational, e: _Rational, env: Environment): Either[_Expression, _Value] =
     e.toBigIntExact.filter(_.isValidInt) match
       case Some(k) => b.pow(k.toInt, env.rationalPolicy, env.limits(Limit.MaxExactPowerBits))
-                        .map(Right(_)).getOrElse(Left(this))
+                        .toRight(this)
       case None    => fractionalPow(b, e, env)
 
   /** A rational base to a genuinely fractional power.
@@ -255,9 +255,9 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
   private def fractionalPow(b: _Rational, e: _Rational, env: Environment): Either[_Expression, _Value] =
     def viaDouble: Either[_Expression, _Value] =
       val r = pow(b.toDouble, e.toDouble)
-      if r.isNaN || r.isInfinite then
-        _Complex.pow(_Number(b.toDouble), _Number(e.toDouble)).map(Right(_)).getOrElse(Left(this))
-      else _Rational.fromApproximation(r, env.workingPrecision).map(Right(_)).getOrElse(Left(this))
+      if !r.isFinite then
+        _Complex.pow(_Number(b.toDouble), _Number(e.toDouble)).toRight(this)
+      else _Rational.fromApproximation(r, env.workingPrecision).toRight(this)
 
     if b.signum <= 0 || env.workingPrecision <= _Rational.DoubleReliableDigits then viaDouble
     else exactPow(b, e, env.workingPrecision).map(Right(_)).getOrElse(viaDouble)

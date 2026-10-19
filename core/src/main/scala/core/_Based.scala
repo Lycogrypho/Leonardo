@@ -65,7 +65,7 @@ object _Based:
    *  collapses the crisp endpoints and `_Complex.of` collapses a zero imaginary part.
    */
   def of(value: Double, base: Int, balanced: Boolean = false): _Value =
-    if !value.isWhole || value.isNaN || value.isInfinite then _Number(value)
+    if !value.isWhole || !value.isFinite then _Number(value)
     else if balanced then
       if base == 3 then new _Based(value, 3, true) else _Number(value)
     else if base == 10 || base < MinBase || base > MaxBase then _Number(value)

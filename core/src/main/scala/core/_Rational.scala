@@ -129,7 +129,7 @@ object _Rational:
    *  @return the exact rational, or `None` when `d` is NaN or infinite
    */
   def fromDouble(d: Double): Option[_Rational] =
-    if d.isNaN || d.isInfinite then None else Some(fromBigDecimal(new java.math.BigDecimal(d)))
+    if !d.isFinite then None else Some(fromBigDecimal(new java.math.BigDecimal(d)))
 
   /** Converts a *decimal literal* to the exact rational it denotes.
    *

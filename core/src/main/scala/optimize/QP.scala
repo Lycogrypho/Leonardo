@@ -265,7 +265,7 @@ private object QpProblem:
     val (maxVars, maxRows) = (limits.count(Limit.MaxQpVariables), limits.count(Limit.MaxQpConstraints))
     val n = h.rows
     def bad(detail: String) = Left(QpFailure.InvalidInput(detail))
-    def finite(xs: Iterable[Double]) = xs.forall(d => !d.isNaN && !d.isInfinite)
+    def finite(xs: Iterable[Double]) = xs.forall(d => d.isFinite)
     def block(name: String, g: Option[(_MatrixValue, Vector[Double])]): Either[QpFailure, Vector[(Array[Double], Double)]] =
       g match
         case None => Right(Vector.empty)

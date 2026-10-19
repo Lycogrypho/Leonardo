@@ -145,7 +145,7 @@ private def flip(op: CompareOp): CompareOp = op match
 
 /** Evaluates `e` to a finite real number, or `None`. */
 private def foldReal(e: _Expression, env: Environment): Option[Double] = e.eval(env) match
-  case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+  case Right(_Number(d)) if d.isFinite => Some(d)
   case _                                              => None
 
 
@@ -207,10 +207,10 @@ private def sampleBetween(critical: Vector[Double]): Vector[Double] =
 
 /** Whether `N(x)/D(x) <op> 0` holds at the sample point `x`. */
 private def holdsAt(num: Vector[Double], den: Vector[Double], x: Double, op: CompareOp): Boolean =
-  val d = polyEvalLocal(den, x)
+  val d = evalCoeffsReal(den, x)
   if d == 0.0 then false
   else
-    val value = polyEvalLocal(num, x) / d
+    val value = evalCoeffsReal(num, x) / d
     op match
       case CompareOp.Lt => value < 0
       case CompareOp.Le => value < 0
@@ -228,6 +228,3 @@ private def intervalPiece(critical: Vector[Double], i: Int, v: _Variable): _Expr
   else if i == critical.size then _Comparison(v, CompareOp.Gt, _Number(critical.last))
   else And(_Comparison(v, CompareOp.Gt, _Number(critical(i - 1))),
            _Comparison(v, CompareOp.Lt, _Number(critical(i))))
-
-private def polyEvalLocal(cs: Vector[Double], x: Double): Double =
-  cs.foldRight(0.0)((c, acc) => acc * x + c)

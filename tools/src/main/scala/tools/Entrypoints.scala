@@ -50,6 +50,9 @@ package tools
 /** Flags the browser page's inline scripts disagreeing with its policy. See [[CheckCsp]]. */
 @main def csp(args: String*): Unit = sys.exit(CheckCsp.run(args))
 
+/** Flags a grammar word parsed as a call but not reserved. See [[CheckReservedWords]]. */
+@main def reservedWords(args: String*): Unit = sys.exit(CheckReservedWords.run(args))
+
 /** Writes the architecture diagram as GraphML, or with `--check` refuses what the reader does not
  *  know and a stale committed copy. See [[PumlGraph]]. */
 @main def graphml(args: String*): Unit = sys.exit(PumlGraph.run(args))

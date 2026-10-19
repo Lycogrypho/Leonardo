@@ -148,7 +148,7 @@ private[leonardo] type Condition = (Map[String, _Expression], _Variable) => Bool
 private def numericValue(e: _Expression): Option[Double] =
   if e.freeVars.nonEmpty then None
   else e.eval(new Environment()) match
-    case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+    case Right(_Number(d)) if d.isFinite => Some(d)
     case _                                              => None
 
 /** The binding for `name` exists and does not mention the context variable. */

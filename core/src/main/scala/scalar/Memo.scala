@@ -2,7 +2,8 @@ package it.grypho.scala.leonardo
 package scalar
 
 
-/** Bounded, thread-safe memoisation table for pure algorithm results (derive, simplify).
+/** Bounded, thread-safe memoisation table for pure algorithm results (derive, simplify, and since
+ *  F_0146 the hypergeometric mass table, which is why it is visible to the whole library).
  *
  *  Memoisation is semantically transparent: the cached functions depend only on the
  *  structure of their arguments, never on an [[core.Environment]], so a cache hit and a
@@ -18,7 +19,7 @@ package scalar
  *  @tparam V value type; `AnyRef` so the underlying `ConcurrentHashMap` can store it without boxing
  *  @param maxEntries eviction threshold; the table is cleared when size reaches this value
  */
-private[scalar] final class Memo[K, V <: AnyRef](maxEntries: Int):
+private[leonardo] final class Memo[K, V <: AnyRef](maxEntries: Int):
   private val table = new java.util.concurrent.ConcurrentHashMap[K, V]()
 
   /** Returns the cached result for `key`, or computes and caches it if absent.

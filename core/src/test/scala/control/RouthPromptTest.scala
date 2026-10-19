@@ -28,6 +28,13 @@ class RouthPromptTest extends AnyFlatSpec:
     assert(parsed(s"routhTable($g, s)").eval(new Environment()) == Right(expected.getOrElse(fail())))
   }
 
+  it should "answer the hand-computed array, not only what the library computes (F_0150)" in {
+    // s^3 + 2s^2 + 3s + 4: rows [1, 3], [2, 4], [(2*3 - 1*4)/2, 0] = [1, 0], [4, 0]. The case
+    // above rebuilds its expectation with the code under test, so it could not catch the code.
+    assert(parsed("routhTable(1/(s^3 + 2*s^2 + 3*s + 4), s)").eval(new Environment()) ==
+      Right(_MatrixValue(4, 2, Array(1.0, 3.0, 2.0, 4.0, 1.0, 0.0, 4.0, 0.0))))
+  }
+
   it should "show a sign change in the first column for an unstable plant" in {
     parsed("routhTable(1/(s^3 + s^2 + 2*s + 8), s)").eval(new Environment()) match
       case Right(m: _MatrixValue) =>

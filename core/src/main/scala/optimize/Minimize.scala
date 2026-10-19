@@ -10,7 +10,9 @@ import scalar.*
  *  **Never a hidden default**, the `c2d` rule: two methods can stop at different points of a
  *  non-convex function, so a silent choice would make two correct-looking answers disagree.
  */
-enum MinimizeMethod:
+enum MinimizeMethod extends Keyworded:
+  /** The slot word (F_0148); the table is the companion's. */
+  def keyword: String = MinimizeMethod.keyword(this)
   /** Steepest descent with a backtracking (Armijo) line search; projected under bounds. */
   case GradientDescent
   /** Newton's method on the symbolic Hessian.  Declines where the Hessian is not positive
@@ -36,7 +38,7 @@ object MinimizeMethod:
     case ProjectedBFGS   => "pbfgs"
 
   /** Looks a method up by its keyword. */
-  def fromKeyword(s: String): Option[MinimizeMethod] = values.find(m => keyword(m) == s)
+  def fromKeyword(s: String): Option[MinimizeMethod] = Keyworded.byKeyword(values, s)
 
 
 /** Why [[minimize]] declined (F_0052 Decision A: a reason at the Scala level, which the REPL
@@ -112,7 +114,7 @@ def minimize(f: _Expression, vars: Vector[_Variable], x0: Vector[Double],
   val invalid: Option[String] =
     if !distinctVariables(vars) then Some("the variables must be distinct names")
     else if x0.size != n then Some(s"the starting point has ${x0.size} entries for $n variables")
-    else if x0.exists(d => d.isNaN || d.isInfinite) then Some("the starting point must be finite")
+    else if x0.exists(d => !d.isFinite) then Some("the starting point must be finite")
     else bounds.flatMap { (lo, hi) =>
       if lo.size != n || hi.size != n then Some(s"the bounds must have $n entries each")
       else if lo.zip(hi).exists((a, b) => a.isNaN || b.isNaN || a > b) then
@@ -149,7 +151,7 @@ private final class Problem(f: _Expression, vars: Vector[_Variable], env: Enviro
     vars.zip(x).foldLeft(env) { case (acc, (v, d)) => acc.withBinding(v.variable, _Number(d)) }
 
   private def real(e: _Expression, at: Environment): Option[Double] = e.eval(at) match
-    case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+    case Right(_Number(d)) if d.isFinite => Some(d)
     case _                                               => None
 
   def value(x: Vector[Double]): Option[Double] = real(f, bound(x))

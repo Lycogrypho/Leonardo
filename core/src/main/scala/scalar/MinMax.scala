@@ -136,11 +136,11 @@ case class _Extreme(kind: Extreme, arg: _Expression) extends NamedFunction:
   override def eval(env: Environment): Either[_Expression, _Value] =
     arg.eval(env) match
       case Right(v @ _Number(_))   => Right(v)
-      case Right(m: _MatrixValue)  => pick(kind, m.toVector.map(_Number(_))).map(Right(_)).getOrElse(Left(this))
+      case Right(m: _MatrixValue)  => pick(kind, m.toVector.map(_Number(_))).toRight(this)
       case r @ Left(m: _MatrixShaped) =>
         val values = m.children.collect { case v: _Value => v }
         (if values.size == m.children.size then pick(kind, values) else None)
-          .map(Right(_)).getOrElse(Left(_Extreme(kind, r.toExpression)))
+          .toRight(_Extreme(kind, r.toExpression))
       case r => Left(_Extreme(kind, r.toExpression))
 
 /** Saturation: `clamp(x, lo, hi)`, `x` limited to `[lo, hi]`, element-wise with numbers spreading

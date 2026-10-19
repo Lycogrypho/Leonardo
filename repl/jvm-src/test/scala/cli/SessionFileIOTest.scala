@@ -29,7 +29,8 @@ class SessionFileIOTest extends AnyFlatSpec with BeforeAndAfter:
       original.execute("precision 6")
       original.execute("k := 7")
       original.execute("h := k + x")
-      assert(Session.saveFile(original, tmp.getPath) == s"saved to ${tmp.getPath}")
+      // createTempFile has made the file already, so this save replaces it (F_0151).
+      assert(Session.saveFile(original, tmp.getPath).startsWith(s"saved to ${tmp.getPath}"))
 
       val restored = session
       val out = Session.loadFile(restored, tmp.getPath)
@@ -38,6 +39,18 @@ class SessionFileIOTest extends AnyFlatSpec with BeforeAndAfter:
       restored.execute("x := 1")
       assert(restored.execute("h") == "8.0")
     finally tmp.delete()
+  }
+
+  "saveFile" should "say when it replaces a session already saved there (F_0151)" in
+  {
+    val dir  = java.nio.file.Files.createTempDirectory("leonardo-save")
+    val path = dir.resolve("work.lsn").toString
+    try
+      assert(Session.saveFile(session, path) == s"saved to $path")
+      assert(Session.saveFile(session, path) == s"saved to $path (replacing the session saved there before)")
+    finally
+      java.nio.file.Files.deleteIfExists(java.nio.file.Paths.get(path))
+      java.nio.file.Files.deleteIfExists(dir)
   }
 
   "Session.saveFile / loadFile" should "round-trip the session state through a temp file" in

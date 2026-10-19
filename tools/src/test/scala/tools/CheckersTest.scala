@@ -294,3 +294,28 @@ class CheckersTest extends AnyFlatSpec:
     for local <- List("ToDo.md", "Done.md", "DesignNotes.md") do
       assert(Files.GuardedRoots.contains(Paths.get(local)), s"$local should be guarded when present")
   }
+
+  // --- reserved words (F_0148) ------------------------------------------------------------
+
+  private def parserFile(reserved: String, grammar: String): Path =
+    fixture("Parser.scala" ->
+      s"object Parser:\n  val ReservedWords: Set[String] = Set(\n    $reserved\n  )\n$grammar\n").resolve("Parser.scala")
+
+  "the reserved-word guard" should "flag a production whose word is not reserved" in
+  {
+    val found = CheckReservedWords.offences(parserFile("\"sin\"", "  val f = \"sin(\" | \"cos(\""))
+    assert(found.size == 1 && found.head.contains("cos"), found)
+  }
+
+  it should "pass when every production's word is reserved, and ignore words quoted in comments" in
+  {
+    val grammar = "  val f = \"sin(\" // \"tan(\" is mentioned here\n  /* and \"atan(\" here */"
+    assert(CheckReservedWords.offences(parserFile("\"sin\", \"cos\" // a comment, \"x\"", grammar)).isEmpty)
+  }
+
+  it should "see the real grammar's productions, so its silence is not vacuous" in
+  {
+    val words = CheckReservedWords.productions(Paths.get("core", "src", "main", "scala", "parser", "Parser.scala"))
+    assert(words.size > 150 && words.contains("fourierCausal") && words.contains("sin"), words.size)
+    assert(CheckReservedWords.offences(Paths.get("core", "src", "main", "scala", "parser", "Parser.scala")).isEmpty)
+  }

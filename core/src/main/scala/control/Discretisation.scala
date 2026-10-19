@@ -12,7 +12,9 @@ import transform.inverseLaplaceOf
  *  discretised by zero-order hold and by Tustin has *different* discrete poles, so a silent
  *  choice would make two correct-looking answers disagree with no way to see why.
  */
-enum DiscretisationMethod:
+enum DiscretisationMethod extends Keyworded:
+  /** The slot word (F_0148); the table is the companion's. */
+  def keyword: String = DiscretisationMethod.keyword(this)
   /** [[https://en.wikipedia.org/wiki/Zero-order_hold Zero-order hold]] — what a sampled-data control system physically does: the input is held
    *  constant between samples.  The default choice for a plant.
    */
@@ -235,9 +237,9 @@ private def matchedPoleZero(g: _Expression, s: _Variable, z: _Variable, ts: Doub
         if math.abs(a._2) <= 1e-9 * modulusProduct(zs.map(mapped), math.max(excess - 1, 0)) &&
            math.abs(b._2) <= 1e-9 * modulusProduct(ps.map(mapped), 0)
         ratio = a._1 / b._1
-        if ratio != 0.0 && !ratio.isNaN && !ratio.isInfinite
+        if ratio != 0.0 && ratio.isFinite
         gain = target / (math.pow(ts, m0 - p0) * ratio)
-        if !gain.isNaN && !gain.isInfinite
+        if gain.isFinite
       yield normaliseTf(Ratio(Product(_Number(gain), polyToExpr(nz, z)), polyToExpr(dz, z)), z)
   }
 

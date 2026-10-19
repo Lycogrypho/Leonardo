@@ -622,6 +622,7 @@ addCommandAlias("checks",
   ";tools/runMain it.grypho.scala.leonardo.tools.scalaVersion" +
   ";tools/runMain it.grypho.scala.leonardo.tools.docLinks" +
   ";tools/runMain it.grypho.scala.leonardo.tools.csp" +
+  ";tools/runMain it.grypho.scala.leonardo.tools.reservedWords" +
   ";tools/runMain it.grypho.scala.leonardo.tools.graphml --check")
 
 // The architecture diagram as GraphML for Gephi (F_0097), committed beside it as

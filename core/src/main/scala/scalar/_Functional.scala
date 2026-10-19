@@ -110,7 +110,7 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
                             else                       2.0
                 fastLoop(i + 1, acc + coeff * f(a + i * h))
             val s = h / 3.0 * fastLoop(0, 0.0)
-            if s.isNaN || s.isInfinite then Left(this) else Right(_Number(s))
+            if !s.isFinite then Left(this) else Right(_Number(s))
 
           case None =>
             // Fallback: tree-evaluation per step (handles symbolic sub-expressions).
@@ -129,7 +129,7 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
             loop(0, 0.0) match
               case Some(s) =>
                 val result = h / 3.0 * s
-                if result.isNaN || result.isInfinite then Left(this) else Right(_Number(result))
+                if !result.isFinite then Left(this) else Right(_Number(result))
               case None    => Left(this)
 
       case _ => Left(this)
@@ -329,7 +329,7 @@ case class _Laurent(e: _Expression, v: _Variable, point: _Expression,
   /** The pole order at `point`, from the singularity classifier. */
   private def detectedOrder(env: Environment): Option[Int] =
     point.eval(env) match
-      case Right(_Number(a)) if !a.isNaN && !a.isInfinite =>
+      case Right(_Number(a)) if a.isFinite =>
         singularitiesOf(e, v, env).flatMap { ss =>
           // The nearest singularity, within 1e-6 of the singularities' own scale (F_0125): an absolute
           // 1e-6 matched the regular point 5e-7 to the pole at 1e-7, read the order as 1, and the

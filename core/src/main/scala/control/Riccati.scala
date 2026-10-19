@@ -337,7 +337,9 @@ def kalmanStep(xhat: _MatrixValue, p: _MatrixValue, u: _MatrixValue, y: _MatrixV
 
 
 /** Which Riccati-family function a [[_Riccati]] node is. */
-enum RiccatiKind:
+enum RiccatiKind extends Keyworded:
+  /** The grammar keyword (F_0148); the table is the companion's. */
+  def keyword: String = RiccatiKind.keyword(this)
   case Dare, Dlqr, Dlyap, KalmanGain, KalmanStep
 
 object RiccatiKind:

@@ -20,12 +20,10 @@ import matrix._Matrix
 
 /** A vector operand: its shape and its cells as `(re, im)`, or `None` when it is not a row or
  *  column of numbers.  An exact cell is read as the number it holds. */
-private def vectorOf(r: Either[_Expression, _Value]): Option[((Int, Int), Vector[_Value])] = r match
-  case Right(m: _MatrixValue) if m.rows == 1 || m.cols == 1 => Some(((m.rows, m.cols), m.toVector.map(_Number(_))))
-  case Left(m: _Matrix) if m.rows == 1 || m.cols == 1 =>
-    val vs = m.elems.collect { case v: _Value if _Complex.parts(v).isDefined => v }
-    Option.when(vs.size == m.elems.size)(((m.rows, m.cols), vs))
-  case _ => None
+private def vectorOf(r: Either[_Expression, _Value]): Option[((Int, Int), Vector[_Value])] =
+  _MatrixValue.cellsOf(r).collect {
+    case (rows, cols, vs) if (rows == 1 || cols == 1) && vs.forall(_Complex.parts(_).isDefined) => ((rows, cols), vs)
+  }
 
 /** The discrete Fourier transform `Xₖ = Σₙ xₙ·e^(−2πikn/N)`, or with `inverse` the inverse
  *  `xₙ = (1/N)·Σₖ Xₖ·e^(2πikn/N)`.

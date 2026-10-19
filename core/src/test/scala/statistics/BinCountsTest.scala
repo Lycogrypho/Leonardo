@@ -25,6 +25,11 @@ class BinCountsTest extends AnyFlatSpec:
     assert(binCounts(Vector(0.5, 0.5, 2.5), 0.0, 3.0, 3).contains(Vector(2, 0, 1)))
   }
 
+  it should "bin a span too wide for one Double without putting everything in the first bin (F_0150)" in {
+    // hi - lo = 3e308 overflows to Inf: every value used to land in bin 0.
+    assert(binCounts(Vector(-1e308, 0.0, 1e308), -1.5e308, 1.5e308, 3).contains(Vector(1, 1, 1)))
+  }
+
   it should "read an exact sample" in {
     assert(Parser.parse("bincounts([[1/2, 3/2]], 0, 2, 2)", Some(30)).get.eval(env) == ev("[[1], [1]]"))
   }

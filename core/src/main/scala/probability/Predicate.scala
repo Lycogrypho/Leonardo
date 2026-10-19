@@ -79,7 +79,7 @@ private def evaluatePredicate(pred: _Expression, v: String, d: _Distribution,
   case _EqualityCheck(l, r) => pointMass(l, r, v, d, env)
   case _Equation(l, r)      => pointMass(l, r, v, d, env)
   case _Comparison(l, CompareOp.Ne, r) =>
-    pointMass(l, r, v, d, env).flatMap(p => finite(1.0 - p))
+    pointMass(l, r, v, d, env).flatMap(p => finiteOption(1.0 - p))
   case _ => boundsOf(pred, v, env).flatMap(b => probabilityOfBounds(b, d))
 
 /** `P(X = c)`, given the two sides of an equality. */
@@ -153,17 +153,15 @@ private def probabilityOfBounds(b: Bounds, d: _Distribution): Option[Double] =
       for
         upper <- d.cdf(hiEff)
         lower <- if loEff.isNegInfinity then Some(0.0) else d.cdf(loEff - 1.0)
-        r     <- finite(upper - lower)
+        r     <- finiteOption(upper - lower)
       yield clamp(r)
   else
     // Continuous: the endpoints carry no mass, so inclusivity does not matter.
     for
       upper <- d.cdf(b.hi)
       lower <- d.cdf(b.lo)
-      r     <- finite(upper - lower)
+      r     <- finiteOption(upper - lower)
     yield clamp(r)
 
 private def clamp(d: Double): Double = math.max(0.0, math.min(1.0, d))
 
-private def finite(d: Double): Option[Double] =
-  Option.when(!d.isNaN && !d.isInfinite)(d)

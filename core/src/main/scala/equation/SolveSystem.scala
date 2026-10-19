@@ -133,7 +133,7 @@ private def gaussDense(A: Vector[Vector[Double]], b: Vector[Double]): Option[Vec
   val tol   = PivotTolerance * scale
 
   boundary:
-    if scale == 0.0 || scale.isNaN || scale.isInfinite then break(None)
+    if scale == 0.0 || !scale.isFinite then break(None)
     for pivot <- 0 until n do
       // Partial pivoting: swap the row with the largest absolute value in this column
       val maxRow = (pivot until n).maxBy(r => math.abs(aug(r)(pivot)))

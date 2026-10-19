@@ -25,7 +25,9 @@ import matrix._Matrix
  *  the names are related.  This way each name survives the round trip *and* the equivalence
  *  (`lucas(n) = fib(n, 2, 1)`) is a documented fact rather than a second implementation.
  */
-enum SeqKind(val fnName: String, val a: Int, val b: Int, val p: Int, val q: Int):
+enum SeqKind(val fnName: String, val a: Int, val b: Int, val p: Int, val q: Int) extends Keyworded:
+  /** The grammar keyword (F_0148). */
+  def keyword: String = fnName
   case Fibonacci  extends SeqKind("fib",        0, 1, 1, 1)
   case Lucas      extends SeqKind("lucas",      2, 1, 1, 1)
   case Pell       extends SeqKind("pell",       0, 1, 2, 1)
@@ -148,7 +150,7 @@ case class _Tabulate(e: _Expression, v: _Variable, lo: _Expression, hi: _Express
 /** A bound as an integer, or `None` when it is not a concrete whole number. */
 private def indexOf(b: _Expression, env: Environment): Option[Int] =
   b.eval(env) match
-    case Right(_Number(d)) if !d.isNaN && !d.isInfinite && d == Math.floor(d) &&
+    case Right(_Number(d)) if d.isFinite && d == Math.floor(d) &&
                               math.abs(d) <= Int.MaxValue => Some(d.toInt)
     case _                                                => None
 
@@ -214,7 +216,9 @@ private def termsOf(e: _Expression, v: _Variable, l: Int, h: Int,
  *  in what an empty range is worth, so [[_Reduction]] holds both facts once and the named
  *  spellings round-trip -- the `_Sequence`/`SeqKind` pattern.
  */
-enum ReduceKind(val word: String):
+enum ReduceKind(val word: String) extends Keyworded:
+  /** The grammar keyword (F_0148). */
+  def keyword: String = word
   /** `sum(e, k, lo, hi)` -- the terms added; the empty sum is `0`. */
   case Sum extends ReduceKind("sum")
   /** `product(e, k, lo, hi)` -- the terms multiplied; the empty product is `1`. */

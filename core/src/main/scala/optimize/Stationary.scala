@@ -131,7 +131,7 @@ private[optimize] def numericHessian(f: _Expression, vars: Vector[_Variable],
   val bound = point.foldLeft(env) { case (acc, (k, d)) => acc.withBinding(k, _Number(d)) }
   hessianCells(f, vars, env).flatMap { cells =>
     sequence(cells.toList.map(c => c.eval(bound) match
-      case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+      case Right(_Number(d)) if d.isFinite => Some(d)
       case _                                               => None))
       .map(ds => _MatrixValue(n, n, ds.toArray))
   }

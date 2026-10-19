@@ -7,7 +7,9 @@ import probability.{_Distribution, _DistributionQuery, DistKind, Query}
 
 
 /** The single-sample statistics. */
-enum StatKind:
+enum StatKind extends Keyworded:
+  /** The grammar keyword (F_0148); the table is the companion's. */
+  def keyword: String = StatKind.keyword(this)
   /** `mean(x)` */                                   case Mean
   /** `variance(x)` — unbiased, `n − 1` for a sample */ case Variance
   /** `pvariance(x)` — population, `n` */            case PVariance
@@ -49,7 +51,7 @@ case class _Statistic(kind: StatKind, arg: _Expression) extends _Expression:
     val result = r match
       case Right(d: _Distribution) => fromDistribution(d, env)
       case other                   => sampleOf(other).flatMap(fromSample(_, env))
-    result.map(Right(_)).getOrElse(Left(_Statistic(kind, r.toExpression)))
+    result.toRight(_Statistic(kind, r.toExpression))
 
   /** A distribution's own moment; the population/sample distinction does not arise.
    *
@@ -98,7 +100,7 @@ case class _BinCounts(x: _Expression, lo: _Expression, hi: _Expression, k: _Expr
   override def eval(env: Environment): Either[_Expression, _Value] =
     val rs = List(x, lo, hi, k).map(_.eval(env))
     val counts = for
-      xs <- sampleOf(rs.head).flatMap(asDoubles)
+      xs <- sampleOf(rs.head).flatMap(doubles)
       l  <- numberOf(rs(1))
       h  <- numberOf(rs(2))
       n  <- numberOf(rs(3))
@@ -171,7 +173,9 @@ case class _Sort(x: _Expression) extends _Expression:
 
 
 /** The two-sample statistics. */
-enum PairStatKind:
+enum PairStatKind extends Keyworded:
+  /** The grammar keyword (F_0148); the table is the companion's. */
+  def keyword: String = PairStatKind.keyword(this)
   /** `covariance(x, y)` — unbiased, `n − 1` */ case Covariance
   /** `correlation(x, y)` — Pearson's r */      case Correlation
 
@@ -201,7 +205,7 @@ case class _PairStatistic(kind: PairStatKind, a: _Expression, b: _Expression) ex
                 case PairStatKind.Covariance  => sampleCovariance(xs, ys, env)
                 case PairStatKind.Correlation => sampleCorrelation(xs, ys, env)
       yield v
-    result.map(Right(_)).getOrElse(Left(_PairStatistic(kind, ra.toExpression, rb.toExpression)))
+    result.toRight(_PairStatistic(kind, ra.toExpression, rb.toExpression))
 
 
 /** Ordinary least squares: `regress(X, y)`.
@@ -221,7 +225,7 @@ case class _Regress(x: _Expression, y: _Expression) extends _Expression:
   override def eval(env: Environment): Either[_Expression, _Value] =
     (_MatrixValue.ofEvaluated(x.eval(env)), _MatrixValue.ofEvaluated(y.eval(env))) match
       case (Some(xm), Some(ym)) =>
-        leastSquares(xm, ym).map(Right(_)).getOrElse(Left(this))
+        leastSquares(xm, ym).toRight(this)
       case _ => Left(_Regress(x.eval(env).toExpression, y.eval(env).toExpression))
 
 
@@ -245,7 +249,7 @@ case class _RidgeRegress(x: _Expression, y: _Expression, lambda: _Expression) ex
     val (rx, ry, rl) = (x.eval(env), y.eval(env), lambda.eval(env))
     (_MatrixValue.ofEvaluated(rx), _MatrixValue.ofEvaluated(ry), rl) match
       case (Some(xm), Some(ym), Right(_Number(l))) =>
-        ridgeLeastSquares(xm, ym, l).map(Right(_)).getOrElse(Left(this))
+        ridgeLeastSquares(xm, ym, l).toRight(this)
       case _ => Left(_RidgeRegress(rx.toExpression, ry.toExpression, rl.toExpression))
 
 
@@ -267,12 +271,14 @@ case class _WeightedRegress(x: _Expression, y: _Expression, w: _Expression) exte
     val (rx, ry, rw) = (x.eval(env), y.eval(env), w.eval(env))
     (_MatrixValue.ofEvaluated(rx), _MatrixValue.ofEvaluated(ry), _MatrixValue.ofEvaluated(rw)) match
       case (Some(xm), Some(ym), Some(wm)) =>
-        weightedLeastSquares(xm, ym, wm).map(Right(_)).getOrElse(Left(this))
+        weightedLeastSquares(xm, ym, wm).toRight(this)
       case _ => Left(_WeightedRegress(rx.toExpression, ry.toExpression, rw.toExpression))
 
 
 /** The inference tests. */
-enum TestKind:
+enum TestKind extends Keyworded:
+  /** The grammar keyword (F_0148); the table is the companion's. */
+  def keyword: String = TestKind.keyword(this)
   /** `ttest(sample, mu0)` — two-sided one-sample t-test, returning the p-value. */ case TTest
   /** `confint(sample, level)` — a two-sided confidence interval, as `[[lo, hi]]`. */ case ConfInt
   /** `chisqtest(observed, expected)` — Pearson's goodness-of-fit p-value. */        case ChiSqTest
@@ -309,15 +315,12 @@ case class _Test(kind: TestKind, a: _Expression, b: _Expression) extends _Expres
     result.getOrElse(Left(_Test(kind, ra.toExpression, rb.toExpression)))
 
 
-/** A plain number from an evaluated operand. */
-private def numberOf(r: Either[_Expression, _Value]): Option[Double] = r match
-  case Right(_Number(d)) => Some(d)
-  case _                 => None
-
 
 /** The alternative hypothesis of a test (F_0130), with the slot word that names it.  The words
  *  are matched only in a test's trailing slots and are **not** reserved (the `c2d` precedent). */
-enum Alternative(val word: String):
+enum Alternative(val word: String) extends Keyworded:
+  /** The slot word (F_0148). */
+  def keyword: String = word
   /** `≠`: both tails, the default and what the two-argument forms have always answered. */
   case TwoSided extends Alternative("two.sided")
   /** `<`: the lower tail. */
@@ -399,6 +402,10 @@ private def twoSampleTail(m1: Double, v1: Double, n1: Int, m2: Double, v2: Doubl
  *  A node of its own because the published [[_Test]] has two fields; `ttest(a, b)` with no
  *  option still builds `_Test`, which answers the two-sample test too.
  *
+ *  **`pooled` is a two-sample option**: with a null mean in place of a second sample it has
+ *  nothing to pool, and the call stays unevaluated rather than silently dropping a word the user
+ *  wrote (F_0150) — `ttest(x, 3)` is the one-sample test.
+ *
  *  @param a      the sample
  *  @param b      the null mean, or the second sample
  *  @param pooled whether two samples share a variance
@@ -440,7 +447,7 @@ case class _PropTest(args: List[_Expression], alt: Alternative) extends _Express
           (x1 / n1 - x2 / n2) / math.sqrt(pool * (1 - pool) * (1 / n1 + 1 / n2))
         }.flatMap(zTail(_, alt))
       case _ => None
-    p.map(v => Right(_Number(v))).getOrElse(Left(_PropTest(rs.map(_.toExpression), alt)))
+    p.map(v => _Number(v)).toRight(_PropTest(rs.map(_.toExpression), alt))
 
 
 /** `chisqtest(table)` — Pearson's test of independence (or homogeneity, the same computation) on
@@ -468,7 +475,7 @@ case class _ChiSqTable(table: _Expression) extends _Expression:
                   (m(i, j) - e) * (m(i, j) - e) / e).sum
       p     <- chiSquaredTail(stat, (m.rows - 1.0) * (m.cols - 1.0))
     yield p
-    p.map(v => Right(_Number(v))).getOrElse(Left(_ChiSqTable(r.toExpression)))
+    p.map(v => _Number(v)).toRight(_ChiSqTable(r.toExpression))
 
 
 /** `P(F ≤ f)` and `P(F > f)` for Fisher's F on `(d1, d2)`, each read directly from the
@@ -508,7 +515,7 @@ case class _VarTest(a: _Expression, b: _Expression, alt: Alternative) extends _E
       case Alternative.TwoSided => math.min(1.0, 2.0 * math.min(lower, upper))
       case Alternative.Less     => lower
       case Alternative.Greater  => upper
-    p.map(v => Right(_Number(v))).getOrElse(Left(_VarTest(ra.toExpression, rb.toExpression, alt)))
+    p.map(v => _Number(v)).toRight(_VarTest(ra.toExpression, rb.toExpression, alt))
 
 
 /** `anova(g1, g2, …)` — one-way analysis of variance over two or more samples (F_0131),
@@ -525,7 +532,7 @@ case class _Anova(groups: List[_Expression]) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     val rs = groups.map(_.eval(env))
-    val samples = rs.map(r => sampleOf(r).flatMap(asDoubles))
+    val samples = rs.map(r => sampleOf(r).flatMap(doubles))
     val p = for
       gs <- Option.when(samples.forall(_.isDefined))(samples.flatten)
       k   = gs.size
@@ -537,7 +544,7 @@ case class _Anova(groups: List[_Expression]) extends _Expression:
       if ssw > 0.0
       (_, upper) <- fTails((ssb / (k - 1)) / (ssw / (n - k)), k - 1.0, n - k.toDouble)
     yield upper
-    p.map(v => Right(_Number(v))).getOrElse(Left(_Anova(rs.map(_.toExpression))))
+    p.map(v => _Number(v)).toRight(_Anova(rs.map(_.toExpression)))
 
 
 /** `P(X > stat)` for a chi-squared variable on `df` degrees of freedom: the upper incomplete
@@ -574,8 +581,8 @@ private def confidenceInterval(ra: Either[_Expression, _Value], rb: Either[_Expr
 private def chiSquaredTest(ra: Either[_Expression, _Value], rb: Either[_Expression, _Value],
                            env: Environment): Option[Either[_Expression, _Value]] =
   for
-    obs <- sampleOf(ra).flatMap(asDoubles)
-    exp <- sampleOf(rb).flatMap(asDoubles)
+    obs <- sampleOf(ra).flatMap(doubles)
+    exp <- sampleOf(rb).flatMap(doubles)
     if obs.size == exp.size && obs.size >= 2 && exp.forall(_ > 0.0)
     stat = obs.zip(exp).map((o, e) => (o - e) * (o - e) / e).sum
     p   <- chiSquaredTail(stat, obs.size - 1.0)
@@ -588,7 +595,3 @@ private def quantileOfDistribution(d: _Distribution, p: Double, env: Environment
   _DistributionQuery(Query.Quantile, d, List(_Number(p))).eval(env) match
     case Right(_Number(q)) => Some(q)
     case _                 => None
-
-private def asDoubles(xs: Vector[_Value]): Option[Vector[Double]] =
-  val ds = xs.collect { case _Number(d) => d }
-  Option.when(ds.size == xs.size)(ds)

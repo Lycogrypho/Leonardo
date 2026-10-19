@@ -49,6 +49,17 @@ class RootLocusTest extends AnyFlatSpec:
       case None => fail("no locus")
   }
 
+  it should "drop a gain where the degree falls from every branch at once (F_0150)" in {
+    // (s+1)/(s+2) closes to (1 + K)s + (2 + K): at K = -1 there is no pole at all, so that gain
+    // is dropped from the branch rather than pairing the others with the wrong partners.
+    rootLocus(g("(s + 1)/(s + 2)"), s, Vector(-2.0, -1.0, 0.0, 1.0)) match
+      case Some(branches) =>
+        assert(branches.size == 1 && branches.head.size == 3, branches)
+        // -(2 + K)/(1 + K) at K = -2, 0, 1: 0, -2, -1.5
+        assert(branches.head.zip(Vector(0.0, -2.0, -1.5)).forall((p, e) => math.abs(p._1 - e) < 1e-9 && p._2 == 0.0), branches)
+      case None => fail("no locus")
+  }
+
   it should "decline an improper plant and a non-rational one" in {
     assert(rootLocus(g("s^2/(s + 1)"), s, gains).isEmpty)
     assert(rootLocus(g("exp(-s)/(s + 1)"), s, gains).isEmpty)

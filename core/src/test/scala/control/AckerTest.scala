@@ -40,6 +40,11 @@ class AckerTest extends AnyFlatSpec:
       case other => fail(s"got $other")
   }
 
+  it should "read a single pole written as a bare number, for a scalar plant (F_0150)" in {
+    // x' = 2x + u, pole at -3: 2 - K = -3, so K = 5.
+    assert(close(gain("acker(2, 1, -3)"), Vector(5.0)))
+  }
+
   it should "stay unevaluated for an uncontrollable pair" in {
     assert(ev("acker([[1, 0], [0, 2]], [[1], [0]], [[-1, -2]])").isLeft)
   }

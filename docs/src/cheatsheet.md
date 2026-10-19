@@ -36,7 +36,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `logic symmetric on\|off` | Spell truth values as -1 / 0 / 1 (default: off) |
 | `logic minmax\|product\|lukasiewicz` | Fuzzy t-norm family (default: minmax) |
 | `unset <name>` | Remove a binding or definition |
-| `:save <file>` | Write session to a replayable script (browser: its own storage) |
+| `:save <file>` | Write session to a replayable script (browser: its own storage); an existing save of that name is replaced, and the answer says so |
 | `:load <file>` | Run a session script, restoring its settings, bindings and definitions (browser: its own storage) |
 | `quit` / `exit` | Leave the REPL |
 | `plot <expr> <v> <lo> <hi> [n]` | **Browser only** — draw `y = f(x)` as a line |

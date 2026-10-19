@@ -21,5 +21,5 @@ case class _IntervalOf(lo: _Expression, hi: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (lo.eval(env), hi.eval(env)) match
-      case (Right(a), Right(b)) => _Interval.of(a, b).map(Right(_)).getOrElse(Left(_IntervalOf(a, b)))
+      case (Right(a), Right(b)) => _Interval.of(a, b).toRight(_IntervalOf(a, b))
       case (ra, rb)             => Left(_IntervalOf(ra.toExpression, rb.toExpression))

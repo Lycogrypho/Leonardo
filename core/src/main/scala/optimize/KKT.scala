@@ -162,5 +162,5 @@ private def numericBinding(p: SolutionPoint, env: Environment): Environment =
 
 /** The real value of `e`, or `None` when it does not reduce to one. */
 private def valueOf(e: _Expression, env: Environment): Option[Double] = e.eval(env) match
-  case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+  case Right(_Number(d)) if d.isFinite => Some(d)
   case _                                               => None

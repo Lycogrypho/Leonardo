@@ -21,6 +21,13 @@ private[cli] object SessionIO:
       case scala.util.Success(text) => Right(text)
       case scala.util.Failure(e)    => Left(e.getMessage)
 
+  /** Whether a session of that name is already saved, so `:save` can say it replaced one
+   *  (F_0151: the write truncates silently).
+   *  @param name the path
+   *  @return whether a file is there
+   */
+  def exists(name: String): Boolean = scala.util.Try(java.nio.file.Files.exists(java.nio.file.Paths.get(name))).getOrElse(false)
+
   /** Writes a session script.
    *  @param name the path to write
    *  @param text the replayable script

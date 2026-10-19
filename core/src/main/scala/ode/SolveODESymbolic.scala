@@ -152,7 +152,7 @@ private def solveForY(bigG: _Expression, depVar: _Variable, rhs: _Expression,
 /** Evaluates to a finite number, or `None`. */
 private def foldNumber(e: _Expression, env: Environment): Option[Double] =
   e.eval(env) match
-    case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+    case Right(_Number(d)) if d.isFinite => Some(d)
     case _                                              => None
 
 /** Brackets a sign change outward from `start`, then bisects.

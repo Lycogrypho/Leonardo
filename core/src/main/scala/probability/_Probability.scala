@@ -29,7 +29,9 @@ case class _DistributionOf(kind: DistKind, args: List[_Expression]) extends _Exp
 
 
 /** What a [[_DistributionQuery]] asks of a distribution. */
-enum Query:
+enum Query extends Keyworded:
+  /** The grammar keyword (F_0148); the table is the companion's. */
+  def keyword: String = Query.keyword(this)
   /** `pdf(d, x)` — density or mass at a point. */
   case Pdf
   /** `cdf(d, x)` — `P(X ≤ x)`. */

@@ -531,9 +531,29 @@ object _MatrixValue:
    */
   private[leonardo] def ofEvaluated(r: Either[_Expression, _Value]): Option[_MatrixValue] = r match
     case Right(m: _MatrixValue) => Some(m)
+    case other =>
+      cellsOf(other).flatMap { (rows, cols, cells) =>
+        val ds = cells.collect { case _Number(d) => d }
+        Option.when(ds.size == cells.size)(new _MatrixValue(rows, cols, ds.toArray))
+      }
+
+  /** Reads an evaluated operand as a matrix of values: a dense matrix's numbers, or a
+   *  `_MatrixShaped` whose every cell is a `_Value` — **nothing demoted**, so an exact or complex
+   *  cell arrives as itself (F_0147).
+   *
+   *  The one reader under [[ofEvaluated]], `statistics.sampleOf`, `transform`'s vector reader and
+   *  `probability`'s, which each matched the two carriers by hand; they differ now only in the
+   *  filter they apply afterwards (a vector shape, a real cell, a complex one).
+   *
+   *  @param r the evaluated operand
+   *  @return `(rows, cols, cells)` row-major, or `None` for a scalar, a non-matrix or a cell that
+   *          is not a value
+   */
+  private[leonardo] def cellsOf(r: Either[_Expression, _Value]): Option[(Int, Int, Vector[_Value])] = r match
+    case Right(m: _MatrixValue) => Some((m.rows, m.cols, m.toVector.map(d => _Number(d))))
     case Left(m: _MatrixShaped) =>
-      val cells = m.children.collect { case _Number(d) => d }
-      Option.when(cells.size == m.rows * m.cols)(new _MatrixValue(m.rows, m.cols, cells.toArray))
+      val cells = m.children.toVector.collect { case v: _Value => v }
+      Option.when(cells.size == m.rows * m.cols)((m.rows, m.cols, cells))
     case _ => None
 
 
@@ -590,7 +610,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
   override def toString: String = display(Environment.DefaultPrecision)
 
   /** Returns `true` when every element is finite (not NaN, not infinite). */
-  def isFinite: Boolean = data.forall(d => !d.isNaN && !d.isInfinite)
+  def isFinite: Boolean = data.forall(d => d.isFinite)
 
   /** Lifts this matrix into an `Either` for use in `eval`: `Right(this)` when all elements
    *  are finite; `Left(orElse)` otherwise (non-finite is a domain error — stays symbolic like

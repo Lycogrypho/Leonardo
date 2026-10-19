@@ -108,5 +108,5 @@ case class _OdeSolve(rhs: _Expression, state: OdeState, indepVar: _Variable, t0:
 
 /** A finite number, or `None`. */
 private def number(e: _Expression, env: Environment): Option[Double] = e.eval(env) match
-  case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(d)
+  case Right(_Number(d)) if d.isFinite => Some(d)
   case _                                              => None

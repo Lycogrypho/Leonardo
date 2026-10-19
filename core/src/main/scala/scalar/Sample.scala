@@ -33,11 +33,11 @@ def sample(
     case Some(f) =>
       xs.flatMap { x =>
         val y = f(x)
-        if y.isNaN || y.isInfinite then None else Some((x, y))
+        if !y.isFinite then None else Some((x, y))
       }
     case None =>
       xs.flatMap { x =>
         e.eval(env.withBinding(v.variable, _Number(x))) match
-          case Right(_Number(y)) if !y.isNaN && !y.isInfinite => Some((x, y))
+          case Right(_Number(y)) if y.isFinite => Some((x, y))
           case _                                               => None
       }

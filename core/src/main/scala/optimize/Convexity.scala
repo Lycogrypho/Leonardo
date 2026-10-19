@@ -109,7 +109,7 @@ private def hasNegativeCurvature(f: _Expression, vars: Vector[_Variable], env: E
   points.exists { p =>
     val bound = p.foldLeft(env) { case (acc, (k, d)) => acc.withBinding(k, _Number(d)) }
     val real  = f.eval(bound) match
-      case Right(_Number(d)) => !d.isNaN && !d.isInfinite
+      case Right(_Number(d)) => d.isFinite
       case _                 => false
     real && numericHessian(f, vars, p, env).flatMap(eigenvaluesOf).exists { ev =>
       val scale = ev.map(math.abs).max

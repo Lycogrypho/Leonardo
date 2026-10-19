@@ -126,7 +126,7 @@ def curveFit(model: _Expression, t: _Variable, tdata: Vector[Double], ydata: Vec
 
 // ── input ──
 
-private def finite(d: Double): Boolean = !d.isNaN && !d.isInfinite
+private def finite(d: Double): Boolean = d.isFinite
 
 /** The bounds as arrays, infinite where absent, or why the input is malformed. */
 private def checked(vars: Vector[_Variable], p0: Vector[Double], bounds: Option[(Vector[Double], Vector[Double])])

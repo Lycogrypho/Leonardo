@@ -24,12 +24,8 @@ import matrix._Matrix
  *  @param r the evaluated argument
  *  @return the entries, or `None` when the argument is not a matrix of values
  */
-def sampleOf(r: Either[_Expression, _Value]): Option[Vector[_Value]] = r match
-  case Right(mv: _MatrixValue) => Some(mv.toVector.map(d => _Number(d)))
-  case Left(m: _Matrix) =>
-    val vs = m.elems.collect { case v: _Value => v }
-    Option.when(vs.size == m.elems.size && vs.nonEmpty)(vs)
-  case _ => None
+def sampleOf(r: Either[_Expression, _Value]): Option[Vector[_Value]] =
+  _MatrixValue.cellsOf(r).map(_._3).filter(_.nonEmpty)
 
 /** Whether every entry is exact, so the field operations can stay exact. */
 private def allExact(xs: Vector[_Value]): Boolean = xs.forall(_.isInstanceOf[_Rational])
@@ -38,8 +34,9 @@ private def allExact(xs: Vector[_Value]): Boolean = xs.forall(_.isInstanceOf[_Ra
 private def exactly(xs: Vector[_Value]): Option[Vector[_Rational]] =
   Option.when(allExact(xs))(xs.collect { case r: _Rational => r })
 
-/** The entries as `Double`s, reading through the widening `_Number` extractor. */
-private def doubles(xs: Vector[_Value]): Option[Vector[Double]] =
+/** The entries as `Double`s, reading through the widening `_Number` extractor (the one copy
+ *  since F_0147; `_Statistic.scala` carried a byte-identical `asDoubles`). */
+private[statistics] def doubles(xs: Vector[_Value]): Option[Vector[Double]] =
   val ds = xs.collect { case _Number(d) => d }
   Option.when(ds.size == xs.size)(ds)
 
@@ -228,9 +225,12 @@ def sampleQuantile(xs: Vector[_Value], p: _Value, method: Int, env: Environment)
 def binCounts(xs: Vector[Double], lo: Double, hi: Double, k: Int): Option[Vector[Int]] =
   Option.when(k >= 1 && lo < hi && !lo.isInfinite && !hi.isInfinite) {
     val counts = new Array[Int](k)
-    val width  = (hi - lo) / k
+    // In halves (F_0150): `hi − lo` overflows to Inf for edges near ±1.8e308, which put every
+    // value in the first bin. Halving numerator and width alike is exact, so every bin a finite
+    // span gave is unchanged.
+    val halfWidth = (hi / 2 - lo / 2) / k
     xs.foreach { x =>
-      if x >= lo && x <= hi then counts(math.min(k - 1, ((x - lo) / width).toInt)) += 1
+      if x >= lo && x <= hi then counts(math.min(k - 1, ((x / 2 - lo / 2) / halfWidth).toInt)) += 1
     }
     counts.toVector
   }
@@ -242,4 +242,4 @@ private def rootOf(v: _Value, env: Environment): Option[_Value] = v match
   case _            => None
 
 private def finite(d: Double): Option[_Value] =
-  Option.when(!d.isNaN && !d.isInfinite)(_Number(d))
+  Option.when(d.isFinite)(_Number(d))

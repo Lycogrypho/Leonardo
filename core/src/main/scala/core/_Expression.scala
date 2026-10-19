@@ -140,7 +140,7 @@ object _Number:
    *  is NaN, infinite, or too large for the rounded value to fit in a `Long`.
    */
   private[core] def round(d: Double, precision: Int): Double =
-    if d.isNaN || d.isInfinite then d
+    if !d.isFinite then d
     else
       val factor = if precision >= 0 && precision < factorTable.length then factorTable(precision)
                    else scala.math.pow(10, precision)

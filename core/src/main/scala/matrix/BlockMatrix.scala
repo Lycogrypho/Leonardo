@@ -51,8 +51,8 @@ private[leonardo] def cellGrid(r: Either[_Expression, _Value], scalars: Boolean)
 
 /** A positive whole count or index, read from an evaluated operand. */
 private[leonardo] def wholeCount(r: Either[_Expression, _Value]): Option[Int] = r match
-  case Right(_Number(d)) if d >= 1 && d == math.floor(d) && d <= Int.MaxValue => Some(d.toInt)
-  case _                                                                     => None
+  case Right(_Number(d)) => Whole.asInt(d).filter(_ >= 1)
+  case _                 => None
 
 /** The zero of the tier the given cells are in: exact beside exact cells, so a zero block
  *  cannot demote an exact matrix (the numeric tier rule). */

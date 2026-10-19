@@ -51,7 +51,7 @@ private[equation] def compareSides(
     case (Right(av: _Value), Right(bv: _Value)) =>
       val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
         yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
-      close.map(b => Right(_Bool(b))).getOrElse(Left(wrap(av, bv)))
+      close.map(b => _Bool(b)).toRight(wrap(av, bv))
     case (ra, rb) => Left(wrap(ra.toExpression, rb.toExpression))
 
 

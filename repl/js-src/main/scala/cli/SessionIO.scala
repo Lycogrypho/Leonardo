@@ -52,6 +52,17 @@ private[cli] object SessionIO:
         if js.isUndefined(v) || v == null then Left(s"no saved session named '$name'")
         else Right(v.asInstanceOf[String])
 
+  /** Whether a session of that name is already saved, so `:save` can say it replaced one
+   *  (F_0151: `setItem` overwrites silently).
+   *  @param name the session name
+   *  @return whether the key is there
+   */
+  def exists(name: String): Boolean =
+    storage.exists { s =>
+      val v = s.getItem(Prefix + name)
+      !(js.isUndefined(v) || v == null)
+    }
+
   /** Writes a session script.
    *  @param name the session name
    *  @param text the replayable script

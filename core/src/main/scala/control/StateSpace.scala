@@ -88,7 +88,9 @@ def observable(a: _Expression, c: _Expression): Option[Boolean] =
   yield fullRowRank(obsv)
 
 /** Which structural question a [[_Structure]] node asks (F_0134), with its prompt word. */
-enum StructureKind(val word: String):
+enum StructureKind(val word: String) extends Keyworded:
+  /** The grammar keyword (F_0148). */
+  def keyword: String = word
   /** `controllable(A, B)` -- the verdict of [[controllable]]. */
   case Controllable extends StructureKind("controllable")
   /** `observable(A, C)` -- the verdict of [[observable]]. */
@@ -215,6 +217,8 @@ case class _Acker(a: _Expression, b: _Expression, poles: _Expression) extends _E
   override def eval(env: Environment): Either[_Expression, _Value] =
     val (ra, rb, rp) = (a.eval(env), b.eval(env), poles.eval(env))
     val roots: Option[Vector[(Double, Double)]] = rp match
+      // One pole written as a bare number, for the scalar plant matrixOperand admits (F_0150).
+      case Right(v: _Value) if !v.isInstanceOf[_MatrixValue] && _Complex.parts(v).isDefined => _Complex.parts(v).map(Vector(_))
       case Right(m: _MatrixValue) if m.rows == 1 || m.cols == 1 => Some(m.toVector.map(d => (d, 0.0)))
       case Left(m: _Matrix) if m.rows == 1 || m.cols == 1 =>
         val parts = m.elems.collect { case v: _Value => _Complex.parts(v) }.flatten

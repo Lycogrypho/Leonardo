@@ -28,6 +28,12 @@ class TwoSampleTestsTest extends AnyFlatSpec:
     _Distribution.of(DistKind.ChiSquared, Vector(df)).flatMap(_.cdf(x)).getOrElse(fail("chi cdf"))
 
   private val xs = Vector(19.0, 22.0, 16.0, 29.0, 24.0)
+
+  "ttest with pooled and a null mean" should "stay unevaluated: there is nothing to pool (F_0150)" in {
+    val sample = xs.mkString("[[", ", ", "]]")
+    assert(Parser.parse(s"ttest($sample, 20, pooled)").get.eval(env).isLeft)
+    assert(Parser.parse(s"ttest($sample, 20)").get.eval(env).isRight)
+  }
   private val ys = Vector(20.0, 11.0, 17.0, 12.0)
   private val (x, y) = ("[[19, 22, 16, 29, 24]]", "[[20, 11, 17, 12]]")
 

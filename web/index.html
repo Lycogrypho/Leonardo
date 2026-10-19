@@ -21,11 +21,13 @@
         Plotly inserts a <style> at load and throws when it is refused, and MathLive positions
         every piece of a formula with a style attribute.
       - Images: data: and blob:, for Plotly's PNG download.
+      - connect-src 'none' (F_0151): nothing in the page fetches; to be re-checked in Firefox
+        with the PNG download and the editor's fonts, since a fetch there would be refused.
       EDITING AN INLINE SCRIPT changes its hash: `sbt checks` (CheckCsp) names the new one.
       Keep each inline script on ONE line, so its bytes, and hash, do not depend on the
       checkout's line endings.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-qhASU5GRZ8Q0Yf1vg80PeM+vNpjYzOq/Nc1//5huTIs=' 'sha256-B5hDBCYSjSGBdp0jtHHlr4oyZJq4+lhIMhbJeyfn/qA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-qhASU5GRZ8Q0Yf1vg80PeM+vNpjYzOq/Nc1//5huTIs=' 'sha256-B5hDBCYSjSGBdp0jtHHlr4oyZJq4+lhIMhbJeyfn/qA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; media-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Leonardo - browser REPL</title>
 
     <!--

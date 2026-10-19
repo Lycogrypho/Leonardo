@@ -23,6 +23,12 @@ class RootLocusReplTest extends AnyFlatSpec:
     assert(session.rootLocusPoints("1/(s*(s + a)) s 0.1 10 20").exists(_.poles.toSet == Set((0.0, 0.0), (-4.0, 0.0))))
   }
 
+  it should "say a one-gain locus needs a second gain, rather than call the plant improper (F_0150)" in {
+    Session().rootLocusPoints("1/(s + 1) s 1 10 1") match
+      case Left(why) => assert(why.contains("at least 2") && !why.contains("proper"), why)
+      case Right(l)  => fail(s"drew $l")
+  }
+
   it should "explain an improper plant and a malformed command" in {
     assert(Session().rootLocusPoints("s^2/(s + 1) s 1 10").isLeft)
     assert(Session().rootLocusPoints("").left.exists(_.startsWith("usage:")))

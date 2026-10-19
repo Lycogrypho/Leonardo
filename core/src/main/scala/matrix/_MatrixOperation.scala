@@ -337,7 +337,7 @@ case class Determinant(m: _Expression) extends _Expression:
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
       case Right(mv: _MatrixValue) =>
-        mv.determinant.map(d => Right(_Number(d))).getOrElse(Left(this))
+        mv.determinant.map(d => _Number(d)).toRight(this)
       case r => asLiteral(r) match
         // Exact entries go to Gaussian elimination, not the cofactor expansion: O(n^3)
         // rather than O(n!), so this path carries no dimension cap.
@@ -551,13 +551,13 @@ case class _Cholesky(m: _Expression) extends _MatrixOperation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
-      case Right(mv: _MatrixValue) => mv.cholesky.map(Right(_)).getOrElse(Left(this))
+      case Right(mv: _MatrixValue) => mv.cholesky.toRight(this)
       case r => asLiteral(r) match
         case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
           exactCells(lit).flatMap(c => exactCholesky(c, lit.rows, env.rationalPolicy, env.workingPrecision)) match
             case Some(l) => Left(_Matrix(lit.rows, lit.cols, l.map(x => x: _Expression)))
             case None    => Left(_Cholesky(r.toExpression))
-        case Some(lit) => denseOf(lit).flatMap(_.cholesky).map(Right(_)).getOrElse(Left(_Cholesky(r.toExpression)))
+        case Some(lit) => denseOf(lit).flatMap(_.cholesky).toRight(_Cholesky(r.toExpression))
         case None      => Left(_Cholesky(r.toExpression))
 
 

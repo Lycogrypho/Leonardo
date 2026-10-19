@@ -107,6 +107,8 @@ class DiscreteFamiliesTest extends AnyFlatSpec:
     assert(ev("hypergeometric(10, 11, 3)").isLeft)
     assert(ev("hypergeometric(10, 3, 11)").isLeft)
     assert(ev("hypergeometric(10, 3, 2.5)").isLeft)
+    // An empty population (F_0150): accepted until then, with a mean of 0/0.
+    assert(ev("hypergeometric(0, 0, 0)").isLeft)
   }
 
   it should "decline a support too large to tabulate rather than run unbounded" in {
@@ -115,6 +117,20 @@ class DiscreteFamiliesTest extends AnyFlatSpec:
 
   it should "print the call that rebuilds it" in {
     assert(ev("hypergeometric(20, 7, 12)").map(_.toString) == Right("hypergeometric(20.0, 7.0, 12.0)"))
+  }
+
+  it should "build its table once per parameter set, not once per evaluation (F_0146)" in {
+    // Each evaluation of the call builds a fresh _Distribution, and the table was a lazy val per
+    // instance: 40 masses of a cap-sized distribution built 40 tables of a million entries.
+    val start = System.nanoTime()
+    ev("tabulate(pdf(hypergeometric(2000000, 999998, 999998), k), k, 499980, 500019)") match
+      case Left(_) | Right(_) => ()
+    val seconds = (System.nanoTime() - start) / 1e9
+    assert(close(num("sum(pdf(hypergeometric(2000000, 999998, 999998), k), k, 499980, 500019)"),
+                 num("cdf(hypergeometric(2000000, 999998, 999998), 500019)") -
+                 num("cdf(hypergeometric(2000000, 999998, 999998), 499979)"), 1e-9))
+    info(f"40 masses at the support cap: $seconds%.2f s")
+    assert(seconds < 2.0, s"took $seconds s")
   }
 
   it should "read a support positioned past Int.MaxValue (F_0142)" in {

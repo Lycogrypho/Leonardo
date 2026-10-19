@@ -305,7 +305,7 @@ private def sameExpression(a: _Expression, b: _Expression): Boolean =
 private def rationalRegularise(f: _Expression, v: _Variable, point: _Expression,
                                m: Int, env: Environment): Option[_Expression] =
   point.eval(env) match
-    case Right(_Number(a)) if !a.isNaN && !a.isInfinite =>
+    case Right(_Number(a)) if a.isFinite =>
       rationalCoeffsIn(f, v, env).flatMap { (num, den) =>
         (1 to m).foldLeft(Option(den))((acc, _) => acc.flatMap(d => deflateExact(d, a)))
           .map(d => simplifyFully(Ratio(polyToExpr(num, v), polyToExpr(d, v))))
@@ -361,7 +361,7 @@ private def laurentCoefficients(
  */
 private def isFiniteCoefficient(c: _Expression, env: Environment): Boolean =
   c.eval(env) match
-    case Right(_Number(d))  => !d.isNaN && !d.isInfinite
+    case Right(_Number(d))  => d.isFinite
     case Right(_)           => true
     case Left(residual)     => residual.freeVars.nonEmpty
 
@@ -427,7 +427,7 @@ def fourierSeries(
     /** (2/T) times the integral of `e * weight` over one period, or None. */
     def coefficient(weight: _Expression): Option[Double] =
       _DefIntegral(Product(e, weight), v, _Number(-halfT), _Number(halfT)).eval(env) match
-        case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some(2.0 / period * d)
+        case Right(_Number(d)) if d.isFinite => Some(2.0 / period * d)
         case _                                              => None
 
     /** The harmonic argument `k*omega*v`. */
@@ -458,7 +458,7 @@ private def maclaurinCoefficients(
     cs.zipWithIndex.foldLeft(Right(Vector.empty): Either[String, Vector[Double]]) { case (acc, (c, k)) =>
       acc.flatMap { built =>
         c.eval(env) match
-          case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Right(built :+ d)
+          case Right(_Number(d)) if d.isFinite => Right(built :+ d)
           case _ => Left(s"the Maclaurin coefficient of order $k is not a finite number")
       }
     }
@@ -521,7 +521,7 @@ private[leonardo] def padeDetailed(
           val rhs = Array.tabulate(n)(k => -c(m + k + 1))
           _MatrixValue(n, n, a).inverse
             .map(inv => inv.multiply(_MatrixValue(n, 1, rhs)).toVector)
-            .filter(_.forall(d => !d.isNaN && !d.isInfinite))
+            .filter(_.forall(d => d.isFinite))
 
       denominator.toRight(s"no [$m/$n] approximant exists: its linear system is singular").map { q =>
         // p_k = c_k + sum over j of q_j * c_{k-j}

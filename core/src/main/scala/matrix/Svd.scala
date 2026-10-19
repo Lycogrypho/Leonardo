@@ -241,7 +241,9 @@ case class _Rank(m: _Expression, tol: Option[_Expression] = None) extends _Expre
 
 
 /** Which subspace a [[_NullSpace]] node asks for. */
-enum Subspace:
+enum Subspace extends Keyworded:
+  /** The grammar keyword (F_0148); the table is the companion's. */
+  def keyword: String = Subspace.keyword(this)
   /** `nullspace(A)`: the null space, `{x : A·x = 0}`, spanned by the trailing columns of the full `V`. */
   case Null
   /** `orth(A)`: the range (column space), spanned by the leading columns of `U`. */

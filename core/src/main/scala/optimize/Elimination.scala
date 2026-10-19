@@ -302,7 +302,7 @@ private def residueVerdict(r: _Expression, env: Environment, tolerance: Double):
   if r.freeVars.isEmpty then
     r.eval(env) match
       case Right(q: _Rational)                    => if q.isZero then Some(true) else None
-      case Right(_Number(d)) if d.isNaN || d.isInfinite => Some(false)
+      case Right(_Number(d)) if !d.isFinite => Some(false)
       case Right(_Number(d))                      => if small(d, env) then Some(true) else None
       case Right(_)                               => Some(false)
       case Left(_)                                => Some(false)
@@ -324,7 +324,7 @@ private def sampledAt(r: _Expression, env: Environment): Vector[(Double, Environ
       acc.withBinding(n, _Number(ParameterSamples((k + i) % ParameterSamples.size)))
     }
     r.eval(bound) match
-      case Right(_Number(d)) if !d.isNaN && !d.isInfinite => Some((d, bound))
+      case Right(_Number(d)) if d.isFinite => Some((d, bound))
       case _                                               => None
   }
 

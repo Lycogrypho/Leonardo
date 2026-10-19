@@ -14,7 +14,9 @@ import scala.annotation.tailrec
  *  **Never a hidden default**, the `c2d` rule: on a non-convex problem the two can stop at
  *  different KKT points, so a silent choice would make two correct-looking answers disagree.
  */
-enum NlpMethod:
+enum NlpMethod extends Keyworded:
+  /** The slot word (F_0148); the table is the companion's. */
+  def keyword: String = NlpMethod.keyword(this)
   /** Sequential quadratic programming: one [[qpSolve]] per iteration on the linearised
    *  constraints, a damped-BFGS Hessian, an `ℓ₁` merit line search with a second-order
    *  correction. */
@@ -30,7 +32,7 @@ object NlpMethod:
     case AugLag => "auglag"
 
   /** Looks a method up by its keyword. */
-  def fromKeyword(s: String): Option[NlpMethod] = values.find(m => keyword(m) == s)
+  def fromKeyword(s: String): Option[NlpMethod] = Keyworded.byKeyword(values, s)
 
 
 /** Why [[nlpSolve]] declined (F_0052 Decision A: a reason at the Scala level, which the REPL
@@ -139,7 +141,7 @@ def nlpSolve(f: _Expression, vars: Vector[_Variable], x0: Vector[Double],
     else if n > env.limits.count(Limit.MaxNlpVariables) then
       Some(s"at most ${env.limits.count(Limit.MaxNlpVariables)} variables are accepted, not $n")
     else if x0.size != n then Some(s"the starting point has ${x0.size} entries for $n variables")
-    else if x0.exists(d => d.isNaN || d.isInfinite) then Some("the starting point must be finite")
+    else if x0.exists(d => !d.isFinite) then Some("the starting point must be finite")
     else if lo.size != n || hi.size != n then Some(s"the bounds must have $n entries each")
     else if lo.zip(hi).exists((a, b) => a.isNaN || b.isNaN || a > b) then Some("a lower bound exceeds its upper bound")
     else None
@@ -506,7 +508,7 @@ private def sqp(sys: NlpSystem, x0: Array[Double], lo: Array[Double], hi: Array[
       if !(sr > 0.0) || sr.isInfinite then b
       else
         val next = Array.tabulate(n, n)((i, j) => b(i)(j) - bs(i) * bs(j) / sBs + r(i) * r(j) / sr)
-        if next.exists(_.exists(d => d.isNaN || d.isInfinite)) then b
+        if next.exists(_.exists(d => !d.isFinite)) then b
         else Array.tabulate(n, n)((i, j) => 0.5 * (next(i)(j) + next(j)(i)))
 
   /** The accepted next point, or `None` when no step down to `2⁻⁴⁰` passes the Armijo test. */

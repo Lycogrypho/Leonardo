@@ -56,7 +56,7 @@ def sampleDegrees(
 
 /** Whether `d` is an actual membership degree: finite and inside `[0, 1]`. */
 private def isDegree(d: Double): Boolean =
-  !d.isNaN && !d.isInfinite && d >= 0.0 && d <= 1.0
+  d.isFinite && d >= 0.0 && d <= 1.0
 
 
 /** [[https://en.wikipedia.org/wiki/Defuzzification Defuzzifies]] by the centre of gravity: `Σ x·μ(x) / Σ μ(x)` over the sampled curve.
@@ -172,7 +172,9 @@ case class _Defuzzify(e: _Expression, v: _Variable, lo: _Expression, hi: _Expres
  *  The words are matched only in `defuzz`'s last slot and are **not** reserved, the `c2d`
  *  precedent: `mom` and `bisector` are plausible variable names elsewhere.
  */
-enum DefuzzMethod(val word: String):
+enum DefuzzMethod(val word: String) extends Keyworded:
+  /** The slot word (F_0148). */
+  def keyword: String = word
   /** The centre of gravity, [[centroid]]: what the four-argument `defuzz` uses. */
   case Centroid extends DefuzzMethod("centroid")
   /** The mean of the maximal points, [[meanOfMaxima]]. */

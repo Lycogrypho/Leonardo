@@ -218,7 +218,21 @@ package "core" {
         MaxQpVariables, MaxLpBits, MaxLpWork, MaxGroebnerBasis, ...
         + default: Long  (the published constant's value)
         one case per work or size budget (F_0124);
-        every package's, 48 in all
+        every package's, 51 in all
+    }
+
+    class "Keyworded" <<trait>> [[developer.html]] {
+        + keyword: String
+        __ companion __
+        + byKeyword(values, word): Option
+        mixed into the 17 prompt-facing kind enums (F_0148)
+    }
+
+    class "Numeric" <<utility>> [[developer.html]] {
+        + numberOf(r): Option[Double]
+        + finiteOption(d): Option[Double]
+        + Whole.isWhole / asInt / asCount
+        one definition each (F_0147)
     }
 
     class "Limits" <<data>> [[developer.html]] {

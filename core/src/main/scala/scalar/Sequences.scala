@@ -40,7 +40,7 @@ val MaxExactSequenceIndex: Int = Limit.MaxExactSequenceIndex.default.toInt
 
 /** Whether `d` is a non-negative integer index small enough to iterate, `cap` the largest. */
 private def isIndex(d: Double, cap: Long): Boolean =
-  !d.isNaN && !d.isInfinite && d >= 0.0 && d == Math.floor(d) && d <= cap
+  d.isFinite && d >= 0.0 && d == Math.floor(d) && d <= cap
 
 /** The `n`-th term of `x(k) = p·x(k-1) + q·x(k-2)` in `Double`, from seeds `(a, b)`.
  *
@@ -58,7 +58,7 @@ private[scalar] def linRecOfWithin(n: Double, a: Double, b: Double, p: Double, q
     for _ <- 0 until n.toInt do
       val next = p * y + q * x
       x = y; y = next
-    finite(x)
+    finiteOption(x)
 
 /** The exact `n`-th term of `x(k) = p·x(k-1) + q·x(k-2)` over the rationals.
  *
@@ -97,14 +97,14 @@ def binomOf(n: Double, k: Double): Option[Double] = binomOfWithin(n, k, MaxExact
 
 /** [[binomOf]] with `k` capped at `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
 private[scalar] def binomOfWithin(n: Double, k: Double, cap: Long): Option[Double] =
-  if k.isNaN || k.isInfinite || k != Math.floor(k) then None
+  if !k.isFinite || k != Math.floor(k) then None
   else if k < 0 then Some(0.0)
   else if n >= 0 && n == Math.floor(n) && k > n then Some(0.0)
   else if k > cap then None
   else
     var acc = 1.0
     for i <- 0 until k.toInt do acc = acc * (n - i) / (i + 1)
-    finite(acc)
+    finiteOption(acc)
 
 /** The exact binomial coefficient for a non-negative integer `n` and `k`.
  *
@@ -140,7 +140,7 @@ def catalanOf(n: Double): Option[Double] = catalanOfWithin(n, MaxExactSequenceIn
 /** [[catalanOf]] within `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
 private[scalar] def catalanOfWithin(n: Double, cap: Long): Option[Double] =
   if !isIndex(n, cap) then None
-  else binomOfWithin(2 * n, n, cap).flatMap(b => finite(b / (n + 1)))
+  else binomOfWithin(2 * n, n, cap).flatMap(b => finiteOption(b / (n + 1)))
 
 /** The `n`-th harmonic number `H(n) = 1 + 1/2 + … + 1/n`, exactly (`H(0) = 0`).
  *
@@ -166,4 +166,4 @@ def harmonicOf(n: Double): Option[Double] = harmonicOfWithin(n, MaxExactSequence
 /** [[harmonicOf]] within `cap`, the caller's `Limit.MaxExactSequenceIndex`. */
 private[scalar] def harmonicOfWithin(n: Double, cap: Long): Option[Double] =
   if !isIndex(n, cap) then None
-  else finite((1 to n.toInt).foldLeft(0.0)((acc, i) => acc + 1.0 / i))
+  else finiteOption((1 to n.toInt).foldLeft(0.0)((acc, i) => acc + 1.0 / i))
