@@ -52,7 +52,28 @@ private[equation] def compareSides(
       val close = for (ar, ai) <- _Complex.parts(av); (br, bi) <- _Complex.parts(bv)
         yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
       close.map(b => _Bool(b)).toRight(wrap(av, bv))
+    // F_0164: two matrices of values when either is not dense -- an exact matrix stays the
+    // symbolic carrier, so the dense arm above never sees it and `[[1/2]] == [[1/2]]` echoed.
+    case (ra, rb) if matrixEqual(ra, rb, tolerance).isDefined =>
+      matrixEqual(ra, rb, tolerance).map(b => _Bool(b)).toRight(wrap(ra.toExpression, rb.toExpression))
     case (ra, rb) => Left(wrap(ra.toExpression, rb.toExpression))
+
+/** Whether two evaluated matrices of values are equal, cell by cell (F_0164): exactly between two
+ *  rationals, within `tolerance` otherwise, and `false` for different shapes; `None` when either
+ *  is not a matrix of values or a pair of cells cannot be compared. */
+private def matrixEqual(ra: Either[_Expression, _Value], rb: Either[_Expression, _Value],
+                        tolerance: Double): Option[Boolean] =
+  def cellEqual(a: _Value, b: _Value): Option[Boolean] = (a, b) match
+    case (x: _Rational, y: _Rational) => Some(x.compare(y) == 0)
+    case _ =>
+      for (ar, ai) <- _Complex.parts(a); (br, bi) <- _Complex.parts(b)
+      yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance
+  for
+    (r1, c1, xs) <- _MatrixValue.cellsOf(ra)
+    (r2, c2, ys) <- _MatrixValue.cellsOf(rb)
+    equal        <- if r1 != r2 || c1 != c2 then Some(false)
+                    else sequence(xs.lazyZip(ys).map(cellEqual)).map(_.forall(identity))
+  yield equal
 
 
 /** A relation between two expressions: `lhs = rhs`.

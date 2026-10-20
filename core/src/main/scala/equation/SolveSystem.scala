@@ -50,9 +50,13 @@ def solveSystem(
   val n = equations.size
   if n == 0 || n != variables.size then return None
 
-  // Normalise: move everything to the left side (expr = 0)
+  // Normalise: move everything to the left side (expr = 0).  The -1 and the 0 the unknowns are
+  // bound to are invented constants, so they join the system's own tier (F_0166): inexact ones
+  // demoted an exact system before elimination began.
+  val system   = matrix._Matrix(1, n, equations.toVector)
+  val minusOne = _Rational.literalLike(-1, system)
   val exprs: Vector[_Expression] =
-    equations.map(eq => simplifyFully(Sum(eq.lhs, Product(_Number(-1), eq.rhs)))).toVector
+    equations.map(eq => simplifyFully(Sum(eq.lhs, Product(minusOne, eq.rhs)))).toVector
 
   // Extract coefficient matrix A[i][j] via collect(expr_i, v_j)
   val coeffOpt: Option[Vector[Vector[_Expression]]] = allOpt(exprs.map { expr =>
@@ -73,9 +77,27 @@ def solveSystem(
   if A.exists(_.exists(c => variables.exists(v => dependsOn(c, v)))) then return None
 
   // Constant vector b[i] = -(expr_i with all solve variables bound to 0)
-  val zeroEnv = variables.foldLeft(env)((e, v) => e.withBinding(v.variable, _Number(0)))
+  val zero    = _Rational.literalLike(0, system)
+  val zeroEnv = variables.foldLeft(env)((e, v) => e.withBinding(v.variable, zero))
   val b: Vector[_Expression] =
-    exprs.map(expr => simplifyFully(Product(_Number(-1), expr.eval(zeroEnv).toExpression)))
+    exprs.map(expr => simplifyFully(Product(minusOne, expr.eval(zeroEnv).toExpression)))
+
+  // Exact path (F_0166): every coefficient and constant exact, so Gauss-Jordan over the
+  // rationals -- before the dense path, whose widening `_Number` reading would take a `_Rational`
+  // as the Double it approximates.  Singular -> None, the dense path's verdict without a tolerance.
+  def toExact(e: _Expression): Option[_Rational] = e.eval(env) match
+    case Right(r: _Rational) => Some(r)
+    case _                   => None
+
+  (allOpt(A.flatten.map(toExact)), allOpt(b.map(toExact))) match
+    case (Some(ea), Some(eb)) =>
+      val policy = env.rationalPolicy
+      return matrix.exactInverse(ea, n, policy).map { inv =>
+        variables.zipWithIndex.map { (v, i) =>
+          _Equation(v, (0 until n).map(j => inv(i * n + j).multiply(eb(j), policy)).reduceLeft[_Rational]((p, q) => p.add(q, policy)))
+        }
+      }
+    case _ => ()
 
   // Dense path: try to fold every coefficient and constant to a Double
   def toDouble(e: _Expression): Option[Double] = e.eval(env) match

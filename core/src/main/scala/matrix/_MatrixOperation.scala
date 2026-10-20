@@ -100,6 +100,27 @@ private val DenseDimCeiling = 46340
 private def validDenseDim(d: Double, env: Environment): Boolean =
   d >= 1.0 && d == d.toLong && d <= math.min(env.limits(Limit.MaxDenseDim), DenseDimCeiling.toLong)
 
+/** A constructor's matrix, its cells in the tier of its dimensions (F_0163).
+ *
+ *  The cells are constants the constructor invents, so the numeric tier rule applies: from exact
+ *  dimensions — exact mode — they are exact, the symbolic carrier exact matrices already use, and
+ *  `A - 2*eye(3)` no longer demotes an exact `A`.  Past the environment's `Limit.MaxMatrixCells`
+ *  the dense carrier is used instead, since a million rationals is a cost nobody asked for to
+ *  spell zeros.  Inexact dimensions give the dense carrier exactly as before.
+ *
+ *  @param rows  the row count
+ *  @param cols  the column count
+ *  @param exact whether a dimension was exact
+ *  @param env   supplies the cell budget
+ *  @param cell  the integer at `(i, j)`
+ *  @return the matrix, exact or dense
+ */
+private def constructed(rows: Int, cols: Int, exact: Boolean, env: Environment)
+                       (cell: (Int, Int) => Int): Either[_Expression, _Value] =
+  if exact && rows.toLong * cols <= env.limits(Limit.MaxMatrixCells) then
+    Left(_Matrix(rows, cols, Vector.tabulate(rows * cols)(i => _Rational(cell(i / cols, i % cols)): _Expression)))
+  else Right(_MatrixValue(rows, cols, Array.tabulate(rows * cols)(i => cell(i / cols, i % cols).toDouble)))
+
 /** Returns the `(rows-1) x (cols-1)` minor of `m` with row `si` and column `sj` removed. */
 private def minorOf(m: _Matrix, si: Int, sj: Int): _Matrix =
   val elems =
@@ -397,10 +418,8 @@ case class IdentityMatrix(n: _Expression) extends _MatrixOperation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     n.eval(env) match
-      case Right(_Number(d)) if validDenseDim(d, env) =>
-        val sz   = d.toInt
-        val data = Array.tabulate(sz * sz)(i => if i / sz == i % sz then 1.0 else 0.0)
-        Right(_MatrixValue(sz, sz, data))
+      case Right(v @ _Number(d)) if validDenseDim(d, env) =>
+        constructed(d.toInt, d.toInt, v.isInstanceOf[_Rational], env)((i, j) => if i == j then 1 else 0)
       case Left(expr) => Left(IdentityMatrix(expr))
       case _          => Left(this)   // non-integer, non-positive, or over MaxDenseDim
 
@@ -421,8 +440,8 @@ case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOpe
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (nRows.eval(env), nCols.eval(env)) match
-      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
-        Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(0.0)))
+      case (Right(a @ _Number(r)), Right(b @ _Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
+        constructed(r.toInt, c.toInt, a.isInstanceOf[_Rational] || b.isInstanceOf[_Rational], env)((_, _) => 0)
       case (rr, rc) => Left(ZeroMatrix(rr.toExpression, rc.toExpression))
 
 
@@ -441,8 +460,8 @@ case class _Ones(nRows: _Expression, nCols: _Expression) extends _MatrixOperatio
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (nRows.eval(env), nCols.eval(env)) match
-      case (Right(_Number(r)), Right(_Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
-        Right(_MatrixValue(r.toInt, c.toInt, Array.fill(r.toInt * c.toInt)(1.0)))
+      case (Right(a @ _Number(r)), Right(b @ _Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
+        constructed(r.toInt, c.toInt, a.isInstanceOf[_Rational] || b.isInstanceOf[_Rational], env)((_, _) => 1)
       case (rr, rc) => Left(_Ones(rr.toExpression, rc.toExpression))
 
 

@@ -68,8 +68,23 @@ def solve(eq: _Equation, v: _Variable, env: Environment = new Environment()): Li
           else Nil
         case None => solveScalar(eq, v, env)
 
-/** Scalar linear/quadratic/numeric tiers for a non-matrix equation. */
+/** Scalar linear/quadratic/numeric tiers for a non-matrix equation, retried once on the sides as
+ *  `eval` reduces them when every tier declines (F_0165).
+ *
+ *  The tiers read `collect`'s polynomial and compile the difference, and neither sees through a
+ *  node `eval` turns into a polynomial of the unknown — `dot([[6], [k]], t)`, `det([[k, 1], [1,
+ *  k]])`.  The retry runs only after the tiers answered nothing, so every existing answer is
+ *  unchanged, and not at all while `v` is bound, since evaluating would substitute the unknown.
+ */
 private def solveScalar(eq: _Equation, v: _Variable, env: Environment): List[_Equation] =
+  val direct = scalarRoots(eq, v, env)
+  if direct.nonEmpty || env.isBound(v.variable) then direct
+  else
+    val reduced = _Equation(eq.lhs.eval(env).toExpression, eq.rhs.eval(env).toExpression)
+    if reduced == eq then direct else scalarRoots(reduced, v, env)
+
+/** The tiers themselves: linear, quadratic, then the numeric scan. */
+private def scalarRoots(eq: _Equation, v: _Variable, env: Environment): List[_Equation] =
   // The -1 must join the equation's own tier.  A hard-coded `_Number(-1)` here would demote
   // an exactly-stated equation through float contagion before the solver ever ran, and the
   // exact quadratic branch below would then never see an exact coefficient.

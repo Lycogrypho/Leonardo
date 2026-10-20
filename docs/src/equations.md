@@ -177,7 +177,8 @@ solve node stays symbolic. Coefficients must reduce to dense matrices for this t
 `solveSystem([[eq₁, eq₂, …]], v₁, v₂, …)` solves a square system via
 [Gaussian elimination](https://en.wikipedia.org/wiki/Gaussian_elimination)
 ([partial pivoting](https://en.wikipedia.org/wiki/Pivot_element#Partial,_rook,_and_complete_pivoting)
-for concrete coefficients, symbolic row reduction otherwise):
+for concrete coefficients, symbolic row reduction otherwise, and exact elimination over the
+rationals when every coefficient is exact):
 
 ```scala mdoc
 // x + y = 3, x - y = 1  →  x = 2, y = 1
