@@ -4,6 +4,7 @@ package latex
 import core.*
 import scalar.*
 import transform.*
+import matrix.{_Norm, NormOrder, _Dot, _Cross, _Trace}
 
 /** Renders an expression as LaTeX source (issue F_0016).
  *
@@ -216,6 +217,23 @@ object ToLatex:
     // Atomic for the same reason a matrix is.  Must precede the generic NamedFunction arm,
     // which would otherwise render the grammar's spelling instead of the notation.
     case Abs(e) => (s"\\left|${at(e, Grouped)}\\right|", Atomic)
+
+    // A norm is its own delimiter in the same way (F_0039), its order a subscript: a whole order
+    // as an integer and `inf` as \infty, since `_{1.0}` and `_{Infinity}` are no one's notation.
+    case _Norm(x, order) =>
+      val sub = order match
+        case NormOrder.Default                             => ""
+        case NormOrder.Frobenius                           => "_{F}"
+        case NormOrder.Of(_Number(d)) if d.isPosInfinity   => "_{\\infty}"
+        case NormOrder.Of(_Number(d)) if Whole.isWhole(d)  => s"_{${d.toLong}}"
+        case NormOrder.Of(p)                               => s"_{${at(p, Grouped)}}"
+      (s"\\left\\lVert ${at(x, Grouped)}\\right\\rVert$sub", Atomic)
+
+    // The two vector products are infix, at product level (F_0160, F_0161); the trace takes the
+    // conventional upright name (F_0162).
+    case _Dot(u, v)   => (s"${at(u, AtProduct)} \\cdot ${at(v, AtProduct)}", AtProduct)
+    case _Cross(u, v) => (s"${at(u, AtProduct)} \\times ${at(v, AtProduct)}", AtProduct)
+    case _Trace(m)    => (s"\\operatorname{tr}\\left(${at(m, Grouped)}\\right)", Atomic)
 
     // Every other named function: LaTeX's own operator where one exists, upright otherwise.
     case f: NamedFunction =>

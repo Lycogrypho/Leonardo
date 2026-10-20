@@ -293,6 +293,21 @@ class ToLatexTest extends AnyFlatSpec:
     assert(tex("abs(x + 1)") == "\\left|x + 1.0\\right|")
   }
 
+  it should "render the linear-algebra functions in their notation (F_0039, F_0160-F_0162)" in
+  {
+    // A norm is its own delimiter like abs, its order a subscript; a whole order prints as an
+    // integer and `inf` as \infty, since `_{1.0}` and `_{Infinity}` are no one's notation.
+    assert(tex("norm(x)") == "\\left\\lVert x\\right\\rVert")
+    assert(tex("norm(x, 1)") == "\\left\\lVert x\\right\\rVert_{1}")
+    assert(tex("norm(x, inf)") == "\\left\\lVert x\\right\\rVert_{\\infty}")
+    assert(tex("norm(x, fro)") == "\\left\\lVert x\\right\\rVert_{F}")
+    assert(tex("norm(x, p)") == "\\left\\lVert x\\right\\rVert_{p}")
+    assert(tex("dot(u, v)") == "u \\cdot v")
+    assert(tex("dot(a + b, v)") == "\\left(a + b\\right) \\cdot v")
+    assert(tex("cross(u, v)") == "u \\times v")
+    assert(tex("trace(A)") == "\\operatorname{tr}\\left(A\\right)")
+  }
+
   it should "use the conventional name where LaTeX and this grammar disagree" in
   {
     // The grammar says asin; mathematics says arcsin, and LaTeX provides \arcsin. Rendering

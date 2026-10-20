@@ -119,6 +119,42 @@ references:
 [LU decomposition](https://en.wikipedia.org/wiki/LU_decomposition),
 [Gauss–Jordan elimination](https://en.wikipedia.org/wiki/Gaussian_elimination#Gauss%E2%80%93Jordan_elimination).
 
+## Products, trace and norms
+
+`dot(u, v)` is the number `Σ uᵢvᵢ` of two rows or columns of one length, in any mix — where
+`transpose(u) * v` is a `1×1` matrix, which does not add to a number. It takes **no
+conjugate**, so a complex vector stays unevaluated rather than meeting one convention or the
+other. `cross(u, v)` is the **right-handed** product of two 3-vectors, in the first one's shape:
+
+```scala mdoc
+Parser.parse("dot([[1], [2], [3]], [[4], [5], [6]])").get.eval(env)
+Parser.parse("cross([[1], [0], [0]], [[0], [1], [0]])").get.eval(env)
+```
+
+`trace(A)` sums a square matrix's diagonal, and equals the sum of its eigenvalues:
+
+```scala mdoc
+Parser.parse("trace([[2, 1], [1, 3]])").get.eval(env)
+```
+
+`norm(x)` and `norm(x, kind)` read **the operand's shape** (MATLAB's rule): a row or a column is
+a vector, anything else a matrix. The default is the 2-norm either way — for a matrix the
+largest singular value, which the vector 2-norm equals on a column — and `kind` is `1`, `2`,
+`inf` or `fro`, or for a vector any `p ≥ 1`. On a vector `1` and `inf` are the sum and the largest
+modulus; on a matrix the largest column and row sums:
+
+```scala mdoc
+Parser.parse("norm([[3], [4]])").get.eval(env)
+Parser.parse("norm([[1, -2], [-3, 4]], 1)").get.eval(env)
+Parser.parse("norm([[1, -2], [-3, 4]], inf)").get.eval(env)
+Parser.parse("norm([[1, -2], [-3, 4]])").get.eval(env)
+```
+
+All four stay exact on exact cells (a 2-norm's root at the working precision; the matrix
+2-norm demotes, as `svd` does) and build a symbolic answer from symbolic cells, except the
+max-norm and a matrix's operator norms, which stay unevaluated. A `Double` 2-norm is scaled by
+its largest entry before squaring, so `norm([[1e200], [1e200]])` is not an overflow.
+
 ## Dense evaluation
 
 When all elements reduce to numbers the result is a `_MatrixValue` — a dense

@@ -177,11 +177,20 @@ class AsciiMathTest extends AnyFlatSpec:
 
   it should "refuse what the bars cannot say unambiguously" in
   {
-    // A bar is its own closer, so nesting without brackets is ambiguous to reparse; and the
-    // norm bars mean something the grammar does not have.
+    // A bar is its own closer, so nesting without brackets is ambiguous to reparse.
     assert(read("||a|-|b||").contains("abs"), read("||a|-|b||"))
     assert(read("|a").contains("unbalanced"), read("|a"))
-    assert(read("∥x∥").contains("norm"), read("∥x∥"))
+  }
+
+  "a norm" should "become norm(...) from the double bar, paired as the single bar is (F_0039)" in
+  {
+    // It was refused by name until the grammar had a norm to read it into.
+    converts("∥x∥", "norm(x)")
+    converts("∥x-y∥", "norm(x-y)")
+    converts("∥(a)/(b)∥", "norm((a)/(b))")
+    converts("∥x∥+|y|", "norm(x)+abs(y)")
+    assert(read("∥x").contains("unbalanced"), read("∥x"))
+    assert(read("∥∥x∥∥").contains("norm"), read("∥∥x∥∥"))
   }
 
   "juxtaposed names" should "become a product, never one identifier" in

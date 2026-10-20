@@ -64,8 +64,8 @@ object AsciiMath:
   /** The operator glyphs MathLive emits, in the grammar's ASCII.
    *
    *  `∣` is `\lvert`'s spelling of the bar, folded onto `|` so the abs pairing below sees
-   *  one glyph; `∥` (`\|`, a norm) is deliberately NOT here — it is refused by name in
-   *  [[leaf]], since nothing in the grammar means it.
+   *  one glyph; `∥` (`\|`, a norm) is NOT folded — it has a pairing of its own, into `norm`
+   *  (F_0039), and folding it onto `|` would read a norm as an absolute value.
    */
   private val Glyphs: Map[Char, String] =
     Map('≠' -> "!=", '≤' -> "<=", '≥' -> ">=", '×' -> "*", '÷' -> "/", '∣' -> "|")
@@ -191,13 +191,11 @@ object AsciiMath:
     //  fine because a bracketed group is one opaque node with its own level — and makes a
     //  NESTED one refuse itself: `||a||` pairs its two opening bars around nothing, and empty
     //  content is refused by name rather than guessed at.
-    case Node.Leaf(Tok.Punct("|")) :: rest =>
-      val (content, after) = rest.span { case Node.Leaf(Tok.Punct("|")) => false; case _ => true }
-      after match
-        case Node.Leaf(Tok.Punct("|")) :: tail =>
-          if content.isEmpty then Left("nested or empty '|...|' is ambiguous here; write abs(x)")
-          else for c <- render(content); r <- render(tail) yield s"abs($c)$r"
-        case _ => Left("unbalanced '|' in the formula; the absolute value is written abs(x)")
+    case Node.Leaf(Tok.Punct("|")) :: rest => paired("|", "abs", "the absolute value", rest)
+
+    //  ∥…∥ -> norm(…)  (F_0039): the double bar, paired exactly as the single one is. It was
+    //  refused by name until the grammar had a norm to read it into.
+    case Node.Leaf(Tok.Punct("∥")) :: rest => paired("∥", "norm", "a norm", rest)
 
     //  (A) choose (B) -> binom(A, B)  (F_0037): an INFIX word between two groups, which is
     //  how AsciiMath spells `\binom`.  Matched before the generic group case, which would
@@ -371,6 +369,24 @@ object AsciiMath:
   /** Highest `d^n/dx^n` read as nested `derive` calls; above it the shape is refused. */
   private val MaxDeriveOrder = 9
 
+  /** A bar that is its own closer, read as `fn(…)` by SEQUENTIAL pairing: the next `bar` at this
+   *  level closes the one just met, so an unnested spelling always reads correctly and a nested
+   *  one meets an empty pair and refuses itself rather than being guessed at.
+   *
+   *  @param bar  the bar glyph
+   *  @param fn   the function it stands for
+   *  @param what what the pair means, for the message
+   *  @param rest the nodes after the opening bar
+   *  @return the call followed by the rest rendered, or why the bars cannot be read
+   */
+  private def paired(bar: String, fn: String, what: String, rest: List[Node]): Either[String, String] =
+    val (content, after) = rest.span { case Node.Leaf(Tok.Punct(`bar`)) => false; case _ => true }
+    after match
+      case Node.Leaf(Tok.Punct(`bar`)) :: tail =>
+        if content.isEmpty then Left(s"nested or empty '$bar...$bar' is ambiguous here; write $fn(x)")
+        else for c <- render(content); r <- render(tail) yield s"$fn($c)$r"
+      case _ => Left(s"unbalanced '$bar' in the formula; $what is written $fn(x)")
+
   /** Renders comma-separated items, keeping the separator the grammar uses for arguments. */
   private def renderItems(items: List[List[Node]]): Either[String, String] =
     items.traverseJoin(render).map(_.mkString(", "))
@@ -384,9 +400,6 @@ object AsciiMath:
     case Tok.Punct("{") | Tok.Punct("}") =>
       Left("braces are not part of this grammar; a transform is written laplace(f, t, s)")
     case Tok.Punct("->") => Left("'->' is not part of this grammar; a limit is written limit(f, x, a)")
-    // The norm bars (`\|x\|`): nothing in the grammar means a norm, and reading them as abs
-    // would be a confident answer to a different question.
-    case Tok.Punct("∥")  => Left("'∥...∥' is a norm, which this grammar does not have; abs(x) is the absolute value")
     case Tok.Punct(text) => Right(text)
     case Tok.Name(text)  =>
       Binders.get(text) match

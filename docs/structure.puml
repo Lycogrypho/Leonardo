@@ -864,6 +864,23 @@ package "matrix" {
         MaxSvdWork = max(m,n)·min(m,n)² ≤ 1e7 (Node-measured)
     }
 
+    class "VectorProducts" <<utility>> [[matrix.html]] {
+        __ F_0160-F_0162: dot(u, v), cross(u, v), trace(A) __
+        _Dot, _Trace: scalar results; _Cross: a _MatrixOperation
+        dot: no conjugate, a complex vector stays unevaluated
+        cross: right-handed, in u's shape
+        accumulated: a sum built term by term, refused
+          past MaxExpressionDepth when symbolic
+    }
+
+    class "Norm" <<utility>> [[matrix.html]] {
+        __ F_0039: norm(x[, 1 | 2 | inf | fro | p]) __
+        _Norm(x, NormOrder): a scalar result
+        the shape decides: row/column = vector
+        vector 2- and p-norms scaled by the largest modulus
+        matrix 2-norm = largest singular value, never eigen(A'A)
+    }
+
     class "BlockMatrix" <<utility>> [[matrix.html]] {
         __ F_0055: one assembly path for every carrier __
         cellGrid: operand -> grid of cells
@@ -901,6 +918,10 @@ package "matrix" {
     "_Ones"            --|> "_MatrixOperation"
     "BlockMatrix"      ..> "_MatrixOperation" : six block nodes extend it
     "BlockMatrix"      ..> "_MatrixValue"     : kronecker (dense fast path)
+    "VectorProducts"   ..> "BlockMatrix"      : cellGrid reads the operands
+    "VectorProducts"   ..> "_MatrixOperation" : _Cross extends it
+    "Norm"             ..> "VectorProducts"   : accumulated sums
+    "Norm"             ..> "_MatrixValue"     : svd for the matrix 2-norm
     "Determinant"      --|> "_Expression"
     "_MatrixIndex"     --|> "_Expression"
     "_LUDecomposition"    --|> "_Expression"
@@ -2066,6 +2087,8 @@ package "parser" {
 "Parser" ..> "_MatrixOperation": structural + - * dispatch
 "Parser" ..> "_MatrixIndex"    : at(A, i, j) element access
 "Parser" ..> "Determinant"     : det(A)
+"Parser" ..> "VectorProducts"  : dot cross trace
+"Parser" ..> "Norm"            : norm(x[, kind])
 "Parser" ..> "Inverse"         : inv(A)
 "Parser" ..> "IdentityMatrix"  : eye(n)
 "Parser" ..> "ZeroMatrix"      : zeros(r,c)
@@ -2222,6 +2245,8 @@ package "tools" <<Rectangle>> {
 ' (the input grammar, which `:save` writes and the round-trip invariant re-parses).
 ' It sits ABOVE every domain, like `parser`, because a renderer that must match on
 ' `scalar.Sin` and `matrix._Matrix` cannot live in `core` -- which imports no domain.
+' Imports core + scalar + transform + matrix (the matrix edge is F_0039's: the norm and
+' product notation needs the nodes; acyclic, matrix imports nothing from latex).
 package "latex" <<Rectangle>> {
     class "ToLatex" <<object>> [[repl.html]] {
         + apply(e: _Expression): String
@@ -2242,7 +2267,9 @@ package "latex" <<Rectangle>> {
 }
 
 "ToLatex" ..> "_Expression"    : renders any node
-"ToLatex" ..> "_MatrixShaped"  : pmatrix, without importing matrix
+"ToLatex" ..> "_MatrixShaped"  : pmatrix, through the core trait
+"ToLatex" ..> "Norm"           : \\lVert x \\rVert, its order a subscript
+"ToLatex" ..> "VectorProducts" : \\cdot, \\times, \\operatorname{tr}
 "ToLatex" ..> "NamedFunction"  : one rule for 41 function nodes
 
 ' ===================================================

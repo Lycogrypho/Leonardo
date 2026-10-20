@@ -1228,7 +1228,9 @@ final class Session:
       case Ratio(a, b) if isMatrixish(a) && !isMatrixish(b)  => MatScale(Ratio(_Number(1), b), a).eval(localEnv).toExpression
       case Ratio(a, b) if isMatrixish(a) && isMatrixish(b)   => MatProduct(a, Inverse(b)).eval(localEnv).toExpression
       case Ratio(a, b) if isMatrixish(b)                     => MatScale(a, Inverse(b)).eval(localEnv).toExpression
-      case d @ Determinant(_)                                => d.eval(localEnv).toExpression
+      // The scalar results of a matrix operand, `det` and F_0039/F_0160/F_0162's three, read the
+      // session's matrices exactly as `det` always has.
+      case d @ (_: Determinant | _: _Dot | _: _Trace | _: _Norm) => d.eval(localEnv).toExpression
       case m: _MatrixOperation                               => m.eval(localEnv).toExpression
       case other                                             => other
 

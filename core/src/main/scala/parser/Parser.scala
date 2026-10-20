@@ -83,6 +83,7 @@ object Parser extends JavaTokenParsers:
     "chol",                                                                                 // F_0054 Cholesky factor
     "svd", "pinv", "rank", "cond",                                                          // F_0061 singular values
     "nullspace", "orth",                                                                    // F_0087 subspace bases
+    "dot", "cross", "trace", "norm",                                                       // F_0160-F_0162, F_0039 (LA)
                                                          // (Decision C); `full` is a slot word
     "maximum", "minimum", "max", "min", "clamp", "softplus",                                // F_0056 order functions;
                                                          // the join and the reduction under two
@@ -555,6 +556,18 @@ object Parser extends JavaTokenParsers:
     "cot("   ~> guardedExpr <~ ")"                        ^^ Cot.apply                         |
     "transpose(" ~> guardedExpr <~ ")"                    ^^ Transpose.apply                   |
     "det(" ~> guardedExpr <~ ")"                          ^^ Determinant.apply                  |
+    // F_0160-F_0162: the linear-algebra prerequisites. `dot` and `trace` are scalars, `cross`
+    // a vector in its first argument's shape.
+    "trace(" ~> guardedExpr <~ ")"                        ^^ _Trace.apply                       |
+    "dot("   ~> guardedExpr ~ ("," ~> guardedExpr) <~ ")"  ^^ { case a ~ b => _Dot(a, b) }       |
+    "cross(" ~> guardedExpr ~ ("," ~> guardedExpr) <~ ")"  ^^ { case a ~ b => _Cross(a, b) }     |
+    // F_0039: `fro` is a slot word, matched only here and not reserved (the svd `full`
+    // precedent); the Frobenius form is tried first or `fro` would parse as a variable order.
+    "norm(" ~> guardedExpr <~ ("," ~ "fro" ~ ")")          ^^ (a => _Norm(a, NormOrder.Frobenius)) |
+    "norm(" ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ {
+      case a ~ None    => _Norm(a)
+      case a ~ Some(p) => _Norm(a, NormOrder.Of(p))
+    }                                                                                                       |
     "inv(" ~> guardedExpr <~ ")"                          ^^ Inverse.apply                      |
     "pow(" ~> guardedExpr ~ "," ~ guardedExpr <~ ")"      ^^ { case b ~ _ ~ e => Power(b, e) }            |
     "at("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ { case m ~ _ ~ r ~ _ ~ c => _MatrixIndex(m, r, c) } |

@@ -750,7 +750,22 @@ det(A)                          determinant (scalar)
 inv(A)                          inverse
 A ^ n                           integer matrix power (binary exponentiation)
 pow(A, n)                       same as A^n
+trace(A)                        diagonal sum of a square matrix (scalar)
 ```
+
+### Vector products and norms
+
+```
+dot(u, v)                       Σ uᵢvᵢ, a number; rows, columns or one of each; no conjugate
+cross(u, v)                     right-handed product of two 3-vectors, in u's shape
+norm(x)                         2-norm: a vector's length, a matrix's largest singular value
+norm(x, 1) | norm(x, inf)       vector: sum / largest modulus; matrix: max column / row sum
+norm(x, fro)                    Frobenius: the 2-norm of every cell together
+norm(v, p)                      vector p-norm, any p >= 1
+```
+
+The shape decides: a row or a column is a vector, anything else a matrix. The math editor's
+`∥x∥` reads as `norm(x)`.
 
 ### Decompositions — result is a 1×n row, use `at(result, 1, k)` to index
 
