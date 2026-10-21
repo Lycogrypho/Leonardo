@@ -55,6 +55,7 @@ def solveSystem(
   // demoted an exact system before elimination began.
   val system   = matrix._Matrix(1, n, equations.toVector)
   val minusOne = _Rational.literalLike(-1, system)
+  val zero     = _Rational.literalLike(0, system)
   val exprs: Vector[_Expression] =
     equations.map(eq => simplifyFully(Sum(eq.lhs, Product(minusOne, eq.rhs)))).toVector
 
@@ -62,7 +63,7 @@ def solveSystem(
   val coeffOpt: Option[Vector[Vector[_Expression]]] = allOpt(exprs.map { expr =>
     allOpt(variables.map { v =>
       collect(expr, v) match
-        case Some(cs) if cs.size == 1 => Some(_Number(0))    // v absent
+        case Some(cs) if cs.size == 1 => Some(zero)          // v absent: an invented zero, in tier
         case Some(cs) if cs.size == 2 => Some(cs(1))         // linear in v
         case Some(_)                  => None                 // degree >= 2
         case None                     => None                 // non-polynomial
@@ -77,7 +78,6 @@ def solveSystem(
   if A.exists(_.exists(c => variables.exists(v => dependsOn(c, v)))) then return None
 
   // Constant vector b[i] = -(expr_i with all solve variables bound to 0)
-  val zero    = _Rational.literalLike(0, system)
   val zeroEnv = variables.foldLeft(env)((e, v) => e.withBinding(v.variable, zero))
   val b: Vector[_Expression] =
     exprs.map(expr => simplifyFully(Product(minusOne, expr.eval(zeroEnv).toExpression)))
@@ -113,7 +113,7 @@ def solveSystem(
         variables.zip(xs).map((v, x) => _Equation(v, _Number(x)))
       )
     case _ =>
-      gaussSymbolic(A, b).map(xs =>
+      gaussSymbolic(A, b, minusOne).map(xs =>
         variables.zip(xs).map((v, x) => _Equation(v, simplifyFully(x).eval(env).toExpression))
       )
 
@@ -181,10 +181,11 @@ private def gaussDense(A: Vector[Vector[Double]], b: Vector[Double]): Option[Vec
  *
  *  @param A the n-by-n symbolic coefficient matrix
  *  @param b the symbolic right-hand-side vector of length n
+ *  @param minusOne the `-1` of the system's tier, so an exact system stays exact (F_0167)
  *  @return `Some(solution vector of expressions)` on success;
  *          `None` when any pivot simplifies to `_Number(0)` (structurally singular)
  */
-private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]): Option[Vector[_Expression]] =
+private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression], minusOne: _Expression): Option[Vector[_Expression]] =
   val n   = A.size
   val aug = Array.tabulate(n)(i => (A(i) :+ b(i)).toArray)
 
@@ -196,7 +197,7 @@ private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]
         val factor = simplifyFully(Ratio(aug(row)(pivot), pivVal))
         for col <- pivot to n do
           aug(row)(col) = simplifyFully(
-            Sum(aug(row)(col), Product(_Number(-1), Product(factor, aug(pivot)(col))))
+            Sum(aug(row)(col), Product(minusOne, Product(factor, aug(pivot)(col))))
           )
 
     // Back substitution
@@ -204,7 +205,7 @@ private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]
     for i <- n - 1 to 0 by -1 do
       var rhs: _Expression = aug(i)(n)
       for j <- i + 1 until n do
-        rhs = simplifyFully(Sum(rhs, Product(_Number(-1), Product(aug(i)(j), x(j)))))
+        rhs = simplifyFully(Sum(rhs, Product(minusOne, Product(aug(i)(j), x(j)))))
       val denom = simplifyFully(aug(i)(i))
       if isZeroLiteral(denom) then break(None)
       x(i) = simplifyFully(Ratio(rhs, denom))

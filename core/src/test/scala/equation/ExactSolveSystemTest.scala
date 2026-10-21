@@ -32,6 +32,22 @@ class ExactSolveSystemTest extends AnyFlatSpec:
       Left(matrix._Matrix(1, 2, Vector(_Equation(c, rat(19, 15)), _Equation(d, rat(11, 10))))))
   }
 
+  it should "stay exact when an unknown is absent from an equation" in {
+    val (x, y, z) = (_Variable("x"), _Variable("y"), _Variable("z"))
+    assert(eval("solveSystem([[x + 2*y = 4], [2*x + y - 3*z = 11], [-3*x - 2*y + z = -10]], x, y, z)") ==
+      Left(matrix._Matrix(1, 3, Vector(_Equation(x, rat(2, 1)), _Equation(y, rat(1, 1)), _Equation(z, rat(-2, 1))))))
+  }
+
+  it should "build no inexact constant on the symbolic path" in {
+    def inexact(e: _Expression): List[_Expression] = e match
+      case _: _Rational => Nil
+      case n: _Number   => List(n)
+      case other        => other.children.flatMap(inexact)
+    eval("solveSystem([[-x - 2*y + 2*z = -1], [2*x + 4*y - z = 5]], x, z)") match
+      case Left(m: matrix._Matrix) => assert(m.elems.flatMap(inexact).isEmpty, m)
+      case other                   => fail(s"$other")
+  }
+
   it should "still decline a singular exact system" in {
     assert(eval("solveSystem([[-c + 2*d = 3], [c - 2*d = 0]], c, d)").fold(_.isInstanceOf[_SolveSystem], _ => false))
   }
