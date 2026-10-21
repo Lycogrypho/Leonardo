@@ -129,14 +129,18 @@ private def minorOf(m: _Matrix, si: Int, sj: Int): _Matrix =
 
 /** Returns the determinant of a symbolic square matrix by Laplace expansion along the first row.
  *  Concrete element pairs are folded immediately via `sumOf`/`productOf`.
- *  The 1x1 base case returns the single element directly.
+ *  The 1x1 base case returns the single element directly.  The cofactor sign is built in the
+ *  tier of the whole matrix (F_0169), decided once: a minor need not hold the exact cell.
  */
-private def symbolicDet(m: _Matrix): _Expression =
+private def symbolicDet(m: _Matrix): _Expression = symbolicDetSigned(m, _Rational.literalLike(-1, m))
+
+/** [[symbolicDet]] with the sign `minusOne` fixed by the caller. */
+private def symbolicDetSigned(m: _Matrix, minusOne: _Expression): _Expression =
   if m.rows == 1 then m(0, 0)
   else
     (0 until m.cols).map { j =>
-      val term = productOf(m(0, j), symbolicDet(minorOf(m, 0, j)))
-      if j % 2 == 0 then term else productOf(_Number(-1), term)
+      val term = productOf(m(0, j), symbolicDetSigned(minorOf(m, 0, j), minusOne))
+      if j % 2 == 0 then term else productOf(minusOne, term)
     }.reduce(sumOf)
 
 /** Returns the inverse of a symbolic square matrix as `adjugate / determinant`, or `None`.
@@ -145,14 +149,15 @@ private def symbolicDet(m: _Matrix): _Expression =
  *  [[core.Limit.MaxSymbolicDim]] (default 6: the expansion has `n!` terms).
  */
 private def symbolicInverse(m: _Matrix, maxDim: Long): Option[_Matrix] =
+  val minusOne = _Rational.literalLike(-1, m)
   if m.rows != m.cols || m.rows > maxDim then None
-  else if m.rows == 1 then Some(_Matrix(1, 1, Vector(Ratio(_Number(1), m(0, 0)))))
+  else if m.rows == 1 then Some(_Matrix(1, 1, Vector(Ratio(_Rational.literalLike(1, m), m(0, 0)))))
   else
-    val d = symbolicDet(m)
+    val d = symbolicDetSigned(m, minusOne)
     val elems =
       for i <- 0 until m.rows; j <- 0 until m.cols yield
-        val cof  = symbolicDet(minorOf(m, j, i))
-        val signed = if (i + j) % 2 == 0 then cof else productOf(_Number(-1), cof)
+        val cof  = symbolicDetSigned(minorOf(m, j, i), minusOne)
+        val signed = if (i + j) % 2 == 0 then cof else productOf(minusOne, cof)
         Ratio(signed, d)
     Some(_Matrix(m.rows, m.cols, elems.toVector))
 
