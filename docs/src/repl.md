@@ -82,8 +82,9 @@ s.execute("simplify x + 0 + 1*x")
 s.execute("expand (x + 1)^3")
 ```
 
-Both reduce a **functional** — a derivative, integral, limit or transform — wherever it appears,
-so `simplify` never returns something less reduced than what you gave it:
+Both evaluate **every call** first — a derivative, integral or limit, a solver, a statistic, a
+function of a number — wherever it appears, so `simplify` never returns something less reduced
+than what you gave it (a `solve` inside `simplify` answers without binding its unknown):
 
 ```scala mdoc
 s.execute("simplify 1 + derive(sin(x), x)")

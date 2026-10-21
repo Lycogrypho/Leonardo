@@ -2147,11 +2147,16 @@ class ReplSessionTest extends AnyFlatSpec:
     // min-max is a lattice, so idempotence folds the conjunction away
     assert(s.execute("simplify truth(0.3) and truth(0.3)") == "truth(0.3)")
     s.execute("logic product")
-    // under product a and a = a^2, so the structural rule is gated off; simplify does
-    // not evaluate the truth(...) nodes, so the conjunction simply stays
-    assert(s.execute("simplify truth(0.3) and truth(0.3)") == "(truth(0.3) and truth(0.3))")
-    // evaluation, by contrast, applies the product t-norm
+    // under product a and a = a^2: simplify evaluates the constants since F_0168, so it
+    // agrees with evaluation rather than folding the conjunction to truth(0.3)
+    assert(s.execute("simplify truth(0.3) and truth(0.3)") == "truth(0.09)")
     assert(s.execute("truth(0.3) and truth(0.3)") == "truth(0.09)")
+    // the structural rule itself, on a graded atom that cannot fold: gated off under product,
+    // applied under min-max
+    assert(s.execute("simplify very(x) and very(x)") == "(very(x) and very(x))")
+    s.execute("logic minmax")
+    assert(s.execute("simplify very(x) and very(x)") == "very(x)")
+    s.execute("logic product")
     // a free variable is still a crisp atom, so idempotence holds under every semantics
     assert(s.execute("simplify a and a") == "a")
   }

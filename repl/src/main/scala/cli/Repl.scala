@@ -747,14 +747,21 @@ final class Session:
    *  from `simplify` in the first place.
    */
   private def prepared(e: _Expression): _Expression =
-    evaluateFunctionals(resolveMatrixOps(substitute(e, definitions)))
+    evaluateBottomUp(resolveMatrixOps(substitute(e, definitions)))
 
-  /** Reduces every `_Functional` node bottom-up, keeping whatever came back (issue F_0034).
+  /** Reduces every node bottom-up, keeping whatever came back (issues F_0034, F_0168).
    *
    *  `simplifyFully` is **structural**: it folds constants and identities but never calls
-   *  `eval`, and `eval` is where a functional computes itself -- so `derive(sin(x), x)`
+   *  `eval`, and `eval` is where a node computes itself -- so `derive(sin(x), x)`
    *  answered `cos(x)` while `simplify derive(sin(x), x)` answered itself.  The same question
    *  gave two answers depending on whether a command word preceded it.
+   *
+   *  **Every node, not only the `_Functional` ones** (F_0168, owner's option 1).  F_0034 matched
+   *  `_Functional`, and every computing node added since -- `solveSystem`, `rank`, `tfpoles`,
+   *  `mean`, `fib` -- extends `_Expression` directly, so `simplify` answered each with itself.  A
+   *  marker trait for "computing" nodes was rejected: it is a list that must be kept as nodes are
+   *  added, which is how the gap arose.  `simplify` now differs from evaluation in ignoring
+   *  bindings only, so it also folds `sin(1)`.
    *
    *  **This is not `simplify` learning to evaluate; it already had.**  `resolveMatrixOps` runs
    *  in the same pipeline and executes matrix operations, precisely so `simplify C` can carry
@@ -769,10 +776,8 @@ final class Session:
    *  A node that cannot reduce returns `Left(this)`, so it comes back unchanged and the pass
    *  is idempotent -- the fixpoint convention every `_Functional` already follows.
    */
-  private def evaluateFunctionals(e: _Expression): _Expression =
-    e.rebuild(e.children.map(evaluateFunctionals)) match
-      case f: _Functional => f.eval(unboundEnv).toExpression
-      case other          => other
+  private def evaluateBottomUp(e: _Expression): _Expression =
+    e.rebuild(e.children.map(evaluateBottomUp)).eval(unboundEnv).toExpression
 
   /** The `simplify` command pipeline: the shared preparation, then the scalar structural
    *  pass, then -- only when connectives are present -- the logic pass, with

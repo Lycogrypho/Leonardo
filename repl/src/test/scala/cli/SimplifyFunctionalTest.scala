@@ -62,6 +62,33 @@ class SimplifyFunctionalTest extends AnyFlatSpec:
     assert(session.execute("expand derive(sin(x), x)") == "cos(x)")
   }
 
+  // --- F_0168: every computing node, not only the `_Functional` ones ----------------------
+
+  "simplify" should "agree with bare evaluation for a node that is not a _Functional" in
+  {
+    // `solveSystem`, `rank`, `mean`, `tfpoles` and `fib` extend `_Expression` directly, and
+    // F_0034's pass matched `_Functional` only, so `simplify` answered each call with itself.
+    val s = session
+    for line <- List("solveSystem([[x + y = 2], [x - y = 0]], x, y)", "rank([[1, 2], [2, 4]])",
+                     "mean([[1, 2, 3]])", "tfpoles(1/(s + 1), s)", "fib(10)", "sin(1)") do
+      assert(s.execute(s"simplify $line") == s.execute(line), line)
+  }
+
+  it should "solve without binding the unknown, since simplify is not evaluation" in
+  {
+    val s   = session
+    val out = s.execute("simplify solve(x + 1 = 0, x)")
+    assert(!out.contains("solve") && out.contains("-1"), out)
+    assert(s.execute("x") == "x")
+  }
+
+  "expand" should "reduce a computing node too" in
+  {
+    val s = session
+    assert(s.execute("expand solveSystem([[x + y = 2], [x - y = 0]], x, y)") ==
+           s.execute("solveSystem([[x + y = 2], [x - y = 0]], x, y)"))
+  }
+
   "a functional with no closed form" should "stay symbolic rather than being mangled" in
   {
     // `exp(x^2)` has no elementary antiderivative; the node must come back untouched, which is
@@ -99,6 +126,13 @@ class SimplifyFunctionalTest extends AnyFlatSpec:
     // The derivative is taken, but `x` is not then replaced by 2 -- otherwise `simplify` would
     // fold bindings in one place and not the other, which is worse than either rule alone.
     assert(s.execute("simplify derive(sin(x), x)") == "cos(x)")
+  }
+
+  it should "be ignored by a computing node as well" in
+  {
+    val s = session
+    s.execute("n := 10")
+    assert(s.execute("simplify fib(n)") == "fib(n)")
   }
 
   "a definition" should "still be substituted first, as it always was" in
