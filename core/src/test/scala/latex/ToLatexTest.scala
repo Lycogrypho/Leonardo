@@ -306,6 +306,8 @@ class ToLatexTest extends AnyFlatSpec:
     assert(tex("dot(a + b, v)") == "\\left(a + b\\right) \\cdot v")
     assert(tex("cross(u, v)") == "u \\times v")
     assert(tex("trace(A)") == "\\operatorname{tr}\\left(A\\right)")
+    assert(tex("size(A)") == "\\operatorname{size}\\left(A\\right)")
+    assert(tex("size(A, 2)") == "\\operatorname{size}\\left(A, 2.0\\right)")
   }
 
   it should "use the conventional name where LaTeX and this grammar disagree" in

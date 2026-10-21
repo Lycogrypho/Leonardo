@@ -4,9 +4,9 @@ package matrix
 import cli.Session
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** F_0039, F_0160-F_0162 at the prompt: `norm`, `dot`, `cross` and `trace` read the session's
- *  bindings, `simplify` reduces them as it reduces `det`, an exact session keeps them exact, and
- *  a definition holding one survives `:save`. */
+/** F_0039, F_0160-F_0162, F_0173 at the prompt: `norm`, `dot`, `cross`, `trace` and `size` read the
+ *  session's bindings, `simplify` reduces them as it reduces `det`, an exact session keeps them
+ *  exact, and a definition holding one survives `:save`. */
 class VectorProductsReplTest extends AnyFlatSpec:
 
   "the REPL" should "evaluate the four on bound matrices" in
@@ -48,4 +48,19 @@ class VectorProductsReplTest extends AnyFlatSpec:
     t.execute("v := [[3], [4]]")
     t.execute("M := [[1, 0], [0, 1]]")
     assert(t.execute("n") == "7.0")
+  }
+
+  "size" should "read a bound matrix, bind both dimensions by tuple assignment and stay exact" in
+  {
+    val s = Session()
+    s.execute("A := [[1, 2, 3], [4, 5, 6]]")
+    assert(s.execute("size(A)") == "[[2.0, 3.0]]")
+    assert(s.execute("size(A, 2)") == "3.0")
+    assert(s.execute("simplify size(A, 1)") == "2.0")
+    s.execute("r, c := size(A)")
+    assert(s.execute("zeros(r, c) == 0 * A") == "true")
+    s.execute("exact on")
+    s.execute("B := [[1/2, 1], [1, 2]]")
+    assert(s.execute("size(B, 1)") == "2")
+    assert(s.execute("size(x)") == "size(x)")
   }

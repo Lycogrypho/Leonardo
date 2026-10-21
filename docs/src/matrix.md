@@ -137,6 +137,14 @@ Parser.parse("cross([[1], [0], [0]], [[0], [1], [0]])").get.eval(env)
 Parser.parse("trace([[2, 1], [1, 3]])").get.eval(env)
 ```
 
+`size(A)` is the row `[[rows, cols]]`, so `r, c := size(A)` at the prompt names both, and
+`size(A, 1)` / `size(A, 2)` give one dimension; a number is a `1×1` matrix:
+
+```scala mdoc
+Parser.parse("size([[1, 2, 3], [4, 5, 6]])").get.eval(env)
+Parser.parse("size([[1, 2, 3], [4, 5, 6]], 2)").get.eval(env)
+```
+
 `norm(x)` and `norm(x, kind)` read **the operand's shape** (MATLAB's rule): a row or a column is
 a vector, anything else a matrix. The default is the 2-norm either way — for a matrix the
 largest singular value, which the vector 2-norm equals on a column — and `kind` is `1`, `2`,

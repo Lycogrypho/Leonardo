@@ -867,7 +867,9 @@ package "matrix" {
 
     class "VectorProducts" <<utility>> [[matrix.html]] {
         __ F_0160-F_0162: dot(u, v), cross(u, v), trace(A) __
-        _Dot, _Trace: scalar results; _Cross: a _MatrixOperation
+        __ F_0173: size(A), size(A, k) __
+        _Dot, _Trace, _SizeAlong: scalar results; _Cross, _Size: _MatrixOperations
+        size: shape read off the evaluated operand, in its tier; a number is 1x1
         dot: no conjugate, a complex vector stays unevaluated
         cross: right-handed, in u's shape
         accumulated: a sum built term by term, refused
@@ -2088,7 +2090,7 @@ package "parser" {
 "Parser" ..> "_MatrixOperation": structural + - * dispatch
 "Parser" ..> "_MatrixIndex"    : at(A, i, j) element access
 "Parser" ..> "Determinant"     : det(A)
-"Parser" ..> "VectorProducts"  : dot cross trace
+"Parser" ..> "VectorProducts"  : dot cross trace size
 "Parser" ..> "Norm"            : norm(x[, kind])
 "Parser" ..> "Inverse"         : inv(A)
 "Parser" ..> "IdentityMatrix"  : eye(n)

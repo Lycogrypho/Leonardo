@@ -4,7 +4,7 @@ package latex
 import core.*
 import scalar.*
 import transform.*
-import matrix.{_Norm, NormOrder, _Dot, _Cross, _Trace}
+import matrix.{_Norm, NormOrder, _Dot, _Cross, _Trace, _Size, _SizeAlong}
 
 /** Renders an expression as LaTeX source (issue F_0016).
  *
@@ -234,6 +234,9 @@ object ToLatex:
     case _Dot(u, v)   => (s"${at(u, AtProduct)} \\cdot ${at(v, AtProduct)}", AtProduct)
     case _Cross(u, v) => (s"${at(u, AtProduct)} \\times ${at(v, AtProduct)}", AtProduct)
     case _Trace(m)    => (s"\\operatorname{tr}\\left(${at(m, Grouped)}\\right)", Atomic)
+    // F_0173: no agreed notation for a shape, so the call's own name, upright.
+    case _Size(m)          => (s"\\operatorname{size}\\left(${at(m, Grouped)}\\right)", Atomic)
+    case _SizeAlong(m, k)  => (s"\\operatorname{size}\\left(${at(m, Grouped)}, ${at(k, Grouped)}\\right)", Atomic)
 
     // Every other named function: LaTeX's own operator where one exists, upright otherwise.
     case f: NamedFunction =>

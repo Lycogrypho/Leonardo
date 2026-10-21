@@ -5,8 +5,8 @@ import core.*
 import scalar.{Sum, Product}
 
 
-/** The products and the diagonal sum a first linear-algebra course needs: `dot` (F_0160),
- *  `cross` (F_0161) and `trace` (F_0162).
+/** The products, the diagonal sum and the shape a first linear-algebra course needs: `dot`
+ *  (F_0160), `cross` (F_0161), `trace` (F_0162) and `size` (F_0173).
  *
  *  Each reads its operands through [[cellGrid]], the one reader of "an evaluated operand as a
  *  grid of cells", so a dense matrix, an exact literal and a symbolic one arrive the same way, and
@@ -126,3 +126,54 @@ case class _Trace(m: _Expression) extends _Expression:
             accumulated(Vector.tabulate(g.rows)(i => g(i, i)), env).getOrElse(Left(this))
           case Some(_) => Left(this)
           case None    => Left(_Trace(r.toExpression))
+
+
+/** The shape of an evaluated operand, read without touching its cells, or `None` when it is not
+ *  known.  A number is a `1×1` block (F_0173 Decision 2); a free name is not, since it may later
+ *  be bound to a matrix (issue 1.2). */
+private def shapeOf(r: Either[_Expression, _Value]): Option[(Int, Int)] = r match
+  case Right(v: _MatrixValue)    => Some((v.rows, v.cols))
+  case Left(m: _MatrixShaped)    => Some((m.rows, m.cols))
+  case Right(_Number(_) | _: _Complex) => Some((1, 1))
+  case _                         => None
+
+
+/** `size(A)` — the row `[[rows, cols]]` of a matrix (F_0173), so `r, c := size(A)` names both.
+ *
+ *  The shape is read off the evaluated operand in `O(1)`; the only cost is evaluating the operand
+ *  itself.  The counts are built in the operand's tier, as `rank` answers: an exact matrix gives
+ *  an exact row.  A matrix result, so this is a `_MatrixOperation` and `2 * size(A)` scales it.
+ *  An operand of unknown shape stays unevaluated.
+ *
+ *  @param m the matrix
+ */
+case class _Size(m: _Expression) extends _MatrixOperation:
+  override def toString: String = s"size($m)"
+  override def children: List[_Expression] = List(m)
+  override def rebuild(c: List[_Expression]): _Expression = _Size(c.head)
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val r = m.eval(env)
+    shapeOf(r) match
+      case Some((rows, cols)) =>
+        val like = r.toExpression
+        _Matrix(1, 2, Vector(_Rational.literalLike(rows, like), _Rational.literalLike(cols, like))).eval(env)
+      case None => Left(_Size(r.toExpression))
+
+
+/** `size(A, k)` — the number of rows (`k = 1`) or of columns (`k = 2`) of a matrix (F_0173), in
+ *  the operand's tier.  A SCALAR result, like [[_Trace]]; any other `k` stays unevaluated.
+ *
+ *  @param m   the matrix
+ *  @param dim the dimension, 1 or 2
+ */
+case class _SizeAlong(m: _Expression, dim: _Expression) extends _Expression:
+  override def toString: String = s"size($m, $dim)"
+  override def children: List[_Expression] = List(m, dim)
+  override def rebuild(c: List[_Expression]): _Expression = _SizeAlong(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val (r, rd) = (m.eval(env), dim.eval(env))
+    (shapeOf(r), wholeCount(rd).filter(_ <= 2)) match
+      case (Some((rows, cols)), Some(k)) => Right(_Rational.literalLike(if k == 1 then rows else cols, r.toExpression))
+      case _                             => Left(_SizeAlong(r.toExpression, rd.toExpression))

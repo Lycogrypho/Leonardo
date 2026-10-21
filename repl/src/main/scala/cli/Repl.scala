@@ -1233,9 +1233,9 @@ final class Session:
       case Ratio(a, b) if isMatrixish(a) && !isMatrixish(b)  => MatScale(Ratio(_Number(1), b), a).eval(localEnv).toExpression
       case Ratio(a, b) if isMatrixish(a) && isMatrixish(b)   => MatProduct(a, Inverse(b)).eval(localEnv).toExpression
       case Ratio(a, b) if isMatrixish(b)                     => MatScale(a, Inverse(b)).eval(localEnv).toExpression
-      // The scalar results of a matrix operand, `det` and F_0039/F_0160/F_0162's three, read the
-      // session's matrices exactly as `det` always has.
-      case d @ (_: Determinant | _: _Dot | _: _Trace | _: _Norm) => d.eval(localEnv).toExpression
+      // The scalar results of a matrix operand, `det` and F_0039/F_0160/F_0162/F_0173's four, read
+      // the session's matrices exactly as `det` always has.
+      case d @ (_: Determinant | _: _Dot | _: _Trace | _: _Norm | _: _SizeAlong) => d.eval(localEnv).toExpression
       case m: _MatrixOperation                               => m.eval(localEnv).toExpression
       case other                                             => other
 
@@ -1344,8 +1344,11 @@ final class Session:
 
   /** Handles tuple assignment `L, U, P := lu(A)`: binds multiple names to a 1*n row result.
    *
+   *  The row may be a symbolic `_Matrix` (the decompositions' row of factors) or a dense one
+   *  (`r, c := size(A)`, F_0173), whose cells bind as numbers.
+   *
    *  @param names the list of variable names (left-hand side of the tuple)
-   *  @param rhs   the right-hand side expression (must evaluate to a 1*n `_Matrix`)
+   *  @param rhs   the right-hand side expression (must evaluate to a 1*n row)
    *  @return newline-joined display strings for each binding, or an error message
    */
   private def multiAssign(names: List[String], rhs: _Expression): String =
@@ -1358,12 +1361,16 @@ final class Session:
             resolveDerivativeBinders(rhs) match
               case Left(message) => message
               case Right(resolved) =>
-                withDefinitions(resolved).eval(env) match
-                  case Left(_Matrix(1, n, elems)) if n == names.size =>
+                val row = withDefinitions(resolved).eval(env) match
+                  case Left(_Matrix(1, _, elems))                => Some(elems)
+                  case Right(v: _MatrixValue) if v.rows == 1    => Some(_Matrix.fromValue(v).elems)
+                  case _                                         => None
+                row match
+                  case Some(elems) if elems.size == names.size =>
                     names.zip(elems).map((name, elem) => assign(name, elem)).mkString("\n")
-                  case Left(_Matrix(1, n, _)) =>
-                    s"tuple assignment: ${names.size} names on the left but $n elements on the right"
-                  case _ =>
+                  case Some(elems) =>
+                    s"tuple assignment: ${names.size} names on the left but ${elems.size} elements on the right"
+                  case None =>
                     s"tuple assignment: right-hand side must evaluate to a 1xn row (use lu, qr, eig, jordan, eigen)"
 
   /** Samples an expression over a range, returning the POINTS rather than a rendering of them.

@@ -751,6 +751,8 @@ inv(A)                          inverse
 A ^ n                           integer matrix power (binary exponentiation)
 pow(A, n)                       same as A^n
 trace(A)                        diagonal sum of a square matrix (scalar)
+size(A)                         the row [[rows, cols]]; r, c := size(A) names both
+size(A, 1) | size(A, 2)         number of rows / columns (scalar); a number is 1x1
 ```
 
 ### Vector products and norms

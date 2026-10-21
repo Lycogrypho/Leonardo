@@ -1198,7 +1198,9 @@ MaxSvdWork = max(m,n)·min(m,n)² ≤ 1e7 (Node-measured)</data>
         <data key="n_stereotype">utility</data>
         <data key="n_url">matrix.html</data>
         <data key="n_members">__ F_0160-F_0162: dot(u, v), cross(u, v), trace(A) __
-_Dot, _Trace: scalar results; _Cross: a _MatrixOperation
+__ F_0173: size(A), size(A, k) __
+_Dot, _Trace, _SizeAlong: scalar results; _Cross, _Size: _MatrixOperations
+size: shape read off the evaluated operand, in its tier; a number is 1x1
 dot: no conjugate, a complex vector stays unevaluated
 cross: right-handed, in u's shape
 accumulated: a sum built term by term, refused
@@ -4079,7 +4081,7 @@ drives the pure Session.step</data>
     </edge>
     <edge id="e347" source="n249" target="n115">
         <data key="e_relation">dependency</data>
-        <data key="e_label">dot cross trace</data>
+        <data key="e_label">dot cross trace size</data>
     </edge>
     <edge id="e348" source="n249" target="n116">
         <data key="e_relation">dependency</data>
