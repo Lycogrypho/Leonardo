@@ -152,17 +152,26 @@ def taylorSeries(
 private[leonardo] def taylorDetailed(
     e: _Expression, v: _Variable, point: _Expression, order: Int, limits: Limits = Limits.Default
 ): Either[String, _Expression] =
+  taylorDetailedIn(e, v, point, order, limits, _Rational.containsExact(e) || _Rational.containsExact(point))
+
+/** [[taylorDetailed]] in a tier the caller decided (F_0171): `_Taylor` reads it from the body and
+ *  the bound values of its free names.
+ *
+ *  @param exact whether the invented constants and the coefficients are built exact
+ */
+private[leonardo] def taylorDetailedIn(
+    e: _Expression, v: _Variable, point: _Expression, order: Int, limits: Limits, exact: Boolean
+): Either[String, _Expression] =
   if order < 0 || order > limits(Limit.MaxTaylorOrder) then Left(orderRangeTo(limits(Limit.MaxTaylorOrder)))
   else
     // F_0085: the coefficients come from the power-series engine, which falls back to the
     // derivative path (and its budget) only for a subtree it does not cover. The constants the
     // assembly invents -- the -1 and each exponent -- are built in the input's tier.
-    val exact = _Rational.containsExact(e) || _Rational.containsExact(point)
     def lit(k: Int): _Expression = if exact then _Rational(k) else _Number(k)
-    powerSeries(e, v, point, order, limits.count(Limit.MaxDerivativeNodes)).map { cs =>
+    powerSeriesIn(e, v, point, order, limits.count(Limit.MaxDerivativeNodes), exact).map { cs =>
       val shifted = Sum(v, Product(lit(-1), point))
       val terms = cs.zipWithIndex.map((c, k) => Product(c, Power(shifted, lit(k))): _Expression)
-      simplifyFully(terms.reduceLeft(Sum.apply))
+      simplifyFullyInTier(terms.reduceLeft(Sum.apply), exact)
     }
 
 /** The reason for an order outside `0 .. MaxTaylorOrder`. */

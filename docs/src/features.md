@@ -248,7 +248,11 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   `4.6E-4`, and `A * inv(A)` is exactly the identity; `eye`, `zeros` and `ones` build exact
   cells, `==` compares exact matrices exactly, and `solveSystem` answers an exact system in
   fractions — and `fact` loses the `170!`
-  ceiling that a `Double` imposes. Transcendentals are arbitrary-precision, so a
+  ceiling that a `Double` imposes. Calculus stays exact: an integral's constants are
+  fractions, a rational function is decomposed over the rationals (an irrational root carried
+  at the working precision, like any irrational in this mode), and a derivative or integral of
+  letters bound to exact values answers in fractions (`derive(a/t, t)` with `a := 1/3`,
+  `t := 2` is `-1/12`). Transcendentals are arbitrary-precision, so a
   user-settable *working precision* genuinely sharpens `sin` and `exp` themselves:
   `exp(1000)` is an exact 435-digit value where floating point overflows to infinity, and
   the small root of `x² + 10⁸x + 1 = 0` gets steadily more accurate as you raise it. Off by

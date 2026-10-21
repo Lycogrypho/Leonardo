@@ -491,6 +491,7 @@ package "scalar" {
         resolve(): compiled -> table -> substitution
         IntegrateParts      : by parts + power reductions
         IntegrateRational   : partial fractions
+        IntegrateExactRational: the same over the rationals (F_0171)
         IntegrateSubstitution: u-sub / trig-sub / Weierstrass
     }
     class "Simplify" <<utility>> [[expressions.html]] {

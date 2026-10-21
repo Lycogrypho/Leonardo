@@ -69,11 +69,13 @@ object integralRules:
    *  @return the antiderivative, already simplified, or `None` when no rule applies
    */
   private[scalar] def applyTo(e: _Expression, v: _Variable,
-                              pre: Option[_Expression] = None): Option[_Expression] =
+                              pre: Option[_Expression] = None)(using t: Tier): Option[_Expression] =
     // Normalise into the canonical spelling first: `1/cos → sec`, `cos/sin → cot`,
     // so a rule written over the reciprocal-function nodes matches a ratio the user typed.
-    val ne = pre.getOrElse(simplifyFully(e))
-    rules.iterator
+    val ne = pre.getOrElse(simplifyT(e))
+    // In the exact tier the exact twin is tried first: an exact integrand's `2` does not unify
+    // with a pattern's `_Number(2.0)`, and the template's constants must join the exact answer.
+    (if t.exact then exactRules.iterator ++ rules.iterator else rules.iterator)
       .flatMap { r =>
         for
           b     <- unify(r.lhs, ne)
@@ -81,10 +83,28 @@ object integralRules:
           slope <- linearSlope(inner, v)   // ?v must be a linear a·v + b, with a ≠ 0
           if r.condition(b, v)
           out   <- instantiate(r.rhs, b)
-        yield if slope == 1.0 then out else Ratio(out, _Number(slope))
+        yield if isOneLiteral(slope) then out else Ratio(out, slope)
       }
       .nextOption()
-      .map(simplifyFully)
+      .map(simplifyT)
+
+  /** Every rule with its integer and simple dyadic constants exact (F_0171).
+   *
+   *  The table is written with `Double` constants, the tier it was built in.  An exact
+   *  integrand needs the same rules in the exact tier, on both sides: the pattern's `2` must
+   *  unify with an exact `2`, and the template's `1/2` must not demote the answer.  Only the
+   *  constants the rule's author wrote as integers or halves, quarters, … are converted, exactly
+   *  and losslessly; an irrational constant (`√π/2` for `erf`) stays a `Double`, as `derive`'s
+   *  does.  The user's own subtrees arrive through the holes and are never touched.
+   */
+  private[scalar] lazy val exactRules: List[RewriteRule] =
+    rules.map(r => r.copy(lhs = exactTwin(r.lhs), rhs = exactTwin(r.rhs)))
+
+  /** `e` with each integer or dyadic `_Number` leaf (denominator at most `1024`) made exact. */
+  private def exactTwin(e: _Expression): _Expression = e match
+    case n: _Number if !n.d.isInfinite && !n.d.isNaN && (n.d * 1024).isWhole =>
+      _Rational.fromDouble(n.d).getOrElse(n)
+    case other => other.rebuild(other.children.map(exactTwin))
 
   /** Admissible bases for `∫ aᵛ dv = aᵛ/ln(a)`.
    *

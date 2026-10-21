@@ -74,6 +74,11 @@ private val deriveMemo = new Memo[(_Expression, String, Boolean), _Expression](1
 def derive(e: _Expression, v: _Variable): _Expression =
   deriveIn(e, v)(using Tier(_Rational.containsExact(e)))
 
+/** [[derive]] in a tier the caller decided (F_0171): the `_Derivative` node reads it from the body
+ *  and the bound values of its free names, which `derive` itself, having no environment, cannot. */
+private[scalar] def deriveInTier(e: _Expression, v: _Variable, exact: Boolean): _Expression =
+  deriveIn(e, v)(using Tier(exact))
+
 /** [[derive]] within a tier already decided by the outermost call. */
 private def deriveIn(e: _Expression, v: _Variable)(using t: Tier): _Expression =
   deriveMemo.getOrElseUpdate((e, v.variable, t.exact))(deriveImpl(e, v))

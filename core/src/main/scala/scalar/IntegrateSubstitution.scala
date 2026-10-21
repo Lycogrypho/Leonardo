@@ -37,8 +37,8 @@ private def flattenFactors(e: _Expression): List[_Expression] = e match
   case _                       => List(e)
 
 /** Rebuilds a product from a factor list; the empty list is the unit `1`. */
-private def productOf(fs: List[_Expression]): _Expression =
-  fs.foldLeft(_Number(1): _Expression)((acc, f) => Product(acc, f))
+private def productOf(fs: List[_Expression])(using t: Tier): _Expression =
+  fs.foldLeft(t.n(1): _Expression)((acc, f) => Product(acc, f))
 
 /** Forms `num / den` and cancels structurally-equal factors between them, then simplifies.
  *
@@ -52,10 +52,10 @@ private def productOf(fs: List[_Expression]): _Expression =
  *  @param den the denominator expression
  *  @return the simplified, factor-cancelled quotient `num / den`
  */
-private def cancelRatio(num: _Expression, den: _Expression): _Expression =
+private def cancelRatio(num: _Expression, den: _Expression)(using t: Tier): _Expression =
   def isOne(f: _Expression): Boolean = isOneLiteral(f)
-  val numF = flattenFactors(num).map(simplifyFully).filterNot(isOne)
-  val denF = scala.collection.mutable.ListBuffer(flattenFactors(den).map(simplifyFully).filterNot(isOne)*)
+  val numF = flattenFactors(num).map(simplifyT).filterNot(isOne)
+  val denF = scala.collection.mutable.ListBuffer(flattenFactors(den).map(simplifyT).filterNot(isOne)*)
   val keptNum = numF.filter { f =>
     val i = denF.indexOf(f)
     if i >= 0 then { denF.remove(i); false } else true
@@ -65,15 +65,22 @@ private def cancelRatio(num: _Expression, den: _Expression): _Expression =
   // A negative exponent belongs on the other side of the fraction: `cos(w)^-2` in the
   // numerator is `cos(w)^2` in the denominator, which is the spelling the reciprocal-node
   // normalisation and the power-reduction tiers recognise.
-  val (numPos, numNeg) = numG.partition(_._2 > 0.0)
-  val (denPos, denNeg) = denG.partition(_._2 > 0.0)
-  def flip(ps: List[(_Expression, Double)]): List[(_Expression, Double)] = ps.map((b, n) => (b, -n))
+  def positive(n: _Value): Boolean = n match
+    case _Number(d) => d > 0.0
+    case _          => false
+  val (numPos, numNeg) = numG.partition(p => positive(p._2))
+  val (denPos, denNeg) = denG.partition(p => positive(p._2))
+  def flip(ps: List[(_Expression, _Value)]): List[(_Expression, _Value)] =
+    ps.map((b, n) => (b, Product(t.n(-1), n).eval(EmptyEnv).getOrElse(n)))
   val denExpr = rebuildFactors(denPos ++ flip(numNeg))
   // Numeric factors ride outside the fraction, so a bare `1` is left over the denominator:
   // `simplify`'s `1/cos^2 -> sec^2` normalisation keys on a unit numerator, and without this
-  // `0.25/cos(w)^2` would never reach the `sec^n` reduction.
-  val (numConst, numRest) = (numPos ++ flip(denNeg)).partition((b, _) => b.isInstanceOf[_Number])
-  simplifyFully(Product(rebuildFactors(numConst), Ratio(rebuildFactors(numRest), denExpr)))
+  // `0.25/cos(w)^2` would never reach the `sec^n` reduction.  The widening pattern, so an exact
+  // factor rides outside as a `Double` one does.
+  val (numConst, numRest) = (numPos ++ flip(denNeg)).partition((b, _) => b match
+    case _Number(_) => true
+    case _          => false)
+  simplifyT(Product(rebuildFactors(numConst), Ratio(rebuildFactors(numRest), denExpr)))
 
 /** Groups factors by base, summing exponents (`[cos w, cos w] -> cos(w)^2`, `[x^3, x^-1] ->
  *  x^2`), in order of first appearance.
@@ -84,20 +91,24 @@ private def cancelRatio(num: _Expression, den: _Expression): _Expression =
  *  flattens to `cos(w)^3` beside the measure's `cos w`, and the two must fold to `cos(w)^4`.
  *  The fold preserves first-seen order, so a rebuilt product is stable across runs.
  */
-private def groupByBase(fs: List[_Expression]): List[(_Expression, Double)] =
-  def split(f: _Expression): (_Expression, Double) = f match
-    case Power(b, _Number(n)) => (b, n)
-    case _                    => (f, 1.0)
-  fs.foldLeft(Vector.empty[(_Expression, Double)]) { (acc, f) =>
+private def groupByBase(fs: List[_Expression])(using t: Tier): List[(_Expression, _Value)] =
+  // The exponents are VALUES, summed in their own tier (F_0171): summing them as Doubles
+  // demoted every exact exponent, so an exact integrand left this tier inexact.
+  def split(f: _Expression): (_Expression, _Value) = f match
+    case Power(b, n: _Rational) => (b, n)
+    case Power(b, n: _Number)   => (b, n)
+    case _                      => (f, t.n(1))
+  def plus(x: _Value, y: _Value): _Value = Sum(x, y).eval(EmptyEnv).getOrElse(x)
+  fs.foldLeft(Vector.empty[(_Expression, _Value)]) { (acc, f) =>
     val (base, n) = split(f)
     acc.indexWhere(_._1 == base) match
       case -1 => acc :+ (base, n)
-      case i  => acc.updated(i, (base, acc(i)._2 + n))
+      case i  => acc.updated(i, (base, plus(acc(i)._2, n)))
   }.toList
 
 /** Rebuilds a product from `(base, exponent)` pairs, dropping unit exponents. */
-private def rebuildFactors(ps: List[(_Expression, Double)]): _Expression =
-  productOf(ps.map((b, n) => if n == 1.0 then b else Power(b, _Number(n))))
+private def rebuildFactors(ps: List[(_Expression, _Value)])(using t: Tier): _Expression =
+  productOf(ps.map((b, n) => if isOneLiteral(n) then b else Power(b, n)))
 
 /** Collects candidate inner functions `g` for u-substitution from the integrand.
  *
@@ -110,7 +121,7 @@ private def rebuildFactors(ps: List[(_Expression, Double)]): _Expression =
  *  @param v the integration variable
  *  @return the candidate inner functions, most specific first
  */
-private def substitutionCandidates(e: _Expression, v: _Variable): List[_Expression] =
+private def substitutionCandidates(e: _Expression, v: _Variable)(using t: Tier): List[_Expression] =
   val buf = scala.collection.mutable.ListBuffer[_Expression]()
   def walk(x: _Expression): Unit =
     x match
@@ -121,7 +132,7 @@ private def substitutionCandidates(e: _Expression, v: _Variable): List[_Expressi
     x.children.foreach(walk)
   walk(e)
   buf.toList
-    .map(simplifyFully)
+    .map(simplifyT)
     .filter(g => dependsOn(g, v) && !g.isInstanceOf[_Variable])
     .distinct
     .sortBy(g => -treeSize(g))
@@ -142,11 +153,11 @@ private def substitutionCandidates(e: _Expression, v: _Variable): List[_Expressi
  *  @param subDepth current substitution depth (bounds nested substitution)
  *  @return `Some(antiderivative)` on success, `None` to stay symbolic
  */
-private def integrateBySubstitution(e: _Expression, v: _Variable, subDepth: Int): Option[_Expression] =
+private def integrateBySubstitution(e: _Expression, v: _Variable, subDepth: Int)(using t: Tier): Option[_Expression] =
   if subDepth >= MaxSubstitutionDepth then None
   else
     substitutionCandidates(e, v).iterator.flatMap { g =>
-      val gPrime = simplifyFully(derive(g, v))
+      val gPrime = simplifyT(deriveIn(g, v))
       gPrime match
         case _Number(0.0) => None   // g locally constant — no substitution
         case _ =>
@@ -157,7 +168,7 @@ private def integrateBySubstitution(e: _Expression, v: _Variable, subDepth: Int)
           else
             val inner = resolve(replaced, u, subDepth + 1)
             if containsIntegral(inner) then None
-            else Some(simplifyFully(substitute(inner, Map(u.variable -> g))))
+            else Some(simplifyT(substitute(inner, Map(u.variable -> g))))
     }.nextOption()
 
 
@@ -186,7 +197,7 @@ private def integrateBySubstitution(e: _Expression, v: _Variable, subDepth: Int)
  *  @param v the integration variable
  *  @return `Some(antiderivative)` on success, `None` to stay symbolic
  */
-private def integrateByTrigSub(e: _Expression, v: _Variable): Option[_Expression] =
+private def integrateByTrigSub(e: _Expression, v: _Variable)(using t: Tier): Option[_Expression] =
   val radicals = scala.collection.mutable.ListBuffer[_Expression]()
   def walk(x: _Expression): Unit =
     x match
@@ -204,10 +215,51 @@ private def isHalfInteger(ex: Double): Boolean =
   twice == math.rint(twice) && math.abs(twice.toLong % 2) == 1 && math.abs(twice) <= MaxReductionPower
 
 /** Performs the trig/hyperbolic substitution for one radical node (see [[integrateByTrigSub]]). */
-private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Option[_Expression] =
+private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression)(using t: Tier): Option[_Expression] =
   val (radicand, halves) = radical match
     case Power(b, _Number(ex)) => (b, math.rint(ex * 2.0).toInt)   // odd: radicand^(halves/2)
     case _                     => (radical, 1)
+  val w = freshVar(e.freeVars + v.variable)
+  // Exact first in the exact tier (F_0171): `a` and the scale exact, or exact radicals.
+  val setup = (if t.exact then exactTrigSetup(radicand, v, w) else None).orElse(doubleTrigSetup(radicand, v, w))
+  for
+    (hw, hpw, gExpr0, inverse) <- setup
+    // `radicand^(halves/2) = (√radicand)^halves`, so the whole power is replaced by the
+    // θ-form raised to `halves` — `^0.5` is the `halves = 1` case.
+    gExpr = if halves == 1 then gExpr0 else Power(gExpr0, t.n(halves))
+    // Replace the radical FIRST (simplify cannot reduce √(a²−a²sin²w)), then substitute v.
+    // Combine into one factor-cancelled fraction — `simplify` alone does not cancel the
+    // common `cos w` in e.g. (1/(2cos w))·(2cos w), which would leave the θ-integral open.
+    substituted  = substitute(replaceSubexpr(e, radical, gExpr), Map(v.variable -> hw))
+    (nn, dd)     = asFraction(Product(substituted, hpw))
+    newIntegrand = cancelRatio(nn, dd)
+    fW           = resolve(newIntegrand, w, 0)
+    if !containsIntegral(fW)
+  yield simplifyT(substitute(fW, Map(w.variable -> inverse)))
+
+/** The substitution for an exact radicand `c2·v² + c0` (F_0171): `(v = h(w), dv/dw, radical,
+ *  w = h⁻¹(v))` with `a = √|c0/c2|` and the scale `√|c2|` exact, or kept as exact `^(1/2)`. */
+private def exactTrigSetup(radicand: _Expression, v: _Variable, w: _Variable)(using t: Tier)
+    : Option[(_Expression, _Expression, _Expression, _Expression)] =
+  qCoeffs(radicand, v).filter(cs => cs.length == 3 && cs(1).isZero).flatMap { cs =>
+    val (c0, c2) = (cs(0), cs(2))
+    val ratio    = c0 / c2
+    val scale    = qRoot(c2.abs)
+    if c2.signum < 0 && c0.signum > 0 then
+      val a = qRoot(-ratio)                                   // √(a² − v²)
+      Some((Product(a, Sin(w)), Product(a, Cos(w)), Product(Product(scale, a), Cos(w)), Asin(Ratio(v, a))))
+    else if c2.signum > 0 && c0.signum > 0 then
+      val a = qRoot(ratio)                                    // √(v² + a²)
+      Some((Product(a, Sinh(w)), Product(a, Cosh(w)), Product(Product(scale, a), Cosh(w)), Asinh(Ratio(v, a))))
+    else if c2.signum > 0 && c0.signum < 0 then
+      val a = qRoot(-ratio)                                   // √(v² − a²)
+      Some((Product(a, Cosh(w)), Product(a, Sinh(w)), Product(Product(scale, a), Sinh(w)), Acosh(Ratio(v, a))))
+    else None
+  }
+
+/** The substitution for a radicand with `Double` coefficients (see [[trigSubWith]]). */
+private def doubleTrigSetup(radicand: _Expression, v: _Variable, w: _Variable)
+    : Option[(_Expression, _Expression, _Expression, _Expression)] =
   for
     cs  <- collect(radicand, v)
     if cs.length == 3
@@ -217,7 +269,6 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
     // (1 − 1e-12·x²)^0.5 was refused. Only rounding counts as no linear term: dropping a real one
     // answers a different integral, while keeping it only makes this tier decline.
     if c2 != 0.0 && math.abs(c1) <= 1e-14 * math.sqrt(math.abs(c0 * c2))
-    w    = freshVar(e.freeVars + v.variable)
     scale = math.sqrt(math.abs(c2))
     ratio = c0 / c2
     // (v = h(w), dv/dw = hp(w), radical → gExpr(w), w = inverseAngle(v))
@@ -235,19 +286,7 @@ private def trigSubWith(e: _Expression, v: _Variable, radical: _Expression): Opt
         Some((Product(_Number(a), Cosh(w)), Product(_Number(a), Sinh(w)),
               Product(_Number(scale * a), Sinh(w)), Acosh(Ratio(v, _Number(a)))))
       else None
-    (hw, hpw, gExpr0, inverse) = setup
-    // `radicand^(halves/2) = (√radicand)^halves`, so the whole power is replaced by the
-    // θ-form raised to `halves` — `^0.5` is the `halves = 1` case.
-    gExpr = if halves == 1 then gExpr0 else Power(gExpr0, _Number(halves))
-    // Replace the radical FIRST (simplify cannot reduce √(a²−a²sin²w)), then substitute v.
-    // Combine into one factor-cancelled fraction — `simplify` alone does not cancel the
-    // common `cos w` in e.g. (1/(2cos w))·(2cos w), which would leave the θ-integral open.
-    substituted  = substitute(replaceSubexpr(e, radical, gExpr), Map(v.variable -> hw))
-    (nn, dd)     = asFraction(Product(substituted, hpw))
-    newIntegrand = cancelRatio(nn, dd)
-    fW           = resolve(newIntegrand, w, 0)
-    if !containsIntegral(fW)
-  yield simplifyFully(substitute(fW, Map(w.variable -> inverse)))
+  yield setup
 
 
 // ── Weierstrass (half-angle) substitution ──────────────────────────
@@ -321,7 +360,7 @@ private def integrateCoeffRational(num: Vector[Double], den: Vector[Double], t: 
  *  @param v the integration variable
  *  @return `Some(antiderivative)` on success, `None` to stay symbolic
  */
-private def integrateByWeierstrass(e: _Expression, v: _Variable): Option[_Expression] =
+private def integrateByWeierstrass(e: _Expression, v: _Variable)(using tier: Tier): Option[_Expression] =
   def trigArg(x: _Expression): Option[_Expression] = x match
     case Sin(a) => Some(a)
     case Cos(a) => Some(a)
@@ -338,18 +377,50 @@ private def integrateByWeierstrass(e: _Expression, v: _Variable): Option[_Expres
   if trigNodes.isEmpty || !trigNodes.forall(n => trigArg(n).contains(v)) then None
   else
     val t     = freshVar(e.freeVars + v.variable)
-    val t2    = Power(t, _Number(2))
-    val plus  = Sum(_Number(1), t2)                          // 1 + t²
-    val minus = Sum(_Number(1), Product(_Number(-1), t2))    // 1 − t²
-    val twoT  = Product(_Number(2), t)
+    val t2    = Power(t, tier.n(2))
+    val plus  = Sum(tier.n(1), t2)                           // 1 + t²
+    val minus = Sum(tier.n(1), Product(tier.n(-1), t2))     // 1 − t²
+    val twoT  = Product(tier.n(2), t)
     val forms = List[(_Expression, _Expression)](
       Sin(v) -> Ratio(twoT, plus),  Cos(v) -> Ratio(minus, plus), Tg(v)  -> Ratio(twoT, minus),
       Sec(v) -> Ratio(plus, minus), Csc(v) -> Ratio(plus, twoT),  Cot(v) -> Ratio(minus, twoT))
     val replaced = forms.foldLeft(e) { case (acc, (from, to)) => replaceSubexpr(acc, from, to) }
     if dependsOn(replaced, v) then None   // a bare v outside the trig nodes — not rational in them
     else
-      for
-        (num, den) <- ratNormalize(Product(replaced, Ratio(_Number(2), plus)), t)
-        anti       <- integrateCoeffRational(num, den, t)
-      yield simplifyFully(substitute(anti, Map(t.variable -> Tg(Ratio(v, _Number(2))))))
+      val integrand = Product(replaced, Ratio(tier.n(2), plus))
+      // Exact first in the exact tier (F_0171): the fraction over the rationals, finished by the
+      // exact rational tier; the Double normalisation answers where that declines.
+      val exactAnti =
+        if tier.exact then ratNormalizeExact(integrand, t).flatMap((n, d) => integrateQRational(n, d, t))
+        else None
+      exactAnti
+        .orElse(for (num, den) <- ratNormalize(integrand, t); anti <- integrateCoeffRational(num, den, t) yield anti)
+        .map(anti => simplifyT(substitute(anti, Map(t.variable -> Tg(Ratio(v, tier.n(2)))))))
+
+/** [[ratNormalize]] over the rationals: `None` for any leaf that is not exact. */
+private def ratNormalizeExact(e: _Expression, t: _Variable): Option[(QPoly, QPoly)] =
+  def capped(n: QPoly, d: QPoly): Option[(QPoly, QPoly)] =
+    if qDeg(n) > MaxWeierstrassDegree || qDeg(d) > MaxWeierstrassDegree || qDeg(d) < 0 then None
+    else Some((qTrim(n), qTrim(d)))
+  val one: QPoly = Vector(spire.math.Rational.one)
+  e match
+    case r: _Rational                             => Some((Vector(spire.math.Rational(r.num, r.den)), one))
+    case x: _Variable if x.variable == t.variable => Some((Vector(spire.math.Rational.zero, spire.math.Rational.one), one))
+    case Sum(a, b) =>
+      for (na, da) <- ratNormalizeExact(a, t); (nb, db) <- ratNormalizeExact(b, t)
+          r <- capped(qAdd(qMul(na, db), qMul(nb, da)), qMul(da, db)) yield r
+    case Product(a, b) =>
+      for (na, da) <- ratNormalizeExact(a, t); (nb, db) <- ratNormalizeExact(b, t)
+          r <- capped(qMul(na, nb), qMul(da, db)) yield r
+    case Ratio(a, b) =>
+      for (na, da) <- ratNormalizeExact(a, t); (nb, db) <- ratNormalizeExact(b, t)
+          if qDeg(nb) >= 0
+          r <- capped(qMul(na, db), qMul(da, nb)) yield r
+    case Power(b, k: _Rational) if k.den == 1 && k.num.abs <= MaxWeierstrassDegree =>
+      ratNormalizeExact(b, t).flatMap { (nb, db) =>
+        val n = k.num.toInt
+        val (pn, pd) = (0 until math.abs(n)).foldLeft((one, one)) { case ((an, ad), _) => (qMul(an, nb), qMul(ad, db)) }
+        if n >= 0 then capped(pn, pd) else capped(pd, pn)
+      }
+    case _ => None
 

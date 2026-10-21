@@ -94,6 +94,32 @@ class IntegralTableTest extends AnyFlatSpec:
                    s"rule '${r.name}' at x=$p: d/dx rhs = $got, lhs integrand = $want")
         case other => fail(s"rule '${r.name}': could not instantiate ($other)")
   }
+  "every rule's exact twin" should "differentiate back to its own integrand too (F_0171)" in
+  {
+    // The exact tier tries each rule with its integer and dyadic constants made exact. A
+    // conversion that changed a constant's value would show here as a rule that no longer
+    // differentiates back; the bindings are exact too, so the twin is checked in its own tier.
+    def rat(n: Int, d: Int): _Expression = _Rational.of(BigInt(n), BigInt(d)).getOrElse(fail(s"$n/$d"))
+    val bindings = Map[String, _Expression]("v" -> x, "a" -> rat(13, 10), "b" -> rat(7, 10))
+    val points   = List(0.31, 0.77, 1.13, 1.87, 2.9)
+    assert(integralRules.exactRules.sizeIs == integralRules.rules.size)
+    for r <- integralRules.exactRules do
+      assert(r.condition(bindings, x), s"exact rule '${r.name}' rejects the harness binding a=13/10, b=7/10")
+      (instantiate(r.lhs, bindings), instantiate(r.rhs, bindings)) match
+        case (Some(lhs), Some(rhs)) =>
+          val back = derive(rhs, x)
+          val checked = points.flatMap { p =>
+            (valueAt(back, p), valueAt(lhs, p)) match
+              case (Some(got), Some(want)) => Some((p, got, want))
+              case _                       => None
+          }
+          assert(checked.sizeIs >= 2, s"exact rule '${r.name}': fewer than 2 evaluable check points")
+          for (p, got, want) <- checked do
+            assert(math.abs(got - want) < 1e-8 * math.max(1.0, math.abs(want)),
+                   s"exact rule '${r.name}' at x=$p: d/dx rhs = $got, lhs integrand = $want")
+        case other => fail(s"exact rule '${r.name}': could not instantiate ($other)")
+  }
+
 
   // ── trigonometric entries ──────────────────────────────────────────────────
 

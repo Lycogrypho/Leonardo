@@ -44,7 +44,9 @@ case class _Derivative(e: _Expression, v: _Variable) extends _Functional:
   override def rebuild(c: List[_Expression]): _Expression = _Derivative(c.head, v)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val derivative = it.grypho.scala.leonardo.scalar.derive(e, v)
+    // The tier comes from the body AND the bound values of its free names (F_0171, V3): `a/t`
+    // holds no number, but with `a := 1/3` its derivative must be exact.
+    val derivative = deriveInTier(e, v, _Rational.containsExactIn(e, env))
     // derive returns this same _Derivative node when it cannot reduce further (e.g.
     // differentiating an integral w.r.t. an unrelated variable). Re-evaluating that
     // would call derive on the identical node forever, so stay symbolic instead.
@@ -66,7 +68,9 @@ case class _Integral(e: _Expression, v: _Variable) extends _Functional:
   override def rebuild(c: List[_Expression]): _Expression = _Integral(c.head, v)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val antiderivative = it.grypho.scala.leonardo.scalar.integrate(e, v)
+    // The tier by V3 (F_0171), as `_Derivative` takes it: the integrand and the bound values of
+    // its free names.
+    val antiderivative = integrateInTier(e, v, _Rational.containsExactIn(e, env))
     // integrate returns this same _Integral node when no rule applies. Re-evaluating
     // it would call integrate on the identical node forever, so stay symbolic instead
     // (mirrors _Derivative.eval's termination guard).
@@ -199,7 +203,8 @@ case class _Taylor(e: _Expression, v: _Variable, point: _Expression, n: _Express
       case Right(_Number(d)) if d.isWhole && d >= 0 && d <= env.limits(Limit.MaxTaylorOrder) =>
         // point is NOT required to reduce: expanding about a symbolic centre is
         // meaningful, so it is passed through as it stands.
-        taylorDetailed(e, v, point, d.toInt, env.limits)
+        taylorDetailedIn(e, v, point, d.toInt, env.limits,
+                         _Rational.containsExactIn(e, env) || _Rational.containsExactIn(point, env))
       case _ => Left(orderRangeTo(env.limits(Limit.MaxTaylorOrder)))
 
 /** Truncated Fourier series of `e` in `v` over one period centred on zero:

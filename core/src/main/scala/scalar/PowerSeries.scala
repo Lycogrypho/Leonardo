@@ -39,7 +39,7 @@ private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, 
   /** A coefficient folded as far as it goes: a value when it is one, else simplified. */
   private def norm(e: _Expression): _Expression = e.eval(env) match
     case Right(value)   => value
-    case Left(symbolic) => simplifyFully(symbolic)
+    case Left(symbolic) => simplifyFullyInTier(symbolic, exact)   // the engine's tier, not the subterm's
 
   private def plus(a: _Expression, b: _Expression)  = norm(Sum(a, b))
   private def times(a: _Expression, b: _Expression) = norm(Product(a, b))
@@ -177,5 +177,9 @@ private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, 
  */
 private[scalar] def powerSeries(e: _Expression, v: _Variable, centre: _Expression, order: Int,
                                 maxNodes: Int = MaxDerivativeNodes): Either[String, Vector[_Expression]] =
-  SeriesEngine(v, centre, order, _Rational.containsExact(e) || _Rational.containsExact(centre),
-               maxNodes).of(e)
+  powerSeriesIn(e, v, centre, order, maxNodes, _Rational.containsExact(e) || _Rational.containsExact(centre))
+
+/** [[powerSeries]] in a tier the caller decided (F_0171). */
+private[scalar] def powerSeriesIn(e: _Expression, v: _Variable, centre: _Expression, order: Int,
+                                  maxNodes: Int, exact: Boolean): Either[String, Vector[_Expression]] =
+  SeriesEngine(v, centre, order, exact, maxNodes).of(e)

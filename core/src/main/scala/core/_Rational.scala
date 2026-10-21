@@ -180,6 +180,32 @@ object _Rational:
    */
   def literalLike(n: Int, like: _Expression): _Value =
     if containsExact(like) then _Rational(n) else _Number(n)
+  /** Whether `e` is exact once evaluated in `env`: it carries an exact value, or one of its free
+   *  names is bound to one (F_0171, the V3 rule).
+   *
+   *  The content alone cannot answer for a body written in letters: `derive(a/t, t)` works on the
+   *  names, while `a := 1/3` sits in the environment, so [[containsExact]] says `Double` and the
+   *  answer came back `-0.08333` instead of `-1/12`.  Outside exact mode no exact value is ever
+   *  bound, so this agrees with [[containsExact]] there and the `Double` path is unchanged.
+   *
+   *  @param e   the expression to inspect
+   *  @param env the bindings its free names will be evaluated in
+   *  @return `true` when `e` or the value bound to one of its free names is exact
+   */
+  def containsExactIn(e: _Expression, env: Environment): Boolean =
+    containsExact(e) || e.freeVars.exists(name => env.get(name).exists(containsExact))
+
+  /** [[literalLike]] judged by [[containsExactIn]]: an integer constant in the tier `like` has once
+   *  evaluated in `env`.
+   *
+   *  @param n    the integer value
+   *  @param like an expression from the surrounding computation
+   *  @param env  the bindings `like` will be evaluated in
+   *  @return a `_Rational` when `like` is exact in `env`, a `_Number` otherwise
+   */
+  def literalLike(n: Int, like: _Expression, env: Environment): _Value =
+    if containsExactIn(like, env) then _Rational(n) else _Number(n)
+
 
   /** Significant decimal digits a `Double` actually carries.
    *

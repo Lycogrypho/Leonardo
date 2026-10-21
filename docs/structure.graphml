@@ -650,6 +650,7 @@ __ dispatcher; tiers split by 2.6 __
 resolve(): compiled -&gt; table -&gt; substitution
 IntegrateParts      : by parts + power reductions
 IntegrateRational   : partial fractions
+IntegrateExactRational: the same over the rationals (F_0171)
 IntegrateSubstitution: u-sub / trig-sub / Weierstrass</data>
     </node>
     <node id="n63">

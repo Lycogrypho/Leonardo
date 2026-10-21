@@ -207,7 +207,7 @@ private[leonardo] def rangeRefusal(lo: _Expression, hi: _Expression, env: Enviro
 private def termsOf(e: _Expression, v: _Variable, l: Int, h: Int,
                     env: Environment): Vector[_Expression] =
   (l to h).toVector.map(i =>
-    e.eval(env.withBinding(v.variable, _Rational.literalLike(i, e))).toExpression)
+    e.eval(env.withBinding(v.variable, _Rational.literalLike(i, e, env))).toExpression)
 
 
 /** Which reduction a [[_Reduction]] denotes (issue F_0037).

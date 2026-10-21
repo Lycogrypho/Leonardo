@@ -79,7 +79,7 @@ private def liatePriority(f: _Expression, v: _Variable): Option[Int] =
  *  @param e the expression to split
  *  @return `(numerator, denominator)` whose ratio equals `e`
  */
-private def asFraction(e: _Expression): (_Expression, _Expression) = e match
+private def asFraction(e: _Expression)(using t: Tier): (_Expression, _Expression) = e match
   case Product(a, b) =>
     val (na, da) = asFraction(a)
     val (nb, db) = asFraction(b)
@@ -88,12 +88,12 @@ private def asFraction(e: _Expression): (_Expression, _Expression) = e match
     val (na, da) = asFraction(a)
     val (nb, db) = asFraction(b)
     (Product(na, db), Product(da, nb))
-  case _ => (e, _Number(1))
+  case _ => (e, t.n(1))
 
 /** Rebuilds `e` as a single fully-simplified fraction (see [[asFraction]]). */
-private def combineFraction(e: _Expression): _Expression =
+private def combineFraction(e: _Expression)(using t: Tier): _Expression =
   val (num, den) = asFraction(e)
-  simplifyFully(Ratio(num, den))
+  simplifyT(Ratio(num, den))
 
 /** True when `e` still contains an unresolved [[_Integral]] node.
  *
@@ -115,15 +115,15 @@ private def containsIntegral(e: _Expression): Boolean = e match
  *  @param depth current parts-recursion depth (guards against cyclic integrals)
  *  @return `Some(antiderivative)` on success, `None` to stay symbolic
  */
-private def applyParts(u: _Expression, dv: _Expression, v: _Variable, depth: Int): Option[_Expression] =
+private def applyParts(u: _Expression, dv: _Expression, v: _Variable, depth: Int)(using t: Tier): Option[_Expression] =
   val vInt = integrateImpl(dv, v, depth)
   if containsIntegral(vInt) then None
   else
-    val du        = simplifyFully(derive(u, v))
+    val du        = simplifyT(deriveIn(u, v))
     val integrand = combineFraction(Product(vInt, du))
     val rest      = integrateImpl(integrand, v, depth + 1)
     if containsIntegral(rest) then None
-    else Some(simplifyFully(Sum(Product(u, vInt), Product(_Number(-1), rest))))
+    else Some(simplifyT(Sum(Product(u, vInt), Product(t.n(-1), rest))))
 
 /** Integration by parts for a product of two `v`-dependent factors.
  *
@@ -136,7 +136,7 @@ private def applyParts(u: _Expression, dv: _Expression, v: _Variable, depth: Int
  *  @param depth current parts-recursion depth
  *  @return `Some(antiderivative)` on success, `None` to stay symbolic
  */
-private def partsProduct(f: _Expression, g: _Expression, v: _Variable, depth: Int): Option[_Expression] =
+private def partsProduct(f: _Expression, g: _Expression, v: _Variable, depth: Int)(using t: Tier): Option[_Expression] =
   if depth >= MaxPartsDepth then None
   else
     (liatePriority(f, v), liatePriority(g, v)) match
@@ -177,15 +177,15 @@ private def isReduciblePower(n: Double): Boolean =
  *  @param depth current integration-by-parts recursion depth (threaded through unchanged)
  *  @return the antiderivative, or `None` when `u` is not linear in `v`
  */
-private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variable, depth: Int): Option[_Expression] =
+private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variable, depth: Int)(using t: Tier): Option[_Expression] =
   linearSlope(u, v).flatMap { a =>
     val base     = if isSin then Sin(u) else Cos(u)
     val other    = if isSin then Cos(u) else Sin(u)
-    val sign     = if isSin then _Number(-1) else _Number(1)
-    val boundary = Ratio(Product(sign, Product(Power(base, _Number(n - 1)), other)), _Number(a * n))
-    val lower    = integrateImpl(simplifyFully(Power(base, _Number(n - 2))), v, depth)
+    val sign     = if isSin then t.n(-1) else t.n(1)
+    val boundary = Ratio(Product(sign, Product(Power(base, t.n(n - 1)), other)), scaled(a, n))
+    val lower    = integrateImpl(simplifyT(Power(base, t.n(n - 2))), v, depth)
     if containsIntegral(lower) then None
-    else Some(simplifyFully(Sum(boundary, Product(Ratio(_Number(n - 1), _Number(n)), lower))))
+    else Some(simplifyT(Sum(boundary, Product(Ratio(t.n(n - 1), t.n(n)), lower))))
   }
 
 /** Reduction formula for a tangent or cotangent power.
@@ -205,14 +205,14 @@ private def reduceSinCosPower(isSin: Boolean, u: _Expression, n: Int, v: _Variab
  *  @param v     the integration variable
  *  @return the antiderivative, or `None` when `u` is not linear or the recursion fails to close
  */
-private def reduceTanCotPower(isTan: Boolean, u: _Expression, n: Int, v: _Variable): Option[_Expression] =
+private def reduceTanCotPower(isTan: Boolean, u: _Expression, n: Int, v: _Variable)(using t: Tier): Option[_Expression] =
   linearSlope(u, v).flatMap { a =>
     val base     = if isTan then Tg(u) else Cot(u)
-    val sign     = if isTan then _Number(1) else _Number(-1)
-    val boundary = Ratio(Product(sign, Power(base, _Number(n - 1))), _Number((n - 1) * a))
-    val lower    = resolve(simplifyFully(Power(base, _Number(n - 2))), v, 0)
+    val sign     = if isTan then t.n(1) else t.n(-1)
+    val boundary = Ratio(Product(sign, Power(base, t.n(n - 1))), scaled(a, n - 1))
+    val lower    = resolve(simplifyT(Power(base, t.n(n - 2))), v, 0)
     if containsIntegral(lower) then None
-    else Some(simplifyFully(Sum(boundary, Product(_Number(-1), lower))))
+    else Some(simplifyT(Sum(boundary, Product(t.n(-1), lower))))
   }
 
 /** Reduction formula for a secant or cosecant power.
@@ -230,15 +230,15 @@ private def reduceTanCotPower(isTan: Boolean, u: _Expression, n: Int, v: _Variab
  *  @param v     the integration variable
  *  @return the antiderivative, or `None` when `u` is not linear or the recursion fails to close
  */
-private def reduceSecCscPower(isSec: Boolean, u: _Expression, n: Int, v: _Variable): Option[_Expression] =
+private def reduceSecCscPower(isSec: Boolean, u: _Expression, n: Int, v: _Variable)(using t: Tier): Option[_Expression] =
   linearSlope(u, v).flatMap { a =>
     val base     = if isSec then Sec(u) else Csc(u)
     val other    = if isSec then Tg(u) else Cot(u)
-    val sign     = if isSec then _Number(1) else _Number(-1)
-    val boundary = Ratio(Product(sign, Product(Power(base, _Number(n - 2)), other)), _Number((n - 1) * a))
-    val lower    = resolve(simplifyFully(Power(base, _Number(n - 2))), v, 0)
+    val sign     = if isSec then t.n(1) else t.n(-1)
+    val boundary = Ratio(Product(sign, Product(Power(base, t.n(n - 2)), other)), scaled(a, n - 1))
+    val lower    = resolve(simplifyT(Power(base, t.n(n - 2))), v, 0)
     if containsIntegral(lower) then None
-    else Some(simplifyFully(Sum(boundary, Product(Ratio(_Number(n - 2), _Number(n - 1)), lower))))
+    else Some(simplifyT(Sum(boundary, Product(Ratio(t.n(n - 2), t.n(n - 1)), lower))))
   }
 
 /** Reduction formula for a hyperbolic sine or cosine power (the hyperbolic mirror of
@@ -257,14 +257,14 @@ private def reduceSecCscPower(isSec: Boolean, u: _Expression, n: Int, v: _Variab
  *  @param v      the integration variable
  *  @return the antiderivative, or `None` when `u` is not linear or the recursion fails to close
  */
-private def reduceSinhCoshPower(isSinh: Boolean, u: _Expression, n: Int, v: _Variable): Option[_Expression] =
+private def reduceSinhCoshPower(isSinh: Boolean, u: _Expression, n: Int, v: _Variable)(using t: Tier): Option[_Expression] =
   linearSlope(u, v).flatMap { a =>
     val base     = if isSinh then Sinh(u) else Cosh(u)
     val other    = if isSinh then Cosh(u) else Sinh(u)
-    val boundary = Ratio(Product(Power(base, _Number(n - 1)), other), _Number(a * n))
-    val coeff    = if isSinh then Ratio(_Number(-(n - 1)), _Number(n)) else Ratio(_Number(n - 1), _Number(n))
-    val lower    = resolve(simplifyFully(Power(base, _Number(n - 2))), v, 0)
+    val boundary = Ratio(Product(Power(base, t.n(n - 1)), other), scaled(a, n))
+    val coeff    = if isSinh then Ratio(t.n(-(n - 1)), t.n(n)) else Ratio(t.n(n - 1), t.n(n))
+    val lower    = resolve(simplifyT(Power(base, t.n(n - 2))), v, 0)
     if containsIntegral(lower) then None
-    else Some(simplifyFully(Sum(boundary, Product(coeff, lower))))
+    else Some(simplifyT(Sum(boundary, Product(coeff, lower))))
   }
 

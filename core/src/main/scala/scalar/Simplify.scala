@@ -276,10 +276,20 @@ private def simplifyImpl(e: _Expression)(using t: Tier): _Expression = e match
  *  @param e the expression to simplify fully
  *  @return the fully simplified expression
  */
-def simplifyFully(e: _Expression): _Expression =
+def simplifyFully(e: _Expression): _Expression = simplifyFullyInTier(e, _Rational.containsExact(e))
+
+/** [[simplifyFully]] in a tier the caller decided (F_0171): an algorithm that simplifies its
+ *  subterms one by one — the power-series engine's coefficients — knows the tier of the whole
+ *  computation, which a subterm such as `a*a` cannot tell it.
+ *
+ *  @param e     the expression to simplify fully
+ *  @param exact whether the constants the rules invent are built exact
+ *  @return the fully simplified expression
+ */
+private[scalar] def simplifyFullyInTier(e: _Expression, exact: Boolean): _Expression =
   // One tier for the whole fixpoint, decided from the input: a pass may fold the last exact
   // value away, and the next must not then switch to inventing Double constants.
-  given Tier = Tier(_Rational.containsExact(e))
+  given Tier = Tier(exact)
   @annotation.tailrec
   def loop(x: _Expression): _Expression =
     val s = simplifyIn(x)
