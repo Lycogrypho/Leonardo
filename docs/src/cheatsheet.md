@@ -775,7 +775,7 @@ The shape decides: a row or a column is a vector, anything else a matrix. The ma
 lu(A)                           -> [[L, U, P]]  (P·A = L·U, partial pivoting)
 qr(A)                           -> [[Q, R]]     (A = Q·R, modified Gram-Schmidt)
 eigen(A)                        -> [[λ₁, …, λₙ]]  eigenvalues only
-eig(A)                          -> [[V, D]]     A·V = V·D  (eigenvectors + diagonal)
+eig(A)                          -> [[V, D]]     A·V = V·D  (eigenvectors + diagonal); defective: unevaluated
 jordan(A)                       -> [[P, J]]     A = P·J·P⁻¹
 ```
 

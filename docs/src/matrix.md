@@ -228,7 +228,7 @@ mechanism (`at(result, 1, k)`, or tuple assignment in the REPL) serves them all:
 | `lu(A)` | `[[L, U, P]]`, `P·A = L·U` | [LU decomposition](https://en.wikipedia.org/wiki/LU_decomposition) with partial pivoting |
 | `qr(A)` | `[[Q, R]]`, `A = Q·R` | [QR decomposition](https://en.wikipedia.org/wiki/QR_decomposition) by modified [Gram–Schmidt](https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process) |
 | `eigen(A)` | `[[λ₁, …, λₙ]]` | [QR algorithm](https://en.wikipedia.org/wiki/QR_algorithm) with Wilkinson shifts; complex pairs come back as `_Complex` |
-| `eig(A)` | `[[V, D]]`, `A·V = V·D` | [Eigendecomposition](https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix): eigenvector columns and the diagonal eigenvalue matrix |
+| `eig(A)` | `[[V, D]]`, `A·V = V·D` | [Eigendecomposition](https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix): eigenvector columns and the diagonal eigenvalue matrix; a repeated eigenvalue gets independent eigenvectors when its eigenspace allows, and a defective matrix stays symbolic |
 | `jordan(A)` | `[[P, J]]`, `A = P·J·P⁻¹` | [Jordan normal form](https://en.wikipedia.org/wiki/Jordan_normal_form) for diagonalizable input; a defective matrix stays symbolic |
 
 ```scala mdoc

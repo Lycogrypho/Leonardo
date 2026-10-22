@@ -248,6 +248,71 @@ private def buildVD(mv: _MatrixValue): Option[(_Matrix, _Matrix)] =
     (vMat, dMat)
   }
 
+/** `|det(v)| / ∏‖colⱼ‖` of a square matrix of real or complex cells, by Gaussian elimination
+ *  with partial pivoting over the complex numbers: the scale-free ratio [[isJordanInvertible]]
+ *  tests, for a `V` with complex eigenvectors.
+ *
+ *  @param v the square matrix, every cell a `_Number` or a `_Complex`
+ *  @return the ratio in `[0, 1]`, or `None` when a cell is neither
+ */
+private def complexDetRatio(v: _Matrix): Option[Double] =
+  val n = v.rows
+  val parts = v.elems.map {
+    case c: _Complex   => Some((c.re, c.im))
+    case _Number(d)    => Some((d, 0.0))
+    case _             => None
+  }
+  Option.when(parts.forall(_.isDefined) && n == v.cols) {
+    val re = parts.map(_.fold(0.0)(_._1)).toArray
+    val im = parts.map(_.fold(0.0)(_._2)).toArray
+    val norms = (0 until n).map(j => math.sqrt((0 until n).map(i => re(i*n+j)*re(i*n+j) + im(i*n+j)*im(i*n+j)).sum))
+    var logDet = 0.0
+    var singular = false
+    var c = 0
+    while c < n && !singular do
+      val p = (c until n).maxBy(r => math.hypot(re(r*n+c), im(r*n+c)))
+      val pm = math.hypot(re(p*n+c), im(p*n+c))
+      if pm == 0.0 then singular = true
+      else
+        if p != c then
+          for k <- 0 until n do
+            val (tr, ti) = (re(c*n+k), im(c*n+k))
+            re(c*n+k) = re(p*n+k); im(c*n+k) = im(p*n+k); re(p*n+k) = tr; im(p*n+k) = ti
+        logDet += math.log(pm)
+        val (pr, pi) = (re(c*n+c), im(c*n+c))
+        for r <- c + 1 until n do
+          // f = a(r, c) / pivot
+          val (ar, ai) = (re(r*n+c), im(r*n+c))
+          val fr = (ar*pr + ai*pi) / (pm*pm)
+          val fi = (ai*pr - ar*pi) / (pm*pm)
+          for k <- c until n do
+            re(r*n+k) -= fr*re(c*n+k) - fi*im(c*n+k)
+            im(r*n+k) -= fr*im(c*n+k) + fi*re(c*n+k)
+        c += 1
+    val scale = norms.map(math.log).sum
+    if singular || norms.contains(0.0) then 0.0 else math.exp(logDet - scale)
+  }
+
+/** [[buildVD]] kept only when `V` is a basis: the one test `eig` and `jordan` share.
+ *
+ *  A **defective** matrix has fewer independent eigenvectors than columns, and the null-space
+ *  step then returns one direction twice: `eig([[1, 1], [-1, 3]])` answered a `V` with two equal
+ *  columns, for which `A V = V D` holds and which is no decomposition (found by LA 06).  A
+ *  defective root may also come out of the QR iteration as a complex pair `λ ± 3·10⁻⁸i`, with
+ *  nearly equal complex eigenvectors, so a complex `V` is tested too: the relative determinant
+ *  is `5.3·10⁻⁹` for Austin's defective 3×3 of Activity 4.2.18(d), against `5·10⁻⁷` for the
+ *  diagonalizable `[[1, 2], [0, 1.000001]]`, either side of `JordanRelTol`.
+ *
+ *  @param mv the square dense matrix to decompose
+ *  @return `Some((V, D))` with `V` invertible; `None` when the decomposition fails or is defective
+ */
+private def diagonalisingVD(mv: _MatrixValue): Option[(_Matrix, _Matrix)] =
+  buildVD(mv).filter { case (v, _) =>
+    val reals = v.elems.collect { case _Number(d) => d }
+    if reals.size == v.elems.size then isJordanInvertible(_MatrixValue(v.rows, v.cols, reals.toArray))
+    else complexDetRatio(v).exists(_ > JordanRelTol)
+  }
+
 
 /** Element-wise matrix addition: `(A + B)_ij = A_ij + B_ij`.
  *
@@ -648,7 +713,7 @@ case class _EigDecomposition(m: _Expression) extends _Expression:
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
       case r0 if denseOperand(r0).isDefined =>
-        denseOperand(r0).flatMap(buildVD) match
+        denseOperand(r0).flatMap(diagonalisingVD) match
           case Some((v, d)) => Left(_Matrix(1, 2, Vector(v, d)))
           case None         => Left(this)
       case Left(expr) => Left(_EigDecomposition(expr))
@@ -673,18 +738,8 @@ case class _JordanDecomposition(m: _Expression) extends _Expression:
   override def eval(env: Environment): Either[_Expression, _Value] =
     m.eval(env) match
       case r0 if denseOperand(r0).isDefined =>
-        denseOperand(r0).flatMap(mv => buildVD(mv).flatMap { case (v, d) =>
-          // Verify that P is invertible (non-singular) so P*J*P^-1 = A is valid.
-          // For a dense V (all-real eigenvectors) we test invertibility scale-relatively
-          // (isJordanInvertible); for symbolic V (complex entries) we accept it -- the
-          // caller can verify via at(...).
-          val allReal = v.elems.forall(_.isInstanceOf[_Number])
-          if allReal then
-            val vData  = v.elems.collect { case _Number(d) => d }
-            val vDense = _MatrixValue(mv.rows, mv.cols, vData.toArray)
-            if isJordanInvertible(vDense) then Some((v, d)) else None   // defective: stay symbolic
-          else Some((v, d))   // complex eigenvectors -- accept
-        }) match
+        // P must be invertible for P*J*P^-1 = A to hold; diagonalisingVD is the test eig shares.
+        denseOperand(r0).flatMap(diagonalisingVD) match
           case Some((p, j)) => Left(_Matrix(1, 2, Vector(p, j)))
           case None         => Left(this)
       case Left(expr) => Left(_JordanDecomposition(expr))

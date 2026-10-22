@@ -138,6 +138,48 @@ class EigDecompositionTest extends AnyFlatSpec:
     assert(e.eval(env) == Left(e))
   }
 
+  "_EigDecomposition on a defective matrix" should "stay symbolic rather than return a singular V" in
+  {
+    // [[1, 1], [-1, 3]] and the Jordan block [[2, 1], [0, 2]] have one eigenvalue of
+    // multiplicity 2 and a one-dimensional eigenspace: no basis of eigenvectors exists, so a V
+    // whose two columns are the same vector is not a decomposition (found by LA 06).
+    for a <- List(dense(2, 2, 1, 1, -1, 3), dense(2, 2, 2, 1, 0, 2)) do
+      val e = _EigDecomposition(a)
+      assert(e.eval(env) == Left(e), s"eig($a) should stay unevaluated")
+      val j = _JordanDecomposition(a)
+      assert(j.eval(env) == Left(j), s"jordan($a) should stay unevaluated")
+  }
+
+  "_EigDecomposition on a repeated but diagonalizable eigenvalue" should "return independent eigenvectors" in
+  {
+    // -I, and Austin's Activity 4.2.18(c), whose eigenvalue -2 has multiplicity 2 and a plane of
+    // eigenvectors: V must be a basis, not the same direction twice.
+    for a <- List(dense(2, 2, -1, 0, 0, -1), dense(3, 3, -1, 0, 2, -2, -2, -4, 0, 0, -2)) do
+      val res = _EigDecomposition(a).eval(env)
+      val v   = denseAt(res, 1)
+      assert(approxEq(a.multiply(v), v.multiply(denseAt(res, 2))))
+      assert(isJordanInvertible(v), s"V = $v is not a basis")
+  }
+
+  "_EigDecomposition on a rotation and on a nearly repeated eigenvalue" should "still answer" in
+  {
+    // The rotation's V is complex and a basis; [[1, 2], [0, 1.000001]] is diagonalizable, its
+    // V's relative determinant 5e-7 well above the defective case's 5.3e-9.
+    for a <- List(dense(2, 2, 0, -1, 1, 0), dense(2, 2, 1, 2, 0, 1.000001)) do
+      _EigDecomposition(a).eval(env) match
+        case Left(m: _Matrix) => assert(m.rows == 1 && m.cols == 2, s"eig($a) = $m")
+        case other            => fail(s"eig($a) should answer, got $other")
+  }
+
+  "_EigDecomposition on Austin's defective 3x3" should "stay symbolic" in
+  {
+    // Its double root comes out of the QR iteration as -2 ± 3e-8 i, so V is complex and nearly
+    // singular: the complex path must be tested too.
+    // Activity 4.2.18(d): the same characteristic polynomial as (c), one eigenvector for -2.
+    val e = _EigDecomposition(dense(3, 3, -5, -2, -6, -2, -2, -4, 2, 1, 2))
+    assert(e.eval(env) == Left(e))
+  }
+
   "_EigDecomposition on a non-matrix" should "stay symbolic" in
   {
     val e = _EigDecomposition(_Number(5))

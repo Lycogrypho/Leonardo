@@ -946,10 +946,12 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
     else if rows == 1 then Some(Vector(_Number(data(0))))
     else _MatrixValue.eigenvaluesOf(rows, data)
 
-  // Null vector of a real n×n matrix b via RREF + back-substitution.
-  // Assumes b has rank n-1; returns the normalised null vector, or None when the
-  // matrix has full rank or the null vector turns out to be zero.
-  private def realNullVec(b: Array[Double], n: Int): Option[Array[Double]] =
+  // Null vector of a real n×n matrix b via RREF + back-substitution: the one belonging to the
+  // `which`-th free column, so a repeated eigenvalue asking for its 0th, 1st, ... vector gets a
+  // basis of its eigenspace rather than the same direction each time (found by LA 06: eig(-I)
+  // returned two equal columns).  Returns the normalised vector, or None when b has fewer than
+  // `which + 1` free columns (full rank, or a defective eigenvalue) or the vector is zero.
+  private def realNullVec(b: Array[Double], n: Int, which: Int): Option[Array[Double]] =
     val a   = b.clone
     val piv = Array.fill(n)(-1)
     var row = 0; var col = 0
@@ -989,7 +991,7 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
           rr += 1
         row += 1; col += 1
     val pivSet = piv.filter(_ >= 0).toSet
-    (0 until n).find(!pivSet.contains(_)) match
+    (0 until n).filterNot(pivSet.contains).lift(which) match
       case None => None
       case Some(freeCol) =>
         val vec = Array.fill(n)(0.0)
@@ -1075,6 +1077,9 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
   /** Spectral decomposition: eigenvalues and right eigenvectors.
    *  Returns `(columns of V, eigenvalues)` where eigenvector column `j` corresponds to
    *  eigenvalue `j`.  Complex conjugate pairs `(α ± βi)` occupy consecutive positions.
+   *  A real eigenvalue met for the `k`-th time (within `1e-8` of the largest entry) takes the
+   *  null vector of the `k`-th free column, so a repeated eigenvalue with a full eigenspace gets
+   *  independent eigenvectors; a defective one runs out of free columns.
    *  `None` when non-square, QR iteration fails, or an eigenvector cannot be extracted
    *  (numerically degenerate or defective matrix).
    *  @return `Some((V, eigenvalues))` or `None`
@@ -1085,11 +1090,15 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       val n = rows
       var i = 0
       val evOpts = scala.collection.mutable.ArrayBuffer[Option[Vector[_Value]]]()
+      val same   = 1e-8 * data.foldLeft(0.0)((m, v) => math.max(m, math.abs(v)))
+      val seen   = scala.collection.mutable.ArrayBuffer[Double]()
       while i < n do
         eigs(i) match
           case _Number(lam) =>
-            val b = Array.tabulate(n * n)(k => data(k) - (if k/n == k%n then lam else 0.0))
-            evOpts += realNullVec(b, n).map(_.map(_Number(_)).toVector)
+            val b     = Array.tabulate(n * n)(k => data(k) - (if k/n == k%n then lam else 0.0))
+            val which = seen.count(s => math.abs(s - lam) <= same)
+            seen += lam
+            evOpts += realNullVec(b, n, which).map(_.map(_Number(_)).toVector)
             i += 1
           case c: _Complex =>
             complexNullVec(n, c.re, c.im) match
