@@ -173,11 +173,63 @@ class EigDecompositionTest extends AnyFlatSpec:
 
   "_EigDecomposition on Austin's defective 3x3" should "stay symbolic" in
   {
-    // Its double root comes out of the QR iteration as -2 ± 3e-8 i, so V is complex and nearly
+    // Activity 4.2.18(d): the same characteristic polynomial as (c), one eigenvector for -2.  Its
+    // double root comes out of the QR iteration as -2 ± 3e-8 i, so V is complex and nearly
     // singular: the complex path must be tested too.
-    // Activity 4.2.18(d): the same characteristic polynomial as (c), one eigenvector for -2.
     val e = _EigDecomposition(dense(3, 3, -5, -2, -6, -2, -2, -4, 2, 1, 2))
     assert(e.eval(env) == Left(e))
+  }
+
+  /** A cell of a complex `V` or `D` as `(re, im)`. */
+  private def parts(e: _Expression): (Double, Double) = e match
+    case c: _Complex => (c.re, c.im)
+    case _Number(d)  => (d, 0.0)
+    case other       => fail(s"not a number: $other")
+
+  /** The cells of the `k`-th matrix of a `1×n` result, row-major, whatever its carrier. */
+  private def cellsAt(result: Either[_Expression, _Value], k: Int): (Int, Vector[(Double, Double)]) =
+    result match
+      case Left(m: _Matrix) => m(0, k - 1) match
+        case s: _Matrix       => (s.rows, s.elems.map(parts))
+        case mv: _MatrixValue => (mv.rows, mv.toVector.map(d => (d, 0.0)))
+        case other            => fail(s"element $k is not a matrix: $other")
+      case other => fail(s"expected Left(_Matrix(1,n,...)) but got: $other")
+
+  "_EigDecomposition on a repeated, diagonalizable complex pair" should "return independent eigenvectors (F_0175)" in
+  {
+    // blkdiag(R, R), R the quarter turn: eigenvalues i, -i, i, -i and a plane of eigenvectors for
+    // each.  Every column must satisfy A v = lambda v, and the two columns of one eigenvalue must
+    // not be parallel: |<u, w>| < |u| |w|.
+    val a = dense(4, 4, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0)
+    for res <- List(_EigDecomposition(a).eval(env), _JordanDecomposition(a).eval(env)) do
+      val (n, v) = cellsAt(res, 1)
+      val (_, d) = cellsAt(res, 2)
+      def vc(i: Int, j: Int) = v(i * n + j)
+      for j <- 0 until n do
+        val (lr, li) = d(j * n + j)
+        for i <- 0 until n do
+          val (ar, ai) = (0 until n).foldLeft((0.0, 0.0)) { case ((sr, si), k) =>
+            val (vr, vi) = vc(k, j); (sr + a(i, k) * vr, si + a(i, k) * vi) }
+          val (vr, vi) = vc(i, j)
+          assert(math.abs(ar - (lr * vr - li * vi)) < tol && math.abs(ai - (lr * vi + li * vr)) < tol,
+                 s"column $j is not an eigenvector for ($lr, $li)")
+      def same(j: Int, k: Int) =
+        math.hypot(d(j * n + j)._1 - d(k * n + k)._1, d(j * n + j)._2 - d(k * n + k)._2) < 1e-6
+      for j <- 0 until n; k <- j + 1 until n if same(j, k) do
+        val (ir, ii) = (0 until n).foldLeft((0.0, 0.0)) { case ((sr, si), i) =>
+          val ((ur, ui), (wr, wi)) = (vc(i, j), vc(i, k)); (sr + ur * wr + ui * wi, si + ur * wi - ui * wr) }
+        def nrm(c: Int) = math.sqrt((0 until n).map(i => vc(i, c)._1 * vc(i, c)._1 + vc(i, c)._2 * vc(i, c)._2).sum)
+        assert(math.hypot(ir, ii) < 0.99 * nrm(j) * nrm(k), s"columns $j and $k are parallel")
+  }
+
+  "_EigDecomposition on a defective complex pair" should "stay symbolic (F_0175)" in
+  {
+    // [[R, I], [0, R]]: a Jordan block over the pair i, -i, one eigenvector each.
+    val a = dense(4, 4, 0, -1, 1, 0, 1, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1, 0)
+    val e = _EigDecomposition(a)
+    assert(e.eval(env) == Left(e))
+    val j = _JordanDecomposition(a)
+    assert(j.eval(env) == Left(j))
   }
 
   "_EigDecomposition on a non-matrix" should "stay symbolic" in
