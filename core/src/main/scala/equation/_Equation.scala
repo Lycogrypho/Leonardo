@@ -11,9 +11,10 @@ import core.*
  *  `wrap` receives the two (possibly already-reduced) operands and produces the
  *  appropriate node, keeping the shared logic in one place.
  *
- *  Two numbers are equal when `|a - b| <= 0.5 * 10^(-env.precision)`.  Matrices
- *  compare element-wise under the same tolerance.  Complex values are compared
- *  component-wise via `_Complex.parts`.
+ *  Two numbers are equal when `|a - b| <= 0.5 * 10^(-env.precision)`; two exact values when they
+ *  agree to the working precision ([[agreeToWorkingPrecision]], F_0177).  Matrices compare
+ *  element-wise under the same rules.  Complex values are compared component-wise via
+ *  `_Complex.parts`.
  *
  *  @param lhs  left-hand side expression
  *  @param rhs  right-hand side expression
@@ -26,15 +27,14 @@ private[equation] def compareSides(
 )(wrap: (_Expression, _Expression) => _Expression): Either[_Expression, _Value] =
   val tolerance = 0.5 * math.pow(10, -env.precision)
   (lhs.eval(env), rhs.eval(env)) match
-    // Exact operands compare EXACTLY.  Tolerance exists because Doubles accumulate
-    // representation error; two exact rationals carry none, and in the exact tier
-    // `1/3 == 0.33333` should be false rather than true-within-a-display-precision.
+    // Exact operands compare to the WORKING precision, not the display one (F_0177): in the
+    // exact tier `1/3 == 0.33333` must stay false, but an irrational is a rational carried to
+    // the working precision, so comparing exactly made `(2^(1/2))^2 == 2` false by 1.2e-41.
     //
-    // It also keeps `==` consistent with `<`: if equality were tolerant here
-    // while ordering was exact, two rationals a hair apart would satisfy BOTH `a == b` and
-    // `a > b`, breaking trichotomy.  Outside exact mode no `_Rational` is ever constructed,
-    // so this arm is unreachable and the `Double` path is byte-identical.
-    case (Right(a: _Rational), Right(b: _Rational)) => Right(_Bool(a.compare(b) == 0))
+    // `orderingOf` reads equality the same way, so two rationals a hair apart never satisfy
+    // BOTH `a == b` and `a > b`.  Outside exact mode no `_Rational` is ever constructed, so
+    // this arm is unreachable and the `Double` path is byte-identical.
+    case (Right(a: _Rational), Right(b: _Rational)) => Right(_Bool(agreeToWorkingPrecision(a, b, env)))
     case (Right(_Number(a)), Right(_Number(b))) =>
       Right(_Bool(math.abs(a - b) <= tolerance))
     case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
@@ -54,17 +54,62 @@ private[equation] def compareSides(
       close.map(b => _Bool(b)).toRight(wrap(av, bv))
     // F_0164: two matrices of values when either is not dense -- an exact matrix stays the
     // symbolic carrier, so the dense arm above never sees it and `[[1/2]] == [[1/2]]` echoed.
-    case (ra, rb) if matrixEqual(ra, rb, tolerance).isDefined =>
-      matrixEqual(ra, rb, tolerance).map(b => _Bool(b)).toRight(wrap(ra.toExpression, rb.toExpression))
+    case (ra, rb) if matrixEqual(ra, rb, tolerance, env).isDefined =>
+      matrixEqual(ra, rb, tolerance, env).map(b => _Bool(b)).toRight(wrap(ra.toExpression, rb.toExpression))
     case (ra, rb) => Left(wrap(ra.toExpression, rb.toExpression))
 
-/** Whether two evaluated matrices of values are equal, cell by cell (F_0164): exactly between two
- *  rationals, within `tolerance` otherwise, and `false` for different shapes; `None` when either
- *  is not a matrix of values or a pair of cells cannot be compared. */
+/** Whether two exact values agree to the working precision `wp` (F_0177):
+ *  `|a - b| <= 10^-wp * max(|a|, |b|, 1)`.
+ *
+ *  Every irrational the exact tier meets is carried to `wp` digits, so a difference below that is
+ *  approximation error, not a difference between the values; the floor of 1 makes the test
+ *  absolute near zero.  Pure rational arithmetic loses only the ability to tell apart values
+ *  closer than `10^-wp` relative.  Decided in integers, multiplied through by both (positive)
+ *  denominators, so no rounding enters the decision.
+ *
+ *  @param a   one exact value
+ *  @param b   the other
+ *  @param env supplies the working precision
+ *  @return whether the two are equal at the working precision
+ */
+private[leonardo] def agreeToWorkingPrecision(a: _Rational, b: _Rational, env: Environment): Boolean =
+  val difference = (a.num * b.den - b.num * a.den).abs * BigInt(10).pow(env.workingPrecision)
+  val scale      = (a.num.abs * b.den).max(b.num.abs * a.den).max(a.den * b.den)
+  difference <= scale
+
+/** Whether the relation between `lhs` and `rhs` treated two exact values as equal although they
+ *  differ (F_0177): both sides exact — two rationals, or two matrices of them of one shape — every
+ *  pair agreeing to the working precision, and at least one pair not exactly equal.  What the REPL
+ *  reads to say that the working precision decided the answer.
+ *
+ *  @param lhs the left side
+ *  @param rhs the right side
+ *  @param env the evaluation environment
+ *  @return whether the working precision, rather than exact equality, made the sides equal
+ */
+private[leonardo] def equalOnlyToWorkingPrecision(lhs: _Expression, rhs: _Expression, env: Environment): Boolean =
+  val (ra, rb) = (lhs.eval(env), rhs.eval(env))
+  val pairs: Option[Vector[(_Value, _Value)]] = (ra, rb) match
+    case (Right(a: _Rational), Right(b: _Rational)) => Some(Vector((a, b)))
+    case _ =>
+      for
+        (r1, c1, xs) <- _MatrixValue.cellsOf(ra)
+        (r2, c2, ys) <- _MatrixValue.cellsOf(rb)
+        if r1 == r2 && c1 == c2
+      yield xs.zip(ys)
+  pairs.exists { ps =>
+    val exact = ps.collect { case (x: _Rational, y: _Rational) => (x, y) }
+    exact.size == ps.size && exact.forall(agreeToWorkingPrecision(_, _, env)) &&
+      exact.exists((x, y) => x.compare(y) != 0)
+  }
+
+/** Whether two evaluated matrices of values are equal, cell by cell (F_0164): two rationals at the
+ *  working precision (F_0177), anything else within `tolerance`, and `false` for different shapes;
+ *  `None` when either is not a matrix of values or a pair of cells cannot be compared. */
 private def matrixEqual(ra: Either[_Expression, _Value], rb: Either[_Expression, _Value],
-                        tolerance: Double): Option[Boolean] =
+                        tolerance: Double, env: Environment): Option[Boolean] =
   def cellEqual(a: _Value, b: _Value): Option[Boolean] = (a, b) match
-    case (x: _Rational, y: _Rational) => Some(x.compare(y) == 0)
+    case (x: _Rational, y: _Rational) => Some(agreeToWorkingPrecision(x, y, env))
     case _ =>
       for (ar, ai) <- _Complex.parts(a); (br, bi) <- _Complex.parts(b)
       yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance

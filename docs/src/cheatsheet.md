@@ -575,7 +575,7 @@ domain(tan(x), x)               stays symbolic: the exclusion set is infinite
 
 ## Base conversion
 
-The base lives **on the value**: `A := 0xFF` still prints `FF` after a `:save`/`:load`
+The base lives **on the value**: `A := 0xFF` still prints `0xFF` after a `:save`/`:load`
 round-trip, while remaining usable as `255` everywhere.
 
 ```
@@ -776,7 +776,7 @@ lu(A)                           -> [[L, U, P]]  (P·A = L·U, partial pivoting)
 qr(A)                           -> [[Q, R]]     (A = Q·R, modified Gram-Schmidt)
 eigen(A)                        -> [[λ₁, …, λₙ]]  eigenvalues only
 eig(A)                          -> [[V, D]]     A·V = V·D  (eigenvectors + diagonal); defective: unevaluated
-jordan(A)                       -> [[P, J]]     A = P·J·P⁻¹
+jordan(A)                       -> [[P, J]]     A = P·J·P⁻¹; exact with blocks when exact, eigenvalues rational
 ```
 
 ### Matrix exponential — a single matrix, not a row

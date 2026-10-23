@@ -16,7 +16,12 @@ import it.grypho.scala.leonardo.cli.Session
 ```
 
 The REPL provides an interactive session over the library.
-Launch with `sbt repl` (or `sbt "runMain it.grypho.scala.leonardo.cli.repl"`).
+Launch with `sbt repl` (or `sbt "replModuleJVM/runMain it.grypho.scala.leonardo.cli.repl"`), in the
+[browser](https://lycogrypho.github.io/Leonardo/app/), or with no clone at all through
+
+```
+cs launch it.grypho:leonardo-repl_3:@VERSION@ -M it.grypho.scala.leonardo.cli.repl
+```
 
 `Session.execute(line): String` is the pure, IO-free core — all examples
 below use it directly and are verified at documentation build time.
@@ -53,6 +58,48 @@ s.execute("f")          // evaluated at current x = 3
 ```scala mdoc
 s.execute("derive(f, x)")
 ```
+
+Whether an assignment binds a value or defines a function is decided by the right-hand side
+alone: a constant expression folds to a value, an expression with free variables becomes a
+definition.
+
+### Freezing a result: `consolidate`
+
+`name := consolidate(expr)` is the opposite of a late-bound definition: the expression is
+simplified and evaluated against the current bindings at once, and that snapshot is stored, so a
+later change to a binding it used does not reach it:
+
+```scala mdoc:silent
+val c = Session()
+c.execute("a := 2")
+c.execute("p := a + 1")
+```
+
+```scala mdoc
+c.execute("q := consolidate(p + p)")
+c.execute("a := 100")
+c.execute("q")
+c.execute("p + p")
+```
+
+If free variables remain, the simplified form is frozen instead, with the bindings of the moment
+folded in.
+
+### Differentiating with respect to a definition
+
+A derivative with respect to a *defined* name applies the chain rule over the definition's
+single free variable, `dg/df = (dg/dt) / (df/dt)`; a definition with several free variables is
+refused with a message:
+
+```scala mdoc
+c.execute("u := t^2")
+c.execute("w := u^3")
+c.execute("derive(w, u)")
+```
+
+The answer is written in the free variable `t`: `3(t²)² · 2t / 2t`, which is `3u²`.
+`simplify` does not cancel the common factor `2t`, so the quotient stays as the chain rule
+builds it.
 
 ## Equations
 
@@ -375,6 +422,23 @@ plot sum(k, k, 1, n) n 0 100 101      # step = 1.0, so every sample is a whole n
 The refusal is keyed on the **shape** of the expression — a reduction whose bound is the sampled
 variable — together with real loss on this particular grid.  Loss alone would report every pole
 as a grid problem, and the shape alone would refuse the grid that already works.
+
+## In a terminal
+
+The terminal prompt has full line editing and history (powered by JLine): the arrow keys edit
+the current line and recall earlier commands, which persist across sessions in
+`~/.leonardo_history`. `Ctrl-C` abandons the current line without leaving the session;
+`Ctrl-D` (or `quit`/`exit`) ends it. When no interactive console is attached (piped input, CI),
+the prompt degrades to a plain line reader.
+
+Token-level syntax highlighting colours the input as you type, in one of three schemes chosen
+with the `colors` command and persisted by `:save` / `:load`:
+
+| Command | Scheme |
+|---|---|
+| `colors dark` | bold yellow commands · cyan functions · magenta constants · green numbers (default) |
+| `colors light` | bold blue commands · green functions · magenta constants · red numbers |
+| `colors none` | no colouring |
 
 ## In the browser
 

@@ -722,9 +722,12 @@ case class _EigDecomposition(m: _Expression) extends _Expression:
 
 /** Jordan decomposition: `jordan(A)` -- returns `[[P, J]]` where `A = P * J * P^(-1)`.
  *
- *  For diagonalizable matrices `J` is diagonal (identical to `D` in `eig(A)`); `P = V`.
- *  Non-diagonalizable matrices (defective / repeated eigenvalues where `V` is singular,
- *  detected via [[isJordanInvertible]]) stay symbolic -- the test is conservative but safe.
+ *  **An exact matrix whose eigenvalues are all rational** gets its exact Jordan form, Jordan
+ *  blocks included ([[exactJordan]], F_0176): eigenvalues ascending, blocks by decreasing size,
+ *  the `1`s above the diagonal, `P` and `J` exact and certified by `AP = PJ`.  Otherwise, for a
+ *  diagonalizable matrix `J` is diagonal (identical to `D` in `eig(A)`) and `P = V`; a
+ *  non-diagonalizable numeric matrix, or one whose eigenvalues are irrational or complex, stays
+ *  symbolic, since in floating point a Jordan block is not computable.
  *
  *  The result is `Left(_Matrix(1, 2, ...))` because a matrix of matrices is not a `_Value`.
  *
@@ -736,7 +739,22 @@ case class _JordanDecomposition(m: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _JordanDecomposition(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    m.eval(env) match
+    val r = m.eval(env)
+    exactJordanOf(r, env).getOrElse(numericJordan(r))
+
+  /** The exact Jordan form of an exact square literal whose eigenvalues are rational (F_0176). */
+  private def exactJordanOf(r: Either[_Expression, _Value], env: Environment): Option[Either[_Expression, _Value]] =
+    r match
+      case Left(lit: _Matrix) if lit.rows == lit.cols =>
+        for
+          cells  <- exactCells(lit)
+          (p, j) <- exactJordan(cells, lit.rows, env.limits(Limit.MaxJordanOrder).toInt)
+        yield Left(_Matrix(1, 2, Vector(_Matrix(lit.rows, lit.cols, p), _Matrix(lit.rows, lit.cols, j))))
+      case _ => None
+
+  /** The numeric case: the eigen-decomposition when `P` is a basis, unevaluated otherwise. */
+  private def numericJordan(r0: Either[_Expression, _Value]): Either[_Expression, _Value] =
+    r0 match
       case r0 if denseOperand(r0).isDefined =>
         // P must be invertible for P*J*P^-1 = A to hold; diagonalisingVD is the test eig shares.
         denseOperand(r0).flatMap(diagonalisingVD) match

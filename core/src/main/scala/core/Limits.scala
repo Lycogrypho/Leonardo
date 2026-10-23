@@ -142,6 +142,14 @@ enum Limit(val default: Long):
    *  0.70 s; 1000 × 1000, 170 s and 29 s. */
   case MaxConvExactWork extends Limit(40000)
 
+  // ── matrices, continued (F_0176) ──
+
+  /** The order of a matrix whose exact Jordan form `jordan` computes over the rationals (F_0176);
+   *  past it an exact matrix takes the numeric path.  Measured on dense integer matrices `LJL⁻¹`
+   *  with entries up to ±9 and several blocks: Node 67 ms at 16, 0.74 s at 20, 2.45 s at 24 and
+   *  17.8 s at 32; the JVM 0.67 s at 20 and 4.4 s at 32. */
+  case MaxJordanOrder extends Limit(20)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

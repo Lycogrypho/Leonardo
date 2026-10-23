@@ -23,3 +23,18 @@ class EquationReplTest extends AnyFlatSpec:
     s.execute("x := 1")
     assert(s.execute("10 * x = 2 * x + 1") == "false")
   }
+
+  "an exact comparison the working precision decided" should "say so (F_0177)" in
+  {
+    val s = Session()
+    s.execute("exact on")
+    assert(s.execute("(2^(1/2))^2 == 2") ==
+      "true\n  note: the two sides agree to the working precision (30 digits), not exactly")
+    assert(s.execute("(2^(1/2))^2 <= 2") ==
+      "true\n  note: the two sides agree to the working precision (30 digits), not exactly")
+    assert(s.execute("1/2 == 2/4") == "true")
+    assert(s.execute("1/3 == 0.33333") == "false")
+    s.execute("exact precision 50")
+    assert(s.execute("(2^(1/2))^2 == 2") ==
+      "true\n  note: the two sides agree to the working precision (50 digits), not exactly")
+  }

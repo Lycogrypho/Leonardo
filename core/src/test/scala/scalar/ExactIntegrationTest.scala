@@ -68,6 +68,12 @@ class ExactIntegrationTest extends AnyFlatSpec:
     exactAntiderivative("tan(t)^3")
   }
 
+  it should "find every rational root, even two a coarse divisor confuses (F_0176)" in {
+    // roots 1/2 and 1/3: the candidate for the root near 0.333 at q = 2 is 1/2, also a root, and
+    // taking the first verified candidate lost 1/3, sending the integrand to the Double tier.
+    exactAntiderivative("1/((2*t - 1)*(3*t - 1))")
+  }
+
   it should "use the rule table exactly" in {
     exactAntiderivative("tan(2*t)")
     exactAntiderivative("sec(2*t)*tan(2*t)")

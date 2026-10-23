@@ -1150,7 +1150,8 @@ result: Left(_Matrix(1,2,...))</data>
         <data key="n_members">m : _Expression
 __ jordan(A) → [[P, J]] __
 A = P·J·P⁻¹ (diagonalizable matrices)
-defective → stays symbolic
+exact, rational eigenvalues → exact form, blocks included (F_0176)
+defective numeric → stays symbolic
 result: Left(_Matrix(1,2,...))</data>
     </node>
     <node id="n112">

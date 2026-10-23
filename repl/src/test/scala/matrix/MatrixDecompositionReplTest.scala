@@ -11,6 +11,15 @@ import org.scalatest.flatspec.AnyFlatSpec
  */
 class MatrixDecompositionReplTest extends AnyFlatSpec:
 
+  "jordan in exact mode" should "bind the exact Jordan form of a defective matrix (F_0176)" in
+  {
+    val s = Session()
+    s.execute("exact on")
+    assert(s.execute("P, J := jordan([[0, 4], [-1, 4]])") ==
+      "P := [[-2, 1], [-1, 0]]\nJ := [[2, 1], [0, 2]]")
+    assert(s.execute("P * J * inv(P) == [[0, 4], [-1, 4]]") == "true")
+  }
+
   "the REPL" should "compute lu(A) and display [[L, U, P]]" in
   {
     val s = Session()

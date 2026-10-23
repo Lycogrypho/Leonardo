@@ -176,14 +176,16 @@ class ExactSliceBTest extends AnyFlatSpec:
 
   "the iterative decompositions" should "keep working by demoting an exact operand" in
   {
-    // lu / qr / eigen / eig / jordan are Double algorithms and cannot be exact whatever
-    // their input.  Since an exact matrix no longer collapses, they must demote explicitly
-    // or they would silently stop working in exact mode.
+    // lu / qr / eigen / eig are Double algorithms and cannot be exact whatever their input.
+    // Since an exact matrix no longer collapses, they must demote explicitly or they would
+    // silently stop working in exact mode.
     // Asserting equality with the Double path is the sharper statement: demoting means
     // these must produce the *identical* result in both modes, not merely some result.
+    // `jordan` left this list with F_0176: an exact matrix whose eigenvalues are rational now
+    // gets its exact Jordan form (`JordanTest`), and only an irrational spectrum demotes.
     for input <- List("lu([[4, 3], [6, 3]])", "qr([[1, 2], [3, 4]])",
                       "eigen([[4, 1], [1, 3]])", "eig([[3, 1], [1, 3]])",
-                      "jordan([[3, 1], [1, 3]])") do
+                      "jordan([[1, 1], [1, 0]])") do
       assert(exact(input) == plain(input), s"$input differs between modes")
       assert(exact(input).isLeft, s"$input returns a matrix-of-matrices, which is a Left")
   }

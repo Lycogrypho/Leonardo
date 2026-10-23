@@ -22,7 +22,9 @@ import spire.math.Rational as Q
  *  than hidden: an exact integrand with such a denominator integrates in `Double`s.
  */
 
-private type QPoly = Vector[Q]
+/** A polynomial over the rationals, coefficient `i` of `xⁱ` at index `i`; shared with
+ *  `matrix.exactJordan` (F_0176). */
+private[leonardo] type QPoly = Vector[Q]
 
 /** The coefficient vector with trailing zeros removed (index = power). */
 private def qTrim(p: QPoly): QPoly =
@@ -75,7 +77,7 @@ private def qGcd(a: QPoly, b: QPoly): QPoly =
 private def qEval(p: QPoly, x: Q): Q = p.foldRight(Q.zero)((c, acc) => acc * x + c)
 
 /** Yun's square-free factorisation of a monic `p`: `p = Π Pₖ^k`, each `Pₖ` square-free. */
-private def qSquareFree(p: QPoly): List[(QPoly, Int)] =
+private[leonardo] def qSquareFree(p: QPoly): List[(QPoly, Int)] =
   val one: QPoly = Vector(Q.one)
   val a0 = qGcd(p, qDeriv(p))
   var b  = qDivMod(p, a0)._1
@@ -117,8 +119,11 @@ private def divisors(n: BigInt): Option[List[BigInt]] =
 
 /** The rational roots of a square-free `p`, each verified by exact evaluation.  A numeric root
  *  proposes the candidate `round(x·q)/q` for each divisor `q` of the leading coefficient of the
- *  integer form; nothing is accepted that does not make `p` exactly zero. */
-private def qRationalRoots(p: QPoly): List[Q] =
+ *  integer form; nothing is accepted that does not make `p` exactly zero, and of the candidates
+ *  that do, the one **nearest `x`** is kept.  Taking the first that does lost a root whenever a
+ *  coarser divisor rounded `x` onto a *different* root: for `(x - 1/2)(x - 1/3)` the root near
+ *  `0.333` proposed `1/2` at `q = 2`, so only `1/2` was found (F_0176's render). */
+private[leonardo] def qRationalRoots(p: QPoly): List[Q] =
   val lcm   = p.foldLeft(BigInt(1))((l, c) => { val d = c.denominator.toBigInt; l / l.gcd(d) * d })
   val ints  = p.map(c => (c * Q(lcm)).numerator.toBigInt)
   rootsOfSquareFree(p.map(_.toDouble)) match
@@ -127,7 +132,8 @@ private def qRationalRoots(p: QPoly): List[Q] =
       val reals = parts.filter(realAmong(parts, 1e-6)).map(_._1)
       divisors(ints.last).fold(Nil) { qs =>
         reals.flatMap { x =>
-          qs.iterator.map(q => Q(BigInt(math.round(x * q.toDouble)), q)).find(c => qEval(p, c).isZero)
+          qs.map(q => Q(BigInt(math.round(x * q.toDouble)), q)).filter(c => qEval(p, c).isZero)
+            .minByOption(c => math.abs(c.toDouble - x))
         }.distinct.toList
       }
 

@@ -116,7 +116,7 @@ case class _Comparison(lhs: _Expression, op: CompareOp, rhs: _Expression) extend
  *
  *  `0` means "equal", and that has to mean **the same thing** it means to [[_Equation]], or
  *  `a == b` and `a < b` could both come out true.  So this mirrors `compareSides` exactly:
- *  exact when both operands are exact, tolerance-based otherwise.  The result is that for any
+ *  the working precision when both operands are exact (F_0177), the display tolerance otherwise.  The result is that for any
  *  comparable pair precisely one of `<`, `==`, `>` holds — the trichotomy the relation tier
  *  rests on, and the property the tests pin.
  *
@@ -131,10 +131,11 @@ private[equation] def ordering(lhs: _Expression, rhs: _Expression,
 private[equation] def orderingOf(l: Either[_Expression, _Value], r: Either[_Expression, _Value],
                                  env: Environment): Option[Int] =
   (l, r) match
-    // Exact operands compare exactly -- no tolerance is needed or wanted when neither side
-    // carries representation error.  Must precede the `_Number` case, which widens over
-    // `_Rational` and would otherwise read both as Doubles.
-    case (Right(a: _Rational), Right(b: _Rational)) => Some(a.compare(b))
+    // Exact operands are equal when they agree to the working precision, exactly as
+    // `compareSides` reads them (F_0177), and ordered exactly otherwise.  Must precede the
+    // `_Number` case, which widens over `_Rational` and would otherwise read both as Doubles.
+    case (Right(a: _Rational), Right(b: _Rational)) =>
+      Some(if agreeToWorkingPrecision(a, b, env) then 0 else a.compare(b))
     case (Right(_Number(a)), Right(_Number(b))) =>
       if a.isNaN || b.isNaN then None
       else

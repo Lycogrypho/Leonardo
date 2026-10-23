@@ -229,7 +229,7 @@ mechanism (`at(result, 1, k)`, or tuple assignment in the REPL) serves them all:
 | `qr(A)` | `[[Q, R]]`, `A = Q·R` | [QR decomposition](https://en.wikipedia.org/wiki/QR_decomposition) by modified [Gram–Schmidt](https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process) |
 | `eigen(A)` | `[[λ₁, …, λₙ]]` | [QR algorithm](https://en.wikipedia.org/wiki/QR_algorithm) with Wilkinson shifts; complex pairs come back as `_Complex` |
 | `eig(A)` | `[[V, D]]`, `A·V = V·D` | [Eigendecomposition](https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix): eigenvector columns and the diagonal eigenvalue matrix; a repeated eigenvalue gets independent eigenvectors when its eigenspace allows, and a defective matrix stays symbolic |
-| `jordan(A)` | `[[P, J]]`, `A = P·J·P⁻¹` | [Jordan normal form](https://en.wikipedia.org/wiki/Jordan_normal_form) for diagonalizable input; a defective matrix stays symbolic |
+| `jordan(A)` | `[[P, J]]`, `A = P·J·P⁻¹` | [Jordan normal form](https://en.wikipedia.org/wiki/Jordan_normal_form): exact, Jordan blocks included, for an exact matrix whose eigenvalues are all rational (eigenvalues ascending, blocks by decreasing size, the `1`s above the diagonal); otherwise the diagonal case, and a defective numeric matrix stays symbolic, since a numeric Jordan block is not computable |
 
 ```scala mdoc
 Parser.parse("eigen([[2, 1], [1, 2]])").get.eval(env).toExpression.toString

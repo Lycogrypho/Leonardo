@@ -4,7 +4,7 @@ package cli
 import core.*
 import scalar.*
 import matrix.*
-import equation.{_Equation, _Solve}
+import equation.{_Equation, _Solve, _EqualityCheck, _Comparison, equalOnlyToWorkingPrecision}
 import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable,
                   MaxTruthTableVars, MaxKleeneTableVars}
 import latex.ToLatex
@@ -876,7 +876,7 @@ final class Session:
         val shown    =
           if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
           else formatResult(result)
-        val note = domainNote(result) + optimizeNote(expanded, result)
+        val note = domainNote(result) + optimizeNote(expanded, result) + precisionNote(expanded)
         // The LaTeX is offered only when the text says nothing the formula does not (issue
         // F_0020). A domain note is exactly such a thing -- it is prose, it is not in the
         // rendering, and it is the whole value of an answer that otherwise echoes itself
@@ -896,6 +896,23 @@ final class Session:
   private def domainNote(result: Either[_Expression, _Value]): String =
     val note = result.left.toOption.flatMap(findDomainViolation)
     note.fold("")(n => s"\n  note: $n")
+
+  /** Says when a relation between two exact values was decided by the working precision (F_0177).
+   *
+   *  Two exact values are equal when they agree to the working precision, since every irrational
+   *  in the exact tier is carried to it; `(2^(1/2))^2 == 2` is `true` although the two sides differ
+   *  by `1.2e-41`.  The note says so, so a reader knows the answer is not an exact identity and
+   *  which setting it depends on.  Only a relation that IS the line's answer is annotated, the
+   *  `optimizeNote` rule.
+   */
+  private def precisionNote(e: _Expression): String =
+    val sides = e match
+      case _Equation(l, r)      => Some((l, r))
+      case _EqualityCheck(l, r) => Some((l, r))
+      case c: _Comparison       => Some((c.lhs, c.rhs))
+      case _                    => None
+    sides.filter((l, r) => equalOnlyToWorkingPrecision(l, r, env)).fold("")(_ =>
+      s"\n  note: the two sides agree to the working precision ($workingPrecision digits), not exactly")
 
   /** Classifies the points `stationary` found, or says why `minimize` declined (F_0010) or a
    *  vector ODE integration did (F_0051).

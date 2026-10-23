@@ -119,8 +119,10 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
 - **Relations and logic**: `=` builds a solvable equation, `==` an equality test, and
   `<`, `>`, `<=`, `>=`, `!=` compare — all reducing to booleans that compose with
   `and`/`or`/`not`/`implies`, so `x > 0 and x < 10` is an ordinary expression. Comparisons
-  are exact when both operands are exact and tolerance-based otherwise, with the two
-  agreeing so that precisely one of `<`, `==`, `>` ever holds.
+  of exact operands decide equality at the working precision — every irrational in the exact
+  tier is carried to it, so `(2^(1/2))^2 == 2` is `true` and the REPL notes that it holds to
+  that precision, not exactly — and of other operands at the display precision, with `==` and
+  the orderings agreeing so that precisely one of `<`, `==`, `>` ever holds.
 
 - **Inequality solving**: `solve` accepts the comparison relations too, and the answer is
   written in the language itself — `solve(x^2 - 4 > 0, x)` is `(x < -2) or (x > 2)`, and a
@@ -142,7 +144,7 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
 - **Base conversion**: the literals `0b1011`, `0o17`, `0xff` and `0t1TT`
   ([balanced ternary](https://en.wikipedia.org/wiki/Balanced_ternary)), plus `tobase(n, b)`
   for any radix 2..36 and `balanced(n)`. The base lives **on the value**, so `A := 0xFF`
-  still prints `FF` after a `:save`/`:load` round-trip while remaining usable as `255`
+  still prints `0xFF` after a `:save`/`:load` round-trip while remaining usable as `255`
   everywhere; the tag is display-deep only — `0xFF + 1` is decimal `256`, since there is no
   defensible rule for whose base wins in `0xFF + 0b1011`.
 
