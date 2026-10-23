@@ -147,7 +147,24 @@ private def solveForY(bigG: _Expression, depVar: _Variable, rhs: _Expression,
     target <- foldNumber(rhs, env)
     fn     <- compile(bigG, depVar, env)
     root   <- bracketAndBisect(y => fn(y) - target, start)
+    if residualSmall(fn(root), target) && monotoneBetween(fn, start, root)
   yield _Number(root)
+
+/** Whether `G(root)` meets `rhs` to rounding of their own size (F_0190): bisection also converges
+ *  onto a pole of `G`, where the two are nowhere near each other. */
+private def residualSmall(gAtRoot: Double, rhs: Double): Boolean =
+  gAtRoot.isFinite && math.abs(gAtRoot - rhs) <= 1e-8 * math.max(math.abs(gAtRoot), math.abs(rhs))
+
+/** Whether `G` is finite and strictly monotone from `y0` to the root, sampled densely (F_0190).
+ *  `G' = 1/g` keeps one sign while `g` has no zero, so a change of direction is a pole of `G`
+ *  between them: `y' = y²` from `y(0) = 1` crossed `G = −1/y`'s pole at 0 and answered `y(2) = 0`
+ *  — or the root −1 beyond it — where the solution blows up at `t = 1`. */
+private def monotoneBetween(fn: Double => Double, y0: Double, root: Double): Boolean =
+  val samples = Vector.tabulate(MonotoneSamples + 1)(k => fn(y0 + (root - y0) * k / MonotoneSamples))
+  samples.forall(_.isFinite) && {
+    val steps = samples.sliding(2).map(p => math.signum(p(1) - p(0))).filter(_ != 0.0).toVector
+    steps.isEmpty || steps.forall(_ == steps.head)
+  }
 
 /** Evaluates to a finite number, or `None`. */
 private def foldNumber(e: _Expression, env: Environment): Option[Double] =
@@ -164,28 +181,32 @@ private def foldNumber(e: _Expression, env: Environment): Option[Double] =
 private def bracketAndBisect(h: Double => Double, start: Double): Option[Double] =
   val h0 = h(start)
   if h0.isNaN then None
-  else if math.abs(h0) < BisectTolerance then Some(start)
+  else if h0 == 0.0 then Some(start)
   else
     // Grow a bracket geometrically on both sides, stopping at the first sign change; the
-    // nearest one is the branch containing y0.
-    val steps = LazyList.iterate(BisectInitialStep)(_ * 2).take(BisectBrackets)
+    // nearest one is the branch containing y0.  The first step is a fraction of `y0` itself:
+    // an absolute `1e-3` stepped straight over a solution near `1e-14` (F_0190).
+    val first = if start != 0.0 then BisectInitialStep * math.abs(start) else BisectInitialStep
+    val steps = LazyList.iterate(first)(_ * 2).take(BisectBrackets)
     val found = steps.flatMap(d => List(start + d, start - d))
                      .find(y => { val hy = h(y); !hy.isNaN && hy * h0 < 0 })
     found.map { other =>
       var lo = math.min(start, other)
       var hi = math.max(start, other)
       var i  = 0
-      while i < BisectIterations && hi - lo > BisectTolerance do
-        val mid = (lo + hi) / 2
+      // Until the midpoint no longer splits the bracket — no absolute tolerance (F_0125's rule).
+      var mid = (lo + hi) / 2
+      while i < BisectIterations && mid != lo && mid != hi do
         if h(lo) * h(mid) <= 0 then hi = mid else lo = mid
+        mid = (lo + hi) / 2
         i += 1
-      (lo + hi) / 2
+      mid
     }
 
 private val BisectInitialStep = 1e-3
-private val BisectBrackets    = 40
-private val BisectIterations  = 200
-private val BisectTolerance   = 1e-12
+private val BisectBrackets    = 80
+private val BisectIterations  = 2200   // enough halvings to cross a Double's whole exponent range
+private val MonotoneSamples   = 512
 
 /** Recognises `y' = f(t)·g(y)`, returning the two factors.
  *

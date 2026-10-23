@@ -145,8 +145,16 @@ object _Rational:
    *  @return the exact rational, or `None` when `s` is not a decimal literal
    */
   def fromDecimalString(s: String): Option[_Rational] =
-    try Some(fromBigDecimal(new java.math.BigDecimal(s)))
+    try
+      val bd = new java.math.BigDecimal(s)
+      // The exponent becomes `10^|scale|`, so it is held to the exact power budget (F_0181):
+      // `1e300000000` would otherwise build a ~10⁹-bit operand from a 12-character literal.
+      if math.abs(bd.scale.toDouble) * Log2Of10 > MaxExactPowerBits then None
+      else Some(fromBigDecimal(bd))
     catch case _: NumberFormatException => None
+
+  /** `log₂ 10`, the bits one decimal digit costs. */
+  private val Log2Of10: Double = math.log(10) / math.log(2)
 
   /** Whether `e` carries an exact value anywhere in it.
    *

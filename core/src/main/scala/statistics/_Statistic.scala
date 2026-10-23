@@ -368,7 +368,7 @@ private def tTest(ra: Either[_Expression, _Value], rb: Either[_Expression, _Valu
       for
         xs        <- sampleOf(ra)
         (m, v, n) <- moments(xs, env)
-        if n >= 2 && v > 0.0
+        if n >= 2 && spreadResolved(math.sqrt(v), m, n)
         p         <- tTail((m - mu0) / math.sqrt(v / n), n - 1.0, alt)
       yield p
     case Some(_) => None
@@ -387,13 +387,15 @@ private def tTest(ra: Either[_Expression, _Value], rb: Either[_Expression, _Valu
  *  Welch-Satterthwaite degrees of freedom. */
 private def twoSampleTail(m1: Double, v1: Double, n1: Int, m2: Double, v2: Double, n2: Int,
                           pooled: Boolean, alt: Alternative): Option[Double] =
+  // At least one sample must vary by more than rounding (F_0196).
+  val varies = spreadResolved(math.sqrt(v1), m1, n1) || spreadResolved(math.sqrt(v2), m2, n2)
   if pooled then
     val sp2 = ((n1 - 1) * v1 + (n2 - 1) * v2) / (n1 + n2 - 2)
-    Option.when(sp2 > 0.0)((m1 - m2) / math.sqrt(sp2 * (1.0 / n1 + 1.0 / n2)))
+    Option.when(varies && sp2 > 0.0)((m1 - m2) / math.sqrt(sp2 * (1.0 / n1 + 1.0 / n2)))
       .flatMap(tTail(_, n1 + n2 - 2.0, alt))
   else
     val (a, b) = (v1 / n1, v2 / n2)
-    Option.when(a + b > 0.0)((a, b)).flatMap { (a, b) =>
+    Option.when(varies && a + b > 0.0)((a, b)).flatMap { (a, b) =>
       tTail((m1 - m2) / math.sqrt(a + b), (a + b) * (a + b) / (a * a / (n1 - 1) + b * b / (n2 - 1)), alt)
     }
 
@@ -469,7 +471,8 @@ case class _ChiSqTable(table: _Expression) extends _Expression:
       rows   = (0 until m.rows).map(i => (0 until m.cols).map(m(i, _)).sum)
       cols   = (0 until m.cols).map(j => (0 until m.rows).map(m(_, j)).sum)
       total  = rows.sum
-      if rows.forall(_ > 0.0) && cols.forall(_ > 0.0)
+      // A count is never negative (F_0196: `[[5, -1], [3, 4]]` answered a p-value).
+      if m.toVector.forall(_ >= 0.0) && rows.forall(_ > 0.0) && cols.forall(_ > 0.0)
       stat   = (for i <- 0 until m.rows; j <- 0 until m.cols yield
                   val e = rows(i) * cols(j) / total
                   (m(i, j) - e) * (m(i, j) - e) / e).sum
@@ -507,9 +510,9 @@ case class _VarTest(a: _Expression, b: _Expression, alt: Alternative) extends _E
     val p = for
       xs             <- sampleOf(ra)
       ys             <- sampleOf(rb)
-      (_, v1, n1)    <- moments(xs, env)
-      (_, v2, n2)    <- moments(ys, env)
-      if n1 >= 2 && n2 >= 2 && v1 > 0.0 && v2 > 0.0
+      (m1, v1, n1)   <- moments(xs, env)
+      (m2, v2, n2)   <- moments(ys, env)
+      if n1 >= 2 && n2 >= 2 && spreadResolved(math.sqrt(v1), m1, n1) && spreadResolved(math.sqrt(v2), m2, n2)
       (lower, upper) <- fTails(v1 / v2, n1 - 1.0, n2 - 1.0)
     yield alt match
       case Alternative.TwoSided => math.min(1.0, 2.0 * math.min(lower, upper))
@@ -541,7 +544,11 @@ case class _Anova(groups: List[_Expression]) extends _Expression:
       grand = gs.flatten.sum / n
       ssb   = gs.map(g => { val m = g.sum / g.size; g.size * (m - grand) * (m - grand) }).sum
       ssw   = gs.map(g => { val m = g.sum / g.size; g.map(x => (x - m) * (x - m)).sum }).sum
-      if ssw > 0.0
+      // Some group must vary by more than rounding (F_0196), not merely `ssw > 0`.
+      if gs.exists(g => g.size >= 2 && {
+           val m = g.sum / g.size
+           spreadResolved(math.sqrt(g.map(x => (x - m) * (x - m)).sum / (g.size - 1)), m, g.size)
+         })
       (_, upper) <- fTails((ssb / (k - 1)) / (ssw / (n - k)), k - 1.0, n - k.toDouble)
     yield upper
     p.map(v => _Number(v)).toRight(_Anova(rs.map(_.toExpression)))

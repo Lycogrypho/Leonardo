@@ -171,13 +171,15 @@ private[probability] def quantileOf(d: _Distribution, p: Double): Option[Double]
   else
     val centre = d.mean.getOrElse(0.0)
     val spread = d.variance.map(v => math.sqrt(v)).filter(_ > 0.0).getOrElse(1.0)
-    // Expand the bracket until it straddles p; 60 doublings covers any reachable tail.
+    // Expand the bracket until it straddles p; 60 doublings covers any reachable tail.  The step
+    // really doubles every time (`scalb`): it stopped growing at 2^20, so the bracket reached only
+    // ±4e7 spreads and `quantile(studentt(1), 1e-9)` stayed unevaluated (F_0195).
     var lo   = centre - spread
     var hi   = centre + spread
     var i    = 0
-    while i < 60 && d.cdf(lo).exists(_ > p) do { lo -= spread * (1 << math.min(i, 20)); i += 1 }
+    while i < 60 && d.cdf(lo).exists(_ > p) do { lo -= spread * math.scalb(1.0, i); i += 1 }
     i = 0
-    while i < 60 && d.cdf(hi).exists(_ < p) do { hi += spread * (1 << math.min(i, 20)); i += 1 }
+    while i < 60 && d.cdf(hi).exists(_ < p) do { hi += spread * math.scalb(1.0, i); i += 1 }
     if !d.cdf(lo).exists(_ <= p) || !d.cdf(hi).exists(_ >= p) then None
     else
       var a = lo

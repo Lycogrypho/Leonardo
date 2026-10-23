@@ -60,6 +60,9 @@ enum MinimizeFailure:
   case Stalled(gradientNorm: Double)
   /** A method that takes no bounds was given bounds. */
   case MethodTakesNoBounds(method: MinimizeMethod)
+  /** The gradient vanishes exactly at the point, but the curvature shows it is a maximum or a
+   *  saddle, not a minimiser (F_0199). */
+  case NotAMinimum
 
 /** A certified minimiser.
  *
@@ -211,9 +214,36 @@ private val UnboundedBelow: Double = -1e100
 /** Answers `x` if its `stationarity` `s` passes the certificate, else the stall it is.
  *  `g` is the (projected) gradient, reported beside the answer. */
 private def certify(p: Problem, s: Double, x: Vector[Double], fx: Double, g: Vector[Double],
-                    k: Int): Either[MinimizeFailure, MinimizeResult] =
-  if s <= p.tolerance then Right(MinimizeResult(x, fx, k, normInf(g)))
-  else Left(MinimizeFailure.Stalled(normInf(g)))
+                    k: Int, interior: Boolean = true): Either[MinimizeFailure, MinimizeResult] =
+  if s > p.tolerance then Left(MinimizeFailure.Stalled(normInf(g)))
+  // An exactly vanishing gradient passes the first-order certificate however the point was
+  // reached — a start at a maximum included (F_0199: `minimize(x^4 - 2*x^2, [[x]], 0, bfgs)`
+  // answered the maximum at 0).  Such a point is answered only when its curvature is a minimum's;
+  // at a bound the constrained problem decides, so the check is for interior points.
+  else if interior && g.forall(_ == 0.0) && !locallyMinimal(p, x, fx) then Left(MinimizeFailure.NotAMinimum)
+  else Right(MinimizeResult(x, fx, k, normInf(g)))
+
+/** Whether `x`, where the gradient vanishes exactly, is a local minimum (F_0199): the Hessian's
+ *  eigenvalues, read relative to the largest, decide when it has no zero eigenvalue — a negative
+ *  one is a maximum or a saddle.  A degenerate Hessian (`x⁴` and `x³` both have `0` at `0`)
+ *  falls back to the objective one small step either way along each coordinate, `10⁻⁶` of the
+ *  coordinate's own size; any lower value is a witness that `x` is not a minimum. */
+private def locallyMinimal(p: Problem, x: Vector[Double], fx: Double): Boolean =
+  val n = x.size
+  val eigen = p.hess(x).flatMap(h => _MatrixValue(n, n, h).eigenDecompose).map(_.collect { case _Number(d) => d })
+  eigen match
+    case Some(ev) if ev.size == n && ev.exists(_ != 0.0) =>
+      val top = ev.map(math.abs).max
+      if ev.exists(_ < -1e-10 * top) then false
+      else if ev.forall(_ > 1e-10 * top) then true
+      else perturbedMinimal(p, x, fx)
+    case _ => perturbedMinimal(p, x, fx)
+
+private def perturbedMinimal(p: Problem, x: Vector[Double], fx: Double): Boolean =
+  x.indices.forall { i =>
+    val d = 1e-6 * math.max(math.abs(x(i)), 1.0)
+    Seq(d, -d).forall(s => p.value(x.updated(i, x(i) + s)).forall(_ >= fx))
+  }
 
 /** At the iteration cap: the certificate still decides.  The tight test is a target, not the
  *  contract — a point that passes the precision's certificate is answered however it was
@@ -321,13 +351,15 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
   def projected(x: Vector[Double], g: Vector[Double]): Vector[Double] =
     Vector.tabulate(n)(i => if isActive(x, g, i) then 0.0 else g(i))
   def identity: Vector[Vector[Double]] = Vector.tabulate(n, n)((i, j) => if i == j then 1.0 else 0.0)
+  /** Strictly inside the box, where the curvature check of [[certify]] applies (F_0199). */
+  def interior(x: Vector[Double]): Boolean = x.indices.forall(i => lo(i) < x(i) && x(i) < hi(i))
 
   @annotation.tailrec
   def loop(x: Vector[Double], fx: Double, g: Vector[Double], h: Vector[Vector[Double]],
            k: Int, x0: Vector[Double], f0: Double): Either[MinimizeFailure, MinimizeResult] =
     val pg = projected(x, g)
     val st = stationarity(pg, x, x0, f0, fx)
-    if st <= Target then certify(p, st, x, fx, pg, k)
+    if st <= Target then certify(p, st, x, fx, pg, k, interior(x))
     else if k >= p.maxIterations then atCap(p, st, x, fx, pg)
     else
       val active = Vector.tabulate(n)(i => isActive(x, g, i))
@@ -346,7 +378,7 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
             case Some(gnew) =>
               if stagnant(x, xn, fx, fn) then
                 val pgn = projected(xn, gnew)
-                certify(p, stationarity(pgn, xn, x0, f0, fn), xn, fn, pgn, k + 1)
+                certify(p, stationarity(pgn, xn, x0, f0, fn), xn, fn, pgn, k + 1, interior(xn))
               else
                 // The update sees the FREE coordinates only.  An active coordinate does not move
                 // (s = 0 there) while its gradient still changes, and feeding that y into the

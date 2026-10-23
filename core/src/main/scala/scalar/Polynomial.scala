@@ -492,12 +492,15 @@ private[leonardo] def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Do
       val a = poly(2); val b = poly(1); val c = poly(0)
       val disc = b * b - 4 * a * c
       if disc >= 0 then
-        val s = math.sqrt(disc)
-        Some(Vector(((-b + s) / (2 * a), 0.0), ((-b - s) / (2 * a), 0.0)))
+        // The stable form (issue 1.1, F_0193): `(-b ± √Δ)/2a` cancels in the root whose sign
+        // opposes `b` once `b²` dominates `4ac`, so that root is taken as `c/q` instead.
+        val q = -(b + math.copySign(math.sqrt(disc), b)) / 2
+        if q == 0.0 then Some(Vector((0.0, 0.0), (0.0, 0.0)))
+        else Some(Vector((q / a, 0.0), (c / q, 0.0)))
       else
         val s = math.sqrt(-disc)
         Some(Vector((-b / (2 * a), s / (2 * a)), (-b / (2 * a), -s / (2 * a))))
-    case d if d >= 3 && poly.indices.forall(i => i % 2 == 0 || math.abs(poly(i)) <= RationalEps) =>
+    case d if d >= 3 && isEvenPolynomial(poly, d) =>
       // even polynomial p(t) = q(t²): solve q, then each root s of q yields t = ±√s
       // (the principal complex square root and its negation)
       rootsOfSquareFree(Vector.tabulate(d / 2 + 1)(i => poly(2 * i))).map(_.flatMap { (a, b) =>
@@ -508,3 +511,15 @@ private[leonardo] def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Do
       })
     case d if d >= 3 => polyRoots(poly).map(_.flatMap(_Complex.parts))
     case _           => None
+
+/** Whether every odd coefficient of `poly` (degree `d`) is rounding of nothing, judged at the
+ *  roots' own scale (F_0193): each term `|cᵢ|·ρⁱ` against the largest.  An absolute `1e-9` read
+ *  a small-scale factor, whose every coefficient is tiny, as even, and the `s = t²` reduction then
+ *  turned its four real roots near `10⁻¹¹` imaginary. */
+private def isEvenPolynomial(poly: Vector[Double], d: Int): Boolean =
+  val rho = rootScale(poly)
+  if rho == 0.0 || !rho.isFinite then poly.indices.forall(i => i % 2 == 0 || poly(i) == 0.0)
+  else
+    val terms = Vector.tabulate(d + 1)(i => math.abs(poly(i) / poly(d)) * math.pow(rho, (i - d).toDouble))
+    val top   = terms.max
+    terms.indices.forall(i => i % 2 == 0 || terms(i) <= RoundingLevel * top)

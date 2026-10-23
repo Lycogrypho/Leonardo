@@ -49,9 +49,10 @@ private def numericAt(e: _Expression, v: _Variable, p: Double, env: Environment)
 private def limitFinite(
   e: _Expression, v: _Variable, p: Double, dir: LimitDir, env: Environment, stepsLeft: Int
 ): _Expression =
-  // Tier 1: direct substitution
+  // Tier 1: direct substitution — valid only where `e` is continuous at `p`, so not at a jump
+  // (F_0192: `limit(step(x), x, 0, -)` read the value at 0, `1`, where the limit is `0`).
   numericAt(e, v, p, env) match
-    case Some(d) if !d.isNaN => _Number(d)
+    case Some(d) if !d.isNaN && !jumpsAt(e, v, p, env) => _Number(d)
     case _ =>
       // Tier 2: special Ratio handling
       e match
@@ -68,6 +69,12 @@ private def limitFinite(
           else
             limitEpsilon(e, v, p, dir, env)
         case _ => limitEpsilon(e, v, p, dir, env)
+
+/** Whether a step inside `e` switches at `p`: its argument vanishes there, so `e` may jump, and
+ *  the one-sided tiers must decide rather than the value at the point (F_0192). */
+private def jumpsAt(e: _Expression, v: _Variable, p: Double, env: Environment): Boolean = e match
+  case _Heaviside(arg) if numericAt(arg, v, p, env).exists(_ == 0.0) => true
+  case other                                                         => other.children.exists(jumpsAt(_, v, p, env))
 
 /** Handles `c / (something→0)`: returns `signN * sign(den near p) * ∞`, checking direction. */
 private def cOverZero(

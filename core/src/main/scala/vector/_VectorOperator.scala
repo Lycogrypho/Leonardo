@@ -152,7 +152,9 @@ case class _Grad(e: _Expression, coords: Vector[_Variable],
   override def rebuild(c: List[_Expression]): _Expression = _Grad(c.head, coords, system)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    if !wellPosed then Left(this)
+    // A vector argument is refused, as `laplacian` refuses one: the gradient of a vector field
+    // is not the component-wise gradient outside Cartesian coordinates (F_0191).
+    if !wellPosed || componentsOf(e, env).isDefined then Left(this)
     // component i is (1/hᵢ)·∂f/∂qᵢ — the h = 1 case is the plain partial derivative
     else Left(column(coords.indices.toVector.map(i => Ratio(d(e, i), h(i)))))
 
@@ -255,6 +257,11 @@ case class _Laplacian(e: _Expression, coords: Vector[_Variable],
 
 /** `jacobian(F, x, y, …)` — the m×n matrix of first partials, `Jᵢⱼ = ∂Fᵢ/∂xⱼ`.
  *
+ *  **Cartesian only** (F_0191): in a curvilinear system the physical-component Jacobian carries
+ *  scale-factor and connection terms, so the plain partials would be a confidently wrong matrix —
+ *  `jacobian([[r],[0],[0]], r, t, z, cylindrical)` has trace 1 where `div` of the same field is 2.
+ *  Any other system stays symbolic.
+ *
  *  @param e      the vector field (m×1)
  *  @param coords the n coordinates, in order
  *  @param system the coordinate system (only `Cartesian` evaluates)
@@ -267,7 +274,7 @@ case class _Jacobian(e: _Expression, coords: Vector[_Variable],
   override def eval(env: Environment): Either[_Expression, _Value] =
     val result =
       for
-        _     <- Option.when(wellPosed)(())
+        _     <- Option.when(wellPosed && system == CoordinateSystem.Cartesian)(())
         comps <- componentsOf(e, env)
       yield _Matrix(comps.size, coords.size,
                     for f <- comps; j <- coords.indices.toVector yield d(f, j))
@@ -279,6 +286,11 @@ case class _Jacobian(e: _Expression, coords: Vector[_Variable],
  *  Symmetric for any field whose mixed partials commute (Clairaut), which the test suite
  *  pins rather than assumes.
  *
+ *  **Cartesian only, and a scalar field only** (F_0191): `hessian(r, r, t, p, spherical)`
+ *  answered the zero matrix, whose trace disagrees with `laplacian`'s `2/r` — the curvilinear
+ *  Hessian needs connection terms — and a vector argument has no Hessian matrix.  Both stay
+ *  symbolic.
+ *
  *  @param e      the scalar field
  *  @param coords the ordered coordinate tuple
  *  @param system the coordinate system (only `Cartesian` evaluates)
@@ -289,7 +301,7 @@ case class _Hessian(e: _Expression, coords: Vector[_Variable],
   override def rebuild(c: List[_Expression]): _Expression = _Hessian(c.head, coords, system)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    if !wellPosed then Left(this)
+    if !wellPosed || system != CoordinateSystem.Cartesian || componentsOf(e, env).isDefined then Left(this)
     else
       val n = coords.size
       Left(_Matrix(n, n,

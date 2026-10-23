@@ -214,8 +214,11 @@ measured as a **pure number** — the change the gradient still predicts over th
 travelled, relative to the decrease achieved — so the verdict does not depend on the units of
 `f` or of any variable: `1e-10*(x - 3)^2` and `1e10*(x - 3)^2` are answered alike, where a bound
 on the gradient's size would certify the first at its starting point. Under bounds it reads the
-*projected* gradient, which vanishes at a constrained minimum where the gradient does not. A
-point that fails is not returned. Instead the call stays symbolic, and the REPL says why:
+*projected* gradient, which vanishes at a constrained minimum where the gradient does not.
+**An answer is a minimiser, not merely a stationary point**: where the gradient vanishes exactly
+— a start at the top of `x^4 - 2*x^2` — the curvature is checked too, and a maximum or a saddle
+is refused. A point that fails is not returned. Instead the call stays symbolic, and the REPL
+says why:
 
 ```scala mdoc:passthrough
 lesson.show("minimize(x + y, [[x], [y]], [[0], [0]], bfgs)")

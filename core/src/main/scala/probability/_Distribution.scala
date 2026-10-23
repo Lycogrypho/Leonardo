@@ -328,6 +328,10 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
    */
   def cdf(x: Double): Option[Double] =
     if x.isNaN then None
+    // The infinite ends first, for every family (F_0195): the gamma and beta kernels have no
+    // value at an infinite argument, so `prob(X >= 3)` on a Poisson stayed unevaluated.
+    else if x == Double.PositiveInfinity then Some(1.0)
+    else if x == Double.NegativeInfinity then Some(0.0)
     else kind match
       case DistKind.Normal =>
         val (mu, s) = (params(0), params(1))
@@ -339,7 +343,8 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
         Some(if x <= a then 0.0 else if x >= b then 1.0 else (x - a) / (b - a))
       case DistKind.Exponential =>
         val l = params(0)
-        Some(if x <= 0.0 then 0.0 else 1.0 - exp(-l * x))
+        // -expm1, not 1 - exp: the latter is 0 at x = 1e-20 (F_0195, the conditioning rule).
+        Some(if x <= 0.0 then 0.0 else -math.expm1(-l * x))
       case DistKind.Binomial =>
         val (n, p) = (params(0), params(1))
         val k = Math.floor(x)
@@ -442,8 +447,67 @@ final case class _Distribution private (kind: DistKind, params: Vector[Double]) 
   def probability(lo: Double, hi: Double): Option[Double] =
     if lo > hi then Some(0.0)
     else
-      val lower = if isDiscrete then cdf(Math.ceil(lo) - 1.0) else cdf(lo)
-      for a <- lower; b <- cdf(hi); r <- finiteOption(b - a) yield math.max(0.0, math.min(1.0, r))
+      val below = if isDiscrete then Math.ceil(lo) - 1.0 else lo
+      mass(below, hi).map(r => math.max(0.0, math.min(1.0, r)))
+
+  /** `P(below < X ≤ upTo)`, read from the tail it lies in (F_0195).  Above the median the two
+   *  cdfs are both near 1 and their difference is the `1 − cdf` the conditioning rule forbids —
+   *  `P(Z > 10)` came out exactly `0` instead of `7.6e-24` — so there the survival functions are
+   *  subtracted instead.
+   *
+   *  @param below the exclusive lower end
+   *  @param upTo  the inclusive upper end
+   *  @return the probability, or `None` where undefined
+   */
+  private[probability] def mass(below: Double, upTo: Double): Option[Double] =
+    cdf(below).flatMap { a =>
+      if a > 0.5 then for s1 <- survival(below); s2 <- survival(upTo); r <- finiteOption(s1 - s2) yield r
+      else cdf(upTo).flatMap(b => finiteOption(b - a))
+    }
+
+  /** The survival function `P(X > x)`, read directly rather than as `1 − cdf` (F_0195): each
+   *  family's upper tail is its own closed form — `erfc`, `exp`, the upper incomplete gamma and the
+   *  incomplete beta with its arguments exchanged.  Student's t uses its symmetry; the uniform and
+   *  the hypergeometric table take `1 − cdf`, which loses nothing they can represent.
+   *
+   *  @param x the point
+   *  @return `P(X > x)` in `[0, 1]`, or `None` where undefined
+   */
+  private[probability] def survival(x: Double): Option[Double] =
+    if x.isNaN then None
+    else if x == Double.PositiveInfinity then Some(0.0)
+    else if x == Double.NegativeInfinity then Some(1.0)
+    else kind match
+      case DistKind.Normal =>
+        val (mu, s) = (params(0), params(1))
+        erfcOf((x - mu) / (s * sqrt(2.0))).flatMap(e => finiteOption(0.5 * e))
+      case DistKind.Exponential =>
+        Some(if x <= 0.0 then 1.0 else exp(-params(0) * x))
+      case DistKind.Binomial =>
+        val (n, p) = (params(0), params(1))
+        val k = Math.floor(x)
+        if k < 0.0 then Some(1.0) else if k >= n then Some(0.0)
+        else incompleteBetaOf(p, k + 1.0, n - k)              // P(X > k) = I_p(k+1, n-k)
+      case DistKind.Poisson =>
+        val k = Math.floor(x)
+        if k < 0.0 then Some(1.0) else lowerGammaP(k + 1.0, params(0))   // P(X > k) = P(k+1, λ)
+      case DistKind.StudentT =>
+        cdf(-x)
+      case DistKind.ChiSquared =>
+        if x <= 0.0 then Some(1.0) else upperGammaQ(params(0) / 2.0, x / 2.0)
+      case DistKind.BetaDist =>
+        if x <= 0.0 then Some(1.0) else if x >= 1.0 then Some(0.0)
+        else incompleteBetaOf(1.0 - x, params(1), params(0))
+      case DistKind.GammaDist =>
+        if x <= 0.0 then Some(1.0) else upperGammaQ(params(0), params(1) * x)
+      case DistKind.Geometric =>
+        val (p, k) = (params(0), Math.floor(x))
+        if k < 1.0 then Some(1.0) else if p == 1.0 then Some(0.0) else finiteOption(math.exp(k * math.log1p(-p)))
+      case DistKind.FDist =>
+        val (d1, d2) = (params(0), params(1))
+        if x <= 0.0 then Some(1.0) else incompleteBetaOf(d2 / (d2 + d1 * x), d2 / 2.0, d1 / 2.0)
+      case DistKind.Uniform | DistKind.Hypergeometric =>
+        cdf(x).flatMap(c => finiteOption(1.0 - c))
 
   /** Renders as the grammar call that rebuilds it, so a bound distribution round-trips. */
   override def toString: String = display(Environment.DefaultPrecision)

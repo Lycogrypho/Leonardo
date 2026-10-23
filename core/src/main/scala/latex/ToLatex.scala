@@ -207,7 +207,15 @@ object ToLatex:
 
     // Concrete values render as the REPL shows them.  A leading minus makes the text a sum-
     // level term, so `2 \cdot -3.0` can never be emitted -- the slot brackets it instead.
-    case n: _Number => (n.toString, if n.d < 0 then AtSum else Atomic)
+    case n: _Number =>
+      val text = number(n.d)
+      (text, if n.d < 0 then AtSum else if text.contains("\\times") then AtProduct else Atomic)
+    // A non-real complex value is a sum `a + bi` or a product `bi`: Atomic made `(2i)^x` render
+    // `2.0i^{x}`, read as `2·iˣ` (F_0206).  Only the bare `i` is a single symbol.
+    case c: _Complex =>
+      val text = escape(c.toString)
+      (text, if text == "i" || text.startsWith("(") then Atomic
+             else if text.startsWith("-") then AtSum else AtProduct)
     case v: _Value =>
       val text = escape(v.toString)
       (text, if text.startsWith("-") then AtSum else Atomic)
@@ -282,7 +290,24 @@ object ToLatex:
    *  `\pi` is not producible from a parsed expression.  That is a property of the grammar,
    *  not a gap in this table.
    */
-  private def greek(name: String): String = Greek.getOrElse(name, name)
+  /** A number as typeset (F_0206): `\infty` for an infinity, and an exponent as `× 10^{k}` — the
+   *  REPL's `1.0E-4` set as `1.0E − 4`, and `inf` as three italic letters. */
+  private def number(d: Double): String =
+    if d == Double.PositiveInfinity then "\\infty"
+    else if d == Double.NegativeInfinity then "-\\infty"
+    else
+      val text = _Number(d).toString
+      text.indexOf('E') match
+        case -1 => text
+        case i  => s"${text.take(i)} \\times 10^{${text.drop(i + 1)}}"
+
+  private def greek(name: String): String =
+    // A name with an underscore is a base and a subscript, `x_1` → `x_{1}`, the rest escaped:
+    // emitted raw, `a_b_c` was a LaTeX double-subscript error and `my_var` a subscripted `v`
+    // (F_0206).  The base still finds its Greek letter, so `theta_0` is `\theta_{0}`.
+    name.indexOf('_') match
+      case -1 => Greek.getOrElse(name, name)
+      case i  => s"${Greek.getOrElse(name.take(i), name.take(i))}_{${escape(name.drop(i + 1))}}"
 
   private val Greek: Map[String, String] =
     val lower = List("alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
@@ -383,7 +408,8 @@ object ToLatex:
       // Matches a _Rational of one half too: `_Number` is a widening extractor, so exact mode
       // finds the square root here without a case of its own.
       case _Number(0.5)                    => Some(2)
-      case r: _Rational if r.num == 1      => degreeOf(BigDecimal(r.den))
+      // Reduced first, as the `_Rational` arm is: the gcd policy lets `8/16` reach here (F_0206).
+      case r: _Rational if r.num / r.num.gcd(r.den) == 1 => degreeOf(BigDecimal(r.den / r.num.gcd(r.den)))
       case Ratio(_Number(1.0), _Number(d)) => degreeOf(BigDecimal(d))
       case _                               => None
 
@@ -407,4 +433,7 @@ object ToLatex:
       case Product(_Number(-1.0), b)       => Some(b)
       case Product(n: _Number, b) if n.d < 0 => Some(Product(_Number(-n.d), b))
       case n: _Number if n.d < 0           => Some(_Number(-n.d))
+      // An exact negative TERM negates exactly — no demotion — so `x - 1/3` renders
+      // `x - \frac{1}{3}`, not `x + -\frac{1}{3}` (F_0206).
+      case r: _Rational if r.signum < 0    => Some(r.negate)
       case _                               => None

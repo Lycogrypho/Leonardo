@@ -161,6 +161,9 @@ object App:
       // The two browser-only commands are intercepted here rather than added to `Session`,
       // which keeps `Session` platform-neutral: a `plot` command on a terminal REPL would be
       // a command that cannot do anything. This is how the JVM loop treats `:save` too.
+      // Only a line `Session` ran may typeset `lastLatex`: the drawing commands never reach it,
+      // so the channel still held the PREVIOUS result and was typeset under the plot (F_0207).
+      var viaSession = false
       val out = trimmed match
         // The bare forms are matched FIRST and explicitly. Without them `plot` alone falls
         // through to the evaluator, where it is a perfectly good free variable and echoes
@@ -179,6 +182,7 @@ object App:
         case s"bode $rest"       => bode(rest)
         case s"nyquist $rest"    => nyquist(rest)
         case other =>
+          viaSession = true
           Session.step(session, Some(other))
             .getOrElse("(session ended — reload the page to start another)")
       if out.nonEmpty then
@@ -194,7 +198,7 @@ object App:
         // `latex on` turns `pretty` off in the session, so the text sitting beside the
         // formula is the compact form rather than the same layout twice.
         write(out, "out")
-        session.lastLatex.foreach(l => writeMath(l))
+        if viaSession then session.lastLatex.foreach(l => writeMath(l))
       // Every line can change a setting -- `latex on` typed at the prompt must move the
       // checkbox, or the panel becomes a second, stale source of truth for state the command
       // language already owns. Refreshing unconditionally costs one pass over seven fields.
@@ -210,9 +214,9 @@ object App:
     session.samplePoints(rest) match
       // The sampler's messages name `samples`, which is the terminal command; re-point them
       // at the one that was actually typed rather than explaining a command this page lacks.
-      case Left(why) if why.startsWith("usage:") => PlotUsage
-      case Left(why) => why.replace("samples:", "plot:")
-      case Right(r) if r.points.isEmpty => "(no finite values in range)"
+      case Left(why) if why.startsWith("usage:") => refused(PlotUsage)
+      case Left(why) => refused(why.replace("samples:", "plot:"))
+      case Right(r) if r.points.isEmpty => refused("(no finite values in range)")
       case Right(r) =>
         val spec =
           if geometric then PlotSpec.coordinates(r.points, r.expr)
@@ -223,8 +227,8 @@ object App:
    *  with the open-loop poles and zeros marked.  Intercepted here like `bode`, never reserved. */
   private def rootLocus(rest: String): String =
     session.rootLocusPoints(rest) match
-      case Left(why) if why.startsWith("usage:") => LocusUsage
-      case Left(why)                             => why
+      case Left(why) if why.startsWith("usage:") => refused(LocusUsage)
+      case Left(why)                             => refused(why)
       case Right(l) =>
         Plot.draw(PlotSpec.locus(l.branches, l.poles, l.zeros, s"${l.expr}   (gain sweep)"), byId("figure")) match
           case Right(_)  => s"(root locus: ${l.branches.size} branches over ${l.branches.headOption.fold(0)(_.size)} gains)"
@@ -235,8 +239,8 @@ object App:
    *  REPL cannot draw it; `bincounts(x, lo, hi, k)` is the same data everywhere. */
   private def histogram(rest: String): String =
     session.histogramBins(rest) match
-      case Left(why) if why.startsWith("usage:") => HistUsage
-      case Left(why)                             => why
+      case Left(why) if why.startsWith("usage:") => refused(HistUsage)
+      case Left(why)                             => refused(why)
       case Right(h) =>
         Plot.draw(PlotSpec.histogram(h.edges, h.counts, h.expr), byId("figure")) match
           case Right(_)  => s"(histogram of ${h.counts.sum} values in ${h.counts.size} bins)"
@@ -245,9 +249,9 @@ object App:
   /** Draws a Bode diagram — gain and unwrapped phase over a logarithmic frequency axis. */
   private def bode(rest: String): String =
     session.bodePoints(rest) match
-      case Left(why) if why.startsWith("usage:") => SweepUsage
-      case Left(why)                             => why
-      case Right(r) if r.points.isEmpty          => EmptySweep
+      case Left(why) if why.startsWith("usage:") => refused(SweepUsage)
+      case Left(why)                             => refused(why)
+      case Right(r) if r.points.isEmpty          => refused(EmptySweep)
       case Right(r) =>
         draw(PlotSpec.bode(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size,
              session.requestedSampleCount(rest))
@@ -255,9 +259,9 @@ object App:
   /** Draws a Nyquist diagram — the same sweep in the complex plane, axes locked. */
   private def nyquist(rest: String): String =
     session.nyquistPoints(rest) match
-      case Left(why) if why.startsWith("usage:") => SweepUsage
-      case Left(why)                             => why
-      case Right(r) if r.points.isEmpty          => EmptySweep
+      case Left(why) if why.startsWith("usage:") => refused(SweepUsage)
+      case Left(why)                             => refused(why)
+      case Right(r) if r.points.isEmpty          => refused(EmptySweep)
       case Right(r) =>
         draw(PlotSpec.coordinates(r.points, s"${r.expr}   (${r.variable} → iω)"), r.points.size,
              session.requestedSampleCount(rest))
@@ -282,6 +286,12 @@ object App:
           .fold(s"(plotted $count points)")(n => s"(plotted $count of $n samples)")
       case Left(why) => why
 
+  /** Clears the figure and answers `message` (F_0207): a refused drawing command left the
+   *  previous figure beside a message about another one, which `Plot.clear` exists to prevent. */
+  private def refused(message: String): String =
+    Plot.clear(byId("figure"))
+    message
+
   /** Copies a link that restores this session. */
   private def share(): Unit =
     ShareLink.encode(session.script) match
@@ -303,6 +313,9 @@ object App:
       val out = session.load(script)
       note("restored a shared session from this link")
       if out.nonEmpty then write(out, "out")
+      // The panel was built before the script ran; without this it showed the defaults until
+      // the next typed line (F_0207, the F_0016 step 6 rule).
+      refreshSettings()
     }
 
   private def echo(line: String): Unit = write(s"> $line", "echo")

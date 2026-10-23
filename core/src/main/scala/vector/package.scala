@@ -32,9 +32,10 @@ package it.grypho.scala.leonardo
  *  phrased in) but are not binders in the `_Derivative` sense.  `_SolveSystem` supplies only
  *  the list-shaped plumbing; `_Taylor` and `domain._Domain` supply the semantics.
  *
- *  **Cartesian only for now** ([[CoordinateSystem]]).  The field ships from the start so the
- *  node shape is final and the curvilinear systems — cylindrical and spherical, via the general orthogonal
- *  curvilinear formulas — lands as an `eval` change and nothing else.  Any other system stays
+ *  **The coordinate system** ([[CoordinateSystem]]): `grad`, `div`, `curl` and `laplacian`
+ *  evaluate in every system through the general orthogonal-curvilinear formulas (6.26, 6.27);
+ *  `jacobian` and `hessian` evaluate in Cartesian coordinates only (F_0191), since their
+ *  curvilinear forms need connection terms.  An operator outside what it computes stays
  *  symbolic rather than being answered with the Cartesian formula, which would be a
  *  confidently wrong result rather than an obviously missing one.
  */

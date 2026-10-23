@@ -60,7 +60,7 @@ d.eval(env)
 | **Logic** | Boolean, three-valued (Kleene), symmetric ternary, and fuzzy — one shared rule table |
 | **Probability & statistics** | Distributions as first-class values; `expect`/`variance` by linearity; Bayes' theorem and conjugate posteriors; seeded sampling and PRBS; descriptive statistics, regression by QR, elementary inference |
 | **Optimization** | Stationary points solved and classified; convexity; Lagrange and KKT conditions; certified numeric `minimize`, `qp`, `lsqfit` and `nlp`; exact `lp` |
-| **Vector calculus** | `grad div curl laplacian jacobian hessian` in Cartesian, cylindrical, and spherical coordinates |
+| **Vector calculus** | `grad div curl laplacian` in Cartesian, cylindrical, and spherical coordinates; `jacobian hessian` in Cartesian |
 | **Control** | Transfer-function algebra, poles and stability, step/impulse response, Bode/Nyquist, state space, discretisation, ARX identification, LQR and the Kalman filter |
 | **ODEs** | First-order initial-value problems: closed forms where possible, Runge–Kutta otherwise |
 | **Exact arithmetic** | Opt-in rational tier with arbitrary-precision transcendentals and a user-settable working precision |

@@ -149,12 +149,25 @@ def sampleCorrelation(xs: Vector[_Value], ys: Vector[_Value], env: Environment):
     cov  = dx.zip(dy).map((a, b) => (a - mx) * (b - my)).sum
     sx   = math.sqrt(dx.map(a => (a - mx) * (a - mx)).sum)
     sy   = math.sqrt(dy.map(b => (b - my) * (b - my)).sum)
-    if sx > 0.0 && sy > 0.0
+    if spreadResolved(sx / math.sqrt(n), mx, n) && spreadResolved(sy / math.sqrt(n), my, n)
     raw  = cov / (sx * sy)
     // Clamp: the division can land a hair outside [-1, 1] on a perfectly correlated sample,
     // and a correlation of 1.0000000000000002 is worse than useless to a caller testing it.
     r   <- finite(math.max(-1.0, math.min(1.0, raw)))
   yield r
+
+/** Whether a sample's spread is more than the rounding left by a constant sample (F_0196).  The
+ *  deviations of `[[0.1, 0.1, 0.1]]` from its computed mean are `1.4e-17`, not `0`, so a test
+ *  against exactly zero let a constant sample through as `t = 1.41`; rounding leaves a spread of
+ *  order `n·ε·|mean|`, and four times that is the refusal line.
+ *
+ *  @param sd     a standard deviation of the sample
+ *  @param center the sample's mean
+ *  @param n      the sample size
+ *  @return `true` when the spread is genuine
+ */
+private[statistics] def spreadResolved(sd: Double, center: Double, n: Int): Boolean =
+  sd > 0.0 && sd > 4.0 * n * Math.ulp(1.0) * (math.abs(center) + sd)
 
 /** The sample in ascending order (F_0129) — compared exactly when every entry is exact, else as
  *  `Double`s.  Selection is not arithmetic, so an exact sample stays exact.

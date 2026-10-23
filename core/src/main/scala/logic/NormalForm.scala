@@ -135,17 +135,34 @@ case class _NormalForm(kind: NormalKind, e: _Expression) extends _Expression:
 
 /** Negation normal form: desugars `implies`/`xor` and pushes `not` down to the leaves
  *  via De Morgan, tracking the pending negation in `negated`.
+ *
+ *  **Memoised on `(subterm, polarity)`** (F_0183): `xor` desugars by visiting each operand in
+ *  both polarities, so a chain of 30 `xor`s built ~10⁹ nodes before [[clauseSet]] could apply
+ *  the clause cap.  With the memo each `(subterm, polarity)` is computed once and the result is
+ *  a shared graph, which the clause cap then cuts off at the first level that exceeds it.
  */
-private def nnf(e: _Expression, negated: Boolean): _Expression = e match
-  case Not(a)        => nnf(a, !negated)
-  case And(a, b)     => if negated then Or(nnf(a, true), nnf(b, true))
-                        else And(nnf(a, false), nnf(b, false))
-  case Or(a, b)      => if negated then And(nnf(a, true), nnf(b, true))
-                        else Or(nnf(a, false), nnf(b, false))
-  case Implies(a, b) => nnf(Or(Not(a), b), negated)
-  case Xor(a, b)     => nnf(Or(And(a, Not(b)), And(Not(a), b)), negated)
-  case _Bool(b)      => _Bool(b != negated)
-  case atom          => if negated then Not(atom) else atom
+private def nnf(e: _Expression, negated: Boolean): _Expression =
+  val memo = scala.collection.mutable.HashMap[(_Expression, Boolean), _Expression]()
+  def go(e: _Expression, negated: Boolean): _Expression =
+    memo.get((e, negated)) match
+      case Some(done) => done
+      case None =>
+        val r = e match
+          case Not(a)        => go(a, !negated)
+          case And(a, b)     => if negated then Or(go(a, true), go(b, true))
+                                else And(go(a, false), go(b, false))
+          case Or(a, b)      => if negated then And(go(a, true), go(b, true))
+                                else Or(go(a, false), go(b, false))
+          case Implies(a, b) => if negated then And(go(a, false), go(b, true))
+                                else Or(go(a, true), go(b, false))
+          // a xor b = (a and not b) or (not a and b); negated, (a or not b) and (not a or b)
+          case Xor(a, b)     => if negated then And(Or(go(a, false), go(b, true)), Or(go(a, true), go(b, false)))
+                                else Or(And(go(a, false), go(b, true)), And(go(a, true), go(b, false)))
+          case _Bool(b)      => _Bool(b != negated)
+          case atom          => if negated then Not(atom) else atom
+        memo.update((e, negated), r)
+        r
+  go(e, negated)
 
 
 /** Distributes an NNF expression into clause sets: `Some(outer clauses of inner literals)`

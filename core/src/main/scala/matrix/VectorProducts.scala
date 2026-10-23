@@ -70,11 +70,16 @@ case class _Dot(u: _Expression, v: _Expression) extends _Expression:
       case _ =>
         (vectorCells(ru), vectorCells(rv)) match
           case (Some((_, _, us)), Some((_, _, vs)))
-            if us.size == vs.size && !(us ++ vs).exists(_.isInstanceOf[_Complex]) =>
+            if us.size == vs.size && !(us ++ vs).exists(holdsComplex) =>
             accumulated(us.lazyZip(vs).map((a, b) => Product(a, b): _Expression), env).getOrElse(Left(this))
           case (Some(_), Some(_)) => Left(this)
           case _                  => Left(_Dot(ru.toExpression, rv.toExpression))
 
+
+/** Whether a cell is or contains a complex value: `x + i` is no more a real cell than `i` is, and
+ *  `dot` takes no conjugate (F_0160 Decision 1), so either is refused (F_0205). */
+private def holdsComplex(e: _Expression): Boolean =
+  e.isInstanceOf[_Complex] || e.children.exists(holdsComplex)
 
 /** `cross(u, v)` — the right-handed product of two 3-vectors, in the first argument's shape
  *  (F_0161): `(u₂v₃ − u₃v₂, u₃v₁ − u₁v₃, u₁v₂ − u₂v₁)`, so `cross(e₁, e₂) = e₃`.

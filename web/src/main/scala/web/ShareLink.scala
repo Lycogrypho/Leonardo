@@ -48,7 +48,9 @@ object ShareLink:
    */
   def decode(fragment: String): Option[String] =
     val body = fragment.stripPrefix("#")
-    if !body.startsWith(Key) then None
+    // A link longer than the encoder ever produces is not replayed (F_0182): every line of it
+    // runs on page load, so a hand-made megabyte link was minutes of frozen tab.
+    if !body.startsWith(Key) || body.length > MaxFragment then None
     else
       // A hand-edited or truncated fragment makes decodeURIComponent throw a URIError; a
       // malformed link must leave the page usable rather than failing to start.

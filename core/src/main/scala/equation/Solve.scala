@@ -309,9 +309,15 @@ private def vectorizedMatrixSolve(withV: _Expression, b: _Expression, v: _Variab
     constants <- allOpt(cTerms.map(t => asMatrixValue(t.eval(env))))
     terms     <- allOpt(vTerms.map(classifyTerm(_, v, env)))
     if terms.nonEmpty
-  yield solveVectorized(terms, bDense, constants, v, env).getOrElse(Nil)
+    solved    <- solveVectorized(terms, bDense, constants, v, env)
+  yield solved
 
-/** Assembles and solves `M * vec(v) = vec(C')` via the Kronecker identity; `None` on failure. */
+/** Assembles and solves `M * vec(v) = vec(C')` via the Kronecker identity.
+ *
+ *  `None` when the terms do not conform to one unknown — the shape is not this tier's, and the
+ *  element-wise tier may still solve it: `x*[[1],[2]] = [[3],[6]]` reads `MatScale(x, M)` as
+ *  `X·R` and used to be refused here as "no solution" (F_0205).  `Some(Nil)` for a conforming
+ *  system that is singular or past the size cap. */
 private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
                             constants: Vector[_MatrixValue], v: _Variable,
                             env: Environment): Option[List[_Equation]] =
@@ -328,7 +334,8 @@ private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
       t.right.forall(r => r.rows == cX && r.cols == q) && (t.right.nonEmpty || cX == q)
     }
     val n = p * q
-    if !conforming || rX * cX != n || n > env.limits(Limit.MaxVectorizedSize) then None
+    if !conforming || rX * cX != n then None
+    else if n > env.limits(Limit.MaxVectorizedSize) then Some(Nil)
     else
       val m = terms
         .map { t =>
@@ -337,10 +344,10 @@ private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
           rm.transpose.kronecker(lm).scale(t.scale)
         }
         .reduce(_.add(_))
-      for
+      Some((for
         mInv <- m.inverse
         x    <- _MatrixValue.unvec(mInv.multiply(cPrime.vec), rX, cX)
-      yield List(_Equation(v, x))
+      yield List(_Equation(v, x))).getOrElse(Nil))
 
 // ── the vectorised tier over exact matrices (F_0178) ──
 //
@@ -402,7 +409,8 @@ private def exactVectorizedSolve(withV: _Expression, b: _Expression, v: _Variabl
     constants <- allOpt(cTerms.map(t => exactMatrixOf(t.eval(env))))
     terms     <- allOpt(vTerms.map(classifyExact(_, v, env)))
     if terms.nonEmpty
-  yield solveExactVectorized(terms, bq, constants, v, env).getOrElse(Nil)
+    solved    <- solveExactVectorized(terms, bq, constants, v, env)
+  yield solved
 
 private def solveExactVectorized(terms: Vector[ExactTerm], b: QMatrix, constants: Vector[QMatrix],
                                  v: _Variable, env: Environment): Option[List[_Equation]] =
@@ -417,7 +425,8 @@ private def solveExactVectorized(terms: Vector[ExactTerm], b: QMatrix, constants
       t.right.forall(r => r.size == cX && r.head.size == q) && (t.right.nonEmpty || cX == q)
     }
     val n = p * q
-    if !conforming || rX * cX != n || n > env.limits(Limit.MaxExactVectorizedSize) then None
+    if !conforming || rX * cX != n then None        // not this tier's shape (F_0205)
+    else if n > env.limits(Limit.MaxExactVectorizedSize) then Some(Nil)
     else
       // vec is column-major: entry (i, j) of a p×q matrix is component j·p + i, and
       // vec(L·X·R) = (Rᵀ ⊗ L)·vec(X), whose ((j·p + i), (l·rX + k)) entry is R(l, j)·L(i, k).
@@ -428,11 +437,11 @@ private def solveExactVectorized(terms: Vector[ExactTerm], b: QMatrix, constants
         for j <- 0 until q; i <- 0 until p; l <- 0 until cX; k <- 0 until rX do
           m(j * p + i)(l * rX + k) = m(j * p + i)(l * rX + k) + t.scale * rm(l)(j) * lm(i)(k)
       val c = Array.tabulate(n)(idx => rhs(idx % p)(idx / p))
-      exactGaussJordan(m, c).map { x =>
+      Some(exactGaussJordan(m, c).map { x =>
         val cells = Vector.tabulate(rX * cX)(idx => x((idx % cX) * rX + idx / cX))   // row-major from vec
         List(_Equation(v, _Matrix(rX, cX, cells.map(z =>
           _Rational.of(z.numerator.toBigInt, z.denominator.toBigInt).getOrElse(_Rational(0)): _Expression))))
-      }
+      }.getOrElse(Nil))
 
 /** The unique solution of `m·x = c` over the rationals, or `None` when `m` is singular. */
 private def exactGaussJordan(m: Array[Array[spire.math.Rational]], c: Array[spire.math.Rational]): Option[Vector[spire.math.Rational]] =
@@ -600,7 +609,13 @@ private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_
           val fAfter  = fn(a + eps)
           if !fBefore.isNaN && !fAfter.isNaN && fBefore * fAfter < 0.0 then
             found += a
-        else if !fa.isNaN && !fb.isNaN && fa * fb < 0.0 then found += bisect(fn, a, b, fa)
+        else if !fa.isNaN && !fb.isNaN && fa * fb < 0.0 then
+          // A sign change is also a pole's jump from +∞ to −∞, and bisection converges onto the
+          // pole just the same (F_0187: `solve(1/x = 0, x)` answered `x = 0`).  A root leaves
+          // `|f|` below both ends of its bracket; a pole leaves it far above them.
+          val r  = bisect(fn, a, b, fa)
+          val fr = math.abs(fn(r))
+          if fr <= math.min(math.abs(fa), math.abs(fb)) then found += r
         a = b; fa = fb; i += 1
       found.toList.map(_Number(_))
 

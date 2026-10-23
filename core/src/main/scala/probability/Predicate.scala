@@ -149,19 +149,11 @@ private def probabilityOfBounds(b: Bounds, d: _Distribution): Option[Double] =
     val hiEff = if b.hiIncl then Math.floor(b.hi) else Math.ceil(b.hi) - 1.0
     val loEff = if b.loIncl then Math.ceil(b.lo) else Math.floor(b.lo) + 1.0
     if hiEff < loEff then Some(0.0)
-    else
-      for
-        upper <- d.cdf(hiEff)
-        lower <- if loEff.isNegInfinity then Some(0.0) else d.cdf(loEff - 1.0)
-        r     <- finiteOption(upper - lower)
-      yield clamp(r)
+    // From the tail the event lies in (F_0195), not `cdf(hi) − cdf(lo)`.
+    else d.mass(loEff - 1.0, hiEff).map(clamp)
   else
     // Continuous: the endpoints carry no mass, so inclusivity does not matter.
-    for
-      upper <- d.cdf(b.hi)
-      lower <- d.cdf(b.lo)
-      r     <- finiteOption(upper - lower)
-    yield clamp(r)
+    d.mass(b.lo, b.hi).map(clamp)
 
 private def clamp(d: Double): Double = math.max(0.0, math.min(1.0, d))
 

@@ -81,7 +81,11 @@ private def densePosterior(p: Cells, l: Cells): Option[_MatrixValue] =
   val ls = l.cells.collect { case _Number(d) => d }
   if ps.exists(d => d.isNaN || d < 0.0) || ls.exists(d => d.isNaN || d < 0.0) then None
   else
-    val joint    = ps.zip(ls).map(_ * _)
+    // Each vector is divided by its largest entry first: the posterior does not change under a
+    // constant factor, while the raw products can underflow to a "zero evidence" that is not
+    // there — `bayes([[1e-30, 1e-30]], [[1e-300, 2e-300]])` was refused (F_0196).
+    val (pm, lm) = (ps.max, ls.max)
+    val joint    = ps.zip(ls).map((a, b) => (if pm > 0.0 then a / pm else a) * (if lm > 0.0 then b / lm else b))
     val evidence = joint.sum
     if !(evidence > 0.0) || evidence.isInfinite then None
     else

@@ -199,7 +199,9 @@ private[ode] def adaptive(p: VectorProblem, t0: Double, y0: Vector[Double], t1: 
     else if steps >= budget then Left(OdeFailure.MaxSteps(budget))
     else
       val hh = if dir * (t + h - t1) > 0 then t1 - t else h
-      if math.abs(hh) < 1e-12 * math.max(timeScale, math.abs(t)) then Left(OdeFailure.StepSizeUnderflow(t))
+      // A step is too small only when it no longer moves `t` by more than rounding: the floor
+      // `1e-12·|t|` declined any problem needing `h < 0.01` at `t = 1e10` (F_0184).
+      if math.abs(hh) <= 2 * Math.ulp(math.max(math.abs(t), math.abs(t1))) then Left(OdeFailure.StepSizeUnderflow(t))
       else dpAttempt(p, t, y, hh) match
         case Left(fail) => Left(fail)
         case Right((y5, err)) =>
@@ -249,15 +251,19 @@ def odeSolve(rhs: _Expression, state: OdeState, indepVar: _Variable, t0: Double,
     _    <- validated(state, y0, h)
     _    <- Either.cond(t1 != t0 && math.signum(t1 - t0) == math.signum(h), (),
                         OdeFailure.InvalidInput("h must be non-zero and point from t0 towards t1"))
-    rows  = math.ceil(math.abs((t1 - t0) / h) - 1e-9).toLong + 1
-    _    <- Either.cond(rows <= env.limits(Limit.MaxTrajectoryRows), (), OdeFailure.TooManyRows(rows))
-    path <- trajectory(VectorProblem(rhs, state, indepVar, env), method, t0, y0, t1, h, env)
+    // Counted as a Double and compared with the cap before any conversion: `toLong` saturated
+    // past ~9.2e18 rows and `+ 1` wrapped negative, so `h = 1e-300` passed the cap (F_0184).
+    rowsD = math.ceil(math.abs((t1 - t0) / h) - 1e-9) + 1
+    _    <- Either.cond(rowsD <= env.limits(Limit.MaxTrajectoryRows).toDouble, (),
+                        OdeFailure.TooManyRows(math.min(rowsD, Long.MaxValue.toDouble).toLong))
+    path <- trajectory(VectorProblem(rhs, state, indepVar, env), method, t0, y0, t1, h, rowsD.toInt, env)
   yield path
 
 private def trajectory(p: VectorProblem, method: OdeMethod, t0: Double, y0: Vector[Double], t1: Double,
-                       h: Double, env: Environment): Either[OdeFailure, Vector[(Double, Vector[Double])]] =
-  val times = Iterator.iterate(t0)(_ + h).takeWhile(t => math.signum(t1 - t) == math.signum(h) &&
-                math.abs(t1 - t) > 1e-9 * math.abs(h)).toVector :+ t1
+                       h: Double, rows: Int, env: Environment): Either[OdeFailure, Vector[(Double, Vector[Double])]] =
+  // `t0 + i·h`, counted, never `t + h` iterated: below half an ulp of `t0` the iterate never
+  // advanced and the output loop ran for ever (F_0184).
+  val times = Vector.tabulate(rows - 1)(i => t0 + i * h) :+ t1
   times.sliding(2).foldLeft[Either[OdeFailure, Vector[(Double, Vector[Double])]]](Right(Vector((t0, y0)))) {
     (acc, pair) => acc.flatMap { rows =>
       val (ta, tb) = (pair(0), pair(1))
@@ -294,6 +300,12 @@ private def validated(state: OdeState, y0: Vector[Double], h: Double): Either[Od
  */
 def odeCertified(rhs: _Expression, state: OdeState, indepVar: _Variable, t0: Double,
                  y0: Vector[Double], target: Double, env: Environment): Either[OdeFailure, Vector[Double]] =
+  // The input checks the public step and trajectory make (F_0184): an empty state threw on
+  // `.max`, and a repeated state name answered a meaningless problem.
+  validated(state, y0, 1.0).flatMap(_ => certifiedRun(rhs, state, indepVar, t0, y0, target, env))
+
+private def certifiedRun(rhs: _Expression, state: OdeState, indepVar: _Variable, t0: Double,
+                         y0: Vector[Double], target: Double, env: Environment): Either[OdeFailure, Vector[Double]] =
   if target == t0 then Right(y0)
   else
     val p  = VectorProblem(rhs, state, indepVar, env)

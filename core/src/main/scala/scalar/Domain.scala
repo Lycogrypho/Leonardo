@@ -290,9 +290,11 @@ private def polySatisfying(arg: _Expression, v: _Variable, env: Environment,
       // No crossing anywhere: one sample decides the whole line.
       if holds(evalCoeffsReal(cs, 0.0)) then Vector(Interval.All) else Vector.empty
     else
-      val samples = (cuts.head - 1.0) +:
+      // The outer samples step away by the cut's own size: a fixed `±1.0` is lost to rounding
+      // past ~1e16 and lands on the cut itself, where `ln(x - 1e20)` reported no domain (F_0194).
+      val samples = (cuts.head - math.max(1.0, math.abs(cuts.head))) +:
                     cuts.sliding(2).collect { case Vector(a, b) => (a + b) / 2 }.toVector :+
-                    (cuts.last + 1.0)
+                    (cuts.last + math.max(1.0, math.abs(cuts.last)))
       val pieces  = samples.zipWithIndex.filter((s, _) => holds(evalCoeffsReal(cs, s))).map { (_, i) =>
         val lo = if i == 0 then Double.NegativeInfinity else cuts(i - 1)
         val hi = if i == cuts.size then Double.PositiveInfinity else cuts(i)

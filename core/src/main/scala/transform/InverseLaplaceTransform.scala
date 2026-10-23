@@ -45,7 +45,11 @@ def inverseLaplaceOf(f: _Expression, s: _Variable, t: _Variable): _Expression =
 private def negShiftOf(inner: _Expression, sv: String): Option[Double] = inner match
   case Product(_Number(c), vv: _Variable) if vv.variable == sv && c < 0 => Some(-c)
   case Product(vv: _Variable, _Number(c)) if vv.variable == sv && c < 0 => Some(-c)
-  case _                                                                  => None
+  // Any other spelling of `-a·s` — `-s/2` parses as a ratio (F_0189).
+  case other => collect(other, _Variable(sv)).flatMap {
+    case Vector(c0, c1) => for z <- asNumber(c0) if z == 0.0; k <- asNumber(c1) if k < 0 yield -k
+    case _              => None
+  }
 
 /** Applies the second-shift theorem: `L^-1{exp(-a*s) * F(s)} = u(t-a) * f(t-a)`.
  *
@@ -90,9 +94,13 @@ private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression
   // Matched in three forms that arise in practice.
   case Product(Exp(inner), g)   => inverseSecondShift(inner, g, s, t).getOrElse(_InverseLaplace(f, s, t))
   case Product(g, Exp(inner))   => inverseSecondShift(inner, g, s, t).getOrElse(_InverseLaplace(f, s, t))
+  // An `exp` numerator is a constant factor when free of `s`, a shift otherwise — and never
+  // dropped: inverting `1/den` alone answered `exp(3)/(s+1)` as `exp(-t)` (F_0189).
+  case Ratio(e @ Exp(inner), den) if !dependsOn(inner, s) =>
+    val ig = inverseImpl(Ratio(_Number(1), den), s, t)
+    if ig.isInstanceOf[_InverseLaplace] then _InverseLaplace(f, s, t) else Product(e, ig)
   case Ratio(Exp(inner), den)   => inverseSecondShift(inner, Ratio(_Number(1), den), s, t)
-                                     .getOrElse(invRational(_Number(1), den, s, t)
-                                     .getOrElse(_InverseLaplace(f, s, t)))
+                                     .getOrElse(_InverseLaplace(f, s, t))
 
   // Rational core: N(s) / D(s).
   case Ratio(num, den) =>
@@ -144,7 +152,11 @@ private def invQuadratic(ns: Vector[Double], ds: Vector[Double], t: _Variable): 
   val n1 = ns.lift(1).getOrElse(0.0) / d2
   val n0 = ns.headOption.getOrElse(0.0) / d2
   val a  = -p / 2.0
-  val w2 = q - p * p / 4.0        // (s - a)^2 + w^2  with  w^2 = q - p^2/4
+  // (s - a)^2 + w^2  with  w^2 = q - p^2/4.  A repeated root is decided relative to the terms
+  // that cancel: `0.2²/4` rounds, so `w2 == 0.0` read `s² + 0.2s + 0.01` as two roots 1e-9 apart
+  // and answered `3.8e8·e^(-0.1t) − 3.8e8·e^(-0.1t)` (F_0189).
+  val w2raw = q - p * p / 4.0
+  val w2 = if math.abs(w2raw) <= 64 * Math.ulp(1.0) * math.max(math.abs(q), p * p / 4.0) then 0.0 else w2raw
   if w2 > 0.0 then
     // Complex conjugate poles a +/- i*w -> damped oscillation.
     val w = math.sqrt(w2)

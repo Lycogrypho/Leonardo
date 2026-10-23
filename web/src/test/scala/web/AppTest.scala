@@ -275,3 +275,14 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     typeLine("sin(");             assert(lastOutput().contains("parse error"))
     typeLine("a * 6");            assert(lastOutput() == "42.0", "and the session survives")
   }
+
+  "a drawing command" should "not typeset the previous result under its figure (F_0207)" in
+  {
+    typeLine("latex on")
+    typeLine("x^2")
+    val formulas = typeset.size
+    typeLine("plot x x 0 1 3")
+    assert(lastOutput().contains("plotted"))
+    assert(typeset.size == formulas, "the plot carried the previous line's formula")
+    typeLine("latex off")
+  }

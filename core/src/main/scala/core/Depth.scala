@@ -41,3 +41,19 @@ private[leonardo] def depthUpTo(e: _Expression, limit: Int): Int =
  *  @return `true` when it is too deep for every platform's walkers
  */
 private[leonardo] def tooDeep(e: _Expression): Boolean = depthUpTo(e, MaxExpressionDepth) > MaxExpressionDepth
+
+/** The number of nodes of `e` as a tree — a shared subterm counted at every occurrence, since
+ *  that is what a walker pays — counted no further than `limit + 1`, iteratively (F_0183).
+ *
+ *  @param e     the expression
+ *  @param limit the count past which counting stops
+ *  @return the node count, or `limit + 1` when it exceeds `limit`
+ */
+private[leonardo] def nodesUpTo(e: _Expression, limit: Int): Int =
+  @annotation.tailrec
+  def go(pending: List[_Expression], seen: Int): Int =
+    if seen > limit then seen
+    else pending match
+      case Nil          => seen
+      case node :: rest => go(node.children ::: rest, seen + 1)
+  go(List(e), 0)

@@ -68,6 +68,13 @@ private def fold(node: _Expression): _Expression =
     case Right(v) => v
     case Left(_)  => node
 
+/** Whether `x` is visibly a matrix — a literal, a dense value, or a matrix sum or product — so
+ *  that `x^0` is an identity matrix, not the scalar `1` (F_0198).  A free name later bound to a
+ *  matrix cannot be told apart here, the limit every structural pass shares. */
+private def matrixValued(x: _Expression): Boolean = x match
+  case _: _MatrixShaped | _: _MatrixValue | _: _MatrixProductShaped | _: _MatrixSumShaped => true
+  case _                                                                              => false
+
 private def simplifyImpl(e: _Expression)(using t: Tier): _Expression = e match
   case _: _Number   => e
   case _: _Complex  => e
@@ -144,7 +151,7 @@ private def simplifyImpl(e: _Expression)(using t: Tier): _Expression = e match
       // x^0 = 1, including 0^0 = 1 — the common CAS/IEEE convention, and consistent with
       // Power.eval (Java pow(0, 0) = 1.0). Both places must agree so simplify then eval
       // (and vice versa) never disagree on 0^0.
-      case (x, _Number(d)) if d == 0.0 => t.n(1)
+      case (x, _Number(d)) if d == 0.0 && !matrixValued(x) => t.n(1)
       case (x, _Number(d)) if d == 1.0 => x
       case (_Number(d), _) if d == 1.0 => t.n(1)
       case (x @ _Number(_), y @ _Number(_)) => fold(Power(x, y))

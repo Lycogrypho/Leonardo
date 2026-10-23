@@ -84,10 +84,17 @@ private def rlsStep[T](f: Field[T], theta: Rows[T], p: Rows[T], phi: Vector[T], 
 private def valueGrid(r: Either[_Expression, _Value]): Option[(Int, Int, Vector[_Value])] = r match
   case Right(m: _MatrixValue) => Some((m.rows, m.cols, m.toVector.map(_Number(_))))
   case Left(m: _Matrix) =>
-    val vs = m.elems.collect { case v: _Value => v }
+    // Real cells only: a complex or truth-valued cell was admitted here, then dropped by the
+    // `Double` reading, and every later operand was sliced at the wrong offset (F_0196).
+    val vs = m.elems.collect { case v: _Value if isReal(v) => v }
     Option.when(vs.size == m.elems.size)((m.rows, m.cols, vs))
   case Right(v @ _Number(_)) => Some((1, 1, Vector(v)))
   case _ => None
+
+/** Whether a value reads as one real number (exact ones included, through the widening extractor). */
+private def isReal(v: _Value): Boolean = v match
+  case _Number(_) => true
+  case _          => false
 
 /** One recursive-least-squares update.
  *

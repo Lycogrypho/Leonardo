@@ -191,6 +191,12 @@ private def gaussSymbolic(A: Vector[Vector[_Expression]], b: Vector[_Expression]
 
   boundary:
     for pivot <- 0 until n do
+      // A zero pivot is swapped with the first row below that has a non-zero entry in the column,
+      // as the dense path does; declining outright refused `[[y = a, x + y = 3]]` (F_0205).
+      if isZeroLiteral(simplifyFully(aug(pivot)(pivot))) then
+        (pivot + 1 until n).find(r => !isZeroLiteral(simplifyFully(aug(r)(pivot)))).foreach { r =>
+          val tmp = aug(pivot); aug(pivot) = aug(r); aug(r) = tmp
+        }
       val pivVal = simplifyFully(aug(pivot)(pivot))
       if isZeroLiteral(pivVal) then break(None)   // by value: an exact zero is a zero (F_0073)
       for row <- pivot + 1 until n do

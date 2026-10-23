@@ -132,9 +132,30 @@ final class Session:
   // consolidate(...) is NOT a grammar function; it is recognised here on the
   // whole RHS so the inner text is handed to the ordinary expression parser via withParsed.
   private val consolidation   = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=\s*consolidate\((.+)\)""".r
-  // Lazy first group lets the regex engine find the shortest expression that still
-  // leaves valid tokens for <var> <lo> <hi> and an optional <n> at the tail.
-  private val samplesRegex = """^(.+?)\s+([a-zA-Z][a-zA-Z0-9_]*)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)\s+(-?[\d.]+(?:[eE][+-]?\d+)?)(?:\s+(\d+))?$""".r
+  // The tail tokens of a sweep command, matched one token at a time (F_0182): the regex over the
+  // whole line, `^(.+?)\s+…`, backtracked over every run of spaces and took quadratic time —
+  // 0.7 s at 40 000 spaces in V8, minutes through a long shared link.
+  private val NameToken   = """[a-zA-Z][a-zA-Z0-9_]*""".r
+  private val NumberToken = """-?[\d.]+(?:[eE][+-]?\d+)?""".r
+  private val CountToken  = """\d+""".r
+
+  /** Splits `<expr> <var> <lo> <hi> [<n>]` from the right: the tail is the last three or four
+   *  whitespace-separated tokens, and the expression is everything before them, spacing kept.
+   *  With a count the expression is shorter, so that reading is tried first — the shortest
+   *  expression, as the regex this replaced chose.
+   *
+   *  @param text the arguments
+   *  @return `(expr, var, lo, hi, n)`, or `None` when the tail does not have that shape
+   */
+  private def sweepTokens(text: String): Option[(String, String, String, String, Option[String])] =
+    val spans = """\S+""".r.findAllMatchIn(text).map(m => (m.start, m.matched)).toVector
+    def split(tail: Int): Option[(String, Vector[String])] =
+      Option.when(spans.size > tail)((text.substring(0, spans(spans.size - tail)._1).trim,
+                                      spans.takeRight(tail).map(_._2)))
+    def shaped(t: Vector[String]): Boolean =
+      NameToken.matches(t(0)) && NumberToken.matches(t(1)) && NumberToken.matches(t(2))
+    split(4).collect { case (e, t) if e.nonEmpty && shaped(t) && CountToken.matches(t(3)) => (e, t(0), t(1), t(2), Some(t(3))) }
+      .orElse(split(3).collect { case (e, t) if e.nonEmpty && shaped(t) => (e, t(0), t(1), t(2), None) })
 
   /** Executes one line of input and returns the display string.
    *
@@ -336,7 +357,10 @@ final class Session:
     case b: _Based    => b.toString
     // A distribution serializes as the grammar call that rebuilds it -- toString is that
     // call, at full parameter precision, so a bound distribution survives :save/:load.
-    case d: probability._Distribution => d.display(MaxPrecision)
+    // Every parameter in full, through the same Double writer as everything else (F_0186): the
+    // display form rounded to 15 decimal PLACES, so `normal(0, 1e-20)` saved as `normal(0.0, 0.0)`.
+    case d: probability._Distribution =>
+      s"${probability.DistKind.keyword(d.kind)}(${d.params.map(serializeDouble).mkString(", ")})"
     // F_0088: the three value kinds whose `toString` is their DISPLAY form, rounded at
     // DefaultPrecision -- so a saved matrix, complex number or fuzzy degree reloaded with five
     // decimals and a shared link reproduced a session computing different numbers. Each is
@@ -344,13 +368,13 @@ final class Session:
     // text that re-parses to the same Double (and the JVM's form on both platforms, F_0003).
     case m: _MatrixValue =>
       (0 until m.rows).map { i =>
-        (0 until m.cols).map(j => _Number.render(m(i, j))).mkString("[", ", ", "]")
+        (0 until m.cols).map(j => serializeDouble(m(i, j))).mkString("[", ", ", "]")
       }.mkString("[", ", ", "]")
     // `* i` written out, the magnitude unsigned: `re - b * i` re-parses through exact
     // multiplications by 0 and 1, so both parts come back bit for bit.
     case c: _Complex =>
       val sign = if c.im < 0 then "-" else "+"
-      s"(${_Number.render(c.re)} $sign ${_Number.render(math.abs(c.im))} * i)"
+      s"(${serializeDouble(c.re)} $sign ${serializeDouble(math.abs(c.im))} * i)"
     // The degree itself decides `unknown`, not its rounding: 0.5000001 is not the midpoint.
     case t: _Truth => if t.d == 0.5 then "unknown" else s"truth(${_Number.render(t.d)})"
     // F_0008: the endpoints in full, never the outward-rounded display -- a reload must give
@@ -360,9 +384,19 @@ final class Session:
     // _Number.render, not d.toString: a bare Double renders the JavaScript way under Scala.js
     // ("3" for "3.0"), and this is the `:save` path -- so a session saved in a browser would
     // not be byte-identical to the same session saved on the JVM (issue F_0003).
-    case _Number(d) => _Number.render(d)
+    case _Number(d) => serializeDouble(d)
     case _Bool(b)   => if b then "true" else "false"
     case other      => other.toString
+
+  /** A `Double` as text that re-parses to it (F_0186): `_Number.render` for a finite value, and
+   *  the grammar's own spellings otherwise — `render` gives `Infinity` and `NaN`, which re-parse
+   *  as free variables, so a saved `qp` bound of `-inf` reloaded as the name `Infinity`.  NaN is
+   *  written as an expression that evaluates to it. */
+  private def serializeDouble(d: Double): String =
+    if d == Double.PositiveInfinity then "inf"
+    else if d == Double.NegativeInfinity then "-inf"
+    else if d.isNaN then "(inf - inf)"
+    else _Number.render(d)
 
   /** Serialises a whole *expression* for a `:save` script, preserving every leaf exactly
    *  (issue F_0046).
@@ -747,7 +781,7 @@ final class Session:
    *  from `simplify` in the first place.
    */
   private def prepared(e: _Expression): _Expression =
-    evaluateBottomUp(resolveMatrixOps(substitute(e, definitions)))
+    evaluateBottomUp(resolveMatrixOps(expandedDefinitions(e)))
 
   /** Reduces every node bottom-up, keeping whatever came back (issues F_0034, F_0168).
    *
@@ -1040,6 +1074,8 @@ final class Session:
       s"progress stopped with the gradient norm at ${_Number.render(g)}, above the precision's tolerance"
     case MinimizeFailure.MethodTakesNoBounds(m)         =>
       s"${MinimizeMethod.keyword(m)} takes no bounds; use pbfgs or gd"
+    case MinimizeFailure.NotAMinimum                    =>
+      "the gradient vanishes there, but the point is a maximum or a saddle; start elsewhere"
 
   /** A successful fit in prose: the iterations, the residual, and why a covariance is absent. */
   private def fitNote(params: Vector[_Variable], r: LsqResult): String =
@@ -1223,7 +1259,16 @@ final class Session:
    *  `simplify`/`expand` reach the same answers through [[resolveMatrixOps]].
    */
   private def withDefinitions(e: _Expression): _Expression =
-    Parser.redispatch(substitute(e, definitions))
+    Parser.redispatch(expandedDefinitions(e))
+
+  /** `e` with the definitions substituted, and then every derivative or integral binder that
+   *  names a definition resolved by the chain rule (F_0185).  Resolving only the line as typed
+   *  missed a binder inside a STORED definition: `q := derive(g, f)` kept `f` as the binder, the
+   *  substitution removed `f` from the body, and `q`, `simplify` and `samples` answered 0.  A binder
+   *  that cannot be resolved is left as it was — the line as typed already reported why. */
+  private def expandedDefinitions(e: _Expression): _Expression =
+    val s = substitute(e, definitions)
+    resolveDerivativeBinders(s).getOrElse(s)
 
   /** Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes
    *  whose operands are matrix-shaped — a matrix literal, a matrix operation node, or
@@ -1347,7 +1392,7 @@ final class Session:
     resolveDerivativeBinders(rhs) match
       case Left(message) => message
       case Right(resolved) =>
-        val prepared = simplify(resolveMatrixOps(substitute(resolved, definitions)))
+        val prepared = simplify(resolveMatrixOps(expandedDefinitions(resolved)))
         prepared.eval(env) match
           case Right(value) =>
             bindings = bindings + (name -> value)
@@ -1589,8 +1634,8 @@ final class Session:
    *  @return the parsed arguments, or the message explaining why they could not be read
    */
   private def sweepArgs(rest: String, command: String): Either[String, Session.SweepArgs] =
-    rest.trim match
-      case samplesRegex(exprStr, varStr, loStr, hiStr, nStr) =>
+    sweepTokens(rest.trim) match
+      case Some((exprStr, varStr, loStr, hiStr, nOpt)) =>
         // The regex admits malformed literals like "1..2" (its [\d.]+ class allows several
         // dots), so the bounds are read with toDoubleOption rather than toDouble, which would
         // throw a NumberFormatException and — this path runs outside withParsed — crash the
@@ -1599,7 +1644,7 @@ final class Session:
           case (Some(lo), Some(hi)) if lo >= hi =>
             Left(s"$command: lo must be strictly less than hi")
           case (Some(lo), Some(hi)) =>
-            val n = Option(nStr).flatMap(_.toIntOption).getOrElse(Session.DefaultSampleCount)
+            val n = nOpt.flatMap(_.toIntOption).getOrElse(Session.DefaultSampleCount)
             // The grid is materialised before anything is drawn, so an absurd count is an
             // OutOfMemoryError -- which the REPL deliberately does not catch, so a typo would
             // kill the read loop or the browser tab instead of reporting. Refusing here is the

@@ -1101,12 +1101,12 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
             val b     = Array.tabulate(n * n)(k => data(k) - (if k/n == k%n then lam else 0.0))
             val which = seen.count(s => math.abs(s - lam) <= same)
             seen += lam
-            evOpts += realNullVec(b, n, which).map(_.map(_Number(_)).toVector)
+            evOpts += nearestFree(which)(realNullVec(b, n, _)).map(_.map(_Number(_)).toVector)
             i += 1
           case c: _Complex =>
             val which = seenC.count((r, m) => math.hypot(r - c.re, m - c.im) <= same)
             seenC += ((c.re, c.im))
-            complexNullVec(n, c.re, c.im, which) match
+            nearestFree(which)(complexNullVec(n, c.re, c.im, _)) match
               case None =>
                 evOpts += None; evOpts += None
               case Some((vRe, vIm)) =>
@@ -1121,6 +1121,14 @@ final class _MatrixValue private (val rows: Int, val cols: Int, private val data
       val cols = opts.flatten
       if cols.size == opts.size then Some((cols, eigs)) else None
     }
+
+  /** The null vector of the `which`-th free column, or of the nearest earlier one (F_0205).  The
+   *  repeat count uses `1e-8` of `max|A|` and the free columns `1e-8` of `max|A − λI|`, so two
+   *  distinct eigenvalues closer than the first ask for a second free column that does not exist:
+   *  `eig([[1, 0], [0, 1.0000000001]])` declined.  A genuinely defective matrix gets a repeated
+   *  column back, which `diagonalisingVD`'s invertibility test still refuses. */
+  private def nearestFree[A](which: Int)(nullVec: Int => Option[A]): Option[A] =
+    (which to 0 by -1).iterator.map(nullVec).collectFirst { case Some(v) => v }
 
   /** [[https://en.wikipedia.org/wiki/QR_decomposition QR decomposition]] via modified [[https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process Gram-Schmidt]]: `A = Q·R` (`m ≥ n`).
    *  `Q` is `m × n` with orthonormal columns; `R` is `n × n` upper triangular.

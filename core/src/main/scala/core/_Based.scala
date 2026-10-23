@@ -38,6 +38,9 @@ case class _Based private (value: Double, base: Int, balanced: Boolean) extends 
    */
   def display(precision: Int): String =
     if balanced then "0t" + _Based.balancedDigits(value.toLong)
+    // A negative value has no prefix literal — `0x-FF` re-parsed as `0*x - FF` (F_0186) — so it is
+    // written as the call that builds it, which re-parses to this same value and base.
+    else if value < 0 then s"tobase(${value.toLong}, $base)"
     else base match
       case 2  => "0b" + _Based.digitsOf(value.toLong, 2)
       case 8  => "0o" + _Based.digitsOf(value.toLong, 8)
@@ -65,11 +68,45 @@ object _Based:
    *  collapses the crisp endpoints and `_Complex.of` collapses a zero imaginary part.
    */
   def of(value: Double, base: Int, balanced: Boolean = false): _Value =
-    if !value.isWhole || !value.isFinite then _Number(value)
+    // Past 2^53 a `Double` no longer holds every integer, and the digits printed from it would
+    // be a different number's (F_0186: `tobase(1e20, 2)` printed a saturated Long), so such a
+    // value is a plain number.
+    if !value.isWhole || !value.isFinite || math.abs(value) > MaxExactInteger then _Number(value)
     else if balanced then
       if base == 3 then new _Based(value, 3, true) else _Number(value)
     else if base == 10 || base < MinBase || base > MaxBase then _Number(value)
     else new _Based(value, base, false)
+
+  /** `2^53`: the largest magnitude below which every integer is a `Double`. */
+  private val MaxExactInteger: Double = 9007199254740992.0
+
+  /** Parses a digit string in `base` to an unbounded integer (F_0186): the `Long` reader wrapped
+   *  `0x10000000000000000` to `0`.
+   *
+   *  @param s    the digits, optionally with a leading `-`
+   *  @param base the radix, `2 .. 36`
+   *  @return the integer, or `None` on an invalid digit
+   */
+  private[leonardo] def parseBigDigits(s: String, base: Int): Option[BigInt] =
+    try Some(BigInt(s, base)) catch case _: NumberFormatException => None
+
+  /** Parses balanced-ternary digits (`T` = -1) to an unbounded integer (F_0186).
+   *
+   *  @param s the digits
+   *  @return the integer, or `None` on an invalid digit
+   */
+  private[leonardo] def parseBigBalanced(s: String): Option[BigInt] =
+    if s.isEmpty then None
+    else s.toUpperCase.foldLeft(Option(BigInt(0))) { (acc, c) =>
+      acc.flatMap { n =>
+        val d = c match
+          case 'T' => Some(-1)
+          case '0' => Some(0)
+          case '1' => Some(1)
+          case _   => None
+        d.map(n * 3 + _)
+      }
+    }
 
   /** Digit characters for bases up to 36. */
   private val Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"

@@ -251,8 +251,14 @@ private[leonardo] def laurentDetailed(
     regularise(e, v, point, shifted, m, env)
       .toRight(s"the pole at $point could not be cleared from the denominator")
       .flatMap { (regular, effectiveM) =>
-        laurentCoefficients(regular, v, point, effectiveM + n, env)
-          .map(cs => simplifyFully(assembleLaurent(cs, shifted, effectiveM)))
+        // The order actually cleared may exceed the requested `m` (structuralRegularise), so
+        // the cap is checked again on it: `1/x^1000` asked for `m = 1` and built a 1000-term
+        // series whose simplification overflowed the stack (F_0180).
+        if effectiveM.toLong + n > maxOrder then
+          Left(s"the pole at $point has order $effectiveM; the orders must sum to at most $maxOrder")
+        else
+          laurentCoefficients(regular, v, point, effectiveM + n, env)
+            .map(cs => simplifyFully(assembleLaurent(cs, shifted, effectiveM)))
       }
 
 /** Produces `g(v) = (v − a)^m · f(v)` **cancelled**, not merely multiplied out.

@@ -417,8 +417,9 @@ jacobian([[x*y], [y^2]], x, y)  -> [[y, x], [0, 2y]]      m x n
 hessian(x^2*y^3, x, y)                                    n x n, symmetric
 ```
 
-`curl` outside three dimensions, a component/coordinate count mismatch, and a repeated
-coordinate all stay symbolic rather than being guessed.
+`curl` outside three dimensions, a component/coordinate count mismatch, a repeated
+coordinate, a vector field given to `grad`, `laplacian` or `hessian`, and `jacobian` or
+`hessian` in a curvilinear system all stay symbolic rather than being guessed.
 
 An optional trailing keyword selects the coordinate system (default `cartesian`):
 

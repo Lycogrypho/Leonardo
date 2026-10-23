@@ -143,9 +143,12 @@ The [gradient](https://en.wikipedia.org/wiki/Gradient) `grad`,
 [curl](https://en.wikipedia.org/wiki/Curl_(mathematics)) `curl`,
 [Laplacian](https://en.wikipedia.org/wiki/Laplace_operator) `laplacian`,
 [Jacobian](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant) `jacobian` and
-[Hessian](https://en.wikipedia.org/wiki/Hessian_matrix) `hessian` take a scalar or vector
-field followed by the **ordered coordinate tuple** — the order is never inferred, because it
-fixes the order of the result's components.  A vector field is an n×1 matrix.
+[Hessian](https://en.wikipedia.org/wiki/Hessian_matrix) `hessian` take a field followed by the
+**ordered coordinate tuple** — the order is never inferred, because it fixes the order of the
+result's components.  `grad`, `laplacian` and `hessian` take a scalar field, `div`, `curl` and
+`jacobian` a vector field, which is an n×1 matrix.  `jacobian` and `hessian` are Cartesian only:
+in a curvilinear system they need connection terms, and they stay symbolic rather than answer
+the Cartesian formula.
 
 ```scala mdoc
 import it.grypho.scala.leonardo.vector.*

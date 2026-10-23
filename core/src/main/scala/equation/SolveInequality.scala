@@ -195,13 +195,18 @@ private def signChart(num: Vector[Double], den: Vector[Double],
       .filter((x, _) => holdsAt(num, den, x, op))
       .map((_, i) => intervalPiece(critical, i, v))
     if pieces.isEmpty then Some(_Bool(false))
-    else if pieces.size == critical.size + 1 then Some(_Bool(true))
+    // Every piece holding is still not `true`: each critical point is a zero or a pole and
+    // satisfies no strict relation, so the set is the line with those points removed
+    // (F_0188: `solve(1/x^2 > 0, x)` answered `true` for `x != 0`).
+    else if pieces.size == critical.size + 1 then
+      Some(critical.map(c => _Comparison(v, CompareOp.Ne, _Number(c)): _Expression).reduce((a, b) => And(a, b)))
     else Some(pieces.reduce((a, b) => Or(a, b)))
 
 /** One interior point per open interval defined by the critical points, plus the two tails. */
 private def sampleBetween(critical: Vector[Double]): Vector[Double] =
-  val head = critical.head - 1.0
-  val tail = critical.last + 1.0
+  // A step of the point's own size: `±1.0` is lost to rounding past ~1e16 (F_0188, the F_0194 bug).
+  val head = critical.head - math.max(1.0, math.abs(critical.head))
+  val tail = critical.last + math.max(1.0, math.abs(critical.last))
   val mids = critical.sliding(2).collect { case Vector(a, b) => (a + b) / 2 }.toVector
   (head +: mids) :+ tail
 

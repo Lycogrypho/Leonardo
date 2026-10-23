@@ -39,7 +39,14 @@ private def asLiteral(r: Either[_Expression, _Value]): Option[_Matrix] = r match
 private def sumOf(a: _Expression, b: _Expression): _Expression = (a, b) match
   case (x: _Rational, y: _Rational) => x.add(y, _Rational.DefaultPolicy)
   case (_Number(x), _Number(y))     => _Number(x + y)
+  case (x: _Value, y: _Value) if isComplexPair(x, y) => _Complex.add(x, y).getOrElse(Sum(a, b))
   case _                            => Sum(a, b)
+
+/** Whether a cell pair is complex arithmetic the `_Complex` kernels fold (F_0200): without it
+ *  `i * [[1, 2]]` kept `(i * 1.0)` in every cell. */
+private def isComplexPair(x: _Value, y: _Value): Boolean =
+  (x.isInstanceOf[_Complex] || y.isInstanceOf[_Complex]) &&
+    _Complex.parts(x).isDefined && _Complex.parts(y).isDefined
 
 /** Folds two already-reduced operands with `*`, applying the zero short-circuit. */
 private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (a, b) match
@@ -50,6 +57,7 @@ private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (a,
   case (x: _Rational, y: _Rational)           => x.multiply(y, _Rational.DefaultPolicy)
   case (_Number(0.0), _) | (_, _Number(0.0))  => _Number(0)
   case (_Number(x), _Number(y))               => _Number(x * y)
+  case (x: _Value, y: _Value) if isComplexPair(x, y) => _Complex.mul(x, y).getOrElse(Product(a, b))
   case _                                      => Product(a, b)
 
 /** Collapses a combined [[_Matrix]] literal to a dense value if all elements are `_Number`s.
@@ -786,13 +794,15 @@ case class _MatrixIndex(matrix: _Expression, row: _Expression, col: _Expression)
     val rr = row.eval(env)
     val rc = col.eval(env)
     (rr, rc) match
-      case (Right(_Number(r)), Right(_Number(c))) =>
-        val i = r.round.toInt - 1   // 1-based -> 0-based
-        val j = c.round.toInt - 1
+      // A non-whole index is refused, not rounded (F_0205: `at(A, 1.6, 1)` read row 2).
+      case (Right(_Number(r)), Right(_Number(c))) if Whole.isWhole(r) && Whole.isWhole(c) =>
+        val i = Whole.asInt(r).getOrElse(0) - 1   // 1-based -> 0-based; out of range stays symbolic
+        val j = Whole.asInt(c).getOrElse(0) - 1
         rm match
           case Right(mv: _MatrixValue) if i >= 0 && i < mv.rows && j >= 0 && j < mv.cols =>
             Right(_Number(mv(i, j)))
           case Left(m: _Matrix) if i >= 0 && i < m.rows && j >= 0 && j < m.cols =>
             m(i, j).eval(env)
           case _ => Left(this)
+      case (Right(_Number(_)), Right(_Number(_))) => Left(this)
       case _ => Left(_MatrixIndex(rm.toExpression, rr.toExpression, rc.toExpression))

@@ -236,7 +236,7 @@ Boolean, three-valued Kleene, symmetric ternary and fuzzy logic share one rule t
 <details>
 <summary><i>Vector calculus</i></summary>
 
-`grad`, `div`, `curl`, `laplacian`, `jacobian`, `hessian` over an explicit ordered coordinate tuple, in Cartesian, cylindrical and both spherical conventions.
+`grad`, `div`, `curl`, `laplacian`, `jacobian`, `hessian` over an explicit ordered coordinate tuple; the first four in Cartesian, cylindrical and both spherical conventions, `jacobian` and `hessian` in Cartesian coordinates.
 
 </details>
 </li>

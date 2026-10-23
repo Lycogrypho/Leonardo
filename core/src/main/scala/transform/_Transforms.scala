@@ -47,15 +47,16 @@ case class _Fourier(e: _Expression, t: _Variable, w: _Variable) extends _Functio
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = _Fourier(c.head, t, w)
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val result = fourierOf(e, t, w)
-    if result == this then Left(this)
-    else result.eval(env)
+    fourierOf(boundParameters(e, t, env), t, w) match
+      case _: _Fourier => Left(this)
+      case result      => result.eval(env)
 
   /** Why this transform stays unevaluated, or `None` when it answers; see [[fourierDecline]].
-   *  @param env the evaluation environment (unused: the transform reads no bindings)
+   *  @param env the evaluation environment, whose bound parameters are read
    *  @return the reason, or `None`
    */
-  def declineReason(env: Environment): Option[String] = fourierDecline(e, t, w, causal = false)
+  def declineReason(env: Environment): Option[String] =
+    fourierDecline(boundParameters(e, t, env), t, w, causal = false)
 
 
 /** AST node for the causal Fourier transform: `fourierCausal(e, t, w)` in the grammar (F_0141).
@@ -74,15 +75,16 @@ case class _FourierCausal(e: _Expression, t: _Variable, w: _Variable) extends _F
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = _FourierCausal(c.head, t, w)
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val result = causalFourierOf(e, t, w)
-    if result == this then Left(this)
-    else result.eval(env)
+    causalFourierOf(boundParameters(e, t, env), t, w) match
+      case _: _FourierCausal => Left(this)
+      case result            => result.eval(env)
 
   /** Why this transform stays unevaluated, or `None` when it answers; see [[fourierDecline]].
-   *  @param env the evaluation environment (unused: the transform reads no bindings)
+   *  @param env the evaluation environment, whose bound parameters are read
    *  @return the reason, or `None`
    */
-  def declineReason(env: Environment): Option[String] = fourierDecline(e, t, w, causal = true)
+  def declineReason(env: Environment): Option[String] =
+    fourierDecline(boundParameters(e, t, env), t, w, causal = true)
 
 
 /** AST node for the z-transform: `ztrans(x, n, z)` in the grammar.
@@ -130,9 +132,9 @@ case class _InverseZTransform(f: _Expression, z: _Variable, n: _Variable) extend
   override def children: List[_Expression] = List(f)
   override def rebuild(c: List[_Expression]): _Expression = _InverseZTransform(c.head, z, n)
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val result = inverseZTransformOf(f, z, n)
-    if result == this then Left(this)
-    else result.eval(env)
+    inverseZTransformOf(boundParameters(f, z, env), z, n) match
+      case _: _InverseZTransform => Left(this)
+      case result                => result.eval(env)
 
 
 /** AST node for the inverse Laplace transform: `invlaplace(f, s, t)` in the grammar.
@@ -152,6 +154,21 @@ case class _InverseLaplace(f: _Expression, s: _Variable, t: _Variable) extends _
   override def children: List[_Expression] = List(f)
   override def rebuild(c: List[_Expression]): _Expression = _InverseLaplace(c.head, s, t)
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val result = inverseLaplaceOf(f, s, t)
-    if result == this then Left(this)
-    else result.eval(env)
+    inverseLaplaceOf(boundParameters(f, s, env), s, t) match
+      case _: _InverseLaplace => Left(this)
+      case result             => result.eval(env)
+
+
+/** `f` with every name the session binds replaced by its value, except the transform's own
+ *  variable `keep` (F_0209).  The inverse tables read their coefficients as numbers with no
+ *  bindings, so `a := 2` left `invlaplace(1/(s - a), s, t)` unevaluated while the forward
+ *  `laplace(exp(a*t), t, s)` folded — `control.resolved`'s rule (F_0092), applied here.
+ *
+ *  @param f    the expression to transform
+ *  @param keep the transform's variable, never substituted even when bound
+ *  @param env  the bindings
+ *  @return `f` with the other bound names replaced
+ */
+private[transform] def boundParameters(f: _Expression, keep: _Variable, env: Environment): _Expression =
+  val values = (f.freeVars - keep.variable).flatMap(n => env.get(n).map(v => n -> (v: _Expression))).toMap
+  if values.isEmpty then f else substitute(f, values)

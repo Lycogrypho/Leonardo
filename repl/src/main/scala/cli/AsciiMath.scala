@@ -68,7 +68,22 @@ object AsciiMath:
    *  (F_0039), and folding it onto `|` would read a norm as an absolute value.
    */
   private val Glyphs: Map[Char, String] =
-    Map('≠' -> "!=", '≤' -> "<=", '≥' -> ">=", '×' -> "*", '÷' -> "/", '∣' -> "|")
+    Map('≠' -> "!=", '≤' -> "<=", '≥' -> ">=", '×' -> "*", '÷' -> "/", '∣' -> "|",
+        // Recorded from MathLive 0.111.1 (F_0208): `\Rightarrow` arrives as `⇒`, and `\mp` as `∓`,
+        // which is refused by name with `±`.
+        '⇒' -> "=>", '∓' -> "+-", '±' -> "+-")
+
+  /** The connective words, which MathLive writes as words (`a and b`, ` not a`): kept apart by
+   *  spaces rather than read as juxtaposed names — `a*and*b` is a parse error (F_0208). */
+  private val Connectives: Set[String] = Set("and", "or", "not", "xor", "implies")
+
+  /** Whether a node is a connective word (F_0208). */
+  private def connectiveLeaf(n: Node): Boolean = n match
+    case Node.Leaf(Tok.Name(w)) => Connectives(w)
+    case _                      => false
+
+  /** The two-character operators kept together by the tokeniser. */
+  private val Pairs: Set[String] = Set("<=", ">=", "!=", "->", "+-", "-+", "-:", "=>")
 
   /** One lexical unit: a name, a number, or a single punctuation character. */
   private enum Tok:
@@ -108,8 +123,12 @@ object AsciiMath:
           // `<=`, `>=`, `!=` and `->` arrive as two characters; keep them together so the
           // emitter never splits a relation, and so `->` can be recognised and refused.
           case None =>
-            rest.headOption.filter(n => (c == '<' || c == '>' || c == '!' || c == '-') && (n == '=' || n == '>')) match
-              case Some(n) => loop(rest.tail, Tok.Punct(s"$c$n") :: acc)
+            // Two-character operators, recorded from MathLive 0.111.1 (F_0208): `\pm` arrives as
+            // `+-` (spaces dropped first, so a typed `3 + -2` arrives the same way and is refused
+            // with it), `\div` as `-:`, `\implies` as `=>`.
+            val next = rest.dropWhile(_.isWhitespace)
+            next.headOption.filter(n => Pairs.contains(s"$c$n")) match
+              case Some(n) => loop(next.tail, Tok.Punct(s"$c$n") :: acc)
               case None    => loop(rest, Tok.Punct(c.toString) :: acc)
     loop(source.toList, Nil)
 
@@ -235,7 +254,8 @@ object AsciiMath:
     //  the confidently-wrong answer this reader exists to refuse.  A following number is
     //  included (`x 2` would fuse into `x2`); a LEADING number is not, since a digit cannot
     //  continue an identifier and `2x` must stay the `2x` the grammar already reads.
-    case Node.Leaf(t @ Tok.Name(_)) :: (rest @ Node.Leaf(Tok.Name(_) | Tok.Num(_)) :: _) =>
+    case Node.Leaf(t @ Tok.Name(a)) :: (rest @ (next @ Node.Leaf(Tok.Name(_) | Tok.Num(_))) :: _)
+        if !Connectives(a) && !connectiveLeaf(next) =>
       for head <- leaf(t); tail <- render(rest) yield s"$head*$tail"
 
     case Node.Leaf(tok) :: rest =>
@@ -400,7 +420,13 @@ object AsciiMath:
     case Tok.Punct("{") | Tok.Punct("}") =>
       Left("braces are not part of this grammar; a transform is written laplace(f, t, s)")
     case Tok.Punct("->") => Left("'->' is not part of this grammar; a limit is written limit(f, x, a)")
+    // `±` has no single value: read as `+-` it answered `1 ± 2` as `-1` (F_0208).
+    case Tok.Punct("+-") | Tok.Punct("-+") =>
+      Left("'±' has no single value; write each case, and a sign as 3 + (-2)")
+    case Tok.Punct("-:") => Right("/")
+    case Tok.Punct("=>") => Right(" implies ")
     case Tok.Punct(text) => Right(text)
+    case Tok.Name(w) if Connectives(w) => Right(s" $w ")
     case Tok.Name(text)  =>
       Binders.get(text) match
         case Some(spelling) => Left(s"'$text' is not accepted here; write $spelling instead")

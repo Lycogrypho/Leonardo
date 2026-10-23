@@ -50,7 +50,14 @@ val MaxMpcHorizon: Int = Limit.MaxMpcHorizon.default.toInt
 def mpcMatrices(a: _Expression, b: _Expression, c: _Expression, np: Int, nc: Int,
                 env: Environment): Option[(_Expression, _Expression)] =
   def grid(e: _Expression): Option[_Matrix] = cellGrid(e.eval(env), scalars = true)
-  def times(x: _Matrix, y: _Matrix): Option[_Matrix] = cellGrid(MatProduct(x, y).eval(env), scalars = true)
+  // Symbolic cells are not simplified by the product, so each power of `A` refers to every cell
+  // of the last and the trees double per step: a symbolic `A` over a horizon of 40 hung
+  // (F_0183).  A product whose cells pass the depth limit (F_0078) or the derivative path's
+  // measured node budget declines instead.
+  val nodeBudget = env.limits(Limit.MaxDerivativeNodes).toInt
+  def tractable(m: _Matrix): Boolean = m.elems.forall(c => !tooDeep(c) && nodesUpTo(c, nodeBudget) <= nodeBudget)
+  def times(x: _Matrix, y: _Matrix): Option[_Matrix] =
+    cellGrid(MatProduct(x, y).eval(env), scalars = true).filter(tractable)
   def plus(x: _Matrix, y: _Matrix): Option[_Matrix]  = cellGrid(MatSum(x, y).eval(env), scalars = true)
   /** Folds `step` over `1..count`, starting from `first`, stopping at the first failure. */
   def iterate(first: _Matrix, count: Int)(step: _Matrix => Option[_Matrix]): Option[Vector[_Matrix]] =

@@ -272,7 +272,11 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
    *  @return `Some(Right(_MatrixValue))` on success, `None` to stay symbolic
    */
   private def matrixPower(m: _MatrixValue, e: Double): Option[Either[_Expression, _Value]] =
-    if m.rows != m.cols || e.isInfinite || e != math.floor(e) then None
+    /* 2^62: `toLong` and its negation are exact below it. */
+    val MaxMatrixExponent = 4.611686018427387904e18
+    // Past 2^62 `toLong` saturates and `-k` can overflow, so `A^(-1e19)` became the identity
+    // (F_0197); such a power stays symbolic.
+    if m.rows != m.cols || e.isInfinite || e != math.floor(e) || math.abs(e) > MaxMatrixExponent then None
     else
       val k = e.toLong
       if k >= 0 then Some(powInt(m, k).guarded(this))

@@ -83,6 +83,14 @@ private[scalar] def deriveInTier(e: _Expression, v: _Variable, exact: Boolean): 
 private def deriveIn(e: _Expression, v: _Variable)(using t: Tier): _Expression =
   deriveMemo.getOrElseUpdate((e, v.variable, t.exact))(deriveImpl(e, v))
 
+/** The scalar-valued families whose constancy in `v` makes their derivative `0` (F_0204): the
+ *  functions, the step, the sequences and the finite reductions — none over a matrix operand,
+ *  since a function of a matrix distributes over its cells. */
+private def scalarFamily(e: _Expression): Boolean = e match
+  case _: _Function | _: _Heaviside | _: _Sequence | _: _Reduction =>
+    !e.children.exists(c => c.isInstanceOf[_MatrixShaped] || c.isInstanceOf[_MatrixValue])
+  case _ => false
+
 /** Returns the n-th derivative of `e` with respect to `v`.
  *
  *  `n = 0` returns `e` unchanged; `n < 0` is rejected.
@@ -241,4 +249,8 @@ private def deriveImpl(e: _Expression, v: _Variable)(using t: Tier): _Expression
   // valid under continuity, but the engine does not verify that condition, so we
   // stay symbolic to be conservative).
   case _: _Limit                => _Derivative(e, v)
+  // A scalar node with no rule of its own is still a constant when `v` does not occur in it
+  // (F_0204: `derive(Beta(2, 3)*x, x)` kept `derive(Beta(2.0, 3.0), x)`).  Only the scalar
+  // families qualify: a matrix-valued node's derivative is a zero MATRIX, not `0`.
+  case other if scalarFamily(other) && !dependsOn(other, v) => t.n(0)
   case other                    => _Derivative(other, v)

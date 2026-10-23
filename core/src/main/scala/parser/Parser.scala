@@ -1152,11 +1152,11 @@ object Parser extends JavaTokenParsers:
    *  literal followed by a variable.
    */
   lazy val basedLiteral: Parser[_Value] =
-    """0[bB][01]+(?![a-zA-Z0-9])""".r        ^^ { s => based(s.drop(2), 2)  } |
-    """0[oO][0-7]+(?![a-zA-Z0-9])""".r       ^^ { s => based(s.drop(2), 8)  } |
-    """0[xX][0-9a-fA-F]+(?![a-zA-Z0-9])""".r ^^ { s => based(s.drop(2), 16) } |
-    """0[tT][01Tt]+(?![a-zA-Z0-9])""".r      ^^ { s =>
-      _Based.parseBalanced(s.drop(2)).fold[_Value](_Number(Double.NaN))(n =>
+    """0[bB][01]+(?![a-zA-Z0-9_])""".r        ^^ { s => based(s.drop(2), 2)  } |
+    """0[oO][0-7]+(?![a-zA-Z0-9_])""".r       ^^ { s => based(s.drop(2), 8)  } |
+    """0[xX][0-9a-fA-F]+(?![a-zA-Z0-9_])""".r ^^ { s => based(s.drop(2), 16) } |
+    """0[tT][01Tt]+(?![a-zA-Z0-9_])""".r      ^^ { s =>
+      _Based.parseBigBalanced(s.drop(2)).fold[_Value](_Number(Double.NaN))(n =>
         _Based.of(n.toDouble, 3, balanced = true))
     }
 
@@ -1164,7 +1164,9 @@ object Parser extends JavaTokenParsers:
    *  already restricts the digit set for each prefix).
    */
   private def based(digits: String, base: Int): _Value =
-    _Based.parseDigits(digits, base).fold[_Value](_Number(Double.NaN))(n =>
+    // Read without a bound, then held to what a based value can represent exactly (F_0186): the
+    // `Long` reader wrapped `0x10000000000000000` to `0`.
+    _Based.parseBigDigits(digits, base).fold[_Value](_Number(Double.NaN))(n =>
       _Based.of(n.toDouble, base))
   /** An unsigned floating-point literal.
    *
@@ -1189,10 +1191,12 @@ object Parser extends JavaTokenParsers:
    *  truth value (`_Truth.Unknown`); the guard keeps `truex` an ordinary variable.
    */
   lazy val constant: Parser[_Value]     =
-    """pi(?![a-zA-Z0-9])""".r  ^^ { _ => irrational(math.Pi, piAt) } |
-    """e(?![a-zA-Z0-9])""".r   ^^ { _ => irrational(math.E, eAt)   } |
-    """i(?![a-zA-Z0-9])""".r   ^^^ _Complex.of(0, 1)                |
-    """inf(?![a-zA-Z0-9])""".r ^^^ _Number(Double.PositiveInfinity) |
+    // `_` belongs to a name (F_0203): without it in the guard `e_x` read as `e` and a dangling
+    // `_x`, so a name the assignment accepted could never be read back.
+    """pi(?![a-zA-Z0-9_])""".r  ^^ { _ => irrational(math.Pi, piAt) } |
+    """e(?![a-zA-Z0-9_])""".r   ^^ { _ => irrational(math.E, eAt)   } |
+    """i(?![a-zA-Z0-9_])""".r   ^^^ _Complex.of(0, 1)                |
+    """inf(?![a-zA-Z0-9_])""".r ^^^ _Number(Double.PositiveInfinity) |
     """true(?![a-zA-Z0-9_])""".r    ^^^ _Bool(true)                 |
     """false(?![a-zA-Z0-9_])""".r   ^^^ _Bool(false)                |
     """unknown(?![a-zA-Z0-9_])""".r ^^^ _Truth.Unknown
