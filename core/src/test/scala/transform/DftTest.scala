@@ -54,13 +54,16 @@ class DftTest extends AnyFlatSpec:
     assert(Parser.parse("dft([[1, 2, 3, 4, 5]])").get.eval(tight).isLeft)
   }
 
-  it should "transform a sequence at the default length cap within a few seconds, on every platform" in {
+  it should "transform a sequence at the default length cap promptly, on every platform, under load" in {
     val n = Limit.MaxDftLength.default.toInt
     val start = System.nanoTime()
     val out = dft(Vector.tabulate(n)(t => (math.sin(t * 0.01), 0.0)), inverse = false)
     val seconds = (System.nanoTime() - start) / 1e9
     assert(out.size == n)
-    assert(seconds < 5.0, s"took $seconds s")
+    // F_0179: 1.5-1.7 s on Node alone and 0.6-1.3 s on the JVM, but 2.9-7.6 s on Node under the full
+    // `sbt test`, which runs the JVM and Node suites at once; the first bound, 5 s, set from unloaded
+    // timings, failed there twice. 15 s keeps 2x over the worst loaded run (the GroebnerTest rule).
+    assert(seconds < 15.0, s"took $seconds s")
   }
 
   "conv" should "multiply polynomials: (1 + 2x)(3 + x + x^2)" in {
@@ -105,6 +108,7 @@ class DftTest extends AnyFlatSpec:
     val out = convolve(xs, xs, env)
     val seconds = (System.nanoTime() - start) / 1e9
     assert(out.size == 2 * n - 1)
+    // F_0179: 0.2 s on Node alone, at most 0.4 s under the full run; the 5 s bound has the margin.
     assert(seconds < 5.0, s"took $seconds s")
   }
 
