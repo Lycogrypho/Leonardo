@@ -20,7 +20,8 @@ import scala.annotation.tailrec
  *     unknown, recognises linear shapes `A*v = B`, `v*A = B`, `A*v*D = B`,
  *     `A*v + C = B`, and `v = B` via the inverse kernel (dense) or cofactor
  *     expansion (symbolic, capped at 6x6); general Sylvester/Lyapunov shapes via
- *     Kronecker vectorization (capped at a 20x20 unknown).
+ *     Kronecker vectorization (capped at a 20x20 unknown), solved over the rationals when every
+ *     coefficient is exact (F_0178, capped at 36 unknowns).
  *  2. **Scalar v inside a matrix equation** (`solveElementwise`) -- when both sides
  *     reduce to matrices, decomposes per-cell, pools candidates, and keeps those
  *     satisfying the whole equation.
@@ -139,6 +140,7 @@ private def solveMatrixUnknown(eq: _Equation, v: _Variable, env: Environment): O
     (withV, constant) <- sideWith(v, eq)
     b                 <- asMatrixExpr(constant.eval(env))
     solution          <- linearMatrixSolve(withV, b, v, env)
+                           .orElse(exactVectorizedSolve(withV, b, v, env))
                            .orElse(vectorizedMatrixSolve(withV, b, v, env))
   yield solution
 
@@ -339,6 +341,118 @@ private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
         mInv <- m.inverse
         x    <- _MatrixValue.unvec(mInv.multiply(cPrime.vec), rX, cX)
       yield List(_Equation(v, x))
+
+// ── the vectorised tier over exact matrices (F_0178) ──
+//
+// The tier above reads only dense coefficients, so with exact matrices — the symbolic carrier —
+// `solve(A*X + X*B = C, X)` declined and stayed unevaluated.  The same algorithm over the
+// rationals: each term classified as `s·L·X·R` with exact `s`, `L`, `R`, the Kronecker system
+// `Σ s·(Rᵀ ⊗ L)·vec(X) = vec(B - constants)` assembled and solved by Gauss–Jordan, the answer an
+// exact matrix.  No tolerance decides a pivot, so a singular system is a refusal, not a guess.
+// Tried before the dense tier; a mixed exact/`Double` equation is left to it.
+
+private type QMatrix = Vector[Vector[spire.math.Rational]]
+
+private final case class ExactTerm(scale: spire.math.Rational, left: Option[QMatrix], right: Option[QMatrix])
+
+private def qOfRational(r: _Rational): spire.math.Rational = spire.math.Rational(r.num, r.den)
+
+/** An evaluated operand as an exact matrix, or `None`. */
+private def exactMatrixOf(r: Either[_Expression, _Value]): Option[QMatrix] = r match
+  case Left(m: _Matrix) => exactCells(m).map(cells => Vector.tabulate(m.rows, m.cols)((i, j) => qOfRational(cells(i * m.cols + j))))
+  case _                => None
+
+private def qMul(a: QMatrix, b: QMatrix): Option[QMatrix] =
+  Option.when(a.head.size == b.size)(Vector.tabulate(a.size, b.head.size)((i, j) =>
+    a(i).indices.foldLeft(spire.math.Rational.zero)((s, k) => s + a(i)(k) * b(k)(j))))
+
+private def qIdentityMatrix(n: Int): QMatrix =
+  Vector.tabulate(n, n)((i, j) => if i == j then spire.math.Rational.one else spire.math.Rational.zero)
+
+/** `s·L·v·R` with exact coefficients, or `None` — the exact counterpart of [[classifyTerm]]. */
+private def classifyExact(t: _Expression, v: _Variable, env: Environment): Option[ExactTerm] = t match
+  case x if x == v      => Some(ExactTerm(spire.math.Rational.one, None, None))
+  case Product(a, b)    => classifyExactFactor(a, b, v, env)
+  case MatProduct(a, b) => classifyExactFactor(a, b, v, env)
+  case MatScale(k, m)   => classifyExactFactor(k, m, v, env)
+  case _                => None
+
+private def classifyExactFactor(l: _Expression, r: _Expression, v: _Variable, env: Environment): Option[ExactTerm] =
+  (dependsOn(l, v), dependsOn(r, v)) match
+    case (false, true) =>
+      classifyExact(r, v, env).flatMap(inner => l.eval(env) match
+        case Right(k: _Rational) => Some(inner.copy(scale = inner.scale * qOfRational(k)))
+        case other => exactMatrixOf(other).flatMap(a => inner.left match
+          case None     => Some(inner.copy(left = Some(a)))
+          case Some(li) => qMul(a, li).map(m => inner.copy(left = Some(m)))))
+    case (true, false) =>
+      classifyExact(l, v, env).flatMap(inner => r.eval(env) match
+        case Right(k: _Rational) => Some(inner.copy(scale = inner.scale * qOfRational(k)))
+        case other => exactMatrixOf(other).flatMap(d => inner.right match
+          case None     => Some(inner.copy(right = Some(d)))
+          case Some(ri) => qMul(ri, d).map(m => inner.copy(right = Some(m)))))
+    case _ => None
+
+/** The exact vectorised tier: `None` when the equation is not one over exact matrices (the dense
+ *  tier then runs), `Some(Nil)` when it is but has no unique solution. */
+private def exactVectorizedSolve(withV: _Expression, b: _Expression, v: _Variable, env: Environment): Option[List[_Equation]] =
+  val (vTerms, cTerms) = flattenSum(withV).partition(dependsOn(_, v))
+  for
+    bq        <- exactMatrixOf(b.eval(env))
+    constants <- allOpt(cTerms.map(t => exactMatrixOf(t.eval(env))))
+    terms     <- allOpt(vTerms.map(classifyExact(_, v, env)))
+    if terms.nonEmpty
+  yield solveExactVectorized(terms, bq, constants, v, env).getOrElse(Nil)
+
+private def solveExactVectorized(terms: Vector[ExactTerm], b: QMatrix, constants: Vector[QMatrix],
+                                 v: _Variable, env: Environment): Option[List[_Equation]] =
+  val (p, q) = (b.size, b.head.size)
+  if constants.exists(c => c.size != p || c.head.size != q) then None
+  else
+    val rhs = constants.foldLeft(b)((acc, c) => Vector.tabulate(p, q)((i, j) => acc(i)(j) - c(i)(j)))
+    val rX  = terms.collectFirst { case ExactTerm(_, Some(l), _) => l.head.size }.getOrElse(p)
+    val cX  = terms.collectFirst { case ExactTerm(_, _, Some(r)) => r.size }.getOrElse(q)
+    val conforming = terms.forall { t =>
+      t.left.forall(l => l.size == p && l.head.size == rX)  && (t.left.nonEmpty  || rX == p) &&
+      t.right.forall(r => r.size == cX && r.head.size == q) && (t.right.nonEmpty || cX == q)
+    }
+    val n = p * q
+    if !conforming || rX * cX != n || n > env.limits(Limit.MaxExactVectorizedSize) then None
+    else
+      // vec is column-major: entry (i, j) of a p×q matrix is component j·p + i, and
+      // vec(L·X·R) = (Rᵀ ⊗ L)·vec(X), whose ((j·p + i), (l·rX + k)) entry is R(l, j)·L(i, k).
+      val m = Array.fill(n, n)(spire.math.Rational.zero)
+      for t <- terms do
+        val lm = t.left.getOrElse(qIdentityMatrix(p))
+        val rm = t.right.getOrElse(qIdentityMatrix(q))
+        for j <- 0 until q; i <- 0 until p; l <- 0 until cX; k <- 0 until rX do
+          m(j * p + i)(l * rX + k) = m(j * p + i)(l * rX + k) + t.scale * rm(l)(j) * lm(i)(k)
+      val c = Array.tabulate(n)(idx => rhs(idx % p)(idx / p))
+      exactGaussJordan(m, c).map { x =>
+        val cells = Vector.tabulate(rX * cX)(idx => x((idx % cX) * rX + idx / cX))   // row-major from vec
+        List(_Equation(v, _Matrix(rX, cX, cells.map(z =>
+          _Rational.of(z.numerator.toBigInt, z.denominator.toBigInt).getOrElse(_Rational(0)): _Expression))))
+      }
+
+/** The unique solution of `m·x = c` over the rationals, or `None` when `m` is singular. */
+private def exactGaussJordan(m: Array[Array[spire.math.Rational]], c: Array[spire.math.Rational]): Option[Vector[spire.math.Rational]] =
+  val n = c.length
+  var ok = true
+  var col = 0
+  while ok && col < n do
+    (col until n).find(r => !m(r)(col).isZero) match
+      case None => ok = false
+      case Some(p) =>
+        val (tr, tc) = (m(col), c(col)); m(col) = m(p); c(col) = c(p); m(p) = tr; c(p) = tc
+        val inv = spire.math.Rational.one / m(col)(col)
+        for k <- 0 until n do m(col)(k) = m(col)(k) * inv
+        c(col) = c(col) * inv
+        for r <- 0 until n if r != col && !m(r)(col).isZero do
+          val f = m(r)(col)
+          for k <- 0 until n do m(r)(k) = m(r)(k) - f * m(col)(k)
+          c(r) = c(r) - f * c(col)
+        col += 1
+  Option.when(ok)(c.toVector)
 
 /** Multiplies two conforming matrices; `None` when dimensions do not match. */
 private def matMul(p: _MatrixValue, q: _MatrixValue): Option[_MatrixValue] =

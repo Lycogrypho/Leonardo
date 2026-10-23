@@ -149,6 +149,11 @@ enum Limit(val default: Long):
    *  with entries up to ±9 and several blocks: Node 67 ms at 16, 0.74 s at 20, 2.45 s at 24 and
    *  17.8 s at 32; the JVM 0.67 s at 20 and 4.4 s at 32. */
   case MaxJordanOrder extends Limit(20)
+  /** The vectorised dimension `p·q` of a linear matrix equation `solve` reduces over the rationals
+   *  (F_0178): Gauss–Jordan on the Kronecker system fills in large fractions.  Measured on dense
+   *  integer `k×k` Sylvester equations: at 36 (`k = 6`) 0.62 s on the JVM and 1.0 s on Node, at 64
+   *  2.0 s and 7.0 s, at 100 10.5 s and 55.6 s.  Past it an exact equation stays unevaluated. */
+  case MaxExactVectorizedSize extends Limit(36)
 
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
