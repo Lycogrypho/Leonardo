@@ -155,6 +155,14 @@ enum Limit(val default: Long):
    *  2.0 s and 7.0 s, at 100 10.5 s and 55.6 s.  Past it an exact equation stays unevaluated. */
   case MaxExactVectorizedSize extends Limit(36)
 
+  // ── optimize, continued (F_0216) ──
+
+  /** Variables of a `minimize` (F_0216), the `nlp` cap: BFGS keeps an `n×n` matrix and every
+   *  iteration evaluates `n` gradient trees, Newton `n²` Hessian cells.  Measured on
+   *  `Σ(xᵢ − cᵢ)² + ¼Σxᵢxᵢ₊₁` from 0 (13–44 iterations), JVM / Node: at 100, `pbfgs` 82 / 329 ms,
+   *  `gd` 52 / 305 ms, `newton` 0.32 / 1.7 s; at 200, `pbfgs` 0.34 / 1.4 s; at 400, 2.5 / 8.9 s. */
+  case MaxMinimizeVariables extends Limit(100)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

@@ -233,3 +233,17 @@ class SymmetricTernaryTest extends AnyFlatSpec:
     val plainRows = kleeneTable(Not(a), List(a), plain).map(_._2)
     assert(symRows == plainRows, "the encoding must not change the values, only their spelling")
   }
+
+  // --- membership positions read a bare number as a degree (F_0218, Decision 1) ---
+
+  "a hedge" should "read a bare 0 as the degree 0, not as unknown, under the encoding" in
+  {
+    // very(0) was 0.25: the digit reading made the 0 `unknown`.
+    assert(evalIn(parse("very(0)"), sym) == Right(F))
+    assert(evalIn(parse("somewhat(0.25)"), sym) == Right(_Truth.of(0.5)))
+    assert(evalIn(parse("very(1)"), sym) == Right(T))
+    // -1 is no degree, so the digit reading still applies there: false
+    assert(evalIn(parse("very(-1)"), sym) == Right(F))
+    // and the connectives are unchanged: the digit 0 is still unknown there
+    assert(evalIn(parse("0 and 1"), sym) == Right(U))
+  }

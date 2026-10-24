@@ -19,6 +19,13 @@ import java.nio.file.{Path, Paths}
  *
  *  The file is read as text, comments removed (they quote productions in prose), so the guard
  *  needs no dependency on the library.
+ *
+ *  **Generated productions are read too** (F_0215): `StructureKind.values.toList.map { k =>
+ *  (k.word + "(") … }` builds four productions from an enum's case literals, which no `"word("`
+ *  literal names.  The guard finds the enum beside the parser (`enum Kind(val word: String)`) and
+ *  reads its `extends Kind("…")` words.  **It fails closed**: a production built with `+ "("` in
+ *  any other shape, or from an enum whose words it cannot read, is itself an offence, since a
+ *  shape the guard does not know would otherwise be checked by nothing.
  */
 object CheckReservedWords:
 
@@ -29,6 +36,29 @@ object CheckReservedWords:
 
   private val Production = """"([A-Za-z][A-Za-z0-9_]*)\("""".r
   private val Literal    = """"([^"\\]*)"""".r
+  /** `Kind.values.toList.map { k => (k.word + "(")`, capturing the enum and its word field. */
+  private val Generated  = """([A-Z][A-Za-z0-9_]*)\.values\.toList\.map\s*\{\s*(\w+)\s*=>\s*\(\s*\2\.(\w+)\s*\+\s*"\("""".r
+  /** Any production built by concatenating `"("`, generated or not. */
+  private val Built      = """\+\s*"\("""".r
+
+  /** The words a grammar parses as calls, and the generated productions whose words could not be
+   *  read (each a finding). */
+  private final case class Words(words: Vector[String], unreadable: Vector[String])
+
+  /** Where the enums behind generated productions are looked for: the source root above the
+   *  `parser` directory, or the file's own directory for a file elsewhere. */
+  private def sourcesFor(file: Path): Path =
+    val dir = file.toAbsolutePath.getParent
+    if dir.getFileName.toString == "parser" then dir.getParent else dir
+
+  /** The case words of `enum <name>(val <field>: String)` under `sources`, or `None`. */
+  private def enumWords(name: String, field: String, sources: Path): Option[Vector[String]] =
+    val Case = ("""extends\s+""" + name + """\(\s*"([^"]*)"\s*\)""").r
+    Files.walk(sources, Set(".scala")).iterator
+      .map(f => withoutComments(Files.read(f)))
+      .find(_.matches("""(?s).*enum\s+""" + name + """\s*\(\s*val\s+""" + field + """\s*:\s*String\s*\).*"""))
+      .map(text => Case.findAllMatchIn(text).map(_.group(1)).toVector)
+      .filter(_.nonEmpty)
 
   /** `text` with `//` and `/* */` comments blanked, string literals kept intact. */
   private def withoutComments(text: String): String =
@@ -78,18 +108,27 @@ object CheckReservedWords:
       case None => Vector(s"$file: no `val ReservedWords` block found")
       case Some((block, grammar)) =>
         val reserved = Literal.findAllMatchIn(block).map(_.group(1)).toSet
-        words(grammar).filterNot(w => reserved.contains(w) || Released.contains(w))
-          .map(w => s"$file: \"$w(\" is a production, but `$w` is not in ReservedWords")
+        val found    = words(grammar, sourcesFor(file))
+        found.unreadable.map(u => s"$file: $u") ++
+          found.words.filterNot(w => reserved.contains(w) || Released.contains(w))
+            .map(w => s"$file: \"$w(\" is a production, but `$w` is not in ReservedWords")
 
   /** The distinct words the grammar of `file` parses as calls, outside the reserved block — what
    *  the check compares, exposed so a test can see it is not comparing nothing.
    *  @param file the parser source
    *  @return the words, sorted */
   def productions(file: Path): Vector[String] =
-    split(withoutComments(Files.read(file))).fold(Vector.empty)((_, grammar) => words(grammar))
+    split(withoutComments(Files.read(file))).fold(Vector.empty)((_, grammar) => words(grammar, sourcesFor(file)).words)
 
-  private def words(grammar: String): Vector[String] =
-    Production.findAllMatchIn(grammar).map(_.group(1)).toVector.distinct.sorted
+  private def words(grammar: String, sources: Path): Words =
+    val literal   = Production.findAllMatchIn(grammar).map(_.group(1)).toVector
+    val generated = Generated.findAllMatchIn(grammar).map(m => (m.group(1), m.group(3))).toVector
+    val read      = generated.map((name, field) => name -> enumWords(name, field, sources))
+    val unreadable =
+      read.collect { case (name, None) => s"cannot read the words of `$name`, which builds productions" } ++
+        Option.when(Built.findAllMatchIn(grammar).size > generated.size)(
+          "cannot read the word of a production built with `+ \"(\"` outside the `Kind.values` shape")
+    Words((literal ++ read.flatMap(_._2.getOrElse(Vector.empty))).distinct.sorted, unreadable)
 
   /** The check, as an exit code, over the given file or the parser.
    *

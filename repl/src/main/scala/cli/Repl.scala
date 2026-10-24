@@ -584,9 +584,7 @@ final class Session:
           if core.tooDeep(substitute(result.get, definitions)) then
             Left(s"evaluation error: the expression is deeper than ${core.MaxExpressionDepth} levels " +
                  "once its definitions are substituted")
-          else
-            try f(result.get)
-            catch case NonFatal(e) => Left(s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}")
+          else guarded(f(result.get))
         else
           val base = s"parse error: ${result.toString.linesIterator.next()}"
           // "g(x)"-style call syntax on a defined name is a common spelling of
@@ -595,6 +593,20 @@ final class Session:
             case Some(n) => Left(s"$base\nnote: function-call syntax '$n(...)' is not supported; use the bare name '$n'")
             case None    => Left(base)
     )
+
+  /** Runs `body`, turning a non-fatal exception into the evaluation-error message.
+   *
+   *  The one definition of which throwables a command survives: [[parsed]] runs its step through
+   *  it, and so do the sweep commands (F_0216), whose sampling runs AFTER `parsed` has returned
+   *  the arguments and was outside its guard — an exception there ended the read loop or the
+   *  page.  Fatal errors propagate, as in [[withParsed]].
+   *
+   *  @tparam A what the step produces
+   *  @param body the step
+   *  @return its result, or the message */
+  private def guarded[A](body: => Either[String, A]): Either[String, A] =
+    try body
+    catch case NonFatal(e) => Left(s"evaluation error: ${Option(e.getMessage).getOrElse(e.getClass.getSimpleName)}")
 
   /** Formats an eval result for display, applying session precision. */
   private def formatResult(result: Either[_Expression, _Value]): String =
@@ -1044,14 +1056,17 @@ final class Session:
       case _ => None
     text.fold("")(n => s"\n  note: $n")
 
-  /** The second-order test at each numeric stationary point, as one line of prose. */
+  /** The second-order test at each numeric stationary point, as one line of prose.
+   *
+   *  An extremum is called **local**, since the test reads only the point (F_0229): `(1, 1)` is a
+   *  local minimum of `2x³ − 6xy + 3y²`, a function unbounded below. */
   private def classification(s: _Stationary, points: _Matrix): Option[String] =
     val names = s.vars.map(_.variable).mkString("(", ", ", ")")
     val parts = numericPoints(points).map { p =>
       val at = s.vars.map(v => formatExpression(_Number(p(v.variable)), false)).mkString("(", ", ", ")")
       val what = classifyStationary(s.f, s.vars, p, env) match
-        case Some(StationaryKind.Minimum)    => "a minimum"
-        case Some(StationaryKind.Maximum)    => "a maximum"
+        case Some(StationaryKind.Minimum)    => "a local minimum"
+        case Some(StationaryKind.Maximum)    => "a local maximum"
         case Some(StationaryKind.Saddle)     => "a saddle point"
         case Some(StationaryKind.Degenerate) => "not decided by the second-order test (singular Hessian)"
         case None                            => "not classified"
@@ -1454,12 +1469,12 @@ final class Session:
    *  @return the sampling, or the message explaining why nothing could be sampled
    */
   def samplePoints(rest: String): Either[String, Session.Samples] =
-    sweepArgs(rest, "samples").flatMap { a =>
+    sweepArgs(rest, "samples").flatMap { a => guarded {
       val v      = _Variable(a.variable)
       val points = sample(a.resolved, v, a.lo, a.hi, a.n, env)
       if points.sizeIs < a.n && wholeIndexedIn(a.resolved, v) then Left(wholeGridAdvice(a))
       else Right(Session.Samples(a.expr, a.variable, points))
-    }
+    }}
 
   /** Refuses a continuous grid over an expression that has values only at whole numbers,
    *  naming the grid that would work (issue F_0044 step 2).
@@ -1500,10 +1515,10 @@ final class Session:
    *  @return `(omega, dB, degrees)` triples, or the message explaining why there are none
    */
   def bodePoints(rest: String): Either[String, Session.Sweep] =
-    sweepArgs(rest, "bode").map { a =>
+    sweepArgs(rest, "bode").flatMap { a => guarded(Right(
       Session.Sweep(a.expr, a.variable,
                     control.frequencyResponse(a.resolved, _Variable(a.variable),
-                                              a.lo, a.hi, a.n, env))
+                                              a.lo, a.hi, a.n, env))))
     }
 
   /** The Nyquist sweep — [[bodePoints]]'s grid, in rectangular coordinates (issue F_0004).
@@ -1516,10 +1531,10 @@ final class Session:
    *  @return `(real, imaginary)` pairs, or the message explaining why there are none
    */
   def nyquistPoints(rest: String): Either[String, Session.Samples] =
-    sweepArgs(rest, "nyquist").map { a =>
+    sweepArgs(rest, "nyquist").flatMap { a => guarded(Right(
       Session.Samples(a.expr, a.variable,
                       control.nyquistSweep(a.resolved, _Variable(a.variable),
-                                           a.lo, a.hi, a.n, env))
+                                           a.lo, a.hi, a.n, env))))
     }
 
   /** The root locus behind the browser's `rlocus` command (F_0140): `samples`' argument syntax
@@ -1533,7 +1548,7 @@ final class Session:
     sweepArgs(rest, "rlocus").flatMap { a =>
       // A locus needs two gains (F_0150): every refusal used to be reported as an improper plant.
       if a.n < 2 then Left(s"rlocus: <n> must be at least 2, got: ${a.n}")
-      else
+      else guarded:
         control.rootLocusSweep(a.resolved, _Variable(a.variable), a.lo, a.hi, a.n, env)
           .map((bs, ps, zs) => Session.Locus(a.expr, a.variable, bs, ps, zs))
           .toRight(s"rlocus: ${a.expr} is not a proper rational function of ${a.variable} with numeric coefficients, or no gain in the band gave a full set of closed-loop poles")
@@ -1641,6 +1656,9 @@ final class Session:
         // throw a NumberFormatException and — this path runs outside withParsed — crash the
         // REPL loop.
         (loStr.toDoubleOption, hiStr.toDoubleOption) match
+          // `1e400` reads as Infinity, and a grid with an infinite end has no finite point (F_0216).
+          case (Some(lo), Some(hi)) if !lo.isFinite || !hi.isFinite =>
+            Left(s"$command: <lo> and <hi> must be finite numbers")
           case (Some(lo), Some(hi)) if lo >= hi =>
             Left(s"$command: lo must be strictly less than hi")
           case (Some(lo), Some(hi)) =>

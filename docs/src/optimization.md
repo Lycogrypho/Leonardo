@@ -91,7 +91,9 @@ run("stationary(x + y, x, y)")
 ### Classifying a point
 
 The [second-order test](https://en.wikipedia.org/wiki/Second_partial_derivative_test) reads the
-signs of the Hessian's eigenvalues at the point:
+signs of the Hessian's eigenvalues at the point, so what it finds is a **local** minimum or
+maximum: `2x³ − 6xy + 3y²` has a local minimum at `(1, 1)` and no minimum at all, being
+unbounded below.
 
 ```scala mdoc:silent
 val f = e("x^3 - 3*x + y^2")

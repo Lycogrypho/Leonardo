@@ -38,7 +38,11 @@ private[cli] object SessionIO:
    */
   private def storage: Option[js.Dynamic] =
     if js.typeOf(global.localStorage) == "undefined" then None
-    else Option(global.localStorage).filterNot(s => js.isUndefined(s) || s == null)
+    else present(global.localStorage)
+
+  /** A platform value, absent when it is JavaScript `null` (which `Option` maps to `None`) or
+   *  `undefined` (which it does not) — so no `null` comparison appears here (F_0214). */
+  private def present(v: js.Dynamic): Option[js.Dynamic] = Option(v).filterNot(js.isUndefined)
 
   /** Reads a saved session.
    *  @param name the session name
@@ -48,9 +52,9 @@ private[cli] object SessionIO:
     storage match
       case None => Left("browser storage is not available here")
       case Some(s) =>
-        val v = s.getItem(Prefix + name)
-        if js.isUndefined(v) || v == null then Left(s"no saved session named '$name'")
-        else Right(v.asInstanceOf[String])
+        present(s.getItem(Prefix + name))
+          .map(_.asInstanceOf[String])
+          .toRight(s"no saved session named '$name'")
 
   /** Whether a session of that name is already saved, so `:save` can say it replaced one
    *  (F_0151: `setItem` overwrites silently).
@@ -58,10 +62,7 @@ private[cli] object SessionIO:
    *  @return whether the key is there
    */
   def exists(name: String): Boolean =
-    storage.exists { s =>
-      val v = s.getItem(Prefix + name)
-      !(js.isUndefined(v) || v == null)
-    }
+    storage.exists(s => present(s.getItem(Prefix + name)).isDefined)
 
   /** Writes a session script.
    *  @param name the session name

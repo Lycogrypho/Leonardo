@@ -75,20 +75,34 @@ object CheckDocLinks:
         val relative = pathPart(target)
         if relative.isEmpty then None
         else
-          val resolved = file.toAbsolutePath.getParent.resolve(relative).normalize
+          // The base is the real path, so a case difference can only come from the link itself.
+          val resolved = file.toAbsolutePath.getParent.toRealPath().resolve(relative).normalize
           if !JFiles.exists(resolved) then
             Some(s"$file:$line: broken link '$target'")
           else
             // Exists is not enough: Windows and macOS match case-insensitively where the Linux
             // runner that publishes the site does not.
-            val real = resolved.toRealPath()
-            val asked = resolved.getFileName.toString
-            if real.getFileName.toString != asked then
-              Some(s"$file:$line: wrong case '$target' — on disk it is '${real.getFileName}'")
-            else None
+            caseMismatch(resolved, resolved.toRealPath())
+              .map((asked, real) => s"$file:$line: wrong case '$target' — '$asked' is '$real' on disk")
       }
     }
     (found, files.size)
+
+  /** The first path component written in a different case from the one on disk.
+   *
+   *  **Every component, not only the file name** (F_0215): comparing the last one passed
+   *  `../Lessons/l1.md` for `lessons/`, which 404s on Pages.  When a symbolic link makes the
+   *  two paths differ in length, only the file names can be compared.
+   *
+   *  @param asked the path the link resolves to
+   *  @param real  the same file's real path
+   *  @return the component as written and as it is on disk, or `None` when they agree
+   */
+  private def caseMismatch(asked: Path, real: Path): Option[(String, String)] =
+    def names(p: Path) = (0 until p.getNameCount).map(p.getName(_).toString)
+    val (a, r) = if names(asked).size == names(real).size then (names(asked), names(real))
+                 else (Vector(asked.getFileName.toString), Vector(real.getFileName.toString))
+    a.lazyZip(r).find((x, y) => x != y)
 
   /** The check, as an exit code, over the given directories or `docs/src`.
    *

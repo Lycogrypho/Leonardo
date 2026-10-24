@@ -89,6 +89,12 @@ case class MinimizeResult(x: Vector[Double], value: Double, iterations: Int, gra
  */
 val MaxMinimizeIterations: Int = Limit.MaxMinimizeIterations.default.toInt
 
+/** The largest number of variables accepted, checked before any work (F_0216): the default of
+ *  [[core.Limit.MaxMinimizeVariables]], whose Scaladoc holds the measurement.  At the prompt the
+ *  expression-depth limit stops a sum of more than about 200 terms first; this cap binds library
+ *  callers, and a column of names, which carries no depth. */
+val MaxMinimizeVariables: Int = Limit.MaxMinimizeVariables.default.toInt
+
 
 /** Minimises `f` over `vars` from `x0`, optionally inside the box `lb ≤ x ≤ ub`
  *  (F_0010 slice 5).
@@ -116,6 +122,8 @@ def minimize(f: _Expression, vars: Vector[_Variable], x0: Vector[Double],
   val n = vars.size
   val invalid: Option[String] =
     if !distinctVariables(vars) then Some("the variables must be distinct names")
+    else if n > env.limits.count(Limit.MaxMinimizeVariables) then
+      Some(s"at most ${env.limits.count(Limit.MaxMinimizeVariables)} variables are accepted, not $n")
     else if x0.size != n then Some(s"the starting point has ${x0.size} entries for $n variables")
     else if x0.exists(d => !d.isFinite) then Some("the starting point must be finite")
     else bounds.flatMap { (lo, hi) =>
@@ -253,6 +261,19 @@ private def atCap(p: Problem, s: Double, x: Vector[Double], fx: Double,
   if s <= p.tolerance then Right(MinimizeResult(x, fx, p.maxIterations, normInf(g)))
   else Left(MinimizeFailure.MaxIterations(p.maxIterations, normInf(g)))
 
+/** A failed line search, where the certificate still decides (F_0234), as it does at the cap.
+ *
+ *  Near the minimiser the decrease a line search demands, `c₁·α·gᵀd`, falls below the rounding of
+ *  `f`, so no step passes it, and that can happen before `stationarity` reaches the tight
+ *  [[Target]] though long after the precision's certificate: `bfgs` declined a 50-variable convex
+ *  quadratic that way.  A point the certificate passes is answered; any other failure, and an
+ *  unbounded direction always, stands. */
+private def searchFailed(p: Problem, fail: MinimizeFailure, s: Double, x: Vector[Double], fx: Double,
+                         g: Vector[Double], k: Int, interior: Boolean = true): Either[MinimizeFailure, MinimizeResult] =
+  fail match
+    case MinimizeFailure.LineSearchFailed(_) if s <= p.tolerance => certify(p, s, x, fx, g, k, interior)
+    case other                                                 => Left(other)
+
 /** Whether the step made no measurable progress, in the point and in the value. */
 private def stagnant(x: Vector[Double], xn: Vector[Double], fx: Double, fn: Double): Boolean =
   normInf(x.lazyZip(xn).map(_ - _)) <= 1e-15 * math.max(1.0, normInf(x)) &&
@@ -275,7 +296,7 @@ private def newton(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Mini
             case Some(step) =>
               val d = step.map(-_)
               armijo(p, x, fx, g, d, x => x) match
-                case Left(fail)      => Left(fail(k))
+                case Left(fail)      => searchFailed(p, fail(k), s, x, fx, g, k)
                 case Right((xn, fn)) =>
                   if !stagnant(x, xn, fx, fn) then loop(xn, fn, k + 1)
                   else p.grad(xn) match
@@ -301,7 +322,7 @@ private def bfgs(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Minimi
       // A direction that does not descend means the approximation has gone bad: restart it.
       val (d, hk) = if dot(d0, g) < 0 then (d0, h) else (g.map(-_), identity)
       wolfe(p, x, fx, g, d) match
-        case Left(fail) => Left(fail(k))
+        case Left(fail) => searchFailed(p, fail(k), st, x, fx, g, k)
         case Right((alpha, xn, fn, gnew)) =>
           if stagnant(x, xn, fx, fn) then certify(p, stationarity(gnew, xn, x0, f0, fn), xn, fn, gnew, k + 1)
           else
@@ -371,7 +392,7 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
       val (d, hk) =
         if dot(raw, freeG) < 0 then (raw, h) else (freeG.map(-_), identity)
       armijo(p, x, fx, g, d, clamp) match
-        case Left(fail) => Left(fail(k))
+        case Left(fail) => searchFailed(p, fail(k), st, x, fx, pg, k, interior(x))
         case Right((xn, fn)) =>
           p.grad(xn) match
             case None => Left(MinimizeFailure.NotEvaluable)

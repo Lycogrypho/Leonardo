@@ -66,14 +66,19 @@ private[logic] def isCrisp(e: _Expression, symmetric: Boolean = false): Boolean 
  *  is unambiguous in a way `0.5 and x` is not.  The connectives keep using the strict
  *  [[asTruth]].
  *
+ *  **The degree reading comes first** (F_0218, the owner's Decision 1): under the symmetric
+ *  encoding `asTruth` reads the digit `0` as `unknown`, so trying it first made `very(0)` `0.25`
+ *  and a custom curve's zeros `0.5` inside `defuzz`.  Only a number that is no degree — the
+ *  digit `-1` — falls through to the digit reading.
+ *
  *  @param v         the concrete value to read
  *  @param symmetric whether the symmetric ternary digits are in scope
  *  @return the degree in `[0, 1]`, or `None` when `v` is not a degree
  */
 private[logic] def asDegree(v: _Value, symmetric: Boolean = false): Option[Double] =
-  asTruth(v, symmetric).orElse(v match
+  v match
     case _Number(d) if d >= 0.0 && d <= 1.0 => Some(d)
-    case _                                  => None)
+    case _                                  => asTruth(v, symmetric)
 
 
 /** Conjunction kernel (t-norm) for `semantics`.

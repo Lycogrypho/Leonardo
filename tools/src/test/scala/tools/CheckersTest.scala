@@ -95,6 +95,15 @@ class CheckersTest extends AnyFlatSpec:
     assert(found.size == 1, s"expected only the link after the fence: $found")
   }
 
+  it should "flag a wrongly cased directory, not only a wrongly cased file name (F_0215)" in
+  {
+    // `Lessons/` for `lessons/`: Windows and macOS resolve it, the Linux runner 404s.  On a
+    // case-sensitive filesystem the link is broken outright, so it is flagged either way.
+    val dir = fixture("lessons/l1.md" -> "# l1\n", "page.md" -> "[lesson](Lessons/l1.md)\n")
+    val (found, _) = CheckDocLinks.offences(List(dir))
+    assert(found.size == 1, s"expected the directory's case flagged: $found")
+  }
+
   it should "strip a fragment before resolving" in
   {
     val dir = fixture("target.md" -> "# target\n", "page.md" -> "[deep](target.md#a-heading)\n")
@@ -313,9 +322,32 @@ class CheckersTest extends AnyFlatSpec:
     assert(CheckReservedWords.offences(parserFile("\"sin\", \"cos\" // a comment, \"x\"", grammar)).isEmpty)
   }
 
+  it should "read the words of a production generated from an enum (F_0215)" in
+  {
+    // The StructureKind shape: `Kind.values.toList.map { k => (k.word + "(") ~> … }`.
+    val dir = fixture(
+      "parser/Parser.scala" ->
+        ("object Parser:\n  val ReservedWords: Set[String] = Set(\n    \"sin\", \"alpha\"\n  )\n" +
+         "  val f = \"sin(\" | Kind.values.toList.map { k =>\n    (k.word + \"(\") ~> x\n  }\n"),
+      "control/Kind.scala" ->
+        ("enum Kind(val word: String):\n  case A extends Kind(\"alpha\")\n  case B extends Kind(\"beta\")\n"))
+    val found = CheckReservedWords.offences(dir.resolve("parser").resolve("Parser.scala"))
+    assert(found.size == 1 && found.head.contains("beta"), found)
+  }
+
+  it should "refuse a generated production whose words it cannot read" in
+  {
+    // Failing closed: a shape the guard does not know would otherwise be checked by nothing.
+    val dir = fixture("parser/Parser.scala" ->
+      "object Parser:\n  val ReservedWords: Set[String] = Set(\n    \"sin\"\n  )\n  val f = (name + \"(\") ~> x\n")
+    val found = CheckReservedWords.offences(dir.resolve("parser").resolve("Parser.scala"))
+    assert(found.size == 1 && found.head.contains("cannot read"), found)
+  }
+
   it should "see the real grammar's productions, so its silence is not vacuous" in
   {
     val words = CheckReservedWords.productions(Paths.get("core", "src", "main", "scala", "parser", "Parser.scala"))
     assert(words.size > 150 && words.contains("fourierCausal") && words.contains("sin"), words.size)
+    assert(words.contains("ctrb") && words.contains("observable"), "the StructureKind words are read")
     assert(CheckReservedWords.offences(Paths.get("core", "src", "main", "scala", "parser", "Parser.scala")).isEmpty)
   }

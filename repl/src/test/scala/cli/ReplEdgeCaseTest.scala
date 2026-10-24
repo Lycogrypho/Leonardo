@@ -71,3 +71,10 @@ class ReplEdgeCaseTest extends AnyFlatSpec:
     val s = new Session()
     assert(s.execute("minimize(x^4 - 2*x^2, [[x]], 0, bfgs)").contains("maximum or a saddle"))
   }
+
+  "a sweep" should "refuse a bound that reads as infinite (F_0216)" in {
+    // `1e400` passes toDoubleOption as Infinity, and the grid then had no finite point.
+    val s = new Session()
+    assert(s.execute("samples x x 0 1e400") == "samples: <lo> and <hi> must be finite numbers")
+    assert(s.bodePoints("1/(s+1) s -1e400 10") == Left("bode: <lo> and <hi> must be finite numbers"))
+  }

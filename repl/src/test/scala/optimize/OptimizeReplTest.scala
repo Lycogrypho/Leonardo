@@ -19,9 +19,17 @@ class OptimizeReplTest extends AnyFlatSpec:
     val lines = out.split("\n").toList
     assert(lines.head == "[[x = -1.0, y = 0.0], [x = 1.0, y = 0.0]]", out)
     assert(lines.exists(l => l.contains("note:") && l.contains("(x, y) = (-1.0, 0.0) is a saddle point") &&
-                             l.contains("(x, y) = (1.0, 0.0) is a minimum")), out)
+                             l.contains("(x, y) = (1.0, 0.0) is a local minimum")), out)
     // the note is prose the formula does not carry, so no LaTeX is offered (F_0020)
     assert(s.lastLatex.isEmpty)
+  }
+
+  it should "call an extremum local, since the test is (F_0229)" in
+  {
+    // Unbounded below, so (1, 1) is no minimum of f; the second-order test reads only the point.
+    val out = session.execute("stationary(2*x^3 - 6*x*y + 3*y^2, x, y)")
+    assert(out.contains("(x, y) = (1.0, 1.0) is a local minimum"), out)
+    assert(session.execute("stationary(-(x^2), x)").contains("is a local maximum"))
   }
 
   it should "say when the second-order test cannot decide" in

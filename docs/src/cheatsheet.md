@@ -313,7 +313,7 @@ An answer that cannot be proved complete is not given: the call stays as written
 ```
 stationary(f, x, y)                  every point where grad f = 0, one row per point;
                                      false when provably none; the REPL classifies
-                                     each as minimum / maximum / saddle point;
+                                     each as local minimum / local maximum / saddle;
                                      a coupled polynomial gradient goes through an exact
                                      lexicographic Groebner basis (capped; past it, declined)
 convex(f, x, y)                      true (proved from every PRINCIPAL minor of the
