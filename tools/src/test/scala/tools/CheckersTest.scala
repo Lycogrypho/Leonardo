@@ -144,6 +144,25 @@ class CheckersTest extends AnyFlatSpec:
     assert(found.isEmpty, s"unpinned: $found")
   }
 
+  it should "hold a Jekyll remote_theme to a SHA too (F_0217)" in
+  {
+    // The theme's scripts are published on the site's origin, beside /app: an unpinned theme
+    // lets its owner change what runs there, the hole 2.10 closed for the workflows.
+    val dir = fixture(
+      "bare/_config.yml"   -> "remote_theme: just-the-docs/just-the-docs\n",
+      "tagged/_config.yml" -> "remote_theme: \"just-the-docs/just-the-docs@v0.12.0\"\n",
+      "pinned/_config.yml" -> "remote_theme: just-the-docs/just-the-docs@2ed4c0af735e95af5c0dcf7a605b07d903005b4e # v0.12.0\n")
+    val (found, _) = CheckActionPins.offences(List(dir))
+    assert(found.size == 2 && found.forall(_.contains("remote_theme")), found)
+  }
+
+  it should "agree with the site configuration this repository ships" in
+  {
+    val (found, _) = CheckActionPins.offences(CheckActionPins.DefaultRoots)
+    assert(CheckActionPins.DefaultRoots.contains(Paths.get("docs", "_config.yml")))
+    assert(found.isEmpty, s"unpinned: $found")
+  }
+
   // --- the page's Content-Security-Policy (F_0112) -------------------------------------
 
   /** `leonardoStart();`'s SHA-256, computed outside the guard (and the hash Firefox accepted

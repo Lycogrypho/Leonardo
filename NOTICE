@@ -214,3 +214,44 @@ BSD 2-Clause licence, reproduced as its terms require:
   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
   POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+
+FETCHED AT BUILD TIME AND PUBLISHED: Just the Docs v0.12.0 (docs/_config.yml)
+
+The documentation site's theme. It is not in this repository: jekyll-remote-theme
+downloads it during the Pages build, and its layouts, styles and scripts are then
+published on the site's origin, beside the browser REPL at /app.
+
+PINNED TO A COMMIT (F_0217), because its scripts run on that origin: unpinned, it
+was fetched from the theme's default branch on every build. A remote theme is
+invisible to Dependabot and Scala Steward, so a bump is by hand: resolve the
+release tag with `git ls-remote --tags`, check the release's gemspec for a runtime
+dependency docs/Gemfile lacks, and update both lines. `sbt checks` refuses an
+unpinned theme.
+
+  Commit:  2ed4c0af735e95af5c0dcf7a605b07d903005b4e (tag v0.12.0, checked 2026-10-24;
+           runtime dependencies jekyll, jekyll-seo-tag, jekyll-include-cache, rake)
+  Source:  https://github.com/just-the-docs/just-the-docs
+
+MIT licence, reproduced as its terms require:
+
+  Copyright (c) 2016 Patrick Marsceill
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.

@@ -2227,7 +2227,8 @@ MaxKKTInequalities = 10 (measured)</data>
 pbfgs = PROJECTED BFGS, not L-BFGS-B (R_0069)
 answer only if stationarity = sum|g_i||x_i - x0_i| / (f(x0) - f(x))
 passes 0.5*10^-precision (scale-free, F_0095); else Left(MinimizeFailure)
-MaxMinimizeIterations = 2000 (measured)</data>
+-- also after a line search fails at the noise floor (F_0234)
+MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</data>
     </node>
     <node id="n204">
         <data key="n_label">QP</data>
@@ -2722,8 +2723,10 @@ may look like is a losing game</data>
         <data key="n_kind">class</data>
         <data key="n_stereotype">object</data>
         <data key="n_url">developer.html</data>
-        <data key="n_members">+ offences(roots): (Vector, Int)
-every `uses:` must name a commit SHA</data>
+        <data key="n_members">+ DefaultRoots: Vector
++ offences(roots): (Vector, Int)
+every `uses:` must name a commit SHA,
+and so must docs/_config.yml's remote_theme (F_0217)</data>
     </node>
     <node id="n253">
         <data key="n_label">CheckScalaVersion</data>

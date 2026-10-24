@@ -1770,7 +1770,8 @@ package "optimize" <<Rectangle>> {
         pbfgs = PROJECTED BFGS, not L-BFGS-B (R_0069)
         answer only if stationarity = sum|g_i||x_i - x0_i| / (f(x0) - f(x))
           passes 0.5*10^-precision (scale-free, F_0095); else Left(MinimizeFailure)
-        MaxMinimizeIterations = 2000 (measured)
+          -- also after a line search fails at the noise floor (F_0234)
+        MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)
     }
 
     class "QP" <<utility>> [[optimization.html]] {
@@ -2191,8 +2192,10 @@ package "tools" <<Rectangle>> {
         may look like is a losing game
     }
     class "CheckActionPins" <<object>> [[developer.html]] {
+        + DefaultRoots: Vector
         + offences(roots): (Vector, Int)
-        every `uses:` must name a commit SHA
+        every `uses:` must name a commit SHA,
+        and so must docs/_config.yml's remote_theme (F_0217)
     }
     class "CheckScalaVersion" <<object>> [[developer.html]] {
         + offences(roots): Vector

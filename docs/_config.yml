@@ -28,7 +28,14 @@ url: "https://lycogrypho.github.io"
 baseurl: "/Leonardo"
 
 # Remote theme — no local theme gem needed; resolved by jekyll-remote-theme.
-remote_theme: just-the-docs/just-the-docs
+# PINNED TO A COMMIT (F_0217), as every workflow action is (2.10): the theme's scripts are
+# published on this site's origin, beside /app, and unpinned it was fetched from the theme's
+# default branch on every build.  Neither Dependabot nor Scala Steward sees this line, so a
+# bump is by hand: `git ls-remote --tags https://github.com/just-the-docs/just-the-docs`,
+# check the release's gemspec for a runtime dependency the Gemfile lacks (the
+# jekyll-include-cache trap, docs/README.md), and record it in NOTICE.  `sbt checks` refuses
+# an unpinned theme.
+remote_theme: just-the-docs/just-the-docs@2ed4c0af735e95af5c0dcf7a605b07d903005b4e # v0.12.0
 
 plugins:
   - jekyll-remote-theme

@@ -89,6 +89,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # No credential left in .git/config (F_0217): this job's token can write to the
+        # repository, and `sbt app` below runs build code that has no business reading it.
+        # `gh` takes the token from its step's env instead.
+        with:
+          persist-credentials: false
         # CHANGELOG.md is read and the app bundle is built from the sources at this commit, so
         # the default shallow clone is still enough: every file is present at depth 1, and the
         # bundle carries NO version string of its own -- which is exactly why the asset's name
@@ -143,24 +148,33 @@ jobs:
               gh release create "$VERSION" --title "$VERSION" --verify-tag --notes-file -
           fi
 
-      - name: Attach the browser REPL to the Release
-        # AFTER the Release exists, deliberately: `gh release upload` needs one, and building
-        # first would mean a link failure leaves a published Central version with no Release at
-        # all -- the same reasoning the missing-CHANGELOG fallback above follows. A failed
-        # upload leaves the Release standing and the run red, which is visible and repairable;
-        # a re-run replaces the asset rather than failing on it (--clobber).
+      - name: Build the browser REPL bundle
+        # AFTER the Release exists, deliberately: building first would mean a link failure
+        # leaves a published Central version with no Release at all -- the same reasoning the
+        # missing-CHANGELOG fallback above follows.
+        #
+        # NO TOKEN IN THIS STEP (F_0217): `sbt app` runs the build and its plugins, and the job's
+        # token can write to the repository, so it is given only to the `gh` steps either side.
         #
         # `sbt app` is the single definition of what the app is (D_0026): the same directory
         # pages.yml deploys to /app, so the downloadable bundle and the live one cannot drift.
         # The zip holds ONE top-level directory, so unpacking it into a web root produces a
         # named folder rather than scattering index.html and vendor/ into the current one.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           sbt app
           cp -r web/target/app "leonardo-app-$VERSION"
           zip -r -q "leonardo-app-$VERSION.zip" "leonardo-app-$VERSION"
+
+      - name: Attach the browser REPL to the Release
+        # A failed upload leaves the Release standing and the run red, which is visible and
+        # repairable; a re-run replaces the asset rather than failing on it (--clobber).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
           gh release upload "$VERSION" "leonardo-app-$VERSION.zip" --clobber
           echo "attached leonardo-app-$VERSION.zip ($(stat -c%s "leonardo-app-$VERSION.zip") bytes)"

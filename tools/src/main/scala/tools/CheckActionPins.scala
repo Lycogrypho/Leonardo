@@ -18,17 +18,30 @@ import java.nio.file.{Path, Paths}
  *
  *  Dependabot keeps the pins from going stale (`.github/dependabot.yml`), so pinning does not
  *  degrade into freezing; this only enforces that they are pins at all.
+ *
+ *  **A Jekyll `remote_theme:` is held to the same rule** (F_0217): the theme's scripts are
+ *  published on the site's own origin, beside `/app`, whose `localStorage` they could read, and an
+ *  unpinned theme is fetched from its default branch on every Pages build.  Neither Dependabot nor
+ *  Scala Steward can see it, so its bumps are by hand, recorded in `NOTICE`.
  */
 object CheckActionPins:
 
   /** `uses: owner/repo@ref` or `uses: owner/repo/path@ref`, quoted or bare. */
   private val Uses = """^\s*-?\s*uses:\s*["']?([^"'\s#]+)["']?""".r.unanchored
 
+  /** `remote_theme: owner/repo@ref`, quoted or bare. */
+  private val RemoteTheme = """^\s*remote_theme:\s*["']?([^"'\s#]+)["']?""".r.unanchored
+
   private val Sha = "^[0-9a-f]{40}$".r
 
   private val WorkflowExtensions = Set(".yml", ".yaml")
 
-  private val DefaultRoot = Paths.get(".github", "workflows")
+  /** The workflows, and the site configuration that names the Jekyll theme. */
+  val DefaultRoots: Vector[Path] = Vector(Paths.get(".github", "workflows"), Paths.get("docs", "_config.yml"))
+
+  /** Whether `ref` names a commit: the part after its `@` is a 40-character SHA. */
+  private def pinned(ref: String): Boolean =
+    ref.contains('@') && Sha.matches(ref.drop(ref.indexOf('@') + 1))
 
   /** Every `path:line: reference` in `roots` that names something other than a commit SHA.
    *
@@ -42,24 +55,25 @@ object CheckActionPins:
     val files = roots.toVector.flatMap(Files.walk(_, WorkflowExtensions))
     val found = files.flatMap { path =>
       Files.read(path).linesIterator.zipWithIndex.collect {
-        case (Uses(ref), i) if !ref.startsWith("./") && !ref.startsWith(".\\") &&
-                               !Sha.matches(ref.drop(ref.indexOf('@') + 1)) =>
+        case (Uses(ref), i) if !ref.startsWith("./") && !ref.startsWith(".\\") && !pinned(ref) =>
           s"$path:${i + 1}: not SHA-pinned: $ref"
+        case (RemoteTheme(ref), i) if !pinned(ref) =>
+          s"$path:${i + 1}: remote_theme not SHA-pinned: $ref"
       }
     }
     (found, files.size)
 
-  /** The check, as an exit code, over the given directories or `.github/workflows`.
+  /** The check, as an exit code, over the given paths or [[DefaultRoots]].
    *
-   *  @param args workflow directories; empty means the default
+   *  @param args workflow directories or configuration files; empty means the default
    *  @return 1 when anything is unpinned, 0 otherwise
    */
   def run(args: Seq[String]): Int =
-    val roots = if args.isEmpty then Vector(DefaultRoot) else args.toVector.map(Paths.get(_))
+    val roots = if args.isEmpty then DefaultRoots else args.toVector.map(Paths.get(_))
     val (found, checked) = offences(roots)
     Files.report(
       found,
-      n => s"\n$checked workflow(s) checked, $n unpinned reference(s)",
+      n => s"\n$checked file(s) checked, $n unpinned reference(s)",
       "Pin to the commit SHA with the version as a trailing comment (issue 2.10);\n" +
       "`git ls-remote --tags https://github.com/OWNER/REPO` resolves it without an\n" +
       "API token or rate limit.")

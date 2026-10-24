@@ -33,11 +33,11 @@ on:
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
-# Least-privilege token plus the permissions the Pages deployment needs.
+# Least-privilege token.  The Pages permissions are granted to the `deploy` job alone (F_0217):
+# at workflow level the `build` job held them too, while it runs sbt plugins, `bundle install`
+# and the remote theme -- third-party code that needs neither.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # One live deployment at a time; a newer push cancels an in-flight run.
 concurrency:
@@ -173,6 +173,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

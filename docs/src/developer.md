@@ -1545,7 +1545,7 @@ same command CI runs:
 |---|---|
 | `FixMojibake --check` | the UTF-8 sources against reintroduced cp1252 mojibake |
 | `CheckCharset` | against bad repairs landing in an unrelated script |
-| `CheckActionPins` | every workflow `uses:` naming a commit SHA, not a tag or branch |
+| `CheckActionPins` | every workflow `uses:`, and the site's Jekyll `remote_theme:`, naming a commit SHA, not a tag or branch |
 | `CheckScalaVersion` | no file under `.github/` spelling the Scala version |
 
 **What the encoding guards scan is a constant, not an argument list.**  `Files.GuardedRoots`
