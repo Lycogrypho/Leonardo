@@ -34,10 +34,33 @@ private val MaxHopitalSteps = Limit.MaxHopitalSteps.default.toInt  // the defaul
  */
 def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, env: Environment): _Expression =
   point.eval(env) match
+    // An exact point is tried exactly first (F_0210): `limit(x^2, x, 1/3)` answered 0.11111.
+    // Placed before the widening `_Number` arm, which would read the rational as a Double.
+    case Right(r: _Rational) =>
+      exactLimit(e, v, r, env, env.limits.count(Limit.MaxHopitalSteps))
+        .getOrElse(limitFinite(e, v, r.toDouble, dir, env, env.limits.count(Limit.MaxHopitalSteps)))
     case Right(_Number(p)) =>
       if p.isInfinite then limitInfinity(e, v, p, env)
       else limitFinite(e, v, p, dir, env, env.limits.count(Limit.MaxHopitalSteps))
     case _ => _Limit(e, v, point, dir)   // symbolic point — stay symbolic
+
+/** The limit at an exact point, exactly, or `None` to leave it to the `Double` tiers (F_0210):
+ *  direct substitution when it gives an exact value and no step jumps there, and L'Hôpital at an
+ *  exact `0/0`.  The derivatives are taken in the expression's own tier, so an exact numerator
+ *  stays exact through each step.  Anything else — a one-sided question, a pole, a decimal —
+ *  falls through unchanged, so no answer that was not exact before is changed. */
+private def exactLimit(e: _Expression, v: _Variable, p: _Rational, env: Environment, stepsLeft: Int): Option[_Expression] =
+  def at(x: _Expression): Option[_Value] = x.eval(env.withBinding(v.variable, p)).toOption
+  if jumpsAt(e, v, p.toDouble, env) then None
+  else at(e) match
+    case Some(r: _Rational) => Some(r)
+    case _ => e match
+      case Ratio(num, den) if stepsLeft > 0 =>
+        (at(num), at(den)) match
+          case (Some(a: _Rational), Some(b: _Rational)) if a.signum == 0 && b.signum == 0 =>
+            exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, env, stepsLeft - 1)
+          case _ => None
+      case _ => None
 
 /** Evaluates `e` with `v` bound to `p`; returns `Some(d)` iff the result is a concrete `_Number`. */
 private def numericAt(e: _Expression, v: _Variable, p: Double, env: Environment): Option[Double] =
@@ -107,8 +130,7 @@ private def limitEpsilon(
   val eps = math.max(1e-8, math.abs(p) * 1e-6)
   def estimate(x1: Double, x2: Double): Option[Double] =
     (numericAt(e, v, x1, env), numericAt(e, v, x2, env)) match
-      case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite &&
-           math.abs(y1 - y2) <= 1e-5 * (1.0 + math.abs(y2)) => Some((y1 + y2) / 2)
+      case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite && converged(y1, y2, 1e-5) => Some((y1 + y2) / 2)
       case _ => None
   dir match
     case LimitDir.FromRight =>
@@ -119,7 +141,7 @@ private def limitEpsilon(
       val rEst = estimate(p + eps, p + eps * 0.001)
       val lEst = estimate(p - eps, p - eps * 0.001)
       (lEst, rEst) match
-        case (Some(l), Some(r)) if math.abs(l - r) <= 1e-5 * (1.0 + math.abs(r)) =>
+        case (Some(l), Some(r)) if converged(l, r, 1e-5) =>
           _Number((l + r) / 2)
         case _ => _Limit(e, v, _Number(p), dir)
 
@@ -157,9 +179,13 @@ private def limitInfinity(e: _Expression, v: _Variable, p: Double, env: Environm
           // Polynomial rational function: compare degrees of numerator vs denominator.
           val degP = pcs.length - 1
           val degQ = qcs.length - 1
-          if degP < degQ then _Number(0.0)
+          // The limit is built in the input's tier (F_0210): an exact rational function at ∞
+          // answered `0.0` and `0.66667`.
+          if degP < degQ then _Rational.literalLike(0, ex, env)
           else if degP == degQ then
             (pcs.last.eval(env).toExpression, qcs.last.eval(env).toExpression) match
+              case (lp: _Rational, lq: _Rational) if lq.signum != 0 =>
+                lp.divide(lq).getOrElse(_Number(lp.toDouble / lq.toDouble))
               case (_Number(lp), _Number(lq)) if lq != 0.0 => _Number(lp / lq)
               case (lp, lq) => Ratio(lp, lq)   // symbolic leading coefficients
           else
@@ -232,7 +258,16 @@ private def numericInfFallback(e: _Expression, v: _Variable, p: Double, env: Env
   (numericAt(e, v, sign * 1e10, env), numericAt(e, v, sign * 1e15, env)) match
     case (Some(y1), Some(y2)) if y1.isInfinite && y2.isInfinite && math.signum(y1) == math.signum(y2) =>
       _Number(y1)
-    case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite &&
-         math.abs(y1 - y2) <= 1e-6 * (1.0 + math.abs(y2)) =>
+    case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite && converged(y1, y2, 1e-6) =>
       _Number(y2)
     case _ => _Limit(e, v, _Number(p), LimitDir.Both)
+
+/** Whether two samples agree to `tol` **of their own size** (F_0211).
+ *
+ *  It was `tol·(1 + |y|)`, absolute below unit scale: `limit(sin(x)/1e7, x, inf)` and
+ *  `limit(sin(1/x)*1e-7, x, 0, +)` answered `0.0`, because two samples of an oscillation of size
+ *  `10⁻⁷` differ by less than `10⁻⁶`.  **The price, accepted**: a genuine limit `0` reached only
+ *  through the numeric tiers now declines, since two samples cannot tell a small limit from a small
+ *  oscillation; equal samples still agree. */
+private def converged(y1: Double, y2: Double, tol: Double): Boolean =
+  math.abs(y1 - y2) <= tol * math.max(math.abs(y1), math.abs(y2))

@@ -12,7 +12,8 @@ import core.*
  *  spelling.  The single-name form still builds `_ODE`, unchanged.
  *
  *  Integrated by [[odeCertified]]: RK4 at the scalar tier's step count, answered only when `n`
- *  and `2n` steps agree within the tolerance `=` uses (Decision B).  The names are binders —
+ *  and `2n` steps agree within the tolerance `=` uses (Decision B), relative to the run's largest
+ *  state component (F_0211).  The names are binders —
  *  excluded from `children`, carried through `rebuild`.
  *
  *  @param rhs      the right-hand side, an `n×1` column in the state names and `indepVar`

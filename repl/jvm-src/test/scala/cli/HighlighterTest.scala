@@ -90,3 +90,16 @@ class HighlighterTest extends AnyFlatSpec with BeforeAndAfter:
     assert(h.highlightBuffer(line).toString == line)
   }
 
+
+  "the highlighter's word lists" should "come from the grammar and the command language (F_0213)" in
+  {
+    // Hand-kept lists lacked abs, det, dot, qp and the newer commands.
+    val h    = LeonardoHighlighter(() => "dark")
+    val fn   = h.highlightBuffer("sin(x)").styleAt(0)
+    val cmd  = h.highlightBuffer("simplify x").styleAt(0)
+    for w <- List("abs", "det", "dot", "qp", "norm") do
+      assert(h.highlightBuffer(s"$w(x)").styleAt(0) == fn, s"$w should be coloured as a function")
+    for w <- List("exact on", "latex on", "names on", "vars") do
+      assert(h.highlightBuffer(w).styleAt(0) == cmd, s"'$w' should open with a command")
+    assert(h.highlightBuffer("x and y").styleAt(2) != fn, "a connective is not a function")
+  }

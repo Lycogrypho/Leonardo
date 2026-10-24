@@ -358,7 +358,7 @@ private def solveVectorized(terms: Vector[LinearTerm], b: _MatrixValue,
 // exact matrix.  No tolerance decides a pivot, so a singular system is a refusal, not a guess.
 // Tried before the dense tier; a mixed exact/`Double` equation is left to it.
 
-private type QMatrix = Vector[Vector[spire.math.Rational]]
+private type QMatrix = QMat   // the shared spire-Rational kernels, matrix/RationalMatrix.scala (F_0213)
 
 private final case class ExactTerm(scale: spire.math.Rational, left: Option[QMatrix], right: Option[QMatrix])
 
@@ -368,13 +368,6 @@ private def qOfRational(r: _Rational): spire.math.Rational = spire.math.Rational
 private def exactMatrixOf(r: Either[_Expression, _Value]): Option[QMatrix] = r match
   case Left(m: _Matrix) => exactCells(m).map(cells => Vector.tabulate(m.rows, m.cols)((i, j) => qOfRational(cells(i * m.cols + j))))
   case _                => None
-
-private def qMul(a: QMatrix, b: QMatrix): Option[QMatrix] =
-  Option.when(a.head.size == b.size)(Vector.tabulate(a.size, b.head.size)((i, j) =>
-    a(i).indices.foldLeft(spire.math.Rational.zero)((s, k) => s + a(i)(k) * b(k)(j))))
-
-private def qIdentityMatrix(n: Int): QMatrix =
-  Vector.tabulate(n, n)((i, j) => if i == j then spire.math.Rational.one else spire.math.Rational.zero)
 
 /** `s·L·v·R` with exact coefficients, or `None` — the exact counterpart of [[classifyTerm]]. */
 private def classifyExact(t: _Expression, v: _Variable, env: Environment): Option[ExactTerm] = t match
@@ -432,36 +425,16 @@ private def solveExactVectorized(terms: Vector[ExactTerm], b: QMatrix, constants
       // vec(L·X·R) = (Rᵀ ⊗ L)·vec(X), whose ((j·p + i), (l·rX + k)) entry is R(l, j)·L(i, k).
       val m = Array.fill(n, n)(spire.math.Rational.zero)
       for t <- terms do
-        val lm = t.left.getOrElse(qIdentityMatrix(p))
-        val rm = t.right.getOrElse(qIdentityMatrix(q))
+        val lm = t.left.getOrElse(qIdentity(p))
+        val rm = t.right.getOrElse(qIdentity(q))
         for j <- 0 until q; i <- 0 until p; l <- 0 until cX; k <- 0 until rX do
           m(j * p + i)(l * rX + k) = m(j * p + i)(l * rX + k) + t.scale * rm(l)(j) * lm(i)(k)
       val c = Array.tabulate(n)(idx => rhs(idx % p)(idx / p))
-      Some(exactGaussJordan(m, c).map { x =>
+      Some(qSolve(m, c).map { x =>
         val cells = Vector.tabulate(rX * cX)(idx => x((idx % cX) * rX + idx / cX))   // row-major from vec
         List(_Equation(v, _Matrix(rX, cX, cells.map(z =>
           _Rational.of(z.numerator.toBigInt, z.denominator.toBigInt).getOrElse(_Rational(0)): _Expression))))
       }.getOrElse(Nil))
-
-/** The unique solution of `m·x = c` over the rationals, or `None` when `m` is singular. */
-private def exactGaussJordan(m: Array[Array[spire.math.Rational]], c: Array[spire.math.Rational]): Option[Vector[spire.math.Rational]] =
-  val n = c.length
-  var ok = true
-  var col = 0
-  while ok && col < n do
-    (col until n).find(r => !m(r)(col).isZero) match
-      case None => ok = false
-      case Some(p) =>
-        val (tr, tc) = (m(col), c(col)); m(col) = m(p); c(col) = c(p); m(p) = tr; c(p) = tc
-        val inv = spire.math.Rational.one / m(col)(col)
-        for k <- 0 until n do m(col)(k) = m(col)(k) * inv
-        c(col) = c(col) * inv
-        for r <- 0 until n if r != col && !m(r)(col).isZero do
-          val f = m(r)(col)
-          for k <- 0 until n do m(r)(k) = m(r)(k) - f * m(col)(k)
-          c(r) = c(r) - f * c(col)
-        col += 1
-  Option.when(ok)(c.toVector)
 
 /** Multiplies two conforming matrices; `None` when dimensions do not match. */
 private def matMul(p: _MatrixValue, q: _MatrixValue): Option[_MatrixValue] =
@@ -536,13 +509,20 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression,
         val r2 = a0 / q
         List(_Number(math.min(r1, r2)), _Number(math.max(r1, r2)))
     case _ =>
-      // Symbolic coefficients: both +-sqrt(delta) closed forms (sign of delta unknown).
-      val delta = Sum(Power(c1, _Number(2)), Product(_Number(-4), Product(c2, c0)))
-      val sqrtD = Power(delta, _Number(0.5))
-      val denom = Product(_Number(2), c2)
+      // Symbolic coefficients: both +-sqrt(delta) closed forms (sign of delta unknown).  Every
+      // constant in the coefficients' tier (F_0210): `solve(c*x^2 + x/3 = 0, x)` answered
+      // `-0.66667/(2.0*c)`.
+      val like  = Sum(c0, Sum(c1, c2))
+      def lit(n: Int): _Value = _Rational.literalLike(n, like, env)
+      val half  = lit(1) match
+        case one: _Rational => one.divide(_Rational(2)).getOrElse(_Number(0.5))
+        case _              => _Number(0.5)
+      val delta = Sum(Power(c1, lit(2)), Product(lit(-4), Product(c2, c0)))
+      val sqrtD = Power(delta, half)
+      val denom = Product(lit(2), c2)
       List(
-        simplifyFully(Ratio(Sum(Product(_Number(-1), c1), Product(_Number(-1), sqrtD)), denom)),
-        simplifyFully(Ratio(Sum(Product(_Number(-1), c1), sqrtD), denom))
+        simplifyFully(Ratio(Sum(Product(lit(-1), c1), Product(lit(-1), sqrtD)), denom)),
+        simplifyFully(Ratio(Sum(Product(lit(-1), c1), sqrtD), denom))
       )
 
 /** The roots of `a2·x² + a1·x + a0 = 0` with exact coefficients, at the working precision.

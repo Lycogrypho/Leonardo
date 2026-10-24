@@ -97,24 +97,16 @@ object ColorScheme:
  */
 class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
 
-  private val Commands  = Set("simplify", "expand", "eval", "precision", "env",
-                               "unset", "help", "samples", "colors", "pretty", "truth", "truth3", "logic", "quit", "exit")
-  private val Functions = Set("sin", "cos", "tan", "tg", "asin", "acos", "atan",
-                               "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
-                               "sec", "csc", "cot", "sech", "csch", "coth",
-                               "Si", "Ci", "Ei", "li", "fresnelS", "fresnelC",
-                               "grad", "div", "curl", "laplacian", "jacobian", "hessian",
-                               "fib", "lucas", "pell", "jacobsthal",
-                               "binom", "catalan", "harmonic", "tabulate",
-                               "exp", "ln", "log", "transpose", "pow",
-                               "integral", "derive", "solve", "solveSystem",
-                               "limit", "laplace", "fourier", "fourierCausal", "invlaplace", "ode",
-                               "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz",
-                               "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",
-                               "erf", "erfc", "digamma", "gammaP", "gammaQ", "betaI",
-                               "taylor", "maclaurin", "fourierSeries", "pade")
-  private val LogicOps  = Set("and", "or", "not", "implies", "xor")
-  private val Constants = Set("pi", "e", "i", "true", "false", "unknown")
+  // DERIVED, not hand-kept (F_0213): the lists used to be written out here and lacked `abs`,
+  // `det`, `dot`, `qp`, `exact`, `latex` and every function added since.  A function is any
+  // reserved word that is not a command, a connective, a constant or a coordinate system;
+  // `truth` is both a command and a function, and is coloured as whichever position it holds.
+  private val Commands       = Session.CommandWords
+  private val LogicOps       = Set("and", "or", "not", "implies", "xor")
+  private val Constants      = Set("pi", "e", "i", "inf", "true", "false", "unknown")
+  private val CoordinateWords = Set("cartesian", "cylindrical", "spherical", "sphericalmaths")
+  private val Functions =
+    parser.Parser.ReservedWords -- (Commands - "truth") -- LogicOps -- Constants -- CoordinateWords - "consolidate"
   /** Greek aliases of the special functions; single characters, not words. */
   private val GreekFunctions = Set('Γ', 'β')
 

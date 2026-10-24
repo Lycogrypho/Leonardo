@@ -247,7 +247,10 @@ private[leonardo] def laurentDetailed(
   // powers.
   else if m == 0 then taylorDetailed(e, v, point, n, env.limits)
   else
-    val shifted = simplifyFully(Sum(v, Product(_Number(-1), point)))
+    // Every constant here is built in the input's tier (F_0210): the shift's `−1` and the
+    // exponents were `_Number`s, so an exact series came back in decimals.
+    given lt: Tier = Tier(_Rational.containsExactIn(e, env) || _Rational.containsExactIn(point, env))
+    val shifted = simplifyFully(Sum(v, Product(lt.n(-1), point)))
     regularise(e, v, point, shifted, m, env)
       .toRight(s"the pole at $point could not be cleared from the denominator")
       .flatMap { (regular, effectiveM) =>
@@ -258,7 +261,7 @@ private[leonardo] def laurentDetailed(
           Left(s"the pole at $point has order $effectiveM; the orders must sum to at most $maxOrder")
         else
           laurentCoefficients(regular, v, point, effectiveM + n, env)
-            .map(cs => simplifyFully(assembleLaurent(cs, shifted, effectiveM)))
+            .map(cs => simplifyFullyInTier(assembleLaurent(cs, shifted, effectiveM), lt.exact))
       }
 
 /** Produces `g(v) = (v − a)^m · f(v)` **cancelled**, not merely multiplied out.
@@ -281,7 +284,7 @@ private[leonardo] def laurentDetailed(
  *  requested `m`: see [[structuralRegularise]].
  */
 private def regularise(f: _Expression, v: _Variable, point: _Expression, shifted: _Expression,
-                       m: Int, env: Environment): Option[(_Expression, Int)] =
+                       m: Int, env: Environment)(using Tier): Option[(_Expression, Int)] =
   structuralRegularise(f, shifted, m)
     .orElse(rationalRegularise(f, v, point, m, env).map(g => (g, m)))
 
@@ -295,11 +298,17 @@ private def regularise(f: _Expression, v: _Variable, point: _Expression, shifted
  *  refused, and the returned exponent says which was used.
  */
 private def structuralRegularise(f: _Expression, shifted: _Expression,
-                                 m: Int): Option[(_Expression, Int)] = f match
+                                 m: Int)(using t: Tier): Option[(_Expression, Int)] = f match
   case Ratio(n, d) =>
-    poleFactorPower(d, shifted).map { k =>
-      if k <= m then (simplifyFully(Product(n, Power(shifted, _Number(m - k)))), m)
-      else (n, k)
+    // `N/(c·(v − a)ᵏ)` too, `c` free of the variable (F_0210): `1/(3x²)` missed this route and
+    // went to the floating-point deflation.
+    val (scale, rest) = d match
+      case Product(c, r) if c.freeVars.intersect(shifted.freeVars).isEmpty && poleFactorPower(r, shifted).isDefined => (Some(c), r)
+      case _ => (None, d)
+    val num = scale.fold(n)(c => Ratio(n, c))
+    poleFactorPower(rest, shifted).map { k =>
+      if k <= m then (simplifyFully(Product(num, Power(shifted, t.n(m - k)))), m)
+      else (num, k)
     }
   case _ => None
 
@@ -381,14 +390,14 @@ private def isFiniteCoefficient(c: _Expression, env: Environment): Boolean =
     case Left(residual)     => residual.freeVars.nonEmpty
 
 /** Builds `Σ c_k · (v − a)^(k − m)` from coefficients indexed from `k = 0`. */
-private def assembleLaurent(cs: Vector[_Expression], shifted: _Expression, m: Int): _Expression =
+private def assembleLaurent(cs: Vector[_Expression], shifted: _Expression, m: Int)(using t: Tier): _Expression =
   val terms = cs.zipWithIndex.map { (c, k) =>
     val power = k - m
     if power == 0 then c
-    else if power > 0 then Product(c, Power(shifted, _Number(power)))
+    else if power > 0 then Product(c, Power(shifted, t.n(power)))
     // A negative power is written as a division rather than `Power(_, -k)`, so the printed
     // form reads as a principal part and re-parses to the same tree.
-    else Ratio(c, Power(shifted, _Number(-power)))
+    else Ratio(c, Power(shifted, t.n(-power)))
   }
   terms.reduceLeft(Sum.apply)
 

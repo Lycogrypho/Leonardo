@@ -47,7 +47,7 @@ private def negShiftOf(inner: _Expression, sv: String): Option[Double] = inner m
   case Product(vv: _Variable, _Number(c)) if vv.variable == sv && c < 0 => Some(-c)
   // Any other spelling of `-a·s` — `-s/2` parses as a ratio (F_0189).
   case other => collect(other, _Variable(sv)).flatMap {
-    case Vector(c0, c1) => for z <- asNumber(c0) if z == 0.0; k <- asNumber(c1) if k < 0 yield -k
+    case Vector(c0, c1) => for z <- numericValue(c0) if z == 0.0; k <- numericValue(c1) if k < 0 yield -k
     case _              => None
   }
 
@@ -114,15 +114,9 @@ private def inverseImpl(f: _Expression, s: _Variable, t: _Variable): _Expression
 private def numericCoeffs(e: _Expression, s: _Variable): Option[Vector[Double]] =
   collect(e, s).flatMap { cs =>
     cs.foldRight(Option(Vector.empty[Double])) { (c, acc) =>
-      for tail <- acc; d <- asNumber(c) yield d +: tail
+      for tail <- acc; d <- numericValue(c) yield d +: tail
     }
   }.map(atMagnitudeDegree(_, e, s, new Environment()))   // a genuine tiny top kept (F_0125)
-
-/** Evaluates `e` in an empty environment and returns the numeric value, or `None`. */
-private def asNumber(e: _Expression): Option[Double] =
-  e.eval(new Environment()) match
-    case Right(_Number(d)) => Some(d)
-    case _                 => None
 
 /** Inverts a strictly proper rational `N(s)/D(s)` (`deg N < deg D`); `None` when unsupported. */
 private def invRational(num: _Expression, den: _Expression, s: _Variable, t: _Variable): Option[_Expression] =
@@ -226,7 +220,9 @@ private def partialFractionTerms(ns: Vector[Double], ds: Vector[Double], t: _Var
   val factored = squareFreeFactors(ds).foldLeft(Option((Vector.empty[(Double, Int)], Vector.empty[(Double, Double, Int)]))) {
     case (acc, (poly, k)) =>
       acc.zip(rootsOfSquareFree(poly)).map { case ((reals, quads), parts) =>
-        val (rs, cs) = parts.partition((_, im) => math.abs(im) < 1e-6)
+        // Real at the factor's own root scale (F_0211): the integrator's partial-fraction tier's
+        // test, `realAmong` at 1e-6, rather than its absolute copy.
+        val (rs, cs) = parts.partition(realAmong(parts, 1e-6))
         (reals ++ rs.map((re, _) => (re, k)),
          quads ++ cs.filter(_._2 > 0.0).map((re, im) => (-2.0 * re, re * re + im * im, k)))
       }

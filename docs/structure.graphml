@@ -2829,6 +2829,7 @@ no rule -&gt; \\mathrm{escaped toString}</data>
 + load(text: String): String
 __ companion __
 ReservedConstants: Set = {pi, e}
+CommandWords: Set -- what a line opens with to give a command (F_0213)
 + loadFile(session, path): String
 + saveFile(session, path): String
 + step(session, line): Option</data>
@@ -2854,7 +2855,8 @@ All: Map[String, ColorScheme]
         <data key="n_stereotype">utility</data>
         <data key="n_url">repl.html</data>
         <data key="n_members">schemeName: () =&gt; String
-+ highlight(reader, buffer): AttributedString</data>
++ highlight(reader, buffer): AttributedString
+words derived from Parser.ReservedWords and Session.CommandWords (F_0213)</data>
     </node>
     <node id="n262">
         <data key="n_label">repl()</data>

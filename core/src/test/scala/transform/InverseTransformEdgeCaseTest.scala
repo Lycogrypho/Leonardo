@@ -37,3 +37,33 @@ class InverseTransformEdgeCaseTest extends AnyFlatSpec:
     val withS = env.withBinding("s", _Number(3))
     assert(math.abs(inverseAt("1/(s + 1)", 0.0, withS) - 1.0) < 1e-12)
   }
+
+  // --- F_0211: the imaginary-part tests at the poles' own scale ---
+
+  it should "invert a small-scale complex pole pair as one, not as two real poles (F_0211)" in {
+    // 1/(s((s + a)² + b²)) with a = b = 1e-7: the pair's |im| = 1e-7 passed the absolute 1e-6 test.
+    val (a, b) = (1e-7, 1e-7)
+    val t      = 2e7
+    val exact  = (1 - math.exp(-a * t) * (math.cos(b * t) + a / b * math.sin(b * t))) / (a * a + b * b)
+    val got    = Parser.parse("invlaplace(1/(s*((s + 1e-7)^2 + 1e-14)), s, t)").get.eval(env) match
+      case Left(_: _InverseLaplace) => None
+      case r => r.toExpression.eval(env.withBinding("t", _Number(t))) match
+        case Right(_Number(d)) => Some(d)
+        case _                 => None
+    got.foreach(d => assert(math.abs(d / exact - 1) < 1e-6, s"$d against $exact"))
+  }
+
+  it should "invert three large real poles, whose computed imaginary parts are rounding (F_0211)" in {
+    // Poles at -1e10, -2e10, -3e10: the eigenvalue noise is ~1e-16 of the root, above the absolute
+    // 1e-6, so the poles read as complex.  Residues of 1e30/((s+a)(s+2a)(s+3a)): 1/(2a²), -1/a², 1/(2a²) · 1e30.
+    val a = 1e10
+    val t = 1e-10
+    val exact = 1e30 * (math.exp(-a * t) / (2 * a * a) - math.exp(-2 * a * t) / (a * a) + math.exp(-3 * a * t) / (2 * a * a))
+    assert(math.abs(inverseAt("1e30/((s + 1e10)*(s + 2e10)*(s + 3e10))", t) / exact - 1) < 1e-6)
+  }
+
+  "invztrans" should "decline a small-scale complex pole pair rather than read it as real (F_0211)" in {
+    // Poles 1e-10 ± 1e-10i: the absolute 1e-9 test read them as one real pole twice.
+    val r = Parser.parse("invztrans(z/(z^2 - 2e-10*z + 2e-20), z, n)").get.eval(env)
+    assert(r.left.exists(_.isInstanceOf[_InverseZTransform]), r)
+  }

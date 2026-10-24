@@ -46,10 +46,15 @@ import scalar.*
 def solveODESymbolic(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
                      t0: _Expression, y0: _Expression, target: _Expression,
                      env: Environment): Option[_Expression] =
+  // Every constant the closed forms invent is built in the problem's tier (F_0210): the
+  // constant-coefficient form's `τ = target − t0` used a Double `−1`, so
+  // `ode(y/3 + 1/5, y, t, 0, 1, 2)` answered a decimal in exact mode.
+  val like = Sum(rhs, Sum(t0, Sum(y0, target)))
+  given lit: (Int => _Value) = n => _Rational.literalLike(n, like, env)
   collect(rhs, depVar) match
     case Some(coeffs) if coeffs.length <= 2 =>
-      val b = coeffs.headOption.getOrElse(_Number(0))          // constant term  (free of y)
-      val a = if coeffs.length == 2 then coeffs(1) else _Number(0)  // coefficient of y
+      val b = coeffs.headOption.getOrElse(lit(0))          // constant term  (free of y)
+      val a = if coeffs.length == 2 then coeffs(1) else lit(0)  // coefficient of y
       // A matrix coefficient is a SYSTEM, which this tier cannot solve: it would build
       // `y0 * exp(A*tau)` -- the factors in the wrong order and an element-wise exp where the
       // matrix exponential belongs, folding to a confident wrong number whenever the shapes
@@ -92,7 +97,7 @@ def solveODESymbolic(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
  */
 private def separableSolution(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
                               t0: _Expression, y0: _Expression, target: _Expression,
-                              env: Environment): Option[_Expression] =
+                              env: Environment)(using lit: Int => _Value): Option[_Expression] =
   for
     (f, g) <- splitSeparable(rhs, depVar, indepVar)
     result <- equilibriumOr(g, depVar, y0, env) {
@@ -118,8 +123,8 @@ private def equilibriumOr(g: _Expression, depVar: _Variable, y0: _Expression,
 /** The separation proper, once `g(y0)` is known non-zero. */
 private def separateAndSolve(f: _Expression, g: _Expression, depVar: _Variable,
                              indepVar: _Variable, t0: _Expression, y0: _Expression,
-                             target: _Expression, env: Environment): Option[_Expression] =
-  val bigG = integrate(simplifyFully(Ratio(_Number(1), g)), depVar)
+                             target: _Expression, env: Environment)(using lit: Int => _Value): Option[_Expression] =
+  val bigG = integrate(simplifyFully(Ratio(lit(1), g)), depVar)
   if hasIntegral(bigG) then None
   else
     val bigF = integrate(f, indepVar)
@@ -130,7 +135,7 @@ private def separateAndSolve(f: _Expression, g: _Expression, depVar: _Variable,
       def atY(x: _Expression): _Expression = substitute(bigG, Map(dv -> x))
       def atT(x: _Expression): _Expression = substitute(bigF, Map(iv -> x))
       // G(y) - (F(target) + C) = 0, with C = G(y0) - F(t0).
-      val c      = Sum(atY(y0), Product(_Number(-1), atT(t0)))
+      val c      = Sum(atY(y0), Product(lit(-1), atT(t0)))
       val rhsVal = simplifyFully(Sum(atT(target), c))
       solveForY(bigG, depVar, rhsVal, y0, env)
 
@@ -218,8 +223,8 @@ private val MonotoneSamples   = 512
  *  `y' = g(y)` alone with `f = 1` (which is also autonomous).
  */
 private def splitSeparable(rhs: _Expression, depVar: _Variable,
-                           indepVar: _Variable): Option[(_Expression, _Expression)] =
-  val one = _Number(1)
+                           indepVar: _Variable)(using lit: Int => _Value): Option[(_Expression, _Expression)] =
+  val one = lit(1)
   rhs match
     case Product(a, b) if !dependsOn(a, depVar) && !dependsOn(b, indepVar) => Some((a, b))
     case Product(a, b) if !dependsOn(b, depVar) && !dependsOn(a, indepVar) => Some((b, a))
@@ -232,18 +237,18 @@ private def splitSeparable(rhs: _Expression, depVar: _Variable,
 /** Closed form for the constant-coefficient case `y' = a*y + b` (`a`, `b` free of `t`). */
 private def constantCoefficientSolution(a: _Expression, b: _Expression,
                                         t0: _Expression, y0: _Expression,
-                                        target: _Expression): Option[_Expression] =
+                                        target: _Expression)(using lit: Int => _Value): Option[_Expression] =
   // By value, not `== _Number(0.0)`: an exact zero coefficient must take the zero branch, or
   // the general form divides by it (F_0073).
   val aZero = isZeroLiteral(simplifyFully(a))
   val bZero = isZeroLiteral(simplifyFully(b))
-  val tau   = Sum(target, Product(_Number(-1), t0))       // target - t0
+  val tau   = Sum(target, Product(lit(-1), t0))           // target - t0
   val sol =
     if bZero then Product(y0, Exp(Product(a, tau)))        // y0 * exp(a * tau)
     else if aZero then Sum(y0, Product(b, tau))            // y0 + b * tau
     else                                                   // (y0 + b/a) * exp(a * tau) - b/a
       val boa = Ratio(b, a)
-      Sum(Product(Sum(y0, boa), Exp(Product(a, tau))), Product(_Number(-1), boa))
+      Sum(Product(Sum(y0, boa), Exp(Product(a, tau))), Product(lit(-1), boa))
   Some(simplifyFully(sol))
 
 /** Closed form for the variable-coefficient case `y' = a(t)*y + b(t)` via the integrating
@@ -259,18 +264,18 @@ private def constantCoefficientSolution(a: _Expression, b: _Expression,
  */
 private def integratingFactorSolution(a: _Expression, b: _Expression, indepVar: _Variable,
                                       t0: _Expression, y0: _Expression,
-                                      target: _Expression): Option[_Expression] =
+                                      target: _Expression)(using lit: Int => _Value): Option[_Expression] =
   val bigA = integrate(a, indepVar)                        // A(t) = integral(a dt)
   if hasIntegral(bigA) then None
   else
-    val mu   = simplifyFully(Exp(Product(_Number(-1), bigA)))   // mu(t) = exp(-A(t))
+    val mu   = simplifyFully(Exp(Product(lit(-1), bigA)))       // mu(t) = exp(-A(t))
     val bigQ = integrate(simplifyFully(Product(mu, b)), indepVar)   // Q(t) = integral(mu*b dt)
     if hasIntegral(bigQ) then None
     else
       val iv = indepVar.variable
       def at(e: _Expression, x: _Expression): _Expression = substitute(e, Map(iv -> x))
       // y(target) = (Q(target) - Q(t0) + y0*mu(t0)) / mu(target)
-      val numer = Sum(Sum(at(bigQ, target), Product(_Number(-1), at(bigQ, t0))),
+      val numer = Sum(Sum(at(bigQ, target), Product(lit(-1), at(bigQ, t0))),
                       Product(y0, at(mu, t0)))
       Some(simplifyFully(Ratio(numer, at(mu, target))))
 

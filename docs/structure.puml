@@ -2300,6 +2300,7 @@ package "cli" <<Rectangle>> {
         + load(text: String): String
         __ companion __
         ReservedConstants: Set = {pi, e}
+        CommandWords: Set -- what a line opens with to give a command (F_0213)
         + loadFile(session, path): String
         + saveFile(session, path): String
         + step(session, line): Option
@@ -2318,6 +2319,7 @@ package "cli" <<Rectangle>> {
     class "LeonardoHighlighter" <<utility>> [[repl.html]] {
         schemeName: () => String
         + highlight(reader, buffer): AttributedString
+        words derived from Parser.ReservedWords and Session.CommandWords (F_0213)
     }
 
     class "repl()" <<main>> [[repl.html]] {

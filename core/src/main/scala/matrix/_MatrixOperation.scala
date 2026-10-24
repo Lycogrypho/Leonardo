@@ -570,6 +570,23 @@ private def denseOperand(r: Either[_Expression, _Value]): Option[_MatrixValue] =
   case Left(lit: _Matrix)      => denseOf(lit)
   case _                       => None
 
+/** A decomposition node's evaluation: `answer` on the dense operand; else the node rebuilt over
+ *  the operand when it stayed symbolic, or `self`.  The operand is read **once** (F_0212): six
+ *  nodes called [[denseOperand]] in a guard and again in the body, demoting an exact matrix
+ *  twice.
+ *  @param r       the evaluated operand
+ *  @param self    the node, for a refusal
+ *  @param rebuild the node over a symbolic operand
+ *  @param answer  the kernel's answer on the dense operand
+ *  @return the evaluation */
+private def withDense(r: Either[_Expression, _Value], self: _Expression, rebuild: _Expression => _Expression)
+                     (answer: _MatrixValue => Option[Either[_Expression, _Value]]): Either[_Expression, _Value] =
+  denseOperand(r) match
+    case Some(mv) => answer(mv).getOrElse(Left(self))
+    case None => r match
+      case Left(expr) => Left(rebuild(expr))
+      case _          => Left(self)
+
 
 case class _LUDecomposition(m: _Expression) extends _Expression:
   override def toString: String = s"lu($m)"
@@ -577,13 +594,8 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _LUDecomposition(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    m.eval(env) match
-      case r0 if denseOperand(r0).isDefined =>
-        denseOperand(r0).flatMap(_.luDecompose) match
-          case Some((l, u, p)) => Left(_Matrix(1, 3, Vector(l, u, p)))
-          case None            => Left(this)
-      case Left(expr) => Left(_LUDecomposition(expr))
-      case _          => Left(this)
+    withDense(m.eval(env), this, _LUDecomposition(_))(
+      _.luDecompose.map((l, u, p) => Left(_Matrix(1, 3, Vector(l, u, p)))))
 
 
 /** QR decomposition: `qr(A)` -- returns `[[Q, R]]` where `A = Q * R`.
@@ -618,13 +630,7 @@ case class _MatrixExponential(m: _Expression) extends _MatrixOperation:
   override def rebuild(c: List[_Expression]): _Expression = _MatrixExponential(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    m.eval(env) match
-      case r0 if denseOperand(r0).isDefined =>
-        denseOperand(r0).flatMap(_.expm) match
-          case Some(result) => Right(result)
-          case None         => Left(this)
-      case Left(expr) => Left(_MatrixExponential(expr))
-      case _          => Left(this)
+    withDense(m.eval(env), this, _MatrixExponential(_))(_.expm.map(Right(_)))
 
 
 /** Cholesky factorisation: `chol(A)` -- the lower-triangular `L` with `A = L·Lᵀ` (F_0054).
@@ -664,13 +670,8 @@ case class _QRDecomposition(m: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _QRDecomposition(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    m.eval(env) match
-      case r0 if denseOperand(r0).isDefined =>
-        denseOperand(r0).flatMap(_.qrDecompose) match
-          case Some((q, r)) => Left(_Matrix(1, 2, Vector(q, r)))
-          case None         => Left(this)
-      case Left(expr) => Left(_QRDecomposition(expr))
-      case _          => Left(this)
+    withDense(m.eval(env), this, _QRDecomposition(_))(
+      _.qrDecompose.map((q, r) => Left(_Matrix(1, 2, Vector(q, r)))))
 
 
 /** Eigenvalue decomposition: `eigen(A)` -- returns `[[lambda_1, lambda_2, ..., lambda_n]]`.
@@ -692,13 +693,8 @@ case class _EigenDecomposition(m: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _EigenDecomposition(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    m.eval(env) match
-      case r0 if denseOperand(r0).isDefined =>
-        denseOperand(r0).flatMap(_.eigenDecompose) match
-          case Some(eigs) => Left(_Matrix(1, eigs.size, eigs))
-          case None       => Left(this)
-      case Left(expr) => Left(_EigenDecomposition(expr))
-      case _          => Left(this)
+    withDense(m.eval(env), this, _EigenDecomposition(_))(
+      _.eigenDecompose.map(eigs => Left(_Matrix(1, eigs.size, eigs))))
 
 
 /** Eigenvalue/eigenvector decomposition: `eig(A)` -- returns `[[V, D]]` where `A * V = V * D`.
@@ -719,13 +715,8 @@ case class _EigDecomposition(m: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _EigDecomposition(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    m.eval(env) match
-      case r0 if denseOperand(r0).isDefined =>
-        denseOperand(r0).flatMap(diagonalisingVD) match
-          case Some((v, d)) => Left(_Matrix(1, 2, Vector(v, d)))
-          case None         => Left(this)
-      case Left(expr) => Left(_EigDecomposition(expr))
-      case _          => Left(this)
+    withDense(m.eval(env), this, _EigDecomposition(_))(
+      diagonalisingVD(_).map((v, d) => Left(_Matrix(1, 2, Vector(v, d)))))
 
 
 /** Jordan decomposition: `jordan(A)` -- returns `[[P, J]]` where `A = P * J * P^(-1)`.
@@ -762,14 +753,9 @@ case class _JordanDecomposition(m: _Expression) extends _Expression:
 
   /** The numeric case: the eigen-decomposition when `P` is a basis, unevaluated otherwise. */
   private def numericJordan(r0: Either[_Expression, _Value]): Either[_Expression, _Value] =
-    r0 match
-      case r0 if denseOperand(r0).isDefined =>
-        // P must be invertible for P*J*P^-1 = A to hold; diagonalisingVD is the test eig shares.
-        denseOperand(r0).flatMap(diagonalisingVD) match
-          case Some((p, j)) => Left(_Matrix(1, 2, Vector(p, j)))
-          case None         => Left(this)
-      case Left(expr) => Left(_JordanDecomposition(expr))
-      case _          => Left(this)
+    // P must be invertible for P*J*P^-1 = A to hold; diagonalisingVD is the test eig shares.
+    withDense(r0, this, _JordanDecomposition(_))(
+      diagonalisingVD(_).map((p, j) => Left(_Matrix(1, 2, Vector(p, j)))))
 
 
 /** Element access: `at(A, i, j)` returns the element at 1-based row `i`, column `j`.

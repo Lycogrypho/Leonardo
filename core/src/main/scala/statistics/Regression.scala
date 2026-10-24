@@ -40,7 +40,9 @@ def leastSquares(x: _MatrixValue, y: _MatrixValue): Option[_MatrixValue] =
     // `qrDecompose` returns None for a rank-deficient design, which is exactly the case
     // where a normal-equations solve would have returned confident nonsense.
     (q, r)   <- x.qrDecompose
-    qty      <- Option.when(q.cols == q.cols)(q.transpose.multiply(yv))
+    // Q is m×n beside an m-row y by construction, so the product always conforms (the guard
+    // here compared `q.cols` with itself, F_0213).
+    qty       = q.transpose.multiply(yv)
     // R is p x p and upper triangular; inverting it is well conditioned precisely because
     // the condition number was never squared.
     rInv     <- r.inverse

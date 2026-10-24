@@ -119,9 +119,12 @@ case class _Minimize(f: _Expression, vars: Vector[_Variable], x0: _Expression,
     detailed(env).fold(_ => Left(this),
                        r => Right(_MatrixValue(r.x.size, 1, r.x.toArray)))
 
+  private val answers = LastAnswer[Either[MinimizeFailure, MinimizeResult]]()
+
   /** The solver's full answer: the certified result, or why there is none.  What the REPL
-   *  queries to explain a decline (F_0052 Decision A); `eval` is defined over it. */
-  def detailed(env: Environment): Either[MinimizeFailure, MinimizeResult] =
+   *  queries to explain a decline (F_0052 Decision A); `eval` is defined over it, and it is
+   *  computed once per environment, so the note reads the solve `eval` ran (F_0212). */
+  def detailed(env: Environment): Either[MinimizeFailure, MinimizeResult] = answers(env) {
     val n = vars.size
     val read = for
       start <- columnOf(x0, n, env)
@@ -133,6 +136,7 @@ case class _Minimize(f: _Expression, vars: Vector[_Variable], x0: _Expression,
       case None => Left(MinimizeFailure.InvalidInput(
                      s"the starting point and bounds must be numeric columns of $n entries"))
       case Some((start, box)) => minimize(f, vars, start, box, method, env)
+  }
 
 
 /** `qp(H, f, A, b[, Aeq, beq], lb, ub)` — the convex quadratic program
@@ -166,8 +170,11 @@ case class _QP(h: _Expression, f: _Expression, a: _Expression, b: _Expression,
   override def eval(env: Environment): Either[_Expression, _Value] =
     detailed(env).fold(_ => Left(this), r => Right(_MatrixValue(r.z.size, 1, r.z.toArray)))
 
-  /** The solver's full answer, or why there is none; what the REPL queries (F_0052 Decision A). */
-  def detailed(env: Environment): Either[QpFailure, QpResult] =
+  private val answers = LastAnswer[Either[QpFailure, QpResult]]()
+
+  /** The solver's full answer, or why there is none; what the REPL queries (F_0052 Decision A),
+   *  computed once per environment (F_0212). */
+  def detailed(env: Environment): Either[QpFailure, QpResult] = answers(env) {
     numericMatrix(h, env).filter(m => m.rows == m.cols) match
       case None => Left(QpFailure.InvalidInput("H must be a square numeric matrix"))
       case Some(hm) =>
@@ -184,6 +191,7 @@ case class _QP(h: _Expression, f: _Expression, a: _Expression, b: _Expression,
         read match
           case Left(detail) => Left(QpFailure.InvalidInput(detail))
           case Right((fv, in, eg, lo, hi)) => qpSolve(hm, fv, in, eg, lo, hi, Set.empty, env)
+  }
 
 /** `nlp(f, [[x], [y]], x0, g, h, method)` and `nlp(f, [[x], [y]], x0, g, h, lb, ub, method)` —
  *  a KKT point of `min f` subject to `g ≤ 0`, `h = 0` and `lb ≤ x ≤ ub`, as an `n×1` column
@@ -217,8 +225,11 @@ case class _Nlp(f: _Expression, vars: Vector[_Variable], x0: _Expression, g: _Ex
   override def eval(env: Environment): Either[_Expression, _Value] =
     detailed(env).fold(_ => Left(this), r => Right(_MatrixValue(r.x.size, 1, r.x.toArray)))
 
-  /** The solver's full answer, or why there is none; what the REPL queries (F_0052 Decision A). */
-  def detailed(env: Environment): Either[NlpFailure, NlpResult] =
+  private val answers = LastAnswer[Either[NlpFailure, NlpResult]]()
+
+  /** The solver's full answer, or why there is none; what the REPL queries (F_0052 Decision A),
+   *  computed once per environment (F_0212). */
+  def detailed(env: Environment): Either[NlpFailure, NlpResult] = answers(env) {
     val n = vars.size
     val read = for
       start <- columnOf(x0, n, env).toRight(s"the starting point must be a numeric column of $n entries")
@@ -235,6 +246,7 @@ case class _Nlp(f: _Expression, vars: Vector[_Variable], x0: _Expression, g: _Ex
     read match
       case Left(detail) => Left(NlpFailure.InvalidInput(detail))
       case Right((start, gs, hs, box)) => nlpSolve(f, vars, start, gs, hs, box, method, env)
+  }
 
 
 /** `lp(f, A, b[, Aeq, beq], lb, ub)` — the linear program `min fᵀx` subject to `A x ≤ b`,
@@ -266,8 +278,11 @@ case class _LP(f: _Expression, a: _Expression, b: _Expression, eq: Option[(_Expr
   override def eval(env: Environment): Either[_Expression, _Value] =
     detailed(env).fold(_ => Left(this), r => _Matrix(r.x.size, 1, r.x).eval(env))
 
-  /** The solver's full answer, or why there is none; what the REPL queries. */
-  def detailed(env: Environment): Either[LpFailure, LpResult] =
+  private val answers = LastAnswer[Either[LpFailure, LpResult]]()
+
+  /** The solver's full answer, or why there is none; what the REPL queries, computed once per
+   *  environment (F_0212). */
+  def detailed(env: Environment): Either[LpFailure, LpResult] = answers(env) {
     def column(e: _Expression): Option[Vector[_Value]] =
       valueCells(e, env).collect { case (r, c, cells) if r == 1 || c == 1 => cells }
     def group(m: _Expression, rhs: _Expression, n: Int): Option[Option[(Vector[Vector[_Value]], Vector[_Value])]] =
@@ -298,6 +313,7 @@ case class _LP(f: _Expression, a: _Expression, b: _Expression, eq: Option[(_Expr
         read match
           case Left(detail)              => Left(LpFailure.InvalidInput(detail))
           case Right((in, eg, lo, hi)) => lpSolve(fv, in, eg, lo, hi, env.limits)
+  }
 
 /** The cells of an evaluated operand as values, **keeping exactness**: a number is `1×1`, a dense
  *  matrix reads as `Double`s, and a matrix with exact cells — which stays a symbolic `_Matrix` —

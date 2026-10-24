@@ -19,7 +19,8 @@ package it.grypho.scala.leonardo
  *     `Some(Double)` when every stage is finite, `None` otherwise.  Scalar state only.
  *  4. **Vector RK4** (`VectorODE`, F_0051): when `y0` is a column and tier 1 declined — a
  *     time-varying `A(t)` or a nonlinear system — RK4 with the state bound as a column,
- *     answered only when `n` and `2n` steps agree within the tolerance `=` uses.
+ *     answered only when `n` and `2n` steps agree within the tolerance `=` uses, relative to
+ *     the run's largest state component (F_0211).
  *
  *  A system whose state is a column of names (`[[x], [v]]`) builds `_ODESystem`, integrated
  *  by tier 4 alone.  `_OdeStep` / `_OdeSolve` (`odeStep` / `odeSolve`) expose the integrator

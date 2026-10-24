@@ -31,15 +31,24 @@ import scalar.*
  *  cap matches `expand`'s and the series' default orders. */
 private val MaxLaplacePowerN = 20
 
-/** Iterative factorial -- avoids stack overflow; safe for `n` up to `MaxLaplacePowerN`. */
-private def factorial(n: Int): Double =
-  (2 to n).foldLeft(1.0)(_ * _)
+/** `n!` in the input's tier: an exact `BigInt` in exact mode, the `Double` it always was otherwise
+ *  (F_0210).  Safe for `n` up to `MaxLaplacePowerN`. */
+private def factorial(n: Int)(using lit: Int => _Value): _Value =
+  lit(1) match
+    case _: _Rational => _Rational.of((2 to n).foldLeft(BigInt(1))(_ * _), BigInt(1)).getOrElse(_Number((2 to n).foldLeft(1.0)(_ * _)))
+    case _            => _Number((2 to n).foldLeft(1.0)(_ * _))
 
-/** Returns `Some(c)` when `ex = c * t` (or `t` alone -> `c = 1`); `None` otherwise. */
-private def coeffOfT(ex: _Expression, tv: String): Option[_Expression] = ex match
-  case vv: _Variable if vv.variable == tv                 => Some(_Number(1))
+/** An integer constant in the tier of the whole transformed expression (F_0210): the tables have
+ *  no environment, so the tier is read from content, the `literalLike` rule. */
+private[transform] def tierOf(whole: _Expression): Int => _Value = n => _Rational.literalLike(n, whole)
+
+/** Returns `Some(c)` when `ex = c * t`, `t/d` or `c*t/d` (or `t` alone -> `c = 1`); `None` otherwise.
+ *  The divisor forms are F_0210's: `exp(t/3)` and `sin(t/2)` stayed unevaluated. */
+private def coeffOfT(ex: _Expression, tv: String)(using lit: Int => _Value): Option[_Expression] = ex match
+  case vv: _Variable if vv.variable == tv                 => Some(lit(1))
   case Product(c, vv: _Variable) if vv.variable == tv     => Some(c)
   case Product(vv: _Variable, c) if vv.variable == tv     => Some(c)
+  case Ratio(inner, d) if !d.freeVars.contains(tv)        => coeffOfT(inner, tv).map(c => Ratio(c, d))
   case _                                                   => None
 
 /** Returns `Some(a)` when `inner` matches `tv - a` for a positive numeric `a`.
@@ -74,10 +83,11 @@ private def tPowerFactor(e: _Expression, tv: String): Option[(Int, _Expression)]
  *  @return the Laplace transform of `e`, or [[_Laplace]]`(e, t, s)` if no rule applies
  */
 def laplaceOf(e: _Expression, t: _Variable, s: _Variable): _Expression =
-  laplaceImpl(e, t, s, t.variable)
+  laplaceImpl(e, t, s, t.variable)(using tierOf(e))
 
-/** Recursive implementation of the rule table; carries `tv = t.variable` to avoid re-boxing. */
-private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String): _Expression =
+/** Recursive implementation of the rule table; carries `tv = t.variable` to avoid re-boxing, and
+ *  the whole input's tier for every constant a rule invents (F_0210). */
+private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String)(using lit: Int => _Value): _Expression =
 
   // First-shift theorem: L{exp(a*t)*g(t)} = G(s-a) where G(s) = L{g(t)}.
   // Nested here to capture t, s, tv, e from the enclosing scope; shared by both
@@ -87,7 +97,7 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
       case Some(a) =>
         val G = laplaceImpl(g, t, s, tv)
         if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
-        else substitute(G, Map(s.variable -> Sum(s, Product(_Number(-1), a))))
+        else substitute(G, Map(s.variable -> Sum(s, Product(lit(-1), a))))
       case None => _Laplace(e, t, s)
 
   // Full second-shift: L{u(t-a)*g(t-a)} = exp(-a*s)*G(s). Substitutes t->t+a in g,
@@ -116,29 +126,34 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
       Product(c, laplaceImpl(f, t, s, tv))
     case Product(f, c) if !dependsOn(c, t) =>
       Product(c, laplaceImpl(f, t, s, tv))
+    // and over a constant divisor (F_0210): `laplace(t/3, t, s)` stayed unevaluated
+    case Ratio(f, c) if !dependsOn(c, t) =>
+      laplaceImpl(f, t, s, tv) match
+        case _: _Laplace => _Laplace(e, t, s)
+        case transformed => Ratio(transformed, c)
 
     // L{t} = 1/s^2
     case vv: _Variable if vv.variable == tv =>
-      Ratio(_Number(1), Power(s, _Number(2)))
+      Ratio(lit(1), Power(s, lit(2)))
 
     // L{t^n} = n! / s^(n+1) for non-negative integer n <= MaxLaplacePowerN
     case Power(vv: _Variable, _Number(n))
         if vv.variable == tv && n.toInt.toDouble == n && n >= 0 && n <= MaxLaplacePowerN =>
-      Ratio(_Number(factorial(n.toInt)), Power(s, _Number(n + 1)))
+      Ratio(factorial(n.toInt), Power(s, lit(n.toInt + 1)))
 
     // L{exp(c*t)} = 1 / (s - c)
     case Exp(inner) => coeffOfT(inner, tv) match
-      case Some(c) => Ratio(_Number(1), Sum(s, Product(_Number(-1), c)))
+      case Some(c) => Ratio(lit(1), Sum(s, Product(lit(-1), c)))
       case None    => _Laplace(e, t, s)
 
     // L{sin(w*t)} = w / (s^2 + w^2)
     case Sin(inner) => coeffOfT(inner, tv) match
-      case Some(c) => Ratio(c, Sum(Power(s, _Number(2)), Power(c, _Number(2))))
+      case Some(c) => Ratio(c, Sum(Power(s, lit(2)), Power(c, lit(2))))
       case None    => _Laplace(e, t, s)
 
     // L{cos(w*t)} = s / (s^2 + w^2)
     case Cos(inner) => coeffOfT(inner, tv) match
-      case Some(c) => Ratio(s, Sum(Power(s, _Number(2)), Power(c, _Number(2))))
+      case Some(c) => Ratio(s, Sum(Power(s, lit(2)), Power(c, lit(2))))
       case None    => _Laplace(e, t, s)
 
     // First-shift theorem -- both Product orderings delegate to the helper above.
@@ -146,7 +161,7 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
     case Product(g, Exp(inner)) => firstShift(inner, g)
 
     // L{u(t)} = 1/s  (unit step at origin)
-    case _Heaviside(vv: _Variable) if vv.variable == tv => Ratio(_Number(1), s)
+    case _Heaviside(vv: _Variable) if vv.variable == tv => Ratio(lit(1), s)
 
     // L{u(t-a)} = exp(-a*s)/s  (second-shift: shifted unit step, a > 0)
     case _Heaviside(inner) => shiftOf(inner, tv) match
@@ -167,5 +182,5 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String):
           if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
           else
             val dG = simplifyFully(deriveN(G, s, n))
-            if n % 2 == 0 then dG else Product(_Number(-1), dG)
+            if n % 2 == 0 then dG else Product(lit(-1), dG)
         case None => _Laplace(e, t, s)

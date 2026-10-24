@@ -30,14 +30,13 @@ object _Complex:
    *  `None` for non-numeric values such as [[_Bool]] or [[_MatrixValue]].
    */
   def parts(v: _Value): Option[(Double, Double)] = v match
+    // The widening `_Number` reads a `_Rational` as a Double too, and that IS the promotion
+    // lattice's float contagion: every complex kernel handles a mixed rational/inexact pair the
+    // one documented way, the exact operand degrading, never the reverse.  The exact
+    // rational-with-rational cases are matched earlier, in `scalar._Operation`, so they never
+    // reach this reader.  (A separate `_Rational` arm below this one was unreachable, F_0213.)
     case _Number(x)   => Some((x, 0.0))
     case c: _Complex  => Some((c.re, c.im))
-    // A rational read as a Double IS the promotion lattice's float contagion.
-    // Putting it here rather than in each operation means every complex kernel already
-    // handles a mixed rational/inexact pair, and handles it the one documented way: the
-    // exact operand degrades, never the reverse.  The exact rational-with-rational cases
-    // are matched earlier, in `scalar._Operation`, so they never reach this reader.
-    case r: _Rational => Some((r.toDouble, 0.0))
     case _            => None
 
   private def finiteVal(re: Double, im: Double): Option[_Value] =
@@ -68,10 +67,19 @@ object _Complex:
   def div(a: _Value, b: _Value): Option[_Value] =
     for (ar, ai) <- parts(a); (br, bi) <- parts(b); r <- divParts(ar, ai, br, bi) yield r
 
+  /** Smith's algorithm (F_0211): divides through the larger of the divisor's parts, so its
+   *  squared modulus is never formed.  `br² + bi²` underflowed to `0` for `|b| < 10⁻¹⁵⁴`, so
+   *  `1/(1e-170·i)` stayed symbolic, and overflowed above `10¹⁵⁴`. */
   private def divParts(ar: Double, ai: Double, br: Double, bi: Double): Option[_Value] =
-    val denom = br * br + bi * bi
-    if denom == 0.0 then None    // division by zero stays symbolic, as in the real path
-    else finiteVal((ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom)
+    if br == 0.0 && bi == 0.0 then None    // division by zero stays symbolic, as in the real path
+    else if math.abs(br) >= math.abs(bi) then
+      val r = bi / br
+      val d = br + bi * r
+      finiteVal((ar + ai * r) / d, (ai - ar * r) / d)
+    else
+      val r = br / bi
+      val d = br * r + bi
+      finiteVal((ar * r + ai) / d, (ai * r - ar) / d)
 
   /** Principal complex power `z ^ w = exp(w · log z)`.  `0 ^ w` is `0` for a positive
    *  real `w` and `None` otherwise, matching the real path's "0 ^ negative stays symbolic".

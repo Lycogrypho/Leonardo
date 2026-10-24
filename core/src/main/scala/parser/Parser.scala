@@ -510,7 +510,23 @@ object Parser extends JavaTokenParsers:
    *  parenthesised expression.  The interval `[lo, hi]` (F_0008) comes after the matrix, whose
    *  rows are bracketed again, so `[[1, 2]]` is still a matrix. */
   lazy val factor: Parser[_Expression] =
-    function | functional | matrixLiteral | intervalLiteral | value | "(" ~> guardedExpr <~ ")"
+    guard(letterAhead) ~> (function | functional) | matrixLiteral | intervalLiteral | value |
+    "(" ~> guardedExpr <~ ")"
+
+  /** Succeeds, consuming nothing, when the next non-blank character is a letter (F_0235).
+   *
+   *  Every keyword of [[function]] and [[functional]] starts with a letter (the Greek aliases `Γ`
+   *  and `β` included), so anything else fails all ~330 of them at this offset — and did, one by
+   *  one: a number in a matrix literal paid for them once as itself and again where `term`'s
+   *  implicit multiplication tried another factor at the following `,`.  A 120×60 literal took
+   *  3.75 s to parse on Node.  Failing every alternative at the same offset is what the guard
+   *  saves, so the furthest-failure error a caller sees is the one it always was.
+   */
+  private val letterAhead: Parser[Unit] = Parser { in =>
+    val at = handleWhiteSpace(in.source, in.offset)
+    if at < in.source.length && Character.isLetter(in.source.charAt(at)) then Success((), in)
+    else Failure("a function name", in)
+  }
 
   /** An interval literal: `[lo, hi]` (F_0008). */
   lazy val intervalLiteral: Parser[_Expression] =

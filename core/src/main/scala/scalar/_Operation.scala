@@ -198,13 +198,11 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       // (A^0 = I, A^-n = (A⁻¹)^n). Non-square, non-integer exponent, or a singular base
       // under a negative power → stay symbolic. Precedes the generic _Value case because
       // _MatrixValue is itself a _Value and would otherwise hit the complex fallback.
+      // An exact exponent arrives here too: the widening `_Number` reads a `_Rational`, so in
+      // exact mode `A^2` keeps matrix power (a separate `_Rational` arm after this one was
+      // unreachable, F_0213).  Exact matrix ENTRIES ride the symbolic `_Matrix`.
       case (Right(m: _MatrixValue), Right(_Number(e))) =>
         matrixPower(m, e).getOrElse(Left(this))
-      // Same, with an exact exponent: in exact mode `A^2` carries a _Rational, and without
-      // this arm it would fall through to the complex kernel and lose matrix power entirely.
-      // Exact matrix ENTRIES ride the symbolic `_Matrix`; this only keeps the feature working.
-      case (Right(m: _MatrixValue), Right(r: _Rational)) =>
-        matrixPower(m, r.toDouble).getOrElse(Left(this))
       // A matrix with exact entries stays a symbolic `_Matrix`
       // rather than collapsing, so it arrives here as a `Left`.  Read it as dense: `A^n`
       // therefore computes in `Double` even in exact mode, because `scalar` cannot build a

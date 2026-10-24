@@ -54,9 +54,9 @@ private[equation] def compareSides(
       close.map(b => _Bool(b)).toRight(wrap(av, bv))
     // F_0164: two matrices of values when either is not dense -- an exact matrix stays the
     // symbolic carrier, so the dense arm above never sees it and `[[1/2]] == [[1/2]]` echoed.
-    case (ra, rb) if matrixEqual(ra, rb, tolerance, env).isDefined =>
+    // Computed once (F_0212): a guard and a body each called it, comparing every cell twice.
+    case (ra, rb) =>
       matrixEqual(ra, rb, tolerance, env).map(b => _Bool(b)).toRight(wrap(ra.toExpression, rb.toExpression))
-    case (ra, rb) => Left(wrap(ra.toExpression, rb.toExpression))
 
 /** Whether two exact values agree to the working precision `wp` (F_0177):
  *  `|a - b| <= 10^-wp * max(|a|, |b|, 1)`.

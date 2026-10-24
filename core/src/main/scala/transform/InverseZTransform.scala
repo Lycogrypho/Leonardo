@@ -104,7 +104,8 @@ private def decomposeReal(ns: Vector[Double], ds: Vector[Double]): Option[Vector
       case (None, _) => None
       case (Some(acc), (factor, mult)) =>
         rootsOfSquareFree(factor) match
-          case Some(rs) if rs.forall((_, im) => math.abs(im) < 1e-9) =>
+          // Real at the factor's own root scale (F_0211), not against an absolute 1e-9.
+          case Some(rs) if rs.forall(realAmong(rs, 1e-9)) =>
             Some(acc ++ rs.map((re, _) => (re, mult)))
           case _ => None
     }
@@ -120,7 +121,7 @@ private def decomposeReal(ns: Vector[Double], ds: Vector[Double]): Option[Vector
       val columns = basis.map { (r, j) =>
         val factor = (1 to j).foldLeft(Vector(1.0))((acc, _) => polyMul(acc, Vector(-r, 1.0)))
         val (q, rem) = polyDivide(ds, factor)
-        if polyTrim(rem).exists(math.abs(_) > 1e-9) then Vector.empty[Double] else q
+        if !negligibleRemainder(rem, ds) then Vector.empty[Double] else q
       }
       if columns.exists(_.isEmpty) then None
       else
@@ -129,6 +130,15 @@ private def decomposeReal(ns: Vector[Double], ds: Vector[Double]): Option[Vector
         val b = Vector.tabulate(degree)(i => ns.lift(i).getOrElse(0.0))
         solveDense(a, b).map(xs => basis.zip(xs).map((rj, c) => ZTerm(c, rj._1, rj._2)))
   }
+
+/** Whether a division's remainder is rounding (F_0211): each coefficient against the largest
+ *  term of `ds` at the roots' scale `ρ`, so `vⁱ` is weighed as `ρⁱ`.  An absolute `1e-9` read a
+ *  remainder of a polynomial in small units as zero whatever it was. */
+private def negligibleRemainder(rem: Vector[Double], ds: Vector[Double]): Boolean =
+  val rho   = rootScale(ds.take(degreeOf(ds) + 1))
+  val w     = if rho > 0.0 then rho else 1.0
+  val scale = ds.indices.map(k => math.abs(ds(k)) * math.pow(w, k)).max
+  rem.indices.forall(i => math.abs(rem(i)) * math.pow(w, i) <= 1e-9 * scale)
 
 /** Solves the dense system `a * x = b` through the `core` inverse kernel; `None` if singular. */
 private def solveDense(a: Array[Array[Double]], b: Vector[Double]): Option[Vector[Double]] =

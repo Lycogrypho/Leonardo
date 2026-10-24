@@ -269,10 +269,8 @@ final class Session:
     if announceNames && !replaying then introduced ++= names.filter(isNewName)
 
   /** `names on | off` - whether a newly-seen free variable is announced. */
-  private def setNames(text: String): String = text.toLowerCase match
-    case "on"  => announceNames = true;  s"names = ${onOff(announceNames)}"
-    case "off" => announceNames = false; s"names = ${onOff(announceNames)}"
-    case other => s"names expects 'on' or 'off', got '$other'"
+  private def setNames(text: String): String =
+    toggleArgument("names", text).fold(identity, on => { announceNames = on; s"names = ${onOff(on)}" })
 
   /** [[execute]] on already-trimmed input. */
   private def dispatch(line: String): String = line match
@@ -918,11 +916,15 @@ final class Session:
       case Left(message) => message
       case Right(resolved) =>
         val expanded = withDefinitions(resolved)
-        val result   = expanded.eval(env)
+        // ONE environment for the evaluation and its note (F_0212): `env` builds a new one per
+        // call, and the heavy nodes remember their answer per environment, so the note reads the
+        // solve `eval` ran instead of solving again.
+        val here     = env
+        val result   = expanded.eval(here)
         val shown    =
           if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
           else formatResult(result)
-        val note = domainNote(result) + optimizeNote(expanded, result) + precisionNote(expanded)
+        val note = domainNote(result) + optimizeNote(expanded, result, here) + precisionNote(expanded)
         // The LaTeX is offered only when the text says nothing the formula does not (issue
         // F_0020). A domain note is exactly such a thing -- it is prose, it is not in the
         // rendering, and it is the whole value of an answer that otherwise echoes itself
@@ -970,7 +972,7 @@ final class Session:
    *  reader is not looking at.  `minimize` is re-run to get its reason, which costs a second
    *  solve on the decline path only.
    */
-  private def optimizeNote(e: _Expression, result: Either[_Expression, _Value]): String =
+  private def optimizeNote(e: _Expression, result: Either[_Expression, _Value], env: Environment): String =
     val text = (e, result) match
       case (s: _Stationary, Left(points: _Matrix)) => classification(s, points)
       case (m: _Minimize, Left(_)) =>
@@ -1718,10 +1720,9 @@ final class Session:
         s"unknown logic setting '$text'; try: $available, or symmetric on | off"
 
   /** Sets the symmetric-ternary encoding flag from `"on"`/`"off"` (case-insensitive). */
-  private def setSymmetricLogic(text: String): String = text.toLowerCase match
-    case "on"  | "true"  => symmetricLogic = true;  "logic symmetric = on"
-    case "off" | "false" => symmetricLogic = false; "logic symmetric = off"
-    case _               => s"logic symmetric expects 'on' or 'off', got: $text"
+  private def setSymmetricLogic(text: String): String =
+    toggleArgument("logic symmetric", text).fold(identity, on =>
+      { symmetricLogic = on; s"logic symmetric = ${onOff(on)}" })
 
   /** The working precision handed to the parser, or `None` when exact mode is off.
    *
@@ -1740,10 +1741,10 @@ final class Session:
    *  Echoes the flag alone, as every other setter echoes what it set (F_0127): it used to echo
    *  [[exactState]], both settings, and a loaded session — which writes `exact precision` and
    *  `exact` as two lines — printed the same line twice. */
-  private def setExact(text: String): String = text.toLowerCase match
-    case "on"  | "true"  => exactMode = true;  "exact = on"
-    case "off" | "false" => exactMode = false; "exact = off"
-    case _               => s"exact expects 'on', 'off' or 'precision <n>', got: $text"
+  private def setExact(text: String): String =
+    toggleArgument("exact", text)
+      .left.map(_ => s"exact expects 'on', 'off' or 'precision <n>', got: $text")
+      .fold(identity, on => { exactMode = on; s"exact = ${onOff(on)}" })
 
   /** Sets the working precision — the digits an irrational is approximated to.
    *
@@ -1771,7 +1772,9 @@ final class Session:
   /** Reads the `"on"`/`"off"` argument every toggle takes, or reports what was wrong.
    *
    *  One definition, so no two settings can come to disagree about their own spelling —
-   *  which is what [[onOff]] already does for the answer.
+   *  which is what [[onOff]] already does for the answer.  Every toggle reads it since F_0213:
+   *  `names`, `logic symmetric` and `exact` had copies, and `names true` was refused while
+   *  `pretty true` worked.
    */
   private def toggleArgument(name: String, text: String): Either[String, Boolean] =
     text.toLowerCase match
@@ -1831,6 +1834,13 @@ final class Session:
 object Session:
   /** Names the parser always resolves as constants; assignment to them is rejected. */
   val ReservedConstants: Set[String] = Set("pi", "e")
+
+  /** The words a line opens with to give a command rather than an expression (F_0213): what the
+   *  highlighter colours as a command, kept beside the `dispatch` that reads them.  Every one is
+   *  in `Parser.ReservedWords`, so no binding can take one. */
+  val CommandWords: Set[String] = Set(
+    "simplify", "expand", "eval", "env", "vars", "precision", "unset", "samples", "colors",
+    "pretty", "latex", "names", "exact", "truth", "truth3", "logic", "help", "quit", "exit")
 
   /** A display-only stand-in whose printed form is the text it carries (issue F_0035).
    *

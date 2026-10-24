@@ -1056,7 +1056,7 @@ ode([[t, 0], [0, -t]] * y, y, t, 0, [[1], [2]], 1)     A(t) through the single n
 ```
 
 RK4, **certified by step doubling**: `n` and `2n` steps must agree within the `=` tolerance
-(`0.5·10^-precision`), or the call stays symbolic and the REPL says why — a stiff system is
+(`0.5·10^-precision`) relative to the state's size, or the call stays symbolic and the REPL says why — a stiff system is
 refused rather than answered wrong. A right-hand side that is not a conforming column is never
 broadcast.
 

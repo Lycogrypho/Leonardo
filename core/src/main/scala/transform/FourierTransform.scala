@@ -127,9 +127,10 @@ private def linearIn(e: _Expression, t: _Variable): Option[(Double, Double)] =
     for c <- numericValue(cs(1)) if c != 0.0; d <- numericValue(cs(0)) yield (c, d)
   }
 
-private def numericValue(e: _Expression): Option[Double] = e.eval(new Environment()) match
-  case Right(_Number(d)) if d.isFinite => Some(d)
-  case _                               => None
+/** A constant of the transforms as a finite number, or `None` — the one reader the package
+ *  uses (F_0213: `InverseLaplaceTransform` had its own copy), built on the core readers. */
+private[transform] def numericValue(e: _Expression): Option[Double] =
+  numberOf(e.eval(new Environment())).flatMap(finiteOption)
 
 
 // ── A Laplace transform read as terms ─────────────────────────────────────────────────────

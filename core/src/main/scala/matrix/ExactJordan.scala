@@ -27,12 +27,7 @@ import spire.math.Rational as Q
  *  `Nˢ⁻¹v, …, Nv, v`.
  */
 
-private type QMat = Vector[Vector[Q]]
-
-private def qIdentity(n: Int): QMat = Vector.tabulate(n, n)((i, j) => if i == j then Q.one else Q.zero)
-
-private def qMatMul(a: QMat, b: QMat): QMat =
-  Vector.tabulate(a.size, b.head.size)((i, j) => a(i).indices.foldLeft(Q.zero)((s, k) => s + a(i)(k) * b(k)(j)))
+// QMat, qIdentity and qMatMul are the shared kernels of RationalMatrix.scala (F_0213).
 
 private def qMatVec(a: QMat, v: Vector[Q]): Vector[Q] =
   a.map(row => row.indices.foldLeft(Q.zero)((s, k) => s + row(k) * v(k)))

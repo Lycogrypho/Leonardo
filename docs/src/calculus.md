@@ -325,7 +325,8 @@ run("ode([[x - x*y], [x*y - y]], [[x], [y]], t, 0, [[2], [1]], 5)")
 The answer is **certified by step doubling**: fourth-order
 [Runge–Kutta](https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods) runs with `n` and `2n`
 steps, and the state is returned only when the two agree within the tolerance `=` uses
-(`0.5·10^-precision`).  An explicit method on a
+(`0.5·10^-precision`), relative to the largest state component of the run — so a problem
+written in other units is answered or refused alike.  An explicit method on a
 [stiff](https://en.wikipedia.org/wiki/Stiff_equation) system produces a finite, confident and
 wrong number; here it produces a refusal instead, and the node's `detailed` says why — the reason
 the REPL appends as a note:

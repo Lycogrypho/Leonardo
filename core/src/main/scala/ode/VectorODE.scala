@@ -183,7 +183,11 @@ private def dpAttempt(p: VectorProblem, t: Double, y: Vector[Double],
 
 /** Integrates from `(t0, y0)` exactly to `t1` with adaptive Dormand–Prince steps.
  *
- *  The local error per step is held below `tol · (1 + ‖y‖∞)`; the step grows by at most 5× and
+ *  The local error per step is held below `tol · S`, `S` the largest `‖y‖∞` of the run so far
+ *  and of the candidate step (F_0211): `tol · (1 + ‖y‖∞)` was absolute below unit scale, so a
+ *  state of `10⁻⁸` took one step and was answered to a few per cent.  The run's largest norm,
+ *  not the current one, so a state passing through zero is not held to nothing; invariant under
+ *  `y → k·y`.  The step grows by at most 5× and
  *  shrinks by at most 5× per attempt (the usual 0.9 safety factor), and the last step is cut to
  *  land on `t1`.  A step below `1e-12` of the time scale is a stiff problem or a singularity, and
  *  declines rather than crawls. */
@@ -191,8 +195,9 @@ private[ode] def adaptive(p: VectorProblem, t0: Double, y0: Vector[Double], t1: 
                           tol: Double, budget: Int): Either[OdeFailure, (Vector[Double], Int)] =
   val dir = math.signum(t1 - t0)
   val timeScale = math.max(math.abs(t1), math.abs(t1 - t0))
+  def norm(v: Vector[Double]): Double = v.map(math.abs).maxOption.getOrElse(0.0)
   @annotation.tailrec
-  def loop(t: Double, y: Vector[Double], h: Double, steps: Int): Either[OdeFailure, (Vector[Double], Int)] =
+  def loop(t: Double, y: Vector[Double], h: Double, steps: Int, seen: Double): Either[OdeFailure, (Vector[Double], Int)] =
     // Both floors are relative to the run's own time scale (F_0125): against max(1, |t|) a
     // span of 5e-12 needed a step below the 1e-12 floor, and rk45 declined StepSizeUnderflow.
     if dir * (t1 - t) <= 1e-14 * timeScale then Right((y, steps))
@@ -205,11 +210,12 @@ private[ode] def adaptive(p: VectorProblem, t0: Double, y0: Vector[Double], t1: 
       else dpAttempt(p, t, y, hh) match
         case Left(fail) => Left(fail)
         case Right((y5, err)) =>
-          val scale  = tol * (1.0 + y.map(math.abs).maxOption.getOrElse(0.0))
+          val reach  = math.max(seen, norm(y5))
+          val scale  = tol * reach
           val factor = if err == 0.0 then 5.0 else math.min(5.0, math.max(0.2, 0.9 * math.pow(scale / err, 0.2)))
-          if err <= scale && y5.forall(d => d.isFinite) then loop(t + hh, y5, hh * factor, steps + 1)
-          else loop(t, y, hh * factor, steps + 1)
-  if t1 == t0 then Right((y0, 0)) else loop(t0, y0, t1 - t0, 0)
+          if err <= scale && y5.forall(d => d.isFinite) then loop(t + hh, y5, hh * factor, steps + 1, reach)
+          else loop(t, y, hh * factor, steps + 1, seen)
+  if t1 == t0 then Right((y0, 0)) else loop(t0, y0, t1 - t0, 0, norm(y0))
 
 
 /** The local-error tolerance of `rk45`: three orders below the tolerance `=` uses, so that the
@@ -291,7 +297,8 @@ private def validated(state: OdeState, y0: Vector[Double], h: Double): Either[Od
 /** `ode`'s automatic vector integration (F_0051 steps 2 and Decision B): RK4 with the scalar
  *  tier's `stepCount`, **certified by step doubling** — the problem is integrated with `n` and
  *  `2n` steps, and answered (the finer result) only when the two agree within the tolerance `=`
- *  uses.  A stiff or under-resolved problem then declines instead of returning a finite,
+ *  uses **relative to the run's largest state component** (F_0211 Decision 1: it was absolute,
+ *  which is a claim about the state's units).  A stiff or under-resolved problem then declines instead of returning a finite,
  *  confident and wrong number.  **The certificate triples the work** (`n + 2n` steps):
  *  measured 121 ms for the oscillator over `2π` and 214 ms for Lotka–Volterra over 5 (JVM),
  *  while a stiff `y' = -10⁶(y - cos t)` declines in 7 ms, its state going non-finite.
@@ -314,7 +321,12 @@ private def certifiedRun(rhs: _Expression, state: OdeState, indepVar: _Variable,
       coarse <- fixedSteps(p, OdeMethod.RK4, t0, y0, target, n)
       fine   <- fixedSteps(p, OdeMethod.RK4, t0, y0, target, 2 * n)
       diff    = coarse.lazyZip(fine).map((a, b) => math.abs(a - b)).max
-      _      <- Either.cond(diff <= 0.5 * math.pow(10, -env.precision), (), OdeFailure.NotCertified(diff))
+      // At the solution's own scale (F_0211, the owner's Decision 1): the absolute `=` tolerance
+      // accepted a state of 1e-8 with ~10% error, and decided `y0 = 1e-8` differently from the
+      // same linear problem at `y0 = 1`.  The scale is the run's — `y0`'s and both ends' — so a
+      // state that ends at a zero crossing is not judged by the zero.
+      scale   = (y0 ++ coarse ++ fine).map(math.abs).max
+      _      <- Either.cond(diff <= 0.5 * math.pow(10, -env.precision) * scale, (), OdeFailure.NotCertified(diff))
     yield fine
 
 /** Reads an evaluated initial state as a column of numbers (an exact column demoted, the `expm`

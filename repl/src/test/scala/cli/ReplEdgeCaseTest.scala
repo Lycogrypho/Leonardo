@@ -78,3 +78,16 @@ class ReplEdgeCaseTest extends AnyFlatSpec:
     assert(s.execute("samples x x 0 1e400") == "samples: <lo> and <hi> must be finite numbers")
     assert(s.bodePoints("1/(s+1) s -1e400 10") == Left("bode: <lo> and <hi> must be finite numbers"))
   }
+
+  "every toggle" should "read its argument the one way (F_0213)" in {
+    // `pretty true` worked while `names true` was refused: four readers of on/off.
+    val s = new Session()
+    assert(s.execute("names true") == "names = on")
+    assert(s.execute("names false") == "names = off")
+    assert(s.execute("names maybe") == "names expects 'on' or 'off', got: maybe")
+    assert(s.execute("exact maybe") == "exact expects 'on', 'off' or 'precision <n>', got: maybe")
+  }
+
+  "every command word" should "be reserved, so no binding can take one (F_0213)" in {
+    assert((Session.CommandWords -- parser.Parser.ReservedWords).isEmpty)
+  }

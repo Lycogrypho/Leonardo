@@ -50,24 +50,25 @@ private val MaxZPowerN = 20
  *  @return the z-transform of `x`, or [[_ZTransform]]`(x, n, z)` if no rule applies
  */
 def zTransformOf(x: _Expression, n: _Variable, z: _Variable): _Expression =
-  zImpl(x, n, z, n.variable)
+  zImpl(x, n, z, n.variable)(using tierOf(x))
 
-/** Recursive implementation of the rule table; carries `nv = n.variable` to avoid re-boxing. */
-private def zImpl(x: _Expression, n: _Variable, z: _Variable, nv: String): _Expression =
+/** Recursive implementation of the rule table; carries `nv = n.variable` to avoid re-boxing, and
+ *  the whole input's tier for every constant a rule invents (F_0210). */
+private def zImpl(x: _Expression, n: _Variable, z: _Variable, nv: String)(using lit: Int => _Value): _Expression =
 
   /** `z / (z - a)`, the geometric transform shared by the `a^n` and `exp(c*n)` rules. */
   def geometric(a: _Expression): _Expression =
-    Ratio(z, Sum(z, Product(_Number(-1), a)))
+    Ratio(z, Sum(z, Product(lit(-1), a)))
 
   /** `z^2 - 2*z*cos(w) + 1`, the denominator both trigonometric rules share. */
   def trigDen(w: _Expression): _Expression =
-    Sum(Sum(Power(z, _Number(2)), Product(_Number(-2), Product(z, Cos(w)))), _Number(1))
+    Sum(Sum(Power(z, lit(2)), Product(lit(-2), Product(z, Cos(w)))), lit(1))
 
   x match
 
     // Z{c} = c*z/(z-1) for a sequence free of n -- NOT c/z; see the class comment.
     case _ if !dependsOn(x, n) =>
-      Product(x, Ratio(z, Sum(z, _Number(-1))))
+      Product(x, Ratio(z, Sum(z, lit(-1))))
 
     // Linearity: Z{a + b} = Z{a} + Z{b}
     case Sum(a, b) =>
@@ -76,10 +77,15 @@ private def zImpl(x: _Expression, n: _Variable, z: _Variable, nv: String): _Expr
     // Linearity: Z{c * x} = c * Z{x} when c is free of n (both Product orderings)
     case Product(c, f) if !dependsOn(c, n) => Product(c, zImpl(f, n, z, nv))
     case Product(f, c) if !dependsOn(c, n) => Product(c, zImpl(f, n, z, nv))
+    // and over a constant divisor (F_0210): `ztrans(n/3, n, z)` stayed unevaluated
+    case Ratio(f, c) if !dependsOn(c, n) =>
+      zImpl(f, n, z, nv) match
+        case _: _ZTransform => _ZTransform(x, n, z)
+        case transformed    => Ratio(transformed, c)
 
     // Z{u[n]} = z/(z-1)
     case _Heaviside(vv: _Variable) if vv.variable == nv =>
-      Ratio(z, Sum(z, _Number(-1)))
+      Ratio(z, Sum(z, lit(-1)))
 
     // Z{a^n} = z/(z-a) for a base free of n
     case Power(a, vv: _Variable) if vv.variable == nv && !dependsOn(a, n) =>
@@ -97,7 +103,7 @@ private def zImpl(x: _Expression, n: _Variable, z: _Variable, nv: String): _Expr
 
     // Z{cos(w*n)} = z*(z - cos(w)) / (z^2 - 2*z*cos(w) + 1)
     case Cos(inner) => coeffOfT(inner, nv) match
-      case Some(w) => Ratio(Product(z, Sum(z, Product(_Number(-1), Cos(w)))), trigDen(w))
+      case Some(w) => Ratio(Product(z, Sum(z, Product(lit(-1), Cos(w)))), trigDen(w))
       case None    => _ZTransform(x, n, z)
 
     // Multiply-by-n: Z{n^k * g[n]} = (-z d/dz)^k applied to G(z). Covers `n`, `n^2` and
@@ -108,7 +114,7 @@ private def zImpl(x: _Expression, n: _Variable, z: _Variable, nv: String): _Expr
           val G = zImpl(g, n, z, nv)
           if G.isInstanceOf[_ZTransform] then _ZTransform(x, n, z)
           else simplifyFully((1 to k).foldLeft(G)((acc, _) =>
-            Product(Product(_Number(-1), z), derive(acc, z))))
+            Product(Product(lit(-1), z), derive(acc, z))))
         case None => _ZTransform(x, n, z)
 
 /** Returns `Some((k, g))` when `x = n^k * g` (either ordering), or `x = n^k` alone with

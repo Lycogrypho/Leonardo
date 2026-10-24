@@ -4,6 +4,8 @@ package scalar
 import core.*
 import scala.collection.immutable.VectorMap
 import scala.collection.mutable
+import scala.util.boundary
+import scala.util.boundary.break
 
 
 /** The most term pairs one multiplication inside [[expand]] may combine, checked **before** any
@@ -122,7 +124,7 @@ private def asExpression(p: Part)(using Expansion): _Expression = p.fold(identit
 private def polyOf(e: _Expression)(using ctx: Expansion): Part = e match
   case Sum(a, b) =>
     (polyOf(a), polyOf(b)) match
-      case (Right(pa), Right(pb)) => Right(add(pa, pb))
+      case (Right(pa), Right(pb)) => add(pa, pb).toRight(Sum(render(pa), render(pb)))
       case (pa, pb)               => Left(Sum(asExpression(pa), asExpression(pb)))
 
   case Product(a, b) =>
@@ -134,7 +136,7 @@ private def polyOf(e: _Expression)(using ctx: Expansion): Part = e match
   case Power(base, k @ _Number(n)) if n >= 1 && n <= ctx.maxPower && n == math.floor(n) =>
     polyOf(base) match
       case Right(pb) if !nonCommuting(pb) =>
-        if pb.size == 1 then Right(raise(pb, n.toInt))
+        if pb.size == 1 then raise(pb, n.toInt).toRight(Power(render(pb), k))
         else
           (1 until n.toInt).foldLeft(Option(pb))((acc, _) => acc.flatMap(multiply(_, pb)))
             .toRight(Power(render(pb), k))
@@ -166,16 +168,28 @@ private def isMatrixLeaf(e: _Expression): Boolean = e match
   case _: _MatrixValue | _: _MatrixShaped => true
   case other                              => other.children.exists(isMatrixLeaf)
 
-private def plus(a: _Value, b: _Value): _Value   = Sum(a, b).eval(Environment()).fold(_ => a, identity)
-private def times(a: _Value, b: _Value): _Value  = Product(a, b).eval(Environment()).fold(_ => a, identity)
+/** Two coefficients folded, or `None` when they do not fold (F_0211): a complex sum or product
+ *  that overflows stays symbolic.  Both answered their left operand then, so
+ *  `(1e200·i·x)·(1e200·i·x)` expanded to `1e200i·x²`. */
+private def plus(a: _Value, b: _Value): Option[_Value]  = Sum(a, b).eval(Environment()).toOption
+private def times(a: _Value, b: _Value): Option[_Value] = Product(a, b).eval(Environment()).toOption
+
+/** The reason recorded when a coefficient does not fold. */
+private val UnfoldableCoefficient = "a coefficient does not fold to a finite number (a complex value overflows)"
 private def isZero(c: _Value): Boolean = c match
   case _Number(0.0) => true
   case _            => false
 
-private def add(a: Poly, b: Poly): Poly =
-  val out = mutable.LinkedHashMap.from(a)
-  b.foreach((m, c) => out.updateWith(m)(old => Some(old.fold(c)(plus(_, c)))))
-  VectorMap.from(out.filterNot((_, c) => isZero(c)))
+/** `a + b`, or `None` (and a recorded refusal) when a coefficient does not fold. */
+private def add(a: Poly, b: Poly)(using ctx: Expansion): Option[Poly] =
+  boundary:
+    val out = mutable.LinkedHashMap.from(a)
+    b.foreach((m, c) => out.updateWith(m)(old => Some(old.fold(c)(o => folded(plus(o, c))))))
+    Some(VectorMap.from(out.filterNot((_, c) => isZero(c))))
+
+/** A fold's value, or a break out of the enclosing [[boundary]] with the refusal recorded. */
+private def folded[A](r: Option[_Value])(using ctx: Expansion, label: boundary.Label[Option[A]]): _Value =
+  r.getOrElse { ctx.refuse(UnfoldableCoefficient); break(None) }
 
 /** `a·b`, or `None` (and a recorded refusal) past the work budget or when the result would
  *  be deeper than `core.MaxExpressionDepth` — judged on the rendered form, since a sum's
@@ -184,21 +198,23 @@ private def multiply(a: Poly, b: Poly)(using ctx: Expansion): Option[Poly] =
   if a.size.toLong * b.size > ctx.maxWork then
     ctx.refuse(s"a product of ${a.size} by ${b.size} terms exceeds the limit of ${ctx.maxWork} term pairs")
     None
-  else
+  else boundary:
     val out = mutable.LinkedHashMap.empty[Monomial, _Value]
     for (ma, ca) <- a; (mb, cb) <- b do
       val m = mb.foldLeft(ma)((acc, fk) => acc.updated(fk._1, acc.getOrElse(fk._1, 0) + fk._2))
-      val c = times(ca, cb)
-      out.updateWith(m)(old => Some(old.fold(c)(plus(_, c))))
+      val c = folded(times(ca, cb))
+      out.updateWith(m)(old => Some(old.fold(c)(o => folded(plus(o, c)))))
     val result = VectorMap.from(out.filterNot((_, c) => isZero(c)))
     if tooDeep(render(result)) then
       ctx.refuse(s"the expansion has ${result.size} terms, deeper than the limit of $MaxExpressionDepth levels")
       None
     else Some(result)
 
-/** A single-term polynomial to the power `n`: the coefficient multiplied out, exponents scaled. */
-private def raise(p: Poly, n: Int): Poly =
-  p.map((m, c) => (m.view.mapValues(_ * n).toMap, (1 until n).foldLeft(c)((acc, _) => times(acc, c))))
+/** A single-term polynomial to the power `n`: the coefficient multiplied out, exponents scaled;
+ *  `None` when the coefficient does not fold. */
+private def raise(p: Poly, n: Int)(using Expansion): Option[Poly] =
+  boundary:
+    Some(p.map((m, c) => (m.view.mapValues(_ * n).toMap, (1 until n).foldLeft(c)((acc, _) => folded(times(acc, c))))))
 
 private def render(p: Poly)(using ctx: Expansion): _Expression =
   if p.isEmpty then ctx.lit(0)

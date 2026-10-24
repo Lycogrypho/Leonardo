@@ -217,13 +217,16 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
         // the h = 1 case is (∂F₃/∂x₂ − ∂F₂/∂x₃, ∂F₁/∂x₃ − ∂F₃/∂x₁, ∂F₂/∂x₁ − ∂F₁/∂x₂).
         // The formula assumes a RIGHT-handed ordering, so a left-handed system negates it
         // (see `handedness`) -- curl is a pseudo-vector, and this is the exchange's whole risk.
+        // The `−1` in the field's tier (F_0210): a Double one pulled an exact field into
+        // decimals, `curl([[y/3], [0], [0]], x, y, z)` answering `-0.33333`.
+        val neg = _Rational.literalLike(-1, e, env)
         val raw = Vector.tabulate(3) { i =>
           val (j, k) = ((i + 1) % 3, (i + 2) % 3)
           Ratio(Sum(d(Product(h(k), comps(k)), j),
-                    Product(_Number(-1), d(Product(h(j), comps(j)), k))),
+                    Product(neg, d(Product(h(j), comps(j)), k))),
                 Product(h(j), h(k)))
         }
-        column(if handedness == 1 then raw else raw.map(Product(_Number(-1), _)))
+        column(if handedness == 1 then raw else raw.map(Product(neg, _)))
     result.fold(Left(this))(Left(_))
 
 

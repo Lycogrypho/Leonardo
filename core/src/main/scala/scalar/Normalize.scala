@@ -113,12 +113,15 @@ def normalize(e: _Expression, v: _Variable): _Expression = e match
     collect(e, v) match
       case None => e   // not polynomial in v: unchanged
       case Some(cs) =>
+        // Exponents and the zero in the input's tier (F_0210): `x^2.0` in an exact polynomial.
+        // Content only: `normalize` has no environment.
+        def lit(n: Int): _Value = _Rational.literalLike(n, e)
         val terms = cs.zipWithIndex.flatMap { (c, k) =>
           if isZeroLiteral(c) then None
           else Some(k match
             case 0 => c
             case 1 => if isOneLiteral(c) then v else Product(c, v)
-            case _ => if isOneLiteral(c) then Power(v, _Number(k))
-                      else Product(c, Power(v, _Number(k))))
+            case _ => if isOneLiteral(c) then Power(v, lit(k))
+                      else Product(c, Power(v, lit(k))))
         }
-        if terms.isEmpty then _Number(0) else terms.reduceLeft(Sum(_, _))
+        if terms.isEmpty then lit(0) else terms.reduceLeft(Sum(_, _))
