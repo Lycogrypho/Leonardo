@@ -226,12 +226,27 @@ e.execute("H * inv(H)")    // exactly the identity
 though a compute cap remains, since an unbounded factorial is easy to type by accident.
 
 What still computes in `Double`: the iterative decompositions (`lu`, `qr`, `eigen`, `eig`,
-`jordan`), which cannot be exact whatever their input, and `A^n`.  They demote an exact
-operand rather than refuse it; write `A * A` for an exact product.
+and `jordan` unless every eigenvalue is rational), which cannot be exact whatever their input,
+and `A^n`.  They demote an exact operand rather than refuse it; write `A * A` for an exact
+product.
 
 Mixing an exact value with an inexact one gives an inexact result.  That is deliberate:
 absorbing the `Double` would be lossless, but it would dress representation error up as an
 exact answer.
+
+**The way back is `rationalize(x[, digits])`**, and only when you ask for it: every decimal of
+`x` becomes the nearest fraction good for `digits` digits (default: the working precision,
+at most 15, all a `Double` carries).  A matrix becomes an exact matrix, a symbolic expression
+keeps its shape.  A complex number or an interval has no exact form, so the call declines and
+says why.  When an exact input comes back as decimals that all look like small fractions, the
+REPL offers it in a note, naming the digits when fewer than the default are what give those
+fractions (at fifteen, a computed `1.9999999999999991` keeps its last digits); an irrational
+such as `norm([[2], [3]])` gets no such offer:
+
+```scala mdoc
+e.execute("lu([[1, 2], [3, 4]])")
+e.execute("rationalize(0.75)")
+```
 
 ## Matrix display
 

@@ -27,6 +27,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `names on\|off` | Announce each newly-seen free variable (default `off`). A name used as a function it is not — `sqrt(x)` — is reported whatever this is set to |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000) |
+| `rationalize(x[, digits])` | Every decimal of `x` as its nearest fraction (default digits: the working precision, at most 15); a complex value or an interval declines. Offered in a note when an exact input came back as decimals that look exact |
 | `simplify <expr>` | Structural simplification, after evaluating every call in the expression (a derivative, a solver, `sin(1)`) as plain evaluation would. Definitions are expanded, numeric bindings are not |
 | `expand <expr>` | Distribute products over sums and collect like terms; same preparation as `simplify`. A product whose expansion would be deeper than 200 levels (about 200 terms) is left as written, with a note |
 | `eval <expr>` | Evaluate substituting current bindings |

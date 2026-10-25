@@ -84,7 +84,7 @@ This simple rule is the spine of the library: nothing throws when an answer is n
 
 When `exact` is set on, literals become exact rationals, so `0.1 + 0.2` is exactly `3/10` and `det` of the 3×3 Hilbert matrix is exactly `1/2160`.
 
-Transcendentals are arbitrary-precision rather than `Double`, so raising the working precision genuinely sharpens `sin` and `exp`.
+Transcendentals are arbitrary-precision rather than `Double`, so raising the working precision genuinely sharpens `sin` and `exp`. A decimal returns to the exact tier only on request, with `rationalize`.
 
 `exact` is off by default, because exactness comes with a performance price and for normal use the floating-point path is enough.
 

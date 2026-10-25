@@ -73,6 +73,7 @@ object Parser extends JavaTokenParsers:
     "exp", "log", "ln", "sin", "cos", "tan", "tg", "asin", "acos", "atan",
     "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",   // hyperbolic
     "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic
+    "rationalize",                                       // F_0170, a decimal made exact on request
     "abs",                                               // absolute value / complex modulus
                                                          // (F_0036); reserved because the
                                                          // production needs it -- before it,
@@ -812,6 +813,8 @@ object Parser extends JavaTokenParsers:
     // a distribution delegates back to `probability.Moments`, a matrix is a sample.  The
     // two-argument form above stays the linearity rule table and is untouched.
     "variance(" ~> guardedExpr <~ ")"        ^^ { e => _Statistic(StatKind.Variance, e) }        |    "abs("     ~> guardedExpr <~ ")"                                     ^^ Abs.apply                     |
+    // F_0170: a decimal made exact, when asked for; the digits are optional.
+    "rationalize(" ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ { case e ~ d => _Rationalize(e, d) } |
     // F_0056, Decision A (the numpy split): maximum/minimum are the element-wise JOIN, two or
     // more operands; max/min are the REDUCTION of one array.  No prefix clash: "max(" needs
     // the bracket right after the x, which "maximum(" does not have.

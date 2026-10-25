@@ -62,7 +62,11 @@ class ExactMatrixReplTest extends AnyFlatSpec:
     s.execute("C := A * B")
     assert(s.execute("C") == s.execute("A * B"))
     s.execute("L, U, P := lu(A * B)")
-    assert(s.execute("L * U") == s.execute("P * A * B"))
+    // `P` is a Double binding, so `P * A * B` demotes and carries F_0170's rationalize note;
+    // `L * U` holds no exact value and does not.  The answers are what must agree.
+    def answer(line: String) = s.execute(line).linesIterator.next()
+    assert(answer("L * U") == answer("P * A * B"))
+    assert(s.execute("P * A * B").contains("rationalize"))
   }
 
   "dense named matrices" should "print exactly as before, a free scalar factor included" in

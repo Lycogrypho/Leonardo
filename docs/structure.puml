@@ -885,6 +885,15 @@ package "matrix" {
         matrix 2-norm = largest singular value, never eigen(A'A)
     }
 
+    class "Rationalize" <<utility>> [[matrix.html]] {
+        __ F_0170: rationalize(x[, digits]) __
+        _Rationalize: every decimal -> nearest fraction
+        a dense matrix -> the exact _Matrix carrier
+        complex, interval, non-finite: the whole call declines
+        looksRational: within 4 ulps of p/q, q <= sqrt(1e-3 / 4 ulp)
+        rationalizeDigits: the digits the REPL note names
+    }
+
     class "BlockMatrix" <<utility>> [[matrix.html]] {
         __ F_0055: one assembly path for every carrier __
         cellGrid: operand -> grid of cells

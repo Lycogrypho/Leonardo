@@ -924,7 +924,8 @@ final class Session:
         val shown    =
           if containsSolve(e) then tryAutoBindSolve(result).getOrElse(formatResult(result))
           else formatResult(result)
-        val note = domainNote(result) + optimizeNote(expanded, result, here) + precisionNote(expanded)
+        val note = domainNote(result) + optimizeNote(expanded, result, here) + precisionNote(expanded) +
+          rationalizeNote(expanded, result, here)
         // The LaTeX is offered only when the text says nothing the formula does not (issue
         // F_0020). A domain note is exactly such a thing -- it is prose, it is not in the
         // rendering, and it is the whole value of an answer that otherwise echoes itself
@@ -961,6 +962,33 @@ final class Session:
       case _                    => None
     sides.filter((l, r) => equalOnlyToWorkingPrecision(l, r, env)).fold("")(_ =>
       s"\n  note: the two sides agree to the working precision ($workingPrecision digits), not exactly")
+
+  /** Offers `rationalize` when an exact input came back as decimals that look exact (F_0170).
+   *
+   *  In exact mode a demoting operation (`lu`, `eig`, a `Double` binding) answers in `Double`s,
+   *  and a reader who knows the answer is rational had no way back.  The note says what
+   *  `rationalize` would give, and only when **every** decimal of the answer looks like a small
+   *  fraction ([[matrix.looksRational]]): an irrational is never offered as exact.  The owner's
+   *  scope, "only if it looks rational".  It names the digits ([[matrix.rationalizeDigits]]) when
+   *  they are not the default, since at fifteen digits a computed `1.9999999999999991` stays a
+   *  fraction that prints `2.0`: the offer is exactly what the named call gives.  Not while `load` replays a script, whose output is a
+   *  transcript; an appended note also clears the LaTeX channel, as every note does (F_0020).
+   */
+  private def rationalizeNote(e: _Expression, result: Either[_Expression, _Value], env: Environment): String =
+    val answer = result.toExpression
+    val offered =
+      // A solve's answer is a binding echo, and wrapping the solve in rationalize would bind again.
+      if !exactMode || replaying || containsSolve(e) || !_Rational.containsExactIn(e, env) then None
+      else for
+        ds    <- matrix.decimalLeaves(answer) if ds.nonEmpty
+        k     <- matrix.rationalizeDigits(ds)
+        exact <- matrix.rationalizeExpr(answer, k).toOption
+      yield (k, exact)
+    // The digits are named unless they are the default, so the offer is exactly what the call gives.
+    offered.fold("") { (k, exact) =>
+      val call = if k == math.min(workingPrecision, _Rational.DoubleReliableDigits) then "rationalize(...)" else s"rationalize(..., $k)"
+      s"\n  note: the decimals look exact; if they are, $call gives ${formatExpression(exact.eval(env).toExpression, false)}"
+    }
 
   /** Classifies the points `stationary` found, or says why `minimize` declined (F_0010) or a
    *  vector ODE integration did (F_0051).
@@ -1023,6 +1051,9 @@ final class Session:
       case (p: matrix._PInv, Left(_: matrix._PInv)) => p.declineReason(env).map(w => s"pinv declined: $w")
       case (r: matrix._Rank, Left(_: matrix._Rank)) => r.declineReason(env).map(w => s"rank declined: $w")
       case (c: matrix._Cond, Left(_: matrix._Cond)) => c.declineReason(env).map(w => s"cond declined: $w")
+      // F_0170: a rationalize that declined names the value with no exact form, or the digits.
+      case (r: matrix._Rationalize, Left(_: matrix._Rationalize)) =>
+        r.declineReason(env).map(w => s"rationalize declined: $w")
       case (n: matrix._NullSpace, Left(_: matrix._NullSpace)) =>
         n.declineReason(env).map(w => s"${matrix.Subspace.keyword(n.which)} declined: $w")
       // F_0059: a linearisation refused at its operating point names the entry and the reason.

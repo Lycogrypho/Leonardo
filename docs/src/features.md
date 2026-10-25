@@ -258,7 +258,11 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   user-settable *working precision* genuinely sharpens `sin` and `exp` themselves:
   `exp(1000)` is an exact 435-digit value where floating point overflows to infinity, and
   the small root of `x² + 10⁸x + 1 = 0` gets steadily more accurate as you raise it. Off by
-  default, so the floating-point path is unchanged.
+  default, so the floating-point path is unchanged. A decimal comes back into the exact tier
+  only when asked: `rationalize(x[, digits])` replaces every decimal of `x` (a number, a
+  matrix, a symbolic expression) with its nearest fraction, and declines a complex number or
+  an interval. The REPL offers it in a note when an exact input came back as decimals that
+  all look like small fractions, as `lu` gives in exact mode.
 
 - **Interval arithmetic**: `[lo, hi]` is a value whose endpoints are
   [rigorous bounds](https://en.wikipedia.org/wiki/Interval_arithmetic). `+ − × ÷`, powers and
