@@ -2315,6 +2315,14 @@ package "cli" <<Rectangle>> {
         + step(session, line): Option
     }
 
+    class "Conventional" <<utility>> [[repl.html]] {
+        __ F_0224: the display under pretty on __
+        + render(e, leaf): String
+        minimal brackets, binary minus, terms in order
+        re-parses to the same value (ConventionalTest)
+        never what :save writes
+    }
+
     class "ColorScheme" <<data>> [[repl.html]] {
         command / function / constant
         number / operator / equation
@@ -2350,6 +2358,7 @@ package "cli" <<Rectangle>> {
 "Session" ..> "Substitute"  : resolves definitions
 "Session" ..> "SimplifyLogic" : simplify post-pass
 "Session" ..> "TruthTableLogic" : truth command
+"Session" ..> "Conventional" : pretty on -> answers and echoes
 "Session" ..> "ToLatex"     : latex on -> lastLatex (a SECOND channel;\nthe printed text is unchanged)
 
 legend right

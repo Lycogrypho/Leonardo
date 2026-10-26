@@ -255,6 +255,12 @@ Matrices with two or more rows can be shown multi-line with right-aligned column
 decomposition results stay on one line. The setting is persisted by `:save` / `:load`,
 and the assignment echo honours it, so `A := [[1, 2], [3, 4]]` stacks like any other matrix.
 
+`pretty on` also writes every answer and echo **the way a reader writes it**: the fewest
+brackets the grammar needs and subtraction as a minus, so `4 - k*k` answers `4 - k*k` rather
+than `(4 + (-1 * (k * k)))`. The text still parses back to the same value, so an answer can be
+copied into the prompt; terms keep their order. `pretty off` shows the fully bracketed form
+`:save` writes, which `pretty on` leaves unchanged.
+
 `pretty` and [`latex`](#latex) are **mutually exclusive**: turning either on turns the
 other off and says so. A typeset matrix already carries the layout, so a stacked text beside it
 would be the same thing twice.
@@ -270,6 +276,7 @@ s.execute("pretty on")
 
 ```scala mdoc
 s.execute("[[1, 200], [30, 4]]")
+s.execute("4 - k*k")
 ```
 
 ```scala mdoc
@@ -571,7 +578,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 | `precision <n>` | Set decimal digits |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to (1 to 1000) |
-| `pretty on` / `off` | Multi-line, column-aligned matrix display |
+| `pretty on` / `off` | Multi-line, column-aligned matrix display, and answers with the fewest brackets |
 | `latex on\|off` | Also render each result as LaTeX (the printed text is unchanged) |
 | `names on\|off` | Announce each newly-seen free variable (default `off`) |
 | `colors dark\|light\|none` | Syntax-highlight scheme |

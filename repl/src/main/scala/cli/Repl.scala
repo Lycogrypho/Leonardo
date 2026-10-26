@@ -310,13 +310,13 @@ final class Session:
     // symmetricSpelling only overrides it when the result is itself a truth value.
     case s"simplify $rest"      => withParsed(rest) { e =>
       val r = simplifyPipeline(e)
-      withLatex(r)(symmetricSpelling(r).getOrElse(r.toString))
+      withLatex(r)(symmetricSpelling(r).getOrElse(plain(r)))
     }
     case s"expand $rest"        => withParsed(rest) { e =>
       // A product past expand's budgets stays as written (F_0076); the reason is appended as
       // a note, which -- like every note -- withholds the LaTeX channel (F_0020).
       val (r, refusal) = expandReporting(prepared(e))
-      refusal.fold(withLatex(r)(r.toString))(why => s"$r\n  note: $why")
+      refusal.fold(withLatex(r)(plain(r)))(why => s"${plain(r)}\n  note: $why")
     }
     case s"eval $rest"          => withParsed(rest)(evaluate)
     case s"samples $rest"       => doSamples(rest)
@@ -692,7 +692,17 @@ final class Session:
    *  what puts it in the right column.
    */
   private def formatExpression(e: _Expression, pretty: Boolean): String =
-    align(substituted(e, pretty).toString)
+    // F_0224: under `pretty on` the text is the conventional form, the session flag deciding
+    // (the `pretty` argument only says whether this matrix stacks, and is off inside a cell).
+    if prettyMatrix then align(Conventional.render(e, formatLeaf(_, pretty)))
+    else align(substituted(e, pretty).toString)
+
+  /** An expression as `simplify`, `expand` and a definition echo show it (F_0224): `toString`,
+   *  whose leaves keep their own form, or under `pretty on` the conventional text over the same
+   *  leaves.  Never what `:save` writes, which stays `toString`.
+   */
+  private def plain(e: _Expression): String =
+    if prettyMatrix then Conventional.render(e, _ => None) else e.toString
 
   /** Replaces every state-dependent leaf of `e` with its rendered text, keeping the shape. */
   private def substituted(e: _Expression, pretty: Boolean): _Expression =
@@ -1419,7 +1429,7 @@ final class Session:
           case Left(_) =>
             definitions = definitions + (name -> rhs)
             bindings = bindings - name
-            s"$name := $rhs"
+            s"$name := ${plain(rhs)}"
 
   /** Freezes the simplified+evaluated result of `rhs` into `name` (the `consolidate` command).
    *
@@ -1450,7 +1460,7 @@ final class Session:
             val frozen = simplify(expr)
             definitions = definitions + (name -> frozen)
             bindings = bindings - name
-            s"$name := $frozen"
+            s"$name := ${plain(frozen)}"
 
   /** Handles tuple assignment `L, U, P := lu(A)`: binds multiple names to a 1*n row result.
    *
@@ -1886,7 +1896,7 @@ object Session:
    *  escapes the formatter — built, printed, dropped — so `eval` is the identity a symbolic
    *  node returns and is there only to satisfy the trait.
    */
-  private case class Rendered(text: String) extends _Expression:
+  private[cli] case class Rendered(text: String) extends _Expression:
     def eval(env: Environment): Either[_Expression, _Value] = Left(this)
     def children: List[_Expression]                        = Nil
     def rebuild(newChildren: List[_Expression]): _Expression = this

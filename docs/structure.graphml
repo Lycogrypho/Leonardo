@@ -2848,6 +2848,18 @@ CommandWords: Set -- what a line opens with to give a command (F_0213)
 + step(session, line): Option</data>
     </node>
     <node id="n261">
+        <data key="n_label">Conventional</data>
+        <data key="n_package">cli</data>
+        <data key="n_kind">class</data>
+        <data key="n_stereotype">utility</data>
+        <data key="n_url">repl.html</data>
+        <data key="n_members">__ F_0224: the display under pretty on __
++ render(e, leaf): String
+minimal brackets, binary minus, terms in order
+re-parses to the same value (ConventionalTest)
+never what :save writes</data>
+    </node>
+    <node id="n262">
         <data key="n_label">ColorScheme</data>
         <data key="n_package">cli</data>
         <data key="n_kind">class</data>
@@ -2861,7 +2873,7 @@ Dark / Light / Plain schemes
 All: Map[String, ColorScheme]
 + named(name): ColorScheme</data>
     </node>
-    <node id="n262">
+    <node id="n263">
         <data key="n_label">LeonardoHighlighter</data>
         <data key="n_package">cli</data>
         <data key="n_kind">class</data>
@@ -2871,7 +2883,7 @@ All: Map[String, ColorScheme]
 + highlight(reader, buffer): AttributedString
 words derived from Parser.ReservedWords and Session.CommandWords (F_0213)</data>
     </node>
-    <node id="n263">
+    <node id="n264">
         <data key="n_label">repl()</data>
         <data key="n_package">cli</data>
         <data key="n_kind">class</data>
@@ -4427,11 +4439,11 @@ drives the pure Session.step</data>
         <data key="e_relation">dependency</data>
         <data key="e_label">one rule for 41 function nodes</data>
     </edge>
-    <edge id="e431" source="n262" target="n261">
+    <edge id="e431" source="n263" target="n262">
         <data key="e_relation">dependency</data>
         <data key="e_label">named()</data>
     </edge>
-    <edge id="e432" source="n263" target="n260">
+    <edge id="e432" source="n264" target="n260">
         <data key="e_relation">association</data>
         <data key="e_label">creates and drives</data>
     </edge>
@@ -4467,7 +4479,11 @@ drives the pure Session.step</data>
         <data key="e_relation">dependency</data>
         <data key="e_label">truth command</data>
     </edge>
-    <edge id="e441" source="n260" target="n259">
+    <edge id="e441" source="n260" target="n261">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">pretty on -&gt; answers and echoes</data>
+    </edge>
+    <edge id="e442" source="n260" target="n259">
         <data key="e_relation">dependency</data>
         <data key="e_label">latex on -&gt; lastLatex (a SECOND channel;\nthe printed text is unchanged)</data>
     </edge>
