@@ -32,6 +32,24 @@ class RationalizeTest extends AnyFlatSpec:
     assert(_Rational.containsExact(r) && !r.toString.contains("0.5") && r.freeVars == Set("x"), r)
   }
 
+  it should "default to the digits that give the small fraction when the decimal looks rational (F_0240)" in {
+    // At fifteen digits this stayed (2·10¹⁵ − 1)/10¹⁵, which prints 2.0.
+    assert(eval("rationalize(1.9999999999999991)") == Right(_Rational(2)))
+    eval("rationalize([[0.6666666666666666, 1.9999999999999991]])") match
+      case Left(m: _Matrix) => assert(m.elems == Vector(q(2, 3), _Rational(2)), m)
+      case other            => fail(s"$other")
+  }
+
+  it should "still convert a decimal that does not look rational faithfully, at fifteen digits" in {
+    eval("rationalize(1.4142135623730951)") match
+      case Right(r: _Rational) => assert(math.abs(r.toDouble - math.sqrt(2)) < 1e-15 && r != q(99, 70), r)
+      case other               => fail(s"$other")
+  }
+
+  it should "honour explicit digits over the default" in {
+    assert(eval("rationalize(1.9999999999999991, 15)") != Right(_Rational(2)))
+  }
+
   it should "leave an exact value as it is" in {
     assert(eval("rationalize(1/3)", exactMode = true) == Right(q(1, 3)))
   }

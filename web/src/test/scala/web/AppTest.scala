@@ -147,6 +147,53 @@ class AppTest extends AnyFlatSpec with BeforeAndAfterAll:
     assert(drawn.layout.yaxis.scaleanchor.asInstanceOf[String] == "x")
   }
 
+  // --- F_0238: the figure primitives and layers ---
+
+  "arrows" should "draw one annotation per column, axes locked" in
+  {
+    typeLine("arrows [[1, 0], [0, 2]]")
+    assert(lastOutput() == "(drawn)", lastOutput())
+    assert(drawn.layout.annotations.asInstanceOf[js.Array[js.Dynamic]].length == 2)
+    assert(drawn.layout.yaxis.scaleanchor.asInstanceOf[String] == "x")
+  }
+
+  "polygon" should "draw a closed, filled trace" in
+  {
+    typeLine("polygon [[0, 1, 1, 0], [0, 0, 1, 1]]")
+    val trace = drawn.data.asInstanceOf[js.Array[js.Dynamic]](0)
+    assert(trace.fill.asInstanceOf[String] == "toself")
+    assert(trace.x.asInstanceOf[js.Array[Double]].length == 5, "the first vertex closes it")
+  }
+
+  "curve" should "trace a 2x1 column over its parameter, axes locked" in
+  {
+    typeLine("curve [[cos(t)], [sin(t)]] t 0 6.2832 9")
+    val trace = drawn.data.asInstanceOf[js.Array[js.Dynamic]](0)
+    assert(trace.x.asInstanceOf[js.Array[Double]].length == 9)
+    assert(drawn.layout.yaxis.scaleanchor.asInstanceOf[String] == "x")
+  }
+
+  it should "answer its usage line when typed bare" in
+  {
+    typeLine("curve")
+    assert(lastOutput().startsWith("usage: curve"), lastOutput())
+  }
+
+  "a line of layers" should "draw them on shared axes, with a legend" in
+  {
+    typeLine("arrows [[1, 0], [0, 1]] ; polygon [[0, 1, 1, 0], [0, 0, 1, 1]] ; plot x x 0 1 3")
+    assert(lastOutput() == "(drawn: 3 layers)", lastOutput())
+    assert(drawn.layout.showlegend.asInstanceOf[Boolean])
+    // The geometric layers decide the lock for the whole figure.
+    assert(drawn.layout.yaxis.scaleanchor.asInstanceOf[String] == "x")
+  }
+
+  it should "refuse a Bode diagram beside another layer" in
+  {
+    typeLine("bode 1/(s+1) s 0.1 10 ; plot x x 0 1")
+    assert(lastOutput().contains("drawn alone"), lastOutput())
+  }
+
   "hist" should "draw the bins as bars and say how many values went into how many bins (F_0135)" in
   {
     typeLine("hist [[1, 2, 2, 3, 4, 5]] 4")

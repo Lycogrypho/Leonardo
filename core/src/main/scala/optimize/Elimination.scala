@@ -117,7 +117,7 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
 
             val stepped = linearConstantStep(rest, left).map((e, u, value) => assign(u, value, e))
               .orElse(univariateStep(rest, left).map { (e, u, roots) =>
-                sequence(roots.toList.map(r => assign(u, _Number(r), e))).map(_.flatten)
+                sequence(roots.toList.map(r => assign(u, r, e))).map(_.flatten)
               })
               .orElse(linearBranchStep(rest, left).map { (e, u, c0, c1) =>
                 val divided = assign(u, solveLinear(c0, c1), e)
@@ -201,14 +201,18 @@ private def linearConstantStep(eqs: List[_Expression],
     if cs.sizeIs == 2 && cs(1).freeVars.intersect(leftNames).isEmpty && !isZero(cs(1))
   yield (e, u, solveLinear(cs(0), cs(1)))).nextOption()
 
-/** Step 2: an equation in exactly one unknown, with every real root enumerated. */
+/** Step 2: an equation in exactly one unknown, with every real root enumerated.
+ *
+ *  A polynomial with exact coefficients has its rational roots taken exactly first (F_0228), so
+ *  exact input with rational stationary points answers exactly, as the linear steps already
+ *  did; `[[x = 0.0, y = 0]]` mixed the tiers in one answer. */
 private def univariateStep(eqs: List[_Expression],
-                           left: List[_Variable]): Option[(_Expression, _Variable, Vector[Double])] =
+                           left: List[_Variable]): Option[(_Expression, _Variable, Vector[_Expression])] =
   (for
     e <- eqs.iterator
     u <- left.iterator
     if e.freeVars == Set(u.variable)
-    roots <- realRoots(e, u).iterator
+    roots <- exactPolynomialRoots(e, u).orElse(realRoots(e, u).map(_.map(r => _Number(r): _Expression))).iterator
   yield (e, u, roots)).nextOption()
 
 /** Step 3: an equation linear in an unknown whose coefficient depends on the others.

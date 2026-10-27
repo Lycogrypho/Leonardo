@@ -30,8 +30,15 @@ package cli
  *  exists and is the authority; re-implementing it would add a second thing to keep in step for
  *  no caller.  `ShareLinkTest` checks the two agree by decoding this encoder's output with the
  *  real one.
+ *
+ *  **Published API since F_0236** (it was `private[leonardo]`): the course repository builds its
+ *  run links through the released `leonardo-repl`, and a copy of the format there would be a
+ *  second definition to drift.  Public, MiMa now protects it.  The contract a caller relies on:
+ *  a fragment is [[Key]] followed by `encodeURIComponent` of a `Session.script`, hex in upper
+ *  case, and a session longer than [[MaxFragment]] encoded characters yields **no link at all**
+ *  (a `Left`), never a truncated one.  Append it to an `/app/` URL after `#`.
  */
-private[leonardo] object ShareEncoding:
+object ShareEncoding:
 
   /** The fragment key, so the encoding can gain neighbours without becoming ambiguous. */
   val Key: String = "s="

@@ -691,11 +691,15 @@ final class Session:
    *  ordinary composite: a matrix nested in a larger expression stacks too, and [[align]] is
    *  what puts it in the right column.
    */
-  private def formatExpression(e: _Expression, pretty: Boolean): String =
+  private def formatExpression(e: _Expression, pretty: Boolean): String = formatAfter("", e, pretty)
+
+  /** [[formatExpression]] written after `prefix` on the same line, so a stacked matrix is
+   *  aligned under its own opening bracket rather than at column 0 (F_0223's value note). */
+  private def formatAfter(prefix: String, e: _Expression, pretty: Boolean): String =
     // F_0224: under `pretty on` the text is the conventional form, the session flag deciding
     // (the `pretty` argument only says whether this matrix stacks, and is off inside a cell).
-    if prettyMatrix then align(Conventional.render(e, formatLeaf(_, pretty)))
-    else align(substituted(e, pretty).toString)
+    if prettyMatrix then align(prefix + Conventional.render(e, formatLeaf(_, pretty)))
+    else align(prefix + substituted(e, pretty).toString)
 
   /** An expression as `simplify`, `expand` and a definition echo show it (F_0224): `toString`,
    *  whose leaves keep their own form, or under `pretty on` the conventional text over the same
@@ -979,9 +983,9 @@ final class Session:
    *  and a reader who knows the answer is rational had no way back.  The note says what
    *  `rationalize` would give, and only when **every** decimal of the answer looks like a small
    *  fraction ([[matrix.looksRational]]): an irrational is never offered as exact.  The owner's
-   *  scope, "only if it looks rational".  It names the digits ([[matrix.rationalizeDigits]]) when
-   *  they are not the default, since at fifteen digits a computed `1.9999999999999991` stays a
-   *  fraction that prints `2.0`: the offer is exactly what the named call gives.  Not while `load` replays a script, whose output is a
+   *  scope, "only if it looks rational".  The digits it converts at are [[matrix.rationalizeDigits]]'s,
+   *  which since F_0240 are the bare call's default, so the offer is exactly what
+   *  `rationalize(...)` gives.  Not while `load` replays a script, whose output is a
    *  transcript; an appended note also clears the LaTeX channel, as every note does (F_0020).
    */
   private def rationalizeNote(e: _Expression, result: Either[_Expression, _Value], env: Environment): String =
@@ -994,10 +998,9 @@ final class Session:
         k     <- matrix.rationalizeDigits(ds)
         exact <- matrix.rationalizeExpr(answer, k).toOption
       yield (k, exact)
-    // The digits are named unless they are the default, so the offer is exactly what the call gives.
-    offered.fold("") { (k, exact) =>
-      val call = if k == math.min(workingPrecision, _Rational.DoubleReliableDigits) then "rationalize(...)" else s"rationalize(..., $k)"
-      s"\n  note: the decimals look exact; if they are, $call gives ${formatExpression(exact.eval(env).toExpression, false)}"
+    // The bare call's default digits are these since F_0240, so the offer names no digits.
+    offered.fold("") { (_, exact) =>
+      s"\n  note: the decimals look exact; if they are, rationalize(...) gives ${formatExpression(exact.eval(env).toExpression, false)}"
     }
 
   /** Classifies the points `stationary` found, or says why `minimize` declined (F_0010) or a
@@ -1061,6 +1064,9 @@ final class Session:
       case (p: matrix._PInv, Left(_: matrix._PInv)) => p.declineReason(env).map(w => s"pinv declined: $w")
       case (r: matrix._Rank, Left(_: matrix._Rank)) => r.declineReason(env).map(w => s"rank declined: $w")
       case (c: matrix._Cond, Left(_: matrix._Cond)) => c.declineReason(env).map(w => s"cond declined: $w")
+      // F_0232: a qr of dependent columns says so, rather than echoing the call.
+      case (q: matrix._QRDecomposition, Left(_: matrix._QRDecomposition)) =>
+        q.declineReason(env).map(w => s"qr declined: $w")
       // F_0170: a rationalize that declined names the value with no exact form, or the digits.
       case (r: matrix._Rationalize, Left(_: matrix._Rationalize)) =>
         r.declineReason(env).map(w => s"rationalize declined: $w")
@@ -1429,7 +1435,34 @@ final class Session:
           case Left(_) =>
             definitions = definitions + (name -> rhs)
             bindings = bindings - name
-            s"$name := ${plain(rhs)}"
+            s"$name := ${plain(rhs)}${valueNote(resolved)}"
+
+  /** The value a definition's formula has NOW, as a note line, or `""` (F_0223).
+   *
+   *  `L := chol(G)` is a definition because its formula names `G`, and so is `M := chol(B)` for a
+   *  `B` that `chol` refuses: both echo the formula, and only this line tells the reader which
+   *  computed.  Evaluated with the current bindings, so it is what the name would answer if typed
+   *  next; the definition itself stays late-bound.  The domain-note discipline: appended, never
+   *  folded into the binding, and suppressed while `load` replays a script, whose output is a
+   *  transcript.  An assignment fills no LaTeX channel, so there is none to clear.
+   */
+  private def valueNote(resolved: _Expression): String =
+    // A formula naming nothing is a definition only because an exact matrix is the symbolic
+    // carrier (`G := [[4, 2], [2, 3]]` in exact mode); its echo already is its value.
+    if replaying || resolved.freeVars.isEmpty then ""
+    else withDefinitions(resolved).eval(env) match
+      case Right(value)               => "\n" + formatAfter("  = ", value, prettyMatrix)
+      case Left(m) if isComputed(m)   => "\n" + formatAfter("  = ", m, prettyMatrix)
+      case Left(_)                    => ""
+
+  /** Whether an unevaluated result is nevertheless a computed value: a matrix whose every cell
+   *  is one.  An exact matrix is the symbolic `_Matrix` carrier and never a `_Value`, so without
+   *  this the exact `chol(G)` F_0223 was filed for would read as refused; a row of factors
+   *  (`lu`'s `[[L, U, P]]`) qualifies through its cells. */
+  private def isComputed(e: _Expression): Boolean = e match
+    case _: _Value    => true
+    case m: _Matrix   => m.elems.forall(isComputed)
+    case _            => false
 
   /** Freezes the simplified+evaluated result of `rhs` into `name` (the `consolidate` command).
    *
@@ -1566,7 +1599,7 @@ final class Session:
 
   /** The Nyquist sweep — [[bodePoints]]'s grid, in rectangular coordinates (issue F_0004).
    *
-   *  Returns [[Session.Samples]] rather than a type of its own because a Nyquist diagram *is*
+   *  Returns `Session.Samples` rather than a type of its own because a Nyquist diagram *is*
    *  a set of plane coordinates, which is exactly what the `points` plot already draws — and
    *  draws with the axes locked to the same scale, without which the picture is wrong.
    *
@@ -1648,9 +1681,120 @@ final class Session:
           case Left(why) => sample(whole).fold(_ => Left(why), xs => binned(whole, xs, None))
       case whole => sample(whole).flatMap(binned(whole, _, None))
 
+  /** A figure of `lines` as an SVG image, for a page rendered ahead of time (F_0238).
+   *
+   *  Each line is a drawing command in the command language: `plot`, `points`, `curve`,
+   *  `arrows`, `polygon`, `hist`, `bode`, `nyquist` or `rlocus`, and a line may hold several
+   *  separated by `;`.  **Every command in the call is one layer on shared axes**, the axes locked
+   *  to one scale when any layer is geometry in the plane; a Bode diagram has two panels and is
+   *  drawn alone.  The data is this session's, read exactly as the browser's figures read it, so a
+   *  figure cannot disagree with a transcript, and the same text typed in the browser REPL draws
+   *  the same figure there.
+   *
+   *  The three primitives only a figure needs: `arrows M` draws an arrow from the origin to each
+   *  column of the `2×n` matrix `M`; `polygon M` fills the polygon whose vertices are its columns;
+   *  `curve E t lo hi [n]` traces the `2×1` column `E` as `t` runs over `[lo, hi]`, so
+   *  `curve A*[[cos(t)], [sin(t)]] t 0 6.2832 ; arrows A` is the unit circle's image under `A`
+   *  with `A`'s columns.  The image uses the reference palette on a light surface, carries a
+   *  legend for two or more layers, and embeds no font.
+   *
+   *  @param lines the drawing commands
+   *  @return the `<svg>` document, or the message explaining why nothing could be drawn
+   */
+  def figure(lines: String*): Either[String, String] = figurePlot(lines).map(Svg.render)
+
+  /** The layers of `lines` (F_0238): what [[figure]] renders and what the browser draws for a line
+   *  of drawing commands, so the two cannot read one line differently.
+   *
+   *  @param lines the drawing commands, `;` separating layers within a line
+   *  @return the figure, or why nothing can be drawn
+   */
+  private[leonardo] def figurePlot(lines: Seq[String]): Either[String, Figure.Plot] =
+    val commands = lines.flatMap(_.split(';')).map(_.trim).filter(_.nonEmpty).toVector
+    val read = commands.foldLeft[Either[String, Vector[(Figure.Layer, String, String)]]](Right(Vector.empty)) {
+      (acc, c) => acc.flatMap(ls => figureLayer(c).map(ls :+ _))
+    }
+    read.flatMap { parts =>
+      val layers = parts.map(_._1)
+      def title(ts: Vector[String]): String = ts.distinct match
+        case Vector(t) => t
+        case _         => ""
+      if layers.isEmpty then Left("figure: nothing to draw")
+      else if layers.sizeIs > 1 && layers.exists(_.isInstanceOf[Figure.Layer.Bode]) then
+        Left("figure: a Bode diagram has two panels of its own and is drawn alone")
+      else Right(Figure.Plot(layers, title(parts.map(_._2)), title(parts.map(_._3))))
+    }
+
+  /** One drawing command as a layer, with the axis titles it would have alone. */
+  private def figureLayer(command: String): Either[String, (Figure.Layer, String, String)] =
+    // The sampler's messages name `samples`; re-point them at the word actually written.
+    def named(word: String)(why: String): String = why.replace("samples:", s"$word:").replace("usage: samples", s"usage: $word")
+    def nonEmpty[A](word: String, pts: Vector[A]): Either[String, Vector[A]] =
+      if pts.isEmpty then Left(s"$word: no finite values in range") else Right(pts)
+    command match
+      case s"plot $rest" =>
+        samplePoints(rest).left.map(named("plot")).flatMap(r =>
+          nonEmpty("plot", Figure.finite(r.points)).map(p => (Figure.Layer.Line(r.expr, p, inPlane = false), r.variable, r.expr)))
+      case s"points $rest" =>
+        samplePoints(rest).left.map(named("points")).flatMap(r =>
+          nonEmpty("points", Figure.finite(r.points)).map(p => (Figure.Layer.Markers(r.expr, p), "Re", "Im")))
+      case s"curve $rest" =>
+        curvePoints(rest).flatMap(r => nonEmpty("curve", r.points.toVector).map(p => (Figure.Layer.Line(r.expr, p, inPlane = true), "", "")))
+      case s"arrows $rest" =>
+        columnsOf(rest, "arrows", 1).map(p => (Figure.Layer.Arrows(rest.trim, p), "", ""))
+      case s"polygon $rest" =>
+        columnsOf(rest, "polygon", 3).map(p => (Figure.Layer.Polygon(rest.trim, p), "", ""))
+      case s"hist $rest" =>
+        histogramBins(rest).map(h => (Figure.Layer.Bars(h.expr, h.edges, h.counts), h.expr, "count"))
+      case s"bode $rest" =>
+        bodePoints(rest).flatMap(r => nonEmpty("bode", r.points).map(p => (Figure.Layer.Bode(s"${r.expr}   (${r.variable} → iω)", p), "", "")))
+      case s"nyquist $rest" =>
+        nyquistPoints(rest).flatMap(r =>
+          nonEmpty("nyquist", Figure.finite(r.points)).map(p => (Figure.Layer.Markers(s"${r.expr}   (${r.variable} → iω)", p), "Re", "Im")))
+      case s"rlocus $rest" =>
+        rootLocusPoints(rest).map(l =>
+          (Figure.Layer.Locus(l.expr, l.branches.map(Figure.finite), Figure.finite(l.poles), Figure.finite(l.zeros)), "Re", "Im"))
+      case other =>
+        val word = other.takeWhile(!_.isWhitespace)
+        if Figure.Words.contains(word) then Left(s"usage: $word ${Figure.Usage(word)}")
+        else Left(s"figure: '$word' is not a drawing command (${Figure.Words.mkString(", ")})")
+
+  /** The trace behind `curve E t lo hi [n]` (F_0238): `E`, a `2×1` column, at each of `n` evenly
+   *  spaced values of `t`.  `samples`' argument syntax through the shared `sweepArgs`; a value of
+   *  `t` where `E` is not a column of two finite numbers is dropped, the `sample` rule, and a curve
+   *  with none at all is refused naming the shape it needs.
+   *
+   *  @param rest the command's arguments: `<expr> <var> <lo> <hi> [<n>]`
+   *  @return the points, or the message explaining why there are none
+   */
+  private[leonardo] def curvePoints(rest: String): Either[String, Session.Samples] =
+    sweepArgs(rest, "curve").flatMap { a => guarded {
+      val grid = if a.n == 1 then Vector(a.lo) else Vector.tabulate(a.n)(i => a.lo + i * (a.hi - a.lo) / (a.n - 1))
+      val points = grid.flatMap { t =>
+        _MatrixValue.ofEvaluated(a.resolved.eval(env.withBinding(a.variable, _Number(t))))
+          .filter(m => m.rows == 2 && m.cols == 1).map(m => (m(0, 0), m(1, 0)))
+      }
+      val drawn = Figure.finite(points)
+      if drawn.isEmpty then Left(s"curve: ${a.expr} must be a 2×1 column of numbers for each ${a.variable}")
+      else Right(Session.Samples(a.expr, a.variable, drawn))
+    }}
+
+  /** The columns of the `2×n` matrix `rest` evaluates to, as points, for `arrows` and `polygon`. */
+  private def columnsOf(rest: String, word: String, minColumns: Int): Either[String, Vector[Figure.Point]] =
+    if rest.trim.isEmpty then Left(s"usage: $word <2×n matrix>")
+    else parsed(rest.trim) { e =>
+      _MatrixValue.ofEvaluated(withDefinitions(e).eval(env)) match
+        case Some(m) if m.rows == 2 && m.cols >= minColumns =>
+          val pts = Figure.finite((0 until m.cols).map(j => (m(0, j), m(1, j))))
+          if pts.sizeIs >= minColumns then Right(pts) else Left(s"$word: a column of ${rest.trim} is not finite")
+        case _ =>
+          val what = if minColumns > 1 then s"at least $minColumns columns, one per vertex" else "one column per vector"
+          Left(s"$word: ${rest.trim} must be a 2×n matrix of numbers, $what")
+    }
+
   /** How many samples the sweeping commands will attempt for `rest` (issue F_0044).
    *
-   *  **Additive rather than a field on [[Session.Samples]]**, which is what it looks like it
+   *  **Additive rather than a field on `Session.Samples`**, which is what it looks like it
    *  should be: that record is public API of a published module, so widening it would break
    *  binary compatibility and cost a `mimaBinaryIssueFilters` entry — against a list whose
    *  emptiness is worth keeping, and for a message.  Reading the count back through the same
@@ -1941,7 +2085,7 @@ object Session:
    */
   def isNameChar(ch: Char): Boolean = ch.isLetterOrDigit || ch == '_'
 
-  /** Points taken by `samples` / [[Session.samplePoints]] when the count is omitted.
+  /** Points taken by `samples` / `Session.samplePoints` when the count is omitted.
    *
    *  Named rather than inlined because it is now read by two renderings of one sampling — the
    *  printed table and the browser's plot — and a plot drawn at a different default density
@@ -1966,7 +2110,7 @@ object Session:
    *  kernels compute to whatever precision they are asked for, so an uncapped setting is an
    *  unbounded computation the session cannot be talked out of: at a terminal only Ctrl-C ends
    *  it, and in the browser nothing does — and there it is reachable by a **third party**,
-   *  since `exact precision` is part of [[Session.settings]], `script` writes it, and the page
+   *  since `exact precision` is part of `Session.settings`, `script` writes it, and the page
    *  replays a shared link's script on load (issue F_0041).
    *
    *  **1000 is measured, not chosen for roundness.**  One `pi*e` on the JVM costs, by digits:

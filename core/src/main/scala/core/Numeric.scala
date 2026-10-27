@@ -19,6 +19,17 @@ private[leonardo] def numberOf(r: Either[_Expression, _Value]): Option[Double] =
  *  @return the value, or `None` for a NaN or an infinity */
 private[leonardo] def finiteOption(d: Double): Option[Double] = Option.when(d.isFinite)(d)
 
+/** The order a list of roots or eigenvalues is answered in: real part ascending, then imaginary
+ *  part ascending, so a conjugate pair comes `−im` first (F_0230).  One key for `tfpoles`,
+ *  `eigen`, `eig` and `jordan`, so the four cannot list the same values differently; a value
+ *  with no real reading sorts last.
+ *  @param v the value
+ *  @return the sort key */
+private[leonardo] def rootOrder(v: _Value): (Double, Double) = v match
+  case c: _Complex => _Complex.parts(c).getOrElse((Double.MaxValue, Double.MaxValue))
+  case _Number(d)  => (d, 0.0)
+  case _           => (Double.MaxValue, Double.MaxValue)
+
 /** Whole-number readers.  `isWhole` is the plain test; `asInt` is the one to use before an
  *  index or a count, since `Double.toInt` saturates at `Int.MaxValue` rather than failing. */
 private[leonardo] object Whole:

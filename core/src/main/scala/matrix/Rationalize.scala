@@ -20,9 +20,10 @@ import core.*
  *    `matrix`: `scalar` cannot build that carrier.
  *  - A symbolic expression keeps its shape, its decimal leaves made exact; an exact leaf is
  *    left as it is.
- *  - **`digits` defaults to the working precision, capped at 15**, the digits a `Double`
- *    carries (`_Rational.DoubleReliableDigits`); an explicit one must be a whole number in
- *    `1 .. 15`.
+ *  - **`digits` defaults to the fewest that make every decimal its small fraction** when each
+ *    looks rational ([[rationalizeDigits]], F_0240), **else to the working precision, capped at
+ *    15**, the digits a `Double` carries (`_Rational.DoubleReliableDigits`); an explicit one must
+ *    be a whole number in `1 .. 15`.
  *  - **A value it cannot make exact declines the whole call** (the owner's decision): a complex
  *    number (no exact complex carrier exists), an interval, a non-finite value.  Converting the
  *    rest would leave a result in two tiers that demotes again on evaluation.
@@ -51,12 +52,18 @@ case class _Rationalize(x: _Expression, digits: Option[_Expression] = None) exte
 
   /** The converted expression, or why there is none. */
   private def detailed(r: _Expression, env: Environment): Either[String, _Expression] =
-    digitsOf(env).flatMap(d => rationalizeExpr(r, d))
+    digitsFor(r, env).flatMap(d => rationalizeExpr(r, d))
 
-  /** The digits asked for, or the default: the working precision, capped at 15. */
-  private def digitsOf(env: Environment): Either[String, Int] =
+  /** The digits asked for, or the default (F_0240, the owner's decision): the fewest digits that
+   *  turn every decimal of `r` into its small fraction when each looks rational
+   *  ([[rationalizeDigits]], what the REPL's note offers), else the working precision capped at
+   *  15.  At fifteen a computed `1.9999999999999991` stays a fraction that prints `2.0`, so the
+   *  bare call kept the rounding it was asked to remove; a decimal that does not look rational is
+   *  still converted faithfully. */
+  private def digitsFor(r: _Expression, env: Environment): Either[String, Int] =
     digits.map(_.eval(env)) match
-      case None => Right(math.min(env.workingPrecision, _Rational.DoubleReliableDigits))
+      case None => Right(decimalLeaves(r).flatMap(rationalizeDigits)
+        .getOrElse(math.min(env.workingPrecision, _Rational.DoubleReliableDigits)))
       case Some(Right(_Number(d))) if Whole.isWhole(d) && d >= 1 && d <= _Rational.DoubleReliableDigits => Right(d.toInt)
       case Some(_) =>
         Left(s"the digits must be a whole number from 1 to ${_Rational.DoubleReliableDigits}: a Double carries no more")

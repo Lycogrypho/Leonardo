@@ -27,7 +27,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `names on\|off` | Announce each newly-seen free variable (default `off`). A name used as a function it is not — `sqrt(x)` — is reported whatever this is set to |
 | `exact on\|off` | Exact rational arithmetic (default `off`) |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000) |
-| `rationalize(x[, digits])` | Every decimal of `x` as its nearest fraction (default digits: the working precision, at most 15); a complex value or an interval declines. Offered in a note when an exact input came back as decimals that look exact |
+| `rationalize(x[, digits])` | Every decimal of `x` as its nearest fraction; the default digits are the fewest that give the small fractions the decimals look like (`1.9999999999999991` → `2`), else the working precision at most 15; a complex value or an interval declines. Offered in a note when an exact input came back as decimals that look exact |
 | `simplify <expr>` | Structural simplification, after evaluating every call in the expression (a derivative, a solver, `sin(1)`) as plain evaluation would. Definitions are expanded, numeric bindings are not |
 | `expand <expr>` | Distribute products over sums and collect like terms; same preparation as `simplify`. A product whose expansion would be deeper than 200 levels (about 200 terms) is left as written, with a note |
 | `eval <expr>` | Evaluate substituting current bindings |
@@ -46,6 +46,10 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `nyquist <expr> <v> <wMin> <wMax> [n]` | **Browser only** — Nyquist diagram in the complex plane, axes locked |
 | `rlocus <G> <v> <kMin> <kMax> [n]` | **Browser only** — root locus: the closed-loop poles of `G` over a gain band (geometric when `kMin > 0`), one continuous line per branch, axes locked |
 | `hist <sample> [bins]` | **Browser only** — histogram over the sample's range; the bin count defaults to Sturges' rule. A trailing integer is the count only when what precedes it is a sample (`hist y * 2` is the sample `y * 2`); every cell must be a real number. `bincounts` gives the same counts anywhere |
+| `curve <2×1 column> <v> <lo> <hi> [n]` | **Browser only** — trace the column as `v` runs over the range, axes locked |
+| `arrows <2×n matrix>` | **Browser only** — an arrow from the origin to each column, axes locked |
+| `polygon <2×n matrix>` | **Browser only** — the filled polygon whose vertices are the columns |
+| `<draw> ; <draw> ; …` | **Browser only** — several drawing commands as layers of one figure, with a legend (`bode` is drawn alone). `Session.figure(lines*)` renders the same lines as SVG |
 
 ---
 
@@ -774,12 +778,16 @@ The shape decides: a row or a column is a vector, anything else a matrix. The ma
 ### Decompositions — result is a 1×n row, use `at(result, 1, k)` to index
 
 ```
-lu(A)                           -> [[L, U, P]]  (P·A = L·U, partial pivoting)
-qr(A)                           -> [[Q, R]]     (A = Q·R, modified Gram-Schmidt)
+lu(A)                           -> [[L, U, P]]  (P·A = L·U, partial pivoting); exact on exact A, singular included
+qr(A)                           -> [[Q, R]]     (A = Q·R, modified Gram-Schmidt); dependent columns: unevaluated, with a note
 eigen(A)                        -> [[λ₁, …, λₙ]]  eigenvalues only
 eig(A)                          -> [[V, D]]     A·V = V·D  (eigenvectors + diagonal); defective: unevaluated
 jordan(A)                       -> [[P, J]]     A = P·J·P⁻¹; exact with blocks when exact, eigenvalues rational
 ```
+
+`eigen`, `eig` and `jordan` list eigenvalues by real part ascending, then imaginary part — the
+order `tfpoles` answers in, so a conjugate pair comes `−im` first; `eig` permutes `V`'s columns
+with `D`.
 
 ### Matrix exponential — a single matrix, not a row
 

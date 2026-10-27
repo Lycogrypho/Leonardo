@@ -93,7 +93,56 @@ class LessonTest extends AnyFlatSpec with Matchers:
     receiver.script shouldBe sender.sessionScript
   }
 
-  it should "be omitted rather than truncated when the session is too large" in {
+  // --- F_0238: figure -------------------------------------------------------------------------
+
+  "figureMarkup" should "write the SVG beside the page and show it" in {
+    val root   = java.nio.file.Files.createTempDirectory("lesson-figure")
+    val lesson = Lesson("lessons", root)
+    lesson.render(Seq("A := [[2, 1], [1, 2]]"))
+    val out = lesson.figureMarkup("unit.svg", Seq("curve A*[[cos(t)], [sin(t)]] t 0 6.2832 ; arrows A"))
+    out should startWith("""<img src="unit.svg" alt="curve""")
+    val written = java.nio.file.Files.readString(root.resolve("lessons").resolve("unit.svg"))
+    written should startWith("<svg")
+    written should include("<polyline")
+  }
+
+  it should "fail the build rather than publish a lesson without its figure" in {
+    val root = java.nio.file.Files.createTempDirectory("lesson-figure")
+    an[RuntimeException] should be thrownBy Lesson("", root).figureMarkup("bad.svg", Seq("arrows x"))
+  }
+
+  // --- F_0237: prepare ------------------------------------------------------------------------
+
+  "preparation" should "print the link and nothing else" in {
+    val out = Lesson().preparation(Seq("A := [[2, 1], [1, 2]]", "b := [[1], [0]]"))
+    out should startWith(s"*[${Lesson.ExerciseLabel}](${Lesson.AppUrl}#s=")
+    out should endWith(")*")
+    out should not include "```"
+    out should not include "> "
+    out.linesIterator.size shouldBe 1
+  }
+
+  it should "carry the prepared state, so the link reproduces it" in {
+    val lesson = Lesson()
+    val link   = lesson.preparation(Seq("precision 7", "A := [[2, 1], [1, 2]]", "f := x^2 + 1"))
+    val script = java.net.URLDecoder.decode(link.substring(link.indexOf("#s=") + 3, link.lastIndexOf(')')), "UTF-8")
+    val receiver = cli.Session()
+    receiver.load(script)
+    receiver.script shouldBe lesson.sessionScript
+  }
+
+  it should "leave its state to the blocks that follow" in {
+    val lesson = Lesson()
+    lesson.preparation(Seq("y := 7"))
+    lesson.render(Seq("y + 1")) should include("8")
+  }
+
+  it should "fail rather than print nothing when the session is too large" in {
+    val lines = (1 to 1200).map(i => s"name_this_a_rather_long_identifier_$i := $i")
+    an[RuntimeException] should be thrownBy Lesson().preparation(lines)
+  }
+
+  "the run link" should "be omitted rather than truncated when the session is too large" in {
     val lesson = Lesson()
     // Past ShareEncoding.MaxFragment: half a script would load as a valid but different session.
     for i <- 1 to 1200 do lesson.render(Seq(s"name_this_a_rather_long_identifier_$i := $i"))

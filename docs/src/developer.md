@@ -1083,9 +1083,11 @@ Two consequences worth knowing before extending this:
   pivot search only looks for a non-zero entry.
 
 What still computes in `Double`, by demoting an exact operand rather than losing the
-operation: the five iterative decompositions (`lu`, `qr`, `eigen`, `eig`, `jordan`), which
-cannot be exact whatever their input, and `A^n` — `Power` lives in `scalar`, which cannot
-build a matrix product and so cannot do exact repeated multiplication.  `A * A` is exact.
+operation: the iterative decompositions (`qr`, `eigen`, `eig`, and `jordan` unless every
+eigenvalue is rational), which cannot be exact whatever their input.  `lu` is finite elimination,
+so it is exact over the rationals (F_0226, a singular matrix included), and so is `A^n` (F_0227):
+`Power` lives in `scalar`, which cannot reach `matrix`, so the rational kernels both need sit in
+`core/ExactLinear.scala`.
 
 #### The decision that made it affordable: a widening `_Number`
 

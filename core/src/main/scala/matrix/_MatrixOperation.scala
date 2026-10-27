@@ -319,7 +319,21 @@ private def diagonalisingVD(mv: _MatrixValue): Option[(_Matrix, _Matrix)] =
     val reals = v.elems.collect { case _Number(d) => d }
     if reals.size == v.elems.size then isJordanInvertible(_MatrixValue(v.rows, v.cols, reals.toArray))
     else complexDetRatio(v).exists(_ > JordanRelTol)
-  }
+  }.map(sortedVD)
+
+/** `V` and `D` with the eigenvalues in `core.rootOrder` and `V`'s columns permuted alongside
+ *  (F_0230), so `eig`, `jordan` and `eigen` list one matrix's eigenvalues the same way.  A
+ *  diagonal entry that is not a value keeps its place at the end. */
+private def sortedVD(vd: (_Matrix, _Matrix)): (_Matrix, _Matrix) =
+  val (v, d) = vd
+  val n      = d.rows
+  val order  = (0 until n).sortBy(i => d(i, i) match
+    case x: _Value => rootOrder(x)
+    case _         => (Double.MaxValue, Double.MaxValue))
+  val vs     = Vector.tabulate(v.rows, v.cols)((i, j) => v(i, order(j))).flatten
+  // Off the diagonal every cell is the same zero, so it stays where it is.
+  val ds     = Vector.tabulate(n, n)((i, j) => if i == j then d(order(i), order(i)) else d(i, j)).flatten
+  (_Matrix(v.rows, v.cols, vs), _Matrix(n, n, ds))
 
 
 /** Element-wise matrix addition: `(A + B)_ij = A_ij + B_ij`.
@@ -594,8 +608,19 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _LUDecomposition(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    withDense(m.eval(env), this, _LUDecomposition(_))(
-      _.luDecompose.map((l, u, p) => Left(_Matrix(1, 3, Vector(l, u, p)))))
+    val r = m.eval(env)
+    r match
+      // F_0226: an exact square operand is factored over the rationals, singular included.
+      case Left(lit: _Matrix) if lit.rows == lit.cols && exactCells(lit).isDefined =>
+        val n = lit.rows
+        exactCells(lit).fold(Left(this)) { cells =>
+          val (l, u, p) = exactLu(cells, n, env.rationalPolicy)
+          def mat(c: Vector[_Rational]) = _Matrix(n, n, c.map(x => x: _Expression))
+          Left(_Matrix(1, 3, Vector(mat(l), mat(u), mat(p))))
+        }
+      case _ =>
+        withDense(r, this, _LUDecomposition(_))(
+          _.luDecompose.map((l, u, p) => Left(_Matrix(1, 3, Vector(l, u, p)))))
 
 
 /** QR decomposition: `qr(A)` -- returns `[[Q, R]]` where `A = Q * R`.
@@ -673,6 +698,21 @@ case class _QRDecomposition(m: _Expression) extends _Expression:
     withDense(m.eval(env), this, _QRDecomposition(_))(
       _.qrDecompose.map((q, r) => Left(_Matrix(1, 2, Vector(q, r)))))
 
+  /** Why a numeric operand has no QR here, or `None` when it has one or is not numeric (F_0232).
+   *
+   *  `qrDecompose` declines rank-deficient input by design: that refusal *is* the rank test
+   *  `regress` and `controllable` rely on (2.11), so a QR with a singular `R` would need a second
+   *  kernel, and is not built.  The note says so instead of echoing the call.
+   *
+   *  @param env the bindings
+   *  @return the reason */
+  def declineReason(env: Environment): Option[String] =
+    denseOperand(m.eval(env)).filter(_.qrDecompose.isEmpty).map { mv =>
+      if mv.rows < mv.cols then s"a ${mv.rows}×${mv.cols} matrix has more columns than rows, so its columns are linearly dependent"
+      else if !mv.toVector.forall(_.isFinite) then "an entry is not finite"
+      else "the columns are linearly dependent, so R would be singular; rank and nullspace show the dependence"
+    }
+
 
 /** Eigenvalue decomposition: `eigen(A)` -- returns `[[lambda_1, lambda_2, ..., lambda_n]]`.
  *
@@ -693,8 +733,9 @@ case class _EigenDecomposition(m: _Expression) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _EigenDecomposition(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
+    // Sorted by `core.rootOrder` (F_0230), not left in the QR iteration's order.
     withDense(m.eval(env), this, _EigenDecomposition(_))(
-      _.eigenDecompose.map(eigs => Left(_Matrix(1, eigs.size, eigs))))
+      _.eigenDecompose.map(eigs => Left(_Matrix(1, eigs.size, eigs.sortBy(rootOrder)))))
 
 
 /** Eigenvalue/eigenvector decomposition: `eig(A)` -- returns `[[V, D]]` where `A * V = V * D`.

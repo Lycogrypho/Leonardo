@@ -175,6 +175,10 @@ object App:
         case "bode" | "nyquist"  => SweepUsage
         case "hist"              => HistUsage
         case "rlocus"            => LocusUsage
+        // F_0238: the figure primitives, and a line of `;`-separated layers, draw through the
+        // layers `Session.figure` renders for a lesson -- never reserved, like `plot`.
+        case w @ ("curve" | "arrows" | "polygon") => s"usage: $w ${cli.Figure.Usage(w)}"
+        case layered if isFigureLine(layered)     => figure(layered)
         case s"rlocus $rest"     => rootLocus(rest)
         case s"hist $rest"       => histogram(rest)
         case s"plot $rest"       => plot(rest, geometric = false)
@@ -222,6 +226,23 @@ object App:
           if geometric then PlotSpec.coordinates(r.points, r.expr)
           else PlotSpec.line(r.points, r.expr, r.variable)
         draw(spec, r.points.size, session.requestedSampleCount(rest))
+
+  /** Whether a line is drawn as a figure of layers (F_0238): one of the three primitives only a
+   *  figure has, or several drawing commands separated by `;`.  The six older commands alone keep
+   *  their own paths and messages. */
+  private def isFigureLine(line: String): Boolean =
+    val word = line.takeWhile(!_.isWhitespace)
+    Set("curve", "arrows", "polygon").contains(word) || (line.contains(';') && cli.Figure.Words.contains(word))
+
+  /** Draws a figure of layers on shared axes: the same layers, from the same text, as
+   *  `Session.figure` renders as SVG, so a lesson's figure line pastes here unchanged. */
+  private def figure(line: String): String =
+    session.figurePlot(Seq(line)) match
+      case Left(why) => refused(why)
+      case Right(p) =>
+        Plot.draw(PlotSpec.figure(p), byId("figure")) match
+          case Right(_)  => if p.layers.sizeIs == 1 then "(drawn)" else s"(drawn: ${p.layers.size} layers)"
+          case Left(why) => why
 
   /** Draws a root locus (F_0140): the branches `Session.rootLocusPoints` matched point to point,
    *  with the open-loop poles and zeros marked.  Intercepted here like `bode`, never reserved. */

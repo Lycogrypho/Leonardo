@@ -527,7 +527,7 @@ object _MatrixValue:
    *  **exact** matrix stays symbolic — `_Matrix.eval` does not collapse rational cells — so it
    *  is accepted here and **demoted**, through the widening `_Number` extractor: every caller is
    *  a `Double` algorithm (`expm`, QR, the cdf kernels), and the alternative is losing the
-   *  operation rather than its exactness, the precedent `lu`/`qr`/`eigen` set.  Needs only the
+   *  operation rather than its exactness, the precedent `qr`/`eigen` set (`lu` is exact since F_0226).  Needs only the
    *  `core` shape trait, so every layer can use it.
    *
    *  @param r the evaluated operand

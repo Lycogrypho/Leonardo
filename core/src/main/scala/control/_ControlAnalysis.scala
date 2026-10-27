@@ -46,12 +46,9 @@ private def rootsDecline(g: _Expression, v: _Variable): String =
  *  reproducible whatever order the root finder returns), or `false` for provably none — the
  *  `stationary`/`singularities` convention, since a matrix cannot have zero columns. */
 private def rootsRow(rs: Vector[_Value]): Either[_Expression, _Value] =
-  def key(v: _Value): (Double, Double) = v match
-    case c: _Complex => _Complex.parts(c).getOrElse((Double.NaN, Double.NaN))
-    case _Number(d)  => (d, 0.0)
-    case _           => (Double.NaN, Double.NaN)
+  // `core.rootOrder` since F_0230, shared with `eigen`, `eig` and `jordan`.
   if rs.isEmpty then Right(_Bool(false))
-  else Left(_Matrix(1, rs.size, rs.sortBy(key)))
+  else Left(_Matrix(1, rs.size, rs.sortBy(rootOrder)))
 
 
 /** `tfpoles(G, s)` — the poles of `G`, [[poles]] at the prompt (F_0092 Decision A).

@@ -92,8 +92,9 @@ private final class Expansion(val exact: Boolean, val maxWork: Long, val maxPowe
 
 
 private def expandIn(e: _Expression)(using ctx: Expansion): _Expression = e match
-  case Sum(_, _) | Product(_, _) | Power(_, _) => asExpression(polyOf(e))
+  case Sum(_, _) | Product(_, _) | Power(_, _) => finished(polyOf(e))
   case _: _Value | _: _Variable                => e
+  case Ratio(_, b) if reciprocalOf(b).isDefined => finished(polyOf(e))
   case Ratio(a, b)                             => Ratio(expandIn(a), expandIn(b))
 
   case Exp(a)        => Exp(expandIn(a))
@@ -121,6 +122,27 @@ private type Part = Either[_Expression, Poly]
 
 private def asExpression(p: Part)(using Expansion): _Expression = p.fold(identity, render)
 
+/** A whole expansion as it is answered (F_0225): a polynomial in ONE variable by descending
+ *  degree, the textbook form of a characteristic polynomial, whichever factor was written first;
+ *  anything else in first-seen order, since ordering several variables needs a monomial order
+ *  nobody asked for.  Only the answer is reordered: the parts a larger expansion is built from
+ *  keep the order they first appeared in. */
+private def finished(p: Part)(using Expansion): _Expression = p match
+  case Right(poly) =>
+    poly.keysIterator.flatMap(_.keysIterator).toSet.toList match
+      case List(v: _Variable) => render(VectorMap.from(poly.toVector.sortBy((m, _) => -m.getOrElse(v, 0))))
+      case _                  => render(poly)
+  case Left(expr) => expr
+
+/** `1/b` in the input's tier when `b` evaluates to a non-zero number, so a sum over a numeric
+ *  divisor is divided term by term (F_0225): `(4·x₃ + 6·x₄)/2` is `2·x₃ + 3·x₄`.  A divisor
+ *  that is zero, symbolic or not finite leaves the quotient as written. */
+private def reciprocalOf(b: _Expression)(using ctx: Expansion): Option[_Value] =
+  b.eval(Environment()).toOption
+    .filter(c => isCoefficient(c) && !isZero(c) && finiteCoefficient(c))
+    .flatMap(c => Ratio(ctx.lit(1), c).eval(Environment()).toOption)
+    .filter(isCoefficient)
+
 private def polyOf(e: _Expression)(using ctx: Expansion): Part = e match
   case Sum(a, b) =>
     (polyOf(a), polyOf(b)) match
@@ -144,6 +166,12 @@ private def polyOf(e: _Expression)(using ctx: Expansion): Part = e match
         val b = asExpression(pb)
         Left((1 until n.toInt).foldLeft(b)((acc, _) => ordered(b, acc)))
 
+  case Ratio(a, b) if reciprocalOf(b).isDefined =>
+    val r = reciprocalOf(b).fold(ctx.lit(1))(identity)
+    polyOf(a) match
+      case Right(pa) => multiply(pa, constant(r)).toRight(Ratio(render(pa), b))
+      case Left(ea)  => Left(Ratio(ea, b))
+
   case c: _Value if isCoefficient(c) => Right(constant(c))
   case Power(base, k @ _Number(_))   => Right(factor(Power(expandIn(base), k)))
   case Power(base, k)                => Right(factor(Power(expandIn(base), expandIn(k))))
@@ -153,6 +181,12 @@ private def polyOf(e: _Expression)(using ctx: Expansion): Part = e match
 private def isCoefficient(v: _Value): Boolean = v match
   case _: _Complex | _Number(_) => true
   case _                        => false
+
+/** Whether a coefficient is finite: a complex one by both parts. */
+private def finiteCoefficient(c: _Value): Boolean = c match
+  case z: _Complex => _Complex.parts(z).exists((re, im) => re.isFinite && im.isFinite)
+  case _Number(d)  => d.isFinite
+  case _           => false
 
 private def constant(c: _Value): Poly = VectorMap(Map.empty[_Expression, Int] -> c)
 

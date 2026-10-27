@@ -162,6 +162,74 @@ object PlotSpec:
     )
     obj("data" -> s"[$gain,$phase]", "layout" -> layout)
 
+  /** Several layers on shared axes (F_0238): what a line of `;`-separated drawing commands, or
+   *  one of `arrows`, `polygon` and `curve`, draws.  The layers are `cli.Session.figurePlot`'s,
+   *  the ones `Session.figure` renders as SVG for a lesson, so a lesson's figure line typed here
+   *  draws the same figure.  Layer `i` takes palette slot `i` (`cli.Figure.Slots`), as in the
+   *  SVG; the axes are locked when any layer is geometric; arrows are annotations, which Plotly
+   *  draws with a head, over a marker at each tip so the autorange includes it.  A lone Bode
+   *  layer is [[bode]]'s two panels.
+   *
+   *  @param plot the figure
+   *  @return a Plotly `{data, layout}` document
+   */
+  def figure(plot: cli.Figure.Plot): String =
+    import cli.Figure.Layer
+    plot.layers match
+      case Vector(b: Layer.Bode) => bode(b.points, b.label)
+      case layers =>
+        def xy(name: String, colour: String, pts: Seq[(Double, Double)], extra: (String, String)*): String =
+          val drawn  = finitePairs(pts)
+          val fields = Seq("type" -> str("scatter"), "name" -> str(name), "x" -> arr(drawn.map(_._1)),
+                           "y" -> arr(drawn.map(_._2))) ++ extra
+          obj(fields*)
+        def lines(c: String)   = "line" -> obj("color" -> str(c), "width" -> "2")
+        def markers(c: String) = "marker" -> obj("color" -> str(c), "size" -> "8")
+        val parts = layers.zipWithIndex.map { (l, i) =>
+          val c = cli.Figure.Slots(i % cli.Figure.Slots.size)
+          l match
+            case Layer.Line(n, p, _) => (Seq(xy(n, c, p, "mode" -> str("lines"), lines(c))), Seq.empty)
+            case Layer.Markers(n, p) => (Seq(xy(n, c, p, "mode" -> str("markers"), markers(c))), Seq.empty)
+            case Layer.Polygon(n, v) =>
+              val closed = v ++ v.headOption
+              (Seq(xy(n, c, closed, "mode" -> str("lines"), "fill" -> str("toself"),
+                      "fillcolor" -> str(translucent(c)), lines(c))), Seq.empty)
+            case Layer.Arrows(n, t) =>
+              val heads = finitePairs(t).map((x, y) => obj(
+                "x" -> x.toString, "y" -> y.toString, "ax" -> "0", "ay" -> "0",
+                "xref" -> str("x"), "yref" -> str("y"), "axref" -> str("x"), "ayref" -> str("y"),
+                "showarrow" -> "true", "arrowhead" -> "2", "arrowwidth" -> "2", "arrowcolor" -> str(c), "text" -> str("")))
+              (Seq(xy(n, c, (0.0, 0.0) +: t, "mode" -> str("markers"), markers(c))), heads)
+            case Layer.Bars(n, e, k) =>
+              val bins = e.zip(e.drop(1)).zip(k).filter { case ((a, b), _) => finite(a) && finite(b) }
+              (Seq(obj("type" -> str("bar"), "name" -> str(n), "marker" -> obj("color" -> str(c)),
+                       "x" -> arr(bins.map { case ((a, b), _) => (a + b) / 2 }), "y" -> arr(bins.map(_._2.toDouble)),
+                       "width" -> arr(bins.map { case ((a, b), _) => b - a }))), Seq.empty)
+            case Layer.Locus(n, bs, ps, zs) =>
+              (bs.map(b => xy(n, c, b, "mode" -> str("lines"), lines(c))) :+
+               xy(s"$n poles", c, ps, "mode" -> str("markers"), "marker" -> obj("color" -> str(c), "symbol" -> str("x"), "size" -> "11")) :+
+               xy(s"$n zeros", c, zs, "mode" -> str("markers"), "marker" -> obj("color" -> str(c), "symbol" -> str("circle-open"), "size" -> "11")),
+               Seq.empty)
+            case Layer.Bode(_, _) => (Seq.empty, Seq.empty)   // refused beside another layer upstream
+        }
+        val yAxis =
+          if plot.geometric then obj("title" -> str(plot.yTitle), "zeroline" -> "true", "scaleanchor" -> str("x"), "scaleratio" -> "1")
+          else obj("title" -> str(plot.yTitle), "zeroline" -> "true")
+        val layout = obj(
+          "title"       -> str(layers.map(_.label).mkString(" ; ")),
+          "xaxis"       -> obj("title" -> str(plot.xTitle), "zeroline" -> "true"),
+          "yaxis"       -> yAxis,
+          "annotations" -> parts.flatMap(_._2).mkString("[", ",", "]"),
+          "margin"      -> obj("t" -> "40", "r" -> "20", "b" -> "45", "l" -> "60"),
+          "showlegend"  -> (layers.sizeIs > 1).toString
+        )
+        obj("data" -> parts.flatMap(_._1).mkString("[", ",", "]"), "layout" -> layout)
+
+  /** `#rrggbb` as an `rgba` at the polygon fill's opacity, the SVG's `fill-opacity`. */
+  private def translucent(hex: String): String =
+    val c = Integer.parseInt(hex.drop(1), 16)
+    s"rgba(${(c >> 16) & 0xFF},${(c >> 8) & 0xFF},${c & 0xFF},0.18)"
+
   /** Wraps one trace in the shared layout. */
   private def document(trace: String, title: String, xTitle: String, yTitle: String,
                        equalAxes: Boolean): String =

@@ -232,7 +232,15 @@ package "core" {
         + numberOf(r): Option[Double]
         + finiteOption(d): Option[Double]
         + Whole.isWhole / asInt / asCount
+        + rootOrder(v): the order roots and eigenvalues are listed in (F_0230)
         one definition each (F_0147)
+    }
+
+    class "ExactLinear" <<utility>> [[developer.html]] {
+        __ F_0227: rational kernels scalar and matrix share __
+        + rationalProduct(a, b, n, policy)
+        + rationalInverse(cells, n, policy): Option
+        + rationalMatrixPower(cells, n, k, policy, maxBits): Option
     }
 
     class "Limits" <<data>> [[developer.html]] {
@@ -2307,6 +2315,7 @@ package "cli" <<Rectangle>> {
         + settings: List[(String, String)]
         + script: String
         + load(text: String): String
+        + figure(lines*): Either[String, String] -- SVG (F_0238)
         __ companion __
         ReservedConstants: Set = {pi, e}
         CommandWords: Set -- what a line opens with to give a command (F_0213)
@@ -2322,6 +2331,27 @@ package "cli" <<Rectangle>> {
         re-parses to the same value (ConventionalTest)
         never what :save writes
     }
+
+    class "Figure" <<data>> [[repl.html]] {
+        __ F_0238: a figure as layers, before rendering __
+        Layer: Line / Markers / Arrows / Polygon / Bars / Locus / Bode
+        Plot(layers, xTitle, yTitle): geometric -> axes locked
+        Slots: the reference palette, fixed order
+    }
+
+    class "Svg" <<utility>> [[repl.html]] {
+        __ F_0238: static image of a Figure.Plot __
+        + render(plot): String
+        byte-identical on JVM and Node
+    }
+
+    class "ShareEncoding" <<utility>> [[repl.html]] {
+        __ F_0045; public API since F_0236 __
+        + encodeComponent(s): String
+        + fragmentFor(script): Either[String, String]
+    }
+
+    "Svg" ..> "Figure" : draws
 
     class "ColorScheme" <<data>> [[repl.html]] {
         command / function / constant
@@ -2359,6 +2389,8 @@ package "cli" <<Rectangle>> {
 "Session" ..> "SimplifyLogic" : simplify post-pass
 "Session" ..> "TruthTableLogic" : truth command
 "Session" ..> "Conventional" : pretty on -> answers and echoes
+"Session" ..> "Figure"      : figurePlot reads drawing lines
+"Session" ..> "Svg"         : figure()
 "Session" ..> "ToLatex"     : latex on -> lastLatex (a SECOND channel;\nthe printed text is unchanged)
 
 legend right

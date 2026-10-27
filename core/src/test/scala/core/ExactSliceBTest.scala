@@ -183,18 +183,19 @@ class ExactSliceBTest extends AnyFlatSpec:
     // these must produce the *identical* result in both modes, not merely some result.
     // `jordan` left this list with F_0176: an exact matrix whose eigenvalues are rational now
     // gets its exact Jordan form (`JordanTest`), and only an irrational spectrum demotes.
-    for input <- List("lu([[4, 3], [6, 3]])", "qr([[1, 2], [3, 4]])",
+    // `lu` left it with F_0226: elimination is finite, so it is exact (`ExactLuPowerTest`).
+    for input <- List("qr([[1, 2], [3, 4]])",
                       "eigen([[4, 1], [1, 3]])", "eig([[3, 1], [1, 3]])",
                       "jordan([[1, 1], [1, 0]])") do
       assert(exact(input) == plain(input), s"$input differs between modes")
       assert(exact(input).isLeft, s"$input returns a matrix-of-matrices, which is a Left")
   }
 
-  "matrix power" should "demote rather than be lost, with A * A as the exact form" in
+  "matrix power" should "be exact, as A * A is" in
   {
-    // `Power` lives in `scalar`, which cannot build a matrix product, so it cannot do exact
-    // repeated multiplication.  Demoting keeps A^n working; A * A stays exact.
-    assert(exact("[[1, 2], [3, 4]]^2").isRight, "A^n must still evaluate")
+    // It demoted until F_0227: `Power` lives in `scalar`, which cannot reach `matrix`'s kernels;
+    // `core.rationalMatrixPower` is the kernel both layers share now.
+    assert(cells("[[1, 2], [3, 4]]^2") == ints(7, 10, 15, 22))
     assert(cells("[[1, 2], [3, 4]] * [[1, 2], [3, 4]]") == ints(7, 10, 15, 22))
   }
 

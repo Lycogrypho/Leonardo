@@ -43,7 +43,7 @@ def exactCells(m: _Matrix): Option[Vector[_Rational]] =
 
 /** Reads a symbolic matrix as a dense `Double` one.
  *
- *  The demotion the iterative decompositions (`lu`, `qr`, `eigen`, `eig`, `jordan`) need:
+ *  The demotion the iterative decompositions (`qr`, `eigen`, `eig`, a numeric `jordan`) need:
  *  they cannot be exact, so an exact operand must degrade rather than stay symbolic and
  *  lose the feature.  Reads through the widening `_Number` extractor, so exact and inexact
  *  cells alike are accepted.
@@ -107,35 +107,52 @@ def exactDeterminant(cells: Vector[_Rational], n: Int, policy: GcdPolicy): _Rati
  *  @return the row-major cells of the inverse, or `None` when the matrix is singular
  */
 def exactInverse(cells: Vector[_Rational], n: Int, policy: GcdPolicy): Option[Vector[_Rational]] =
-  // Augment with the identity, reduce the left half to it, and read off the right half.
-  val augmented = Vector.tabulate(n, 2 * n) { (i, j) =>
-    if j < n then cells(i * n + j)
-    else if j - n == i then _Rational.One
-    else _Rational.Zero
-  }
+  // The kernel lives in `core` since F_0227, so `scalar`'s exact `A^(-n)` shares it.
+  rationalInverse(cells, n, policy)
 
-  @tailrec
-  def go(m: Vector[Vector[_Rational]], k: Int): Option[Vector[Vector[_Rational]]] =
-    if k >= n then Some(m)
-    else pivotRow(m, k) match
-      case None => None   // singular
-      case Some(p) =>
-        val swapped = if p == k then m else m.updated(k, m(p)).updated(p, m(k))
-        swapped(k)(k).reciprocal(policy) match
-          case None => None
-          case Some(inv) =>
-            // Normalise the pivot row, then clear the column in every other row.
-            val norm  = swapped.updated(k, swapped(k).map(_.multiply(inv, policy)))
-            val pivot = norm(k)
-            val cleared = norm.zipWithIndex.map { (row, i) =>
-              if i == k || row(k).isZero then row
-              else
-                val f = row(k)
-                row.zipWithIndex.map((cell, j) => cell.subtract(f.multiply(pivot(j), policy), policy))
-            }
-            go(cleared, k + 1)
+/** The exact LU factorisation `P·A = L·U` of a square rational matrix (F_0226).
+ *
+ *  Elimination is finite, so over the rationals it is exact.  **The pivot is the largest in
+ *  magnitude**, not merely the first non-zero [[pivotRow]] takes: exactness does not need it,
+ *  but it makes `P` the one the dense kernel chooses, so the same matrix written exactly and
+ *  inexactly factors the same way.  **A column with no non-zero pivot is skipped, not refused**:
+ *  a singular matrix has an LU factorisation too, with a zero on `U`'s diagonal, where the dense
+ *  kernel declines because in floating point an exact zero pivot cannot be told from a tiny one.
+ *
+ *  @param cells  the row-major exact cells
+ *  @param n      the dimension
+ *  @param policy the reduction policy for the intermediate arithmetic
+ *  @return the row-major cells of the unit lower-triangular `L`, the upper-triangular `U` and
+ *          the permutation `P`
+ */
+def exactLu(cells: Vector[_Rational], n: Int,
+            policy: GcdPolicy): (Vector[_Rational], Vector[_Rational], Vector[_Rational]) =
+  /** One elimination step at column `k`: the multipliers stored in place, as the dense kernel does. */
+  def step(state: (Vector[Vector[_Rational]], Vector[Int]), k: Int): (Vector[Vector[_Rational]], Vector[Int]) =
+    val (m, perm) = state
+    val p = (k until n).maxBy(i => m(i)(k).abs)   // the first of equal magnitudes, as the dense kernel
+    if m(p)(k).isZero then state
+    else
+      val swapped = if p == k then m else m.updated(k, m(p)).updated(p, m(k))
+      val order   = if p == k then perm else perm.updated(k, perm(p)).updated(p, perm(k))
+      val pivot   = swapped(k)
+      val reduced = swapped.zipWithIndex.map { (row, i) =>
+        if i <= k then row
+        else row(k).divide(pivot(k), policy) match
+          case None    => row   // unreachable: the pivot is non-zero by construction
+          case Some(f) => row.zipWithIndex.map { (cell, j) =>
+            if j < k then cell
+            else if j == k then f
+            else cell.subtract(f.multiply(pivot(j), policy), policy)
+          }
+      }
+      (reduced, order)
 
-  go(augmented, 0).map(m => Vector.tabulate(n, n)((i, j) => m(i)(j + n)).flatten)
+  val (a, perm) = (0 until n).foldLeft((rowsOf(cells, n, n), Vector.range(0, n)))(step)
+  val l = Vector.tabulate(n, n)((i, j) => if i == j then _Rational.One else if j < i then a(i)(j) else _Rational.Zero)
+  val u = Vector.tabulate(n, n)((i, j) => if j >= i then a(i)(j) else _Rational.Zero)
+  val p = Vector.tabulate(n, n)((i, j) => if perm(i) == j then _Rational.One else _Rational.Zero)
+  (l.flatten, u.flatten, p.flatten)
 
 /** The Cholesky factor of a symmetric positive-definite rational matrix (F_0054).
  *

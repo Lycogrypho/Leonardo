@@ -44,12 +44,12 @@ import cli.Session
  *  page therefore sends a reader to the live site, which is the right trade: the alternative is a
  *  link that works only on the machine that built it, and these pages exist to be published.
  *
- *  **One thing it deliberately does not do.**  It does not render a `plot` — that command is
- *  intercepted by the browser page and never reaches `Session`, so executing `plot …` here would
- *  quietly produce the echo of a free variable rather than a figure.  A plotting lesson pairs the
- *  run link above with a static image instead.
+ *  **A `plot` line is never passed to [[show]]**: that command is intercepted by the browser
+ *  page and never reaches `Session.execute`, so executing it here would quietly produce the echo
+ *  of a free variable rather than a figure.  A plotting lesson draws it with [[figure]] instead
+ *  (F_0238), which renders the same drawing commands as an image at build time.
  */
-final class Lesson:
+final class Lesson(pageDir: String = "", outputRoot: java.nio.file.Path = Lesson.DefaultOutput):
 
   /** The session every call shares, so a page reads as one continuous sitting. */
   private val session = Session()
@@ -59,6 +59,54 @@ final class Lesson:
    *  @param lines the commands, exactly as a reader would type them at the prompt
    */
   def show(lines: String*): Unit = println(page(lines))
+
+  /** Runs `lines` without printing them and prints only a link that opens the REPL on the result
+   *  (F_0237): an exercise opens with its data loaded but not its answer shown.
+   *
+   *  The lines join the page's session like any other block's, so a later [[show]] sees them.
+   *
+   *  @param lines the commands that set the exercise up, as a reader would type them
+   */
+  def prepare(lines: String*): Unit = println(preparation(lines))
+
+  /** Draws `lines` as an SVG image beside the page and prints the `<img>` showing it (F_0238).
+   *
+   *  The drawing commands are the command language's (`Session.figure`): `plot`, `curve`,
+   *  `arrows`, `polygon` and the rest, several separated by `;` as layers on shared axes.  They
+   *  run in the page's session, so a figure draws what the transcripts above it defined.  The file
+   *  is written to `outputRoot/pageDir/file`, the page's own directory in mdoc's output, so a
+   *  relative `src` finds it; the page states its directory when it is not at the site root,
+   *  `Lesson("lessons")`.  A line that cannot be drawn **fails the build**: a lesson promising a
+   *  figure must not publish without it.
+   *
+   *  @param file  the image's file name, relative to the page
+   *  @param lines the drawing commands
+   */
+  def figure(file: String, lines: String*): Unit = println(figureMarkup(file, lines))
+
+  /** What [[figure]] prints, having written the file. */
+  private[docs] def figureMarkup(file: String, lines: Seq[String]): String =
+    session.figure(lines*) match
+      case Left(why) => sys.error(s"lesson.figure($file): $why")
+      case Right(svg) =>
+        val target = outputRoot.resolve(pageDir).resolve(file)
+        java.nio.file.Files.createDirectories(target.getParent)
+        java.nio.file.Files.writeString(target, svg, java.nio.charset.StandardCharsets.UTF_8)
+        s"""<img src="$file" alt="${cli.Svg.esc(lines.mkString(" ; "))}">"""
+
+  /** What [[prepare]] prints: the link alone, outside any fence.
+   *
+   *  **A session too long to carry fails the build** rather than printing nothing, unlike
+   *  [[show]]'s link: there the transcript still teaches without its link, while here the link is
+   *  the whole of the output, and an exercise silently missing its data is the worse failure.
+   *
+   *  @param lines the commands to run, in order
+   *  @return the markdown link
+   */
+  private[docs] def preparation(lines: Seq[String]): String =
+    lines.foreach(session.execute)
+    linkTo(Lesson.ExerciseLabel)
+      .getOrElse(sys.error(s"lesson.prepare: the session is too large to carry in a link (${lines.size} lines)"))
 
   /** The transcript for `lines` followed by its run link, which is what [[show]] prints.
    *
@@ -79,12 +127,16 @@ final class Lesson:
    *  shown rather than the state before it.
    */
   private[docs] def runLink: Option[String] =
+    // Short, because a page carries one of these per transcript -- up to fourteen on the longer
+    // lessons -- and a full sentence repeated that often reads as clutter rather than an
+    // affordance. Under a block, three words say everything. Plain ASCII: a decorative glyph
+    // would be one more thing for the charset guard to have to allow.
+    linkTo("run this session")
+
+  /** The session as it stands, as a markdown link labelled `label`, or `None` if too big. */
+  private def linkTo(label: String): Option[String] =
     cli.ShareEncoding.fragmentFor(session.script).toOption
-      // Short, because a page carries one of these per transcript -- up to fourteen on the longer
-      // lessons -- and a full sentence repeated that often reads as clutter rather than an
-      // affordance. Under a block, three words say everything. Plain ASCII: a decorative glyph
-      // would be one more thing for the charset guard to have to allow.
-      .map(fragment => s"*[run this session](${Lesson.AppUrl}#$fragment)*")
+      .map(fragment => s"*[$label](${Lesson.AppUrl}#$fragment)*")
 
   /** The session's own script, so a test can compare a reloaded session against this one. */
   private[docs] def sessionScript: String = session.script
@@ -125,3 +177,10 @@ object Lesson:
    *  is absolute.
    */
   val AppUrl: String = "https://lycogrypho.github.io/Leonardo/app/"
+
+  /** Where mdoc writes the site (`mdocOut` in `build.sbt`), relative to the build's directory:
+   *  [[Lesson.figure]]'s images go beside the pages there. */
+  val DefaultOutput: java.nio.file.Path = java.nio.file.Paths.get("target", "mdoc")
+
+  /** The label of [[Lesson.prepare]]'s link: it opens an exercise rather than replaying a block. */
+  val ExerciseLabel: String = "open this exercise"

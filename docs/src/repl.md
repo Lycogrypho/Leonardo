@@ -225,26 +225,27 @@ e.execute("H * inv(H)")    // exactly the identity
 `fact` loses the `170!` ceiling that existed only because a `Double` overflows there —
 though a compute cap remains, since an unbounded factorial is easy to type by accident.
 
-What still computes in `Double`: the iterative decompositions (`lu`, `qr`, `eigen`, `eig`,
-and `jordan` unless every eigenvalue is rational), which cannot be exact whatever their input,
-and `A^n`.  They demote an exact operand rather than refuse it; write `A * A` for an exact
-product.
+`lu` and `A^n` are exact on an exact matrix, a singular one included for `lu` (a zero on `U`'s
+diagonal).  What still computes in `Double`: the iterative decompositions (`qr`, `eigen`, `eig`,
+and `jordan` unless every eigenvalue is rational), which cannot be exact whatever their input
+and demote an exact operand rather than refuse it.
 
 Mixing an exact value with an inexact one gives an inexact result.  That is deliberate:
 absorbing the `Double` would be lossless, but it would dress representation error up as an
 exact answer.
 
 **The way back is `rationalize(x[, digits])`**, and only when you ask for it: every decimal of
-`x` becomes the nearest fraction good for `digits` digits (default: the working precision,
-at most 15, all a `Double` carries).  A matrix becomes an exact matrix, a symbolic expression
+`x` becomes the nearest fraction good for `digits` digits.  Left out, `digits` is the fewest
+that turn every decimal into the small fraction it looks like, so a computed `1.9999999999999991`
+becomes `2`; when a decimal does not look like one, the default is the working precision, at
+most 15 (all a `Double` carries).  A matrix becomes an exact matrix, a symbolic expression
 keeps its shape.  A complex number or an interval has no exact form, so the call declines and
 says why.  When an exact input comes back as decimals that all look like small fractions, the
-REPL offers it in a note, naming the digits when fewer than the default are what give those
-fractions (at fifteen, a computed `1.9999999999999991` keeps its last digits); an irrational
+REPL offers it in a note, and the offer is exactly what `rationalize(...)` gives; an irrational
 such as `norm([[2], [3]])` gets no such offer:
 
 ```scala mdoc
-e.execute("lu([[1, 2], [3, 4]])")
+e.execute("qr([[3, 0], [4, 5]])")
 e.execute("rationalize(0.75)")
 ```
 
@@ -469,7 +470,7 @@ compiled to JavaScript. Every command on this page works there unchanged, includ
 and `:load` — which keep their exact spelling but write to your browser's storage rather than
 to files. Nothing you type leaves the tab.
 
-Six commands exist **only** there, because a terminal cannot honour them:
+Nine commands exist **only** there, because a terminal cannot honour them:
 
 | Command | Draws |
 |---|---|
@@ -479,6 +480,18 @@ Six commands exist **only** there, because a terminal cannot honour them:
 | `nyquist <expr> <var> <wMin> <wMax> [<n>]` | the same sweep in the complex plane, axes locked |
 | `rlocus <G> <var> <kMin> <kMax> [<n>]` | the root locus: the closed-loop poles of `G` over a gain band (geometric when `kMin > 0`), one continuous line per branch, axes locked |
 | `hist <sample> [<bins>]` | a histogram over the sample's range, Sturges' number of bins unless given — a trailing integer is the count only when what precedes it is a sample, so `hist y * 2` draws `y * 2`; a cell that is not a real number refuses the sample; `bincounts(x, lo, hi, k)` computes the same counts anywhere |
+| `curve <2×1 column> <var> <lo> <hi> [<n>]` | the point the column gives as the variable runs over the range, axes locked: `curve A*[[cos(t)], [sin(t)]] t 0 6.2832` is the unit circle's image under `A` |
+| `arrows <2×n matrix>` | an arrow from the origin to each column, axes locked |
+| `polygon <2×n matrix>` | the filled polygon whose vertices are the columns (at least three), axes locked |
+
+**Several drawing commands on one line, separated by `;`, draw one figure**, each a layer on
+shared axes with a legend: `arrows A ; polygon [[0, 2, 3, 1], [0, 1, 3, 2]]` shows two vectors
+and the parallelogram they span.  The axes are locked when any layer is geometry in the plane;
+a `bode` diagram has two panels and is drawn alone.
+
+The same lines draw outside the browser too: `Session.figure(lines*)` returns the figure as an
+SVG image, from the same session data, which is how a page rendered ahead of time carries a
+figure that `/app` redraws from the same text.
 
 For `bode` and `nyquist` the bounds are a frequency **band**, so `wMin` must be greater than
 zero — a geometric grid cannot start at zero. See

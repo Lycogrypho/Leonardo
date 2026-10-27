@@ -203,12 +203,13 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       // unreachable, F_0213).  Exact matrix ENTRIES ride the symbolic `_Matrix`.
       case (Right(m: _MatrixValue), Right(_Number(e))) =>
         matrixPower(m, e).getOrElse(Left(this))
-      // A matrix with exact entries stays a symbolic `_Matrix`
-      // rather than collapsing, so it arrives here as a `Left`.  Read it as dense: `A^n`
-      // therefore computes in `Double` even in exact mode, because `scalar` cannot build a
-      // matrix product and so cannot do exact repeated multiplication from this node.
-      // `A * A` is the exact form, and `matrix.MatProduct` handles that one exactly.
-      // Demoting is still much better than the alternative, which is losing `A^n` entirely.
+      // A matrix with exact entries stays a symbolic `_Matrix` rather than collapsing, so it
+      // arrives here as a `Left`.  Every cell exact and the matrix square: the power is taken over
+      // the rationals by `core.rationalMatrixPower` (F_0227), held to `MaxExactPowerBits` and
+      // declined past it (the `_Rational.pow` rule), and the node rebuilt with the exact cells.
+      // A mixed literal is inexact and is read as dense -- demoting beats losing `A^n`.
+      case (Left(m: _MatrixShaped), Right(_Number(e))) if exactSquare(m) =>
+        exactMatrixPower(m, e, env).getOrElse(Left(this))
       case (Left(m: _MatrixShaped), Right(_Number(e))) =>
         denseFromShaped(m).flatMap(mv => matrixPower(mv, e)).getOrElse(Left(this))
       case (Right(bv: _Value), Right(ev: _Value)) if eitherInterval(bv, ev) =>
@@ -279,6 +280,26 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       val k = e.toLong
       if k >= 0 then Some(powInt(m, k).guarded(this))
       else m.inverse.map(inv => powInt(inv, -k).guarded(this))
+
+  /** `m^e` over the rationals when `m` is square with every cell exact and `e` whole (F_0227);
+   *  `None` otherwise, or for a singular base to a negative power, or past
+   *  `Limit.MaxExactPowerBits`.  A singular base declines here and again on the dense path,
+   *  so the node stays unevaluated either way.
+   *
+   *  @param m   the exact square matrix node
+   *  @param e   the exponent
+   *  @param env supplies the reduction policy and the size budget
+   *  @return the exact power, rebuilt on `m`'s own node */
+  private def exactMatrixPower(m: _MatrixShaped, e: Double, env: Environment): Option[Either[_Expression, _Value]] =
+    val cells = m.children.collect { case r: _Rational => r }.toVector
+    val MaxMatrixExponent = 4.611686018427387904e18   // the dense path's bound, for the same reason
+    if !Whole.isWhole(e) || math.abs(e) > MaxMatrixExponent then None
+    else rationalMatrixPower(cells, m.rows, e.toLong, env.rationalPolicy, env.limits(Limit.MaxExactPowerBits))
+      .map(c => Left(m.rebuild(c.toList)))
+
+  /** Whether `m` is square with every cell exact: the operand [[exactMatrixPower]] takes. */
+  private def exactSquare(m: _MatrixShaped): Boolean =
+    m.rows == m.cols && m.children.nonEmpty && m.children.forall(_.isInstanceOf[_Rational])
 
   /** Binary exponentiation for a positive or zero integer power; `k = 0` yields the identity.
    *

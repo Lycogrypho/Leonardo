@@ -23,6 +23,29 @@ Each section's body is published verbatim as that tag's GitHub Release, extracte
 `.github/workflows/release.yml`. **Write the section before tagging**, and keep the heading in
 the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
+## Unreleased
+
+*Gathered for the next release; rename to its version before tagging.  It lists this round's
+changes (F_0223–F_0240); earlier unreleased work since 3.8.2 is in `Done.md` and must be
+summarised here at release time.*
+
+- **Figures without a browser.** `Session.figure(lines*)` draws the drawing commands as an SVG
+  image (`plot`, `points`, `hist`, `bode`, `nyquist`, `rlocus`, and the new `curve`, `arrows` and
+  `polygon`), several separated by `;` as layers on shared axes. The browser REPL draws the same
+  lines, so a figure in a page built ahead of time can be redrawn at `/app` from the same text.
+- **`cli.ShareEncoding` is public API**: the run-link fragment format, with its contract (a
+  session too long yields no link, never a truncated one).
+- **Exact arithmetic reaches further.** On exact input, `lu` factors over the rationals — a
+  singular matrix included, with a zero on `U`'s diagonal — and `A^n` is exact (declined past
+  the exact power cap rather than demoted); `stationary` answers rational points exactly.
+- **Behaviour changes in printed output.** `eigen`, `eig` and the numeric `jordan` list
+  eigenvalues by real part, then imaginary part (the `tfpoles` order), not in the QR iteration's
+  order; `expand` divides a sum by a numeric divisor term by term and writes a polynomial in one
+  variable by descending degree; a definition whose formula already computes echoes its current
+  value on a `= …` line; `rationalize(x)` defaults to the digits that give the small fraction a
+  decimal looks like (`1.9999999999999991` becomes `2`), and a `qr` of dependent columns says why
+  it stays unevaluated.
+
 ## 3.8.2 — 2026-10-06
 
 *A correctness fix. Upgrade.*

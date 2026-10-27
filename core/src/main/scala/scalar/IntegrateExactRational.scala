@@ -243,6 +243,29 @@ private def qCoeffs(e: _Expression, v: _Variable): Option[QPoly] =
     Option.when(qs.forall(_.isDefined))(qTrim(qs.flatten))
   }
 
+/** Every real root of the polynomial `e` in `v` when its coefficients are exact (F_0228): the
+ *  rational roots exact, found by [[qRationalRoots]] on each square-free part, and only the factor
+ *  left after dividing them out through `rootsOfSquareFree`, as `Double`s.  `None` when a
+ *  coefficient is not exact or `e` is not a polynomial in `v`, so the caller's `Double` route
+ *  answers; `None` too for the zero polynomial, whose roots are every number.
+ *  @param e the polynomial
+ *  @param v the variable
+ *  @return the distinct real roots, the rational ones as `_Rational` */
+private[leonardo] def exactPolynomialRoots(e: _Expression, v: _Variable): Option[Vector[_Expression]] =
+  qCoeffs(e, v).filter(_.nonEmpty).flatMap { p =>
+    if qDeg(p) == 0 then Some(Vector.empty)
+    else
+      val parts = qSquareFree(qMonic(p)).map { (f, _) =>
+        val rational = qRationalRoots(f)
+        val rest     = rational.foldLeft(f)((g, r) => qDivMod(g, Vector(-r, Q.one))._1)
+        val others   =
+          if qDeg(rest) < 1 then Some(Vector.empty[_Expression])
+          else rootsOfSquareFree(rest.map(_.toDouble)).map(rs => realParts(rs).map(x => _Number(x): _Expression))
+        others.map(rational.map(qe).toVector ++ _)
+      }
+      sequence(parts).map(_.flatten.toVector.distinct)
+  }
+
 /** `∫ num/den dv` over the rationals, or `None` (the `Double` tier answers then). */
 private def integrateQRational(num: QPoly, den: QPoly, v: _Variable)(using t: Tier): Option[_Expression] =
   val d = qTrim(den)
