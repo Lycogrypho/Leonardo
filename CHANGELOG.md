@@ -50,6 +50,9 @@ summarised here at release time.*
   `(… / 3/2)`, which typed back meant `(…/3)/2`, and a negative base printed `(-2.0 ^ x)`, which
   meant `-(2^x)`. They print `(… / (3/2))` and `((-2.0) ^ x)`. Every other printed form is
   unchanged, and saved sessions and share links were never affected.
+- **An exact matrix assignment echoes the matrix.** In exact mode `A := [[1, 2], [3, 4]]` now stacks
+  under `pretty on` like any other matrix, and `G := 2 * [[1, 2], [3, 4]]` or
+  `H := transpose([[1, 2], [3, 4]])`, whose right side names no variable, echoes the matrix it computes instead of the formula.
 
 ## 3.8.2 — 2026-10-06
 

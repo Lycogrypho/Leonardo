@@ -1435,7 +1435,25 @@ final class Session:
           case Left(_) =>
             definitions = definitions + (name -> rhs)
             bindings = bindings - name
-            s"$name := ${plain(rhs)}${valueNote(resolved)}"
+            constantMatrix(resolved) match
+              case Some(m) => s"$name := ${formatExpression(m, prettyMatrix)}"
+              case None    => s"$name := ${plain(rhs)}${valueNote(resolved)}"
+
+  /** The matrix of values a definition's formula computes when the formula names nothing, else
+   *  `None` (F_0243).
+   *
+   *  An exact matrix is the symbolic `_Matrix` carrier and never a `_Value`, so `A := [[1, 2],
+   *  [3, 4]]` in exact mode is a *definition*, and its echo was the formula's text: one line under
+   *  `pretty on`, and `H := transpose(...)` showed the call.  Such a definition echoes the matrix
+   *  instead, exactly as a value binding's echo does; it is still stored, and saved, as the
+   *  formula.  Evaluated with the session's settings, so an irrational cell is shown at the
+   *  session's working precision; a formula with a name in it keeps its echo and note.
+   */
+  private def constantMatrix(resolved: _Expression): Option[_Expression] =
+    if resolved.freeVars.nonEmpty then None
+    else withDefinitions(resolved).eval(env) match
+      case Left(m: _Matrix) if isComputed(m) => Some(m)
+      case _                                 => None
 
   /** The value a definition's formula has NOW, as a note line, or `""` (F_0223).
    *
@@ -1448,7 +1466,8 @@ final class Session:
    */
   private def valueNote(resolved: _Expression): String =
     // A formula naming nothing is a definition only because an exact matrix is the symbolic
-    // carrier (`G := [[4, 2], [2, 3]]` in exact mode); its echo already is its value.
+    // carrier (`G := [[4, 2], [2, 3]]` in exact mode); `assign` echoes the matrix it computes
+    // in place of the formula (F_0243), so a note would repeat it.
     if replaying || resolved.freeVars.isEmpty then ""
     else withDefinitions(resolved).eval(env) match
       case Right(value)               => "\n" + formatAfter("  = ", value, prettyMatrix)
@@ -1739,7 +1758,7 @@ final class Session:
         samplePoints(rest).left.map(named("points")).flatMap(r =>
           nonEmpty("points", Figure.finite(r.points)).map(p => (Figure.Layer.Markers(r.expr, p), "Re", "Im")))
       case s"curve $rest" =>
-        curvePoints(rest).flatMap(r => nonEmpty("curve", r.points.toVector).map(p => (Figure.Layer.Line(r.expr, p, inPlane = true), "", "")))
+        curvePoints(rest).flatMap(r => nonEmpty("curve", r.points).map(p => (Figure.Layer.Line(r.expr, p, inPlane = true), "", "")))
       case s"arrows $rest" =>
         columnsOf(rest, "arrows", 1).map(p => (Figure.Layer.Arrows(rest.trim, p), "", ""))
       case s"polygon $rest" =>
