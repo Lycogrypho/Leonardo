@@ -156,3 +156,51 @@ class RoundTripTest extends AnyFlatSpec:
       assert(pr.successful, s"toString output did not re-parse: \"$printed\" ($pr)")
       assert(pr.get == ast1, s"round-trip changed \"$input\" -> \"$printed\": ${pr.get}")
   }
+
+  // --- F_0241: a leaf whose text is not one factor, in a tight slot ---
+  // No parsed input builds these shapes (the parser keeps a typed `3/2` as a `Ratio` of two
+  // numbers), so the ASTs are built: a solver's coefficient, a simplified exponent, a negative
+  // power base.  Printed bare, each re-parsed to a different VALUE.
+
+  private def rat(n: Int, d: Int): _Rational =
+    _Rational.of(BigInt(n), BigInt(d)).getOrElse(fail(s"$n/$d is not a rational"))
+
+  private def close(a: _Value, b: _Value): Boolean =
+    (_Complex.parts(a), _Complex.parts(b)) match
+      case (Some((ar, ai)), Some((br, bi))) => math.abs(ar - br) < 1e-9 && math.abs(ai - bi) < 1e-9
+      case _                                => false
+
+  private val tightSlotCases: List[(String, _Expression, (String, Double), String)] = List(
+    ("an exact rational exponent",  Power(_Variable("x"), rat(-1, 2)),    "x" -> 4.0, "(x ^ (-1/2))"),
+    ("an exact rational divisor",   Ratio(_Variable("y"), rat(3, 2)),     "y" -> 3.0, "(y / (3/2))"),
+    ("an exact rational base",      Power(rat(3, 2), _Variable("x")),     "x" -> 2.0, "((3/2) ^ x)"),
+    ("a negative number as a base", Power(_Number(-2), _Variable("x")),   "x" -> 2.0, "((-2.0) ^ x)"),
+    ("a negative exact base",       Power(_Rational(-2), _Variable("x")), "x" -> 2.0, "((-2) ^ x)"),
+    ("an imaginary divisor",        Ratio(_Variable("y"), _Complex.of(0, 2)), "y" -> 4.0, "(y / (2.0i))"),
+    ("an imaginary base",           Power(_Complex.of(0, 3), _Variable("x")), "x" -> 2.0, "((3.0i) ^ x)")
+  )
+
+  for (label, ast, (name, value), expected) <- tightSlotCases do
+    s"toString of $label" should "bracket the leaf and re-parse to the same value in both modes" in
+    {
+      val printed = ast.toString
+      assert(printed == expected)
+      val env  = new Environment().withBinding(name, _Number(value))
+      val want = ast.eval(env) match
+        case Right(v) => v
+        case Left(e)  => fail(s"$ast did not evaluate: $e")
+      for mode <- List(None, Some(30)) do
+        val back = Parser.parse(printed, mode)
+        assert(back.successful, s"\"$printed\" did not re-parse in mode $mode: $back")
+        back.get.eval(env) match
+          case Right(got) => assert(close(got, want), s"\"$printed\" re-parsed in mode $mode to $got, not $want")
+          case Left(e)    => fail(s"\"$printed\" re-parsed in mode $mode to the unevaluated $e")
+    }
+
+  "toString of a negative exponent or divisor" should "stay as it was, being one token after an operator" in
+  {
+    assert(Power(_Variable("x"), _Number(-2)).toString == "(x ^ -2.0)")
+    assert(Ratio(_Variable("x"), _Number(-2)).toString == "(x / -2.0)")
+    assert(Power(_Variable("x"), _Rational(-2)).toString == "(x ^ -2)")
+    assert(Ratio(rat(3, 2), _Variable("x")).toString == "(3/2 / x)")   // a numerator regroups to the same value
+  }

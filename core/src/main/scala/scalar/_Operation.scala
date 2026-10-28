@@ -118,7 +118,8 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
  *  @param b denominator
  */
 case class Ratio(a: _Expression, b: _Expression) extends _Operation:
-  override def toString: String = s"($a / $b)"
+  /** `(a / b)`, the divisor bracketed when its text would regroup ([[core.OperandText]], F_0241). */
+  override def toString: String = s"($a / ${OperandText.tight(b.toString, asBase = false)})"
   override def children: List[_Expression] = List(a, b)
   override def rebuild(c: List[_Expression]): _Expression = Ratio(c.head, c(1))
 
@@ -178,7 +179,10 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
  *  @param exp  the exponent expression
  */
 case class Power(base: _Expression, exp: _Expression) extends _Operation:
-  override def toString: String = s"($base ^ $exp)"
+  /** `(base ^ exp)`, each operand bracketed when its text would regroup ([[core.OperandText]],
+   *  F_0241): `(-2.0) ^ x` is not `-(2.0 ^ x)`. */
+  override def toString: String =
+    s"(${OperandText.tight(base.toString, asBase = true)} ^ ${OperandText.tight(exp.toString, asBase = false)})"
   override def children: List[_Expression] = List(base, exp)
   override def rebuild(c: List[_Expression]): _Expression = Power(c.head, c(1))
 

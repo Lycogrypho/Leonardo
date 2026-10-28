@@ -236,6 +236,14 @@ package "core" {
         one definition each (F_0147)
     }
 
+    class "OperandText" <<utility>> [[developer.html]] {
+        + tight(text, asBase): String
+        __ F_0241 __
+        brackets a leaf's text in a tight slot of
+        Ratio / Power toString: a fraction, an imaginary,
+        a negative base; reads the TEXT, not the type
+    }
+
     class "ExactLinear" <<utility>> [[developer.html]] {
         __ F_0227: rational kernels scalar and matrix share __
         + rationalProduct(a, b, n, policy)

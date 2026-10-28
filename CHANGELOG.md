@@ -45,6 +45,11 @@ summarised here at release time.*
   value on a `= …` line; `rationalize(x)` defaults to the digits that give the small fraction a
   decimal looks like (`1.9999999999999991` becomes `2`), and a `qr` of dependent columns says why
   it stays unevaluated.
+- **A printed answer re-parses to its own value.** A computed fraction, an imaginary, or a negative
+  number in a divisor or a power is now bracketed: an exact `solveSystem` answer printed
+  `(… / 3/2)`, which typed back meant `(…/3)/2`, and a negative base printed `(-2.0 ^ x)`, which
+  meant `-(2^x)`. They print `(… / (3/2))` and `((-2.0) ^ x)`. Every other printed form is
+  unchanged, and saved sessions and share links were never affected.
 
 ## 3.8.2 — 2026-10-06
 
