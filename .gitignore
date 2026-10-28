@@ -9,8 +9,8 @@
 
 # `project/` is BUILD SOURCE and must be committed: `project/plugins.sbt` supplies every
 # symbol build.sbt uses from a plugin (dynverVTagPrefix, idePackagePrefix, MdocPlugin,
-# ScalaUnidocPlugin, mimaPreviousArtifacts, ProblemFilters, sonatypeCredentialHost, mdocIn)
-# and `project/build.properties` pins sbt itself to 1.10.11.  Without them a fresh clone
+# ScalaUnidocPlugin, mimaPreviousArtifacts, ProblemFilters, mdocIn)
+# and `project/build.properties` pins sbt itself.  Without them a fresh clone
 # cannot even load the build.
 #
 # This file used to ignore `/project/` wholesale.  That was harmless only by accident: the two

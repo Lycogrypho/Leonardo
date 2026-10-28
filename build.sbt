@@ -58,10 +58,11 @@ ThisBuild / developers := List(
   )
 )
 
-// The Central Portal, NOT the legacy OSSRH host. `it.grypho` is namespace-verified there, and
-// the old oss.sonatype.org staging endpoints are retired -- pointing at them fails at upload
-// rather than at validation, which is a confusing way to learn the host is wrong.
-ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeCentralHost
+// The Central Portal, where `it.grypho` is namespace-verified, is the publishing target, and
+// NOTHING here sets it: sbt-ci-release 1.11+ publishes through sbt's built-in Central support,
+// whose only host is the Portal.  The `sonatypeCredentialHost := xerial...sonatypeCentralHost`
+// line that used to sit here belonged to the retired sbt-sonatype plugin; restoring it stops the
+// build loading (`not found: value xerial`).  The legacy OSSRH endpoints are gone either way.
 
 // NOTE on the published artifactId: it is `leonardo_3`, lowercase, and needs no setting here.
 // sbt derives `moduleName` from `normalizedName`, which lowercases `name`, so the capitalised
