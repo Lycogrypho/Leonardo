@@ -53,14 +53,14 @@ jobs:
 
       # ── Scaladoc API reference (the /api subfolder) ──────────────────────────
       - name: Set up JDK
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
           cache: sbt
 
       - name: Set up sbt
-        uses: sbt/setup-sbt@6158cb0903b8ceeae04f830055f3155e1b6a5ad7 # v1.5.11
+        uses: sbt/setup-sbt@ecad189dd245444b9ae0a0cd5922fd938b88906f # v1.5.12
 
       - name: Build API docs (mdoc verifies samples, unidoc renders, injectApiStyles adds the logo/CSS)
         # Both task names are project-qualified or plugin-specific since the 5.2 phase 1.1
@@ -89,7 +89,7 @@ jobs:
 
       # ── Jekyll prose site (Just the Docs over docs/src) ──────────────────────
       - name: Set up Ruby
-        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        uses: ruby/setup-ruby@26e5b7d197ebf60545ee9667bcbace0be11ccaec # v1.334.0
         with:
           ruby-version: "3.3"
           bundler-cache: true

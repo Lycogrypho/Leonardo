@@ -33,7 +33,7 @@ jobs:
       - name: Set up Ruby
         # The version pages.yml builds with. `bundler-cache` is deliberately off: this job
         # resolves the dependency graph, it does not install it.
-        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
+        uses: ruby/setup-ruby@26e5b7d197ebf60545ee9667bcbace0be11ccaec # v1.334.0
         with:
           ruby-version: "3.3"
 
@@ -54,7 +54,7 @@ jobs:
         run: cat Gemfile.lock
 
       - name: Upload the lockfile
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docs-gemfile-lock
           path: docs/Gemfile.lock
