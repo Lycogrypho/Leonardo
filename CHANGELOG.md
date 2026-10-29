@@ -50,6 +50,11 @@ summarised here at release time.*
   `(… / 3/2)`, which typed back meant `(…/3)/2`, and a negative base printed `(-2.0 ^ x)`, which
   meant `-(2^x)`. They print `(… / (3/2))` and `((-2.0) ^ x)`. Every other printed form is
   unchanged, and saved sessions and share links were never affected.
+- **`solveSystem` takes more equations than unknowns.** A consistent system is solved, exactly in
+  exact mode, and an inconsistent one stays unevaluated with a note naming the equation at fault;
+  every other refusal (fewer equations than unknowns, no unique solution, not linear) now says so
+  too. The equations may be written as a column, `[[eq1], [eq2]]`. In exact mode a system with a
+  zero right side, such as `u = 0`, is now answered exactly; it came back in decimals.
 - **An exact matrix assignment echoes the matrix.** In exact mode `A := [[1, 2], [3, 4]]` now stacks
   under `pretty on` like any other matrix, and `G := 2 * [[1, 2], [3, 4]]` or
   `H := transpose([[1, 2], [3, 4]])`, whose right side names no variable, echoes the matrix it computes instead of the formula.

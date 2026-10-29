@@ -7,10 +7,20 @@ import scalar.*
 import scala.util.boundary, boundary.break
 
 
-/** Linear system solver for square n-by-n systems.
+/** Linear system solver for `m` equations in `n` unknowns, `m >= n` (F_0242 for `m > n`).
  *
- *  [[solveSystem]] returns the unique solution as a list of `v = expr` equations,
- *  or `None` when the system is non-square, nonlinear, or singular.
+ *  [[solveSystem]] returns the unique solution as a list of `v = expr` equations, or `None`
+ *  when there are fewer equations than unknowns, the system is nonlinear, it does not determine
+ *  every unknown, or it is inconsistent; [[solveSystemDetailed]] says which.
+ *
+ *  **More equations than unknowns** is how "is `b` a combination of these vectors?" is asked,
+ *  so a consistent over-determined system is solved.  Exactly: incremental elimination over the
+ *  rationals, which names the first equation contradicting the ones before it.  Numerically: the
+ *  least-squares solution by QR (never the normal equations, which square the condition number),
+ *  accepted only when every equation holds within `0.5·10⁻ᵖ` of **its own terms** -- an absolute
+ *  tolerance would pass any inconsistent system scaled down far enough (the units rule).  A
+ *  symbolic over-determined system declines: deciding its consistency means deciding whether an
+ *  expression vanishes.
  *
  *  Coefficient extraction uses `scalar.collect` (the same prerequisite used by
  *  [[solve]]'s linear and quadratic tiers): for each equation `i` and variable `j`,
@@ -34,35 +44,77 @@ import scala.util.boundary, boundary.break
  *  numeric answers (same convention as [[solve]]).
  */
 
-/** Returns the unique solution of a square linear system, or `None`.
+/** Returns the unique solution of a linear system, or `None`.
  *
- *  @param equations the list of equations (must be n equations for n variables)
- *  @param variables the solve variables (must match the number of equations)
+ *  @param equations the equations, at least as many as `variables`
+ *  @param variables the solve variables
  *  @param env       the evaluation environment (variable bindings + precision)
- *  @return `Some(list of v_i = expr_i)` on success; `None` when non-square,
- *          nonlinear, singular, or near-singular
+ *  @return `Some(list of v_i = expr_i)` on success; `None` when under-determined, nonlinear,
+ *          singular or inconsistent ([[solveSystemDetailed]] says which)
  */
 def solveSystem(
     equations: List[_Equation],
     variables: List[_Variable],
     env:       Environment = new Environment()
 ): Option[List[_Equation]] =
-  val n = equations.size
-  if n == 0 || n != variables.size then return None
+  solveSystemDetailed(equations, variables, env).toOption
+
+/** [[solveSystem]] with the reason for a decline (F_0242), which the REPL appends as a note.
+ *
+ *  @param equations the equations, at least as many as `variables`
+ *  @param variables the solve variables
+ *  @param env       the evaluation environment
+ *  @return the solution, or why there is none
+ */
+private[leonardo] def solveSystemDetailed(
+    equations: List[_Equation],
+    variables: List[_Variable],
+    env:       Environment
+): Either[String, List[_Equation]] =
+  val m = equations.size
+  val n = variables.size
+  if m == 0 || n == 0 then Left("no equations or no unknowns")
+  else if m < n then Left(s"under-determined: ${counted(m, "equation")} for ${counted(n, "unknown")}")
+  else solveDetermined(equations, variables, env)
+
+/** `k` and a noun, made plural when `k` is not 1. */
+private def counted(k: Int, noun: String): String = if k == 1 then s"1 $noun" else s"$k ${noun}s"
+
+private val NotLinear       = "not linear in the unknowns"
+private val NoUniqueExact   = "no unique solution: the equations do not determine every unknown"
+private val NoUniqueDense   = "no unique solution: the coefficients are linearly dependent"
+private val SymbolicOverdetermined =
+  "over-determined with symbolic coefficients: more equations than unknowns are solved only when every coefficient is a number"
+
+/** The body of [[solveSystemDetailed]] for `m >= n` equations. */
+private def solveDetermined(
+    equations: List[_Equation],
+    variables: List[_Variable],
+    env:       Environment
+): Either[String, List[_Equation]] =
+  val m = equations.size
+  val n = variables.size
 
   // Normalise: move everything to the left side (expr = 0).  The -1 and the 0 the unknowns are
   // bound to are invented constants, so they join the system's own tier (F_0166): inexact ones
   // demoted an exact system before elimination began.
-  val system   = matrix._Matrix(1, n, equations.toVector)
+  val system   = matrix._Matrix(1, m, equations.toVector)
   val minusOne = _Rational.literalLike(-1, system)
   val zero     = _Rational.literalLike(0, system)
   val exprs: Vector[_Expression] =
     equations.map(eq => simplifyFully(Sum(eq.lhs, Product(minusOne, eq.rhs)))).toVector
 
   // Extract coefficient matrix A[i][j] via collect(expr_i, v_j)
+  // `collect` invents the unit coefficient of a bare `v` in the tier IT reads off its own
+  // expression, and `u` alone holds nothing exact, so `u = 0` in an exact system had an inexact
+  // coefficient and sent the whole system down the `Double` path (F_0242).  Adding the system's
+  // exact zero carries the system's tier into the call; an inexact system is collected as before.
+  def inTier(expr: _Expression): _Expression = zero match
+    case _: _Rational => Sum(expr, zero)
+    case _            => expr
   val coeffOpt: Option[Vector[Vector[_Expression]]] = allOpt(exprs.map { expr =>
     allOpt(variables.map { v =>
-      collect(expr, v) match
+      collect(inTier(expr), v) match
         case Some(cs) if cs.size == 1 => Some(zero)          // v absent: an invented zero, in tier
         case Some(cs) if cs.size == 2 => Some(cs(1))         // linear in v
         case Some(_)                  => None                 // degree >= 2
@@ -71,32 +123,28 @@ def solveSystem(
   })
 
   val A: Vector[Vector[_Expression]] = coeffOpt match
-    case None    => return None
-    case Some(m) => m
+    case None    => return Left(NotLinear)
+    case Some(c) => c
 
   // Linearity guard: no A_ij may depend on any solve variable
-  if A.exists(_.exists(c => variables.exists(v => dependsOn(c, v)))) then return None
+  if A.exists(_.exists(c => variables.exists(v => dependsOn(c, v)))) then return Left(NotLinear)
 
   // Constant vector b[i] = -(expr_i with all solve variables bound to 0)
   val zeroEnv = variables.foldLeft(env)((e, v) => e.withBinding(v.variable, zero))
   val b: Vector[_Expression] =
     exprs.map(expr => simplifyFully(Product(minusOne, expr.eval(zeroEnv).toExpression)))
 
-  // Exact path (F_0166): every coefficient and constant exact, so Gauss-Jordan over the
+  // Exact path (F_0166): every coefficient and constant exact, so elimination over the
   // rationals -- before the dense path, whose widening `_Number` reading would take a `_Rational`
-  // as the Double it approximates.  Singular -> None, the dense path's verdict without a tolerance.
+  // as the Double it approximates.  No tolerance decides anything here (F_0242: incremental, so
+  // a contradiction is named where it arises).
   def toExact(e: _Expression): Option[_Rational] = e.eval(env) match
     case Right(r: _Rational) => Some(r)
     case _                   => None
 
-  (allOpt(A.flatten.map(toExact)), allOpt(b.map(toExact))) match
+  (allOpt(A.map(row => allOpt(row.map(toExact)))), allOpt(b.map(toExact))) match
     case (Some(ea), Some(eb)) =>
-      val policy = env.rationalPolicy
-      return matrix.exactInverse(ea, n, policy).map { inv =>
-        variables.zipWithIndex.map { (v, i) =>
-          _Equation(v, (0 until n).map(j => inv(i * n + j).multiply(eb(j), policy)).reduceLeft[_Rational]((p, q) => p.add(q, policy)))
-        }
-      }
+      return exactSolve(ea, eb, equations, n, env.rationalPolicy).map(xs => variables.zip(xs).map(_Equation(_, _)))
     case _ => ()
 
   // Dense path: try to fold every coefficient and constant to a Double
@@ -109,13 +157,107 @@ def solveSystem(
 
   (denseA, denseB) match
     case (Some(da), Some(db)) =>
-      gaussDense(da, db).map(xs =>
-        variables.zip(xs).map((v, x) => _Equation(v, _Number(x)))
-      )
+      val solved = if m == n then gaussDense(da, db).toRight(NoUniqueDense) else leastSquaresConsistent(da, db, equations, env.precision)
+      solved.map(xs => variables.zip(xs).map((v, x) => _Equation(v, _Number(x))))
+    case _ if m > n => Left(SymbolicOverdetermined)
     case _ =>
-      gaussSymbolic(A, b, minusOne).map(xs =>
+      gaussSymbolic(A, b, minusOne).toRight(NoUniqueExact).map(xs =>
         variables.zip(xs).map((v, x) => _Equation(v, simplifyFully(x).eval(env).toExpression))
       )
+
+
+/** One row of an exact elimination with its pivot column; the pivot entry is 1. */
+private type PivotRow = (Int, Vector[_Rational])
+
+/** Exact elimination of `[A | b]`, one equation at a time (F_0242).
+ *
+ *  The basis is kept in reduced row-echelon form, so each new row is reduced against it in one
+ *  pass.  A row that reduces to `0 = c` with `c != 0` **contradicts the equations before it**,
+ *  which is the equation named; one that reduces to `0 = 0` is redundant.  At the end fewer pivots
+ *  than unknowns means a consistent system that does not determine them all.
+ *
+ *  @param a         the `m × n` coefficients
+ *  @param b         the `m` constants
+ *  @param equations the equations, for the message
+ *  @param n         the number of unknowns
+ *  @param policy    the rational reduction policy
+ *  @return the solution, or why there is none
+ */
+private def exactSolve(a: Vector[Vector[_Rational]], b: Vector[_Rational], equations: List[_Equation],
+                       n: Int, policy: GcdPolicy): Either[String, Vector[_Rational]] =
+  def eliminate(target: Vector[_Rational], unit: Vector[_Rational], p: Int): Vector[_Rational] =
+    val f = target(p)
+    if f.isZero then target else target.lazyZip(unit).map((x, y) => x.subtract(f.multiply(y, policy), policy))
+
+  val rows = a.lazyZip(b).map(_ :+ _)
+  rows.zipWithIndex.foldLeft[Either[String, Vector[PivotRow]]](Right(Vector.empty)) {
+    case (failed @ Left(_), _) => failed
+    case (Right(basis), (row, i)) =>
+      val r = basis.foldLeft(row)((acc, pr) => eliminate(acc, pr._2, pr._1))
+      r.take(n).indexWhere(!_.isZero) match
+        case -1 if r(n).isZero => Right(basis)
+        case -1                => Left(s"inconsistent: equation ${i + 1} (${equations(i)}) contradicts the equations before it")
+        case p => r(p).reciprocal(policy) match
+          case None      => Left(NoUniqueExact)   // unreachable: r(p) is not zero
+          case Some(inv) =>
+            val unit = r.map(_.multiply(inv, policy))
+            Right(basis.map((q, br) => (q, eliminate(br, unit, p))) :+ (p, unit))
+  }.flatMap { basis =>
+    if basis.size < n then Left(NoUniqueExact)
+    else Right(Vector.tabulate(n)(j => basis.collectFirst { case (`j`, r) => r(n) }.getOrElse(_Rational(0))))
+  }
+
+/** The solution of `m > n` numeric equations, when they are consistent (F_0242).
+ *
+ *  The least-squares solution by QR (`R·x = Qᵀ·b`), then **every equation checked against its
+ *  own terms**: equation `i` holds when `|aᵢ·x − bᵢ| <= 0.5·10⁻ᵖ·max(Σⱼ|aᵢⱼ·xⱼ|, |bᵢ|)`.
+ *  Scaling an equation or rescaling an unknown leaves that verdict alone, which an absolute
+ *  tolerance would not: `1e-8` times an inconsistent system would pass.  A residual within the
+ *  solve's own rounding level -- `10·m·κ·ε` of the row's size at the solution's scale -- also
+ *  counts as satisfied, since a component whose true value is zero comes back as rounding noise
+ *  and would otherwise miss its own term by 100%.  `qrDecompose`'s `None` is the rank test (2.11).
+ *
+ *  @param a         the `m × n` coefficients
+ *  @param b         the `m` constants
+ *  @param equations the equations, for the message
+ *  @param precision the session precision, which sets the tolerance
+ *  @return the solution, or why there is none
+ */
+private def leastSquaresConsistent(a: Vector[Vector[Double]], b: Vector[Double], equations: List[_Equation],
+                                   precision: Int): Either[String, Vector[Double]] =
+  val m = a.size
+  val n = a.head.size
+  _MatrixValue(m, n, a.flatten.toArray).qrDecompose match
+    case None => Left(NoUniqueDense)
+    case Some((q, r)) =>
+      val qtb = Vector.tabulate(n)(j => (0 until m).map(i => q(i, j) * b(i)).sum)
+      val x   = (n - 1 to 0 by -1).foldLeft(Vector.fill(n)(0.0)) { (acc, i) =>
+        acc.updated(i, (qtb(i) - (i + 1 until n).map(j => r(i, j) * acc(j)).sum) / r(i, i))
+      }
+      if !x.forall(_.isFinite) then Left(NoUniqueDense)
+      else
+        val tol   = 0.5 * math.pow(10, -precision)
+        val xMax  = x.map(math.abs).max
+        val diag  = (0 until n).map(i => math.abs(r(i, i)))
+        // The solve's own rounding level: a component whose true value is 0 comes back as
+        // ~kappa*eps*|x| (u = 5e-16 for `u = 0` beside `u + v = 1.5`), which is a 100% miss of its
+        // own term.  A residual at that level is rounding, not inconsistency.  kappa is estimated
+        // from R's diagonal, and the factor 10*max(m, n) is QR's own (`QrDependenceFactor`, F_0091).
+        val kappa = diag.max / diag.min
+        val floor = 10.0 * m * kappa * Math.ulp(1.0)
+        val misses = a.indices.map { i =>
+          val terms    = a(i).lazyZip(x).map(_ * _)
+          val residual = terms.sum - b(i)
+          val scale    = math.max(terms.map(math.abs).sum, math.abs(b(i)))
+          val noise    = floor * (a(i).map(math.abs).sum * xMax + math.abs(b(i)))
+          val relative = if math.abs(residual) <= noise || scale == 0.0 then 0.0 else math.abs(residual) / scale
+          (i, residual, relative)
+        }
+        val (worst, residual, relative) = misses.maxBy(_._3)
+        if relative <= tol then Right(x)
+        else
+          val off = BigDecimal(residual.abs).round(new java.math.MathContext(3)).toString
+          Left(s"inconsistent: no values satisfy every equation; at the least-squares fit equation ${worst + 1} (${equations(worst)}) is off by $off")
 
 
 /** Sequences an iterable of `Option`s into `Option[Vector]`; `None` if any element is `None`.

@@ -15,8 +15,11 @@ import matrix.*
  *  exactly as in `_Derivative` and `_Integral` -- solving for `x` does not substitute
  *  `x` itself.
  *
+ *  The equations may outnumber the unknowns (F_0242): a consistent system is solved, and
+ *  [[declineReason]] says why any other stays unevaluated.
+ *
  *  `eval` result shape (mirrors [[_Solve]]):
- *  - no solution (singular, nonlinear, ...) -> `Left(this)` (stays symbolic)
+ *  - no solution (singular, nonlinear, inconsistent, ...) -> `Left(this)` (stays symbolic)
  *  - single variable                        -> `Left(v = expr)`
  *  - multiple variables                     -> `Left([[v1 = e1, v2 = e2, ...]])`
  *
@@ -31,6 +34,19 @@ case class _SolveSystem(equations: _Expression, variables: List[_Variable]) exte
   override def children: List[_Expression] = List(equations)
   override def rebuild(c: List[_Expression]): _Expression = _SolveSystem(c.head, variables)
 
+  /** Why the system is left unevaluated, or `None` when it is solved (F_0242): fewer equations
+   *  than unknowns, not linear, no unique solution, inconsistent (naming the equation), or
+   *  over-determined with symbolic coefficients.  Read by the REPL's decline note.
+   *  @param env the evaluation environment
+   *  @return the reason, or `None`
+   */
+  def declineReason(env: Environment): Option[String] = equations match
+    case m: _Matrix =>
+      val eqs = m.elems.collect { case e: _Equation => e }
+      if eqs.size != m.elems.size then Some("every entry of the first argument must be an equation")
+      else solveSystemDetailed(eqs.toList, variables, env).left.toOption
+    case _ => None
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     // equations must be a _Matrix whose every element is an _Equation node.
     // We do NOT call equations.eval(env) here -- the equation sides must stay
@@ -39,7 +55,9 @@ case class _SolveSystem(equations: _Expression, variables: List[_Variable]) exte
     equations match
       case m: _Matrix =>
         val eqs = m.elems.collect { case e: _Equation => e }
-        if eqs.size != m.elems.size || eqs.size != variables.size then Left(this)
+        // More equations than unknowns are solved when consistent (F_0242); `solveSystem`
+        // decides, so the counts are not compared here.
+        if eqs.size != m.elems.size then Left(this)
         else
           solveSystem(eqs.toList, variables, env) match
             case None                      => Left(this)

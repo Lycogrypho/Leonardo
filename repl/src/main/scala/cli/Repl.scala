@@ -1064,6 +1064,10 @@ final class Session:
       case (p: matrix._PInv, Left(_: matrix._PInv)) => p.declineReason(env).map(w => s"pinv declined: $w")
       case (r: matrix._Rank, Left(_: matrix._Rank)) => r.declineReason(env).map(w => s"rank declined: $w")
       case (c: matrix._Cond, Left(_: matrix._Cond)) => c.declineReason(env).map(w => s"cond declined: $w")
+      // F_0242: a system left unevaluated says why -- inconsistent (naming the equation), not
+      // determining every unknown, fewer equations than unknowns, or symbolic and over-determined.
+      case (s: equation._SolveSystem, Left(_: equation._SolveSystem)) =>
+        s.declineReason(env).map(w => s"solveSystem declined: $w")
       // F_0232: a qr of dependent columns says so, rather than echoing the call.
       case (q: matrix._QRDecomposition, Left(_: matrix._QRDecomposition)) =>
         q.declineReason(env).map(w => s"qr declined: $w")

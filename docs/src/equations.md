@@ -174,16 +174,32 @@ solve node stays symbolic. Coefficients must reduce to dense matrices for this t
 
 ### Linear systems
 
-`solveSystem([[eq₁, eq₂, …]], v₁, v₂, …)` solves a square system via
+`solveSystem(equations, v₁, v₂, …)` solves a linear system via
 [Gaussian elimination](https://en.wikipedia.org/wiki/Gaussian_elimination)
 ([partial pivoting](https://en.wikipedia.org/wiki/Pivot_element#Partial,_rook,_and_complete_pivoting)
 for concrete coefficients, symbolic row reduction otherwise, and exact elimination over the
-rationals when every coefficient is exact):
+rationals when every coefficient is exact). The equations are a matrix literal, a row
+`[[eq₁, eq₂]]` or a column `[[eq₁], [eq₂]]`; the column reads like a system on paper:
 
 ```scala mdoc
 // x + y = 3, x - y = 1  →  x = 2, y = 1
-Parser.parse("solveSystem([[x + y = 3, x - y = 1]], x, y)").get.eval(env)
+Parser.parse("solveSystem([[x + y = 3], [x - y = 1]], x, y)").get.eval(env)
 ```
+
+**There may be more equations than unknowns**, which is how *"is `b` a combination of these
+vectors?"* is asked. A consistent system is solved; an inconsistent one stays unevaluated, and
+the REPL names the equation that contradicts the ones before it:
+
+```scala mdoc
+// u = 1, v = 2, u + v = 3: consistent
+Parser.parse("solveSystem([[u = 1], [v = 2], [u + v = 3]], u, v)").get.eval(env)
+```
+
+With numeric coefficients, consistency is decided against each equation's own terms at the
+display precision, so the verdict does not depend on the units the equations are written in.
+Fewer equations than unknowns, a system that does not determine every unknown, a non-linear
+one, and a symbolic system with more equations than unknowns all stay unevaluated, each with
+its reason at the prompt.
 
 ## Complex numbers
 

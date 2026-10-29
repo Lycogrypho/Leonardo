@@ -249,7 +249,7 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   `det` of the 3×3 [Hilbert matrix](https://en.wikipedia.org/wiki/Hilbert_matrix) is exactly `1/2160` where floating point reports
   `4.6E-4`, and `A * inv(A)` is exactly the identity; `eye`, `zeros` and `ones` build exact
   cells, `==` compares exact matrices exactly, and `solveSystem` answers an exact system in
-  fractions — and `fact` loses the `170!`
+  fractions, more equations than unknowns included when they agree — and `fact` loses the `170!`
   ceiling that a `Double` imposes. Calculus stays exact: an integral's constants are
   fractions, a rational function is decomposed over the rationals (an irrational root carried
   at the working precision, like any irrational in this mode), and a derivative or integral of
@@ -298,7 +298,7 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
 
 - **Normalization**: `normalize(e, x)` collects like terms into an ascending polynomial in one variable (`10x - 2x` → `8x`, whatever the tree shape), and `collect(e, x)` extracts the dense coefficient list — the polynomial prerequisite the equation solver, the integration tiers and the transforms are all built on. Non-polynomial forms are left untouched.
 
-- **Linear system solver**: `solveSystem([[eq₁, eq₂, …]], x, y, …)` solves a square system of n linear equations in n unknowns. Coefficient extraction uses `collect` (the same polynomial prerequisite as `solve`). Exact path: when every coefficient is an exact rational (`exact on`), Gauss–Jordan over the rationals, so the answer is in fractions. Dense path: Gaussian elimination with partial pivoting on Double arrays, declining a singular or near-singular system — judged relative to the matrix's own scale, so a change of units cannot change the verdict. Symbolic path: row reduction using `_Expression` arithmetic and `simplifyFully` when any coefficient or constant stays symbolic. Named equation matrices work too: `S := [[eq1, eq2]]; solveSystem(S, x, y)`. Solutions display as `[[x = 2.0, y = 1.0]]`.
+- **Linear system solver**: `solveSystem([[eq₁, eq₂, …]], x, y, …)` (or a column `[[eq₁], [eq₂]]`) solves a system of linear equations, **as many as or more than the unknowns**: a consistent over-determined system — *is `b` a combination of these vectors?* — is solved, and an inconsistent one stays unevaluated while the REPL names the equation at fault. Coefficient extraction uses `collect` (the same polynomial prerequisite as `solve`). Exact path: when every coefficient is an exact rational (`exact on`), elimination over the rationals, so the answer is in fractions. Over-determined numeric systems go through QR least squares and are accepted only when every equation holds against its own terms. Dense path: Gaussian elimination with partial pivoting on Double arrays, declining a singular or near-singular system — judged relative to the matrix's own scale, so a change of units cannot change the verdict. Symbolic path: row reduction using `_Expression` arithmetic and `simplifyFully` when any coefficient or constant stays symbolic. Named equation matrices work too: `S := [[eq1, eq2]]; solveSystem(S, x, y)`. Solutions display as `[[x = 2.0, y = 1.0]]`.
 
 - **Clean API**: Environment-aware evaluation with no implicit global state. Expressions are immutable and composable. `Environment` is immutable — `withBinding` returns a new instance, enabling safe concurrent evaluation.
 

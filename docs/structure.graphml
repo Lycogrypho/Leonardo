@@ -1627,7 +1627,8 @@ answer is _Comparison / or / and / _Bool</data>
         <data key="n_stereotype">case</data>
         <data key="n_url">equations.html</data>
         <data key="n_members">+ equations : _Expression
-+ variables : List[_Variable]</data>
++ variables : List[_Variable]
++ declineReason(env): Option[String]  (F_0242)</data>
     </node>
     <node id="n152">
         <data key="n_label">SolveSystem</data>
@@ -1636,10 +1637,16 @@ answer is _Comparison / or / and / _Bool</data>
         <data key="n_stereotype">utility</data>
         <data key="n_url">equations.html</data>
         <data key="n_members">+ solveSystem(eqs, vars, env): Option[List]
+~ solveSystemDetailed(...): Either[String, List]
+m &gt;= n equations (F_0242)
+__ exact path __
+incremental elimination over Q:
+names the first contradicting equation
 __ dense path __
-Gaussian elimination (partial pivot)
+square: Gaussian elimination (partial pivot)
+m &gt; n: QR least squares, residual vs own terms
 __ symbolic path __
-Row reduction with simplifyFully</data>
+Row reduction with simplifyFully (square only)</data>
     </node>
     <node id="n153">
         <data key="n_label">_Connective</data>

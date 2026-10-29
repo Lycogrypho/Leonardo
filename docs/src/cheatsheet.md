@@ -556,8 +556,15 @@ solve(A * X + X * B = C, X)     Sylvester equation (Kronecker vectorization)
 ### solveSystem — linear systems
 
 ```
-solveSystem([[2*x + y = 3, x - y = 0]], x, y)   -> [[x = 1.0, y = 1.0]]
+solveSystem([[2*x + y = 3, x - y = 0]], x, y)        -> [[x = 1.0, y = 1.0]]
+solveSystem([[2*x + y = 3], [x - y = 0]], x, y)      the same, as a column
+solveSystem([[u = 1], [v = 2], [u + v = 3]], u, v)   more equations than unknowns: solved when consistent
+solveSystem([[u = 1], [v = 2], [u + v = 4]], u, v)   inconsistent: unevaluated, the note names equation 3
 ```
+
+Numeric consistency is relative to each equation's own terms, at the display precision. Fewer
+equations than unknowns, a non-unique solution, a non-linear system and a symbolic over-determined
+system stay unevaluated, with the reason as a note.
 
 ---
 

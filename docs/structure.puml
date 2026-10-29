@@ -1266,14 +1266,21 @@ package "equation" {
     class "_SolveSystem" <<case>> [[equations.html]] {
         + equations : _Expression
         + variables : List[_Variable]
+        + declineReason(env): Option[String]  (F_0242)
     }
 
     class "SolveSystem" <<utility>> [[equations.html]] {
         + solveSystem(eqs, vars, env): Option[List]
+        ~ solveSystemDetailed(...): Either[String, List]
+        m >= n equations (F_0242)
+        __ exact path __
+        incremental elimination over Q:
+        names the first contradicting equation
         __ dense path __
-        Gaussian elimination (partial pivot)
+        square: Gaussian elimination (partial pivot)
+        m > n: QR least squares, residual vs own terms
         __ symbolic path __
-        Row reduction with simplifyFully
+        Row reduction with simplifyFully (square only)
     }
 
     "_Comparison"  --|> "_Expression"
