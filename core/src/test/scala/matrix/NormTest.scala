@@ -76,7 +76,9 @@ class NormTest extends AnyFlatSpec:
     assert(exactValue("norm([[1/2], [-1/3]], 1)") == rat(5, 6))
     assert(exactValue("norm([[1/2], [-1/3]], inf)") == rat(1, 2))
     assert(exactValue("norm([[3/5], [4/5]])") == _Rational(1))
-    assert(math.abs(exactValue("norm([[1], [1]])").toDouble - math.sqrt(2)) < 1e-15)
+    // An irrational 2-norm is the exact surd since F_0231 (LT L_0010): `norm([[2], [3]])` is √13.
+    assert(parse("norm([[1], [1]])", Some(30)).eval(env) == Right(_Surd.sqrtOf(_Rational(2)).getOrElse(fail("√2"))))
+    assert(parse("norm([[2], [3]])", Some(30)).eval(env) == Right(_Surd.sqrtOf(_Rational(13)).getOrElse(fail("√13"))))
   }
 
   it should "build the norm of symbolic cells, except the max-norm" in {

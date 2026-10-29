@@ -28,13 +28,22 @@ class EquationReplTest extends AnyFlatSpec:
   {
     val s = Session()
     s.execute("exact on")
-    assert(s.execute("(2^(1/2))^2 == 2") ==
+    // A cube root is still carried to the working precision, so the tolerance decides its identity.
+    assert(s.execute("(2^(1/3))^3 == 2") ==
       "true\n  note: the two sides agree to the working precision (30 digits), not exactly")
-    assert(s.execute("(2^(1/2))^2 <= 2") ==
+    assert(s.execute("(2^(1/3))^3 <= 2") ==
       "true\n  note: the two sides agree to the working precision (30 digits), not exactly")
     assert(s.execute("1/2 == 2/4") == "true")
     assert(s.execute("1/3 == 0.33333") == "false")
     s.execute("exact precision 50")
-    assert(s.execute("(2^(1/2))^2 == 2") ==
+    assert(s.execute("(2^(1/3))^3 == 2") ==
       "true\n  note: the two sides agree to the working precision (50 digits), not exactly")
+  }
+
+  "a square root" should "be exact since F_0231, so its identity needs no note" in
+  {
+    val s = Session()
+    s.execute("exact on")
+    assert(s.execute("(2^(1/2))^2 == 2") == "true")
+    assert(s.execute("√2 * √8 == 4") == "true")
   }

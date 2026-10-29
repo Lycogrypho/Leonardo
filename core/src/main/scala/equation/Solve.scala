@@ -490,9 +490,10 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression,
     // Exact coefficients first -- `_Number` is a widening extractor, so without this the
     // exact tier's coefficients would be read as Doubles and the roots would be no better
     // than they ever were, however high the working precision.
-    case (a0: _Rational, a1: _Rational, a2: _Rational)
-      if env.workingPrecision > _Rational.DoubleReliableDigits =>
-      exactQuadraticRoots(a0, a1, a2, env.workingPrecision)
+    // Exact at any working precision since F_0231: the roots are quadratic surds, so no digit
+    // count enters (the gate on `DoubleReliableDigits` guarded an approximated `√Δ`).
+    case (a0: _Rational, a1: _Rational, a2: _Rational) =>
+      exactQuadraticRoots(a0, a1, a2)
         .getOrElse(quadraticRoots(_Number(a0.toDouble), _Number(a1.toDouble), _Number(a2.toDouble), env))
     case (_Number(a0), _Number(a1), _Number(a2)) =>
       val delta = a1 * a1 - 4.0 * a2 * a0
@@ -525,44 +526,41 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression,
         simplifyFully(Ratio(Sum(Product(lit(-1), c1), sqrtD), denom))
       )
 
-/** The roots of `a2·x² + a1·x + a0 = 0` with exact coefficients, at the working precision.
+/** The roots of `a2·x² + a1·x + a0 = 0` with exact coefficients, **exactly** (F_0231).
  *
- *  The same numerically stable rearrangement the `Double` branch uses, but carried out in
- *  exact rational arithmetic with only `√Δ` approximated.  That is what makes the result
- *  improve **monotonically** as the working precision rises: the stable form has no
- *  subtraction of near-equal quantities left in it, so the error in each root is just the
- *  error in `√Δ`, and that is exactly what the precision controls.
+ *  `√Δ` is the quadratic surd of the discriminant, so the roots are `a + b√Δ`, each computed in
+ *  the surd field with no approximation at all -- `solve(1 - 2*k^2 = 0, k)` answers `±√2/2`.
+ *  A perfect-square `Δ` gives rationals, as before.  The stable rearrangement the `Double` branch
+ *  needs (issue 1.1) is kept: it costs nothing exactly, and the roots come back in the same form.
  *
- *  The discriminant's *sign* is decided exactly, before any approximation — so "no real
- *  roots" and "a repeated root" are conclusions here, not guesses about a rounded value.
+ *  The discriminant's sign is decided exactly, so "no real roots" and "a repeated root" are
+ *  conclusions, not guesses about a rounded value.
  *
- *  @param a0     the constant coefficient
- *  @param a1     the linear coefficient
- *  @param a2     the quadratic coefficient
- *  @param digits the working precision in decimal digits
- *  @return the roots in ascending order, or `None` if the root of the discriminant is
- *          unavailable (the caller then falls back to the `Double` branch)
+ *  @param a0 the constant coefficient
+ *  @param a1 the linear coefficient
+ *  @param a2 the quadratic coefficient
+ *  @return the roots in ascending order, or `None` when a step leaves the surd field (it cannot,
+ *          since every step works over `√Δ`; the caller then falls back to the `Double` branch)
  */
-private def exactQuadraticRoots(a0: _Rational, a1: _Rational, a2: _Rational,
-                                digits: Int): Option[List[_Expression]] =
-  val policy = _Rational.thresholdFor(digits)
-  val four   = _Rational(4)
-  val two    = _Rational(2)
-  val delta  = a1.multiply(a1, policy).subtract(four.multiply(a2, policy).multiply(a0, policy), policy)
+private def exactQuadraticRoots(a0: _Rational, a1: _Rational, a2: _Rational): Option[List[_Expression]] =
+  val two   = _Rational(2)
+  val delta = a1.multiply(a1).subtract(_Rational(4).multiply(a2).multiply(a0))
 
   if delta.signum < 0 then Some(Nil)
   else if delta.isZero then
-    a1.negate.divide(two.multiply(a2, policy), policy).map(r => List(r))
+    a1.negate.divide(two.multiply(a2)).map(r => List(r))
   else
     for
-      sq <- exactSqrt(delta, digits)
+      sq     <- _Surd.sqrtOf(delta)
       // Form the larger-magnitude root first, where the two terms share a sign and so ADD.
-      signed = if a1.signum >= 0 then sq else sq.negate
-      q  <- a1.add(signed, policy).negate.divide(two, policy)
-      r1 <- q.divide(a2, policy)
-      // ...and recover the other from the root product x1*x2 = c/a, never by subtracting.
-      r2 <- a0.divide(q, policy)
-    yield if r1 <= r2 then List(r1, r2) else List(r2, r1)
+      signed <- if a1.signum >= 0 then Some(sq) else _Surd.negate(sq)
+      sum    <- _Surd.add(a1, signed)
+      q      <- _Surd.divide(sum, two.negate)
+      r1     <- _Surd.divide(q, a2)
+      // ...and recover the other from the root product x1*x2 = c/a.
+      r2     <- _Surd.divide(a0, q)
+      order  <- _Surd.subtract(r1, r2).flatMap(_Surd.signum)
+    yield if order <= 0 then List(r1, r2) else List(r2, r1)
 
 /** Sign-change scan over `[SearchLo, SearchHi]` followed by bisection; up to `MaxNumericRoots` roots. */
 private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_Expression] =

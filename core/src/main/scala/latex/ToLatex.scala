@@ -189,6 +189,15 @@ object ToLatex:
       val body    = if d == 1 then n.abs.toString else s"\\frac{${n.abs}}{$d}"
       if n.signum < 0 then (s"-$body", AtSum) else (body, if d == 1 then Atomic else AtProduct)
 
+    // F_0231: an exact surd as a reader writes it, `a + \frac{p\sqrt{d}}{q}`, the rational part
+    // through the rational rule above so its fraction and sign follow the same convention.
+    case s: _Surd =>
+      val (p, q) = { val g = s.b.num.gcd(s.b.den); (s.b.num / g, s.b.den / g) }
+      val root   = if p.abs == BigInt(1) then s"\\sqrt{${s.d}}" else s"${p.abs} \\sqrt{${s.d}}"
+      val term   = if q == BigInt(1) then root else s"\\frac{$root}{$q}"
+      if s.a.isZero then (if p.signum < 0 then (s"-$term", AtSum) else (term, AtProduct))
+      else (s"${render(s.a)._1} ${if p.signum < 0 then "-" else "+"} $term", AtSum)
+
     // F_0008: an interval is its own delimiter. An exact endpoint renders as the rational it is,
     // a fraction (F_0111: stripping `toString` showed `1/3` where a bare rational shows
     // `\frac{1}{3}`); `Double` endpoints keep the outward-rounded display. The literal node

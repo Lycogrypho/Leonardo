@@ -35,6 +35,8 @@ private[equation] def compareSides(
     // BOTH `a == b` and `a > b`.  Outside exact mode no `_Rational` is ever constructed, so
     // this arm is unreachable and the `Double` path is byte-identical.
     case (Right(a: _Rational), Right(b: _Rational)) => Right(_Bool(agreeToWorkingPrecision(a, b, env)))
+    case (Right(a: _Value), Right(b: _Value)) if _Surd.involves(a, b) =>
+      exactAgree(a, b, env).map(e => _Bool(e)).toRight(wrap(a, b))
     case (Right(_Number(a)), Right(_Number(b))) =>
       Right(_Bool(math.abs(a - b) <= tolerance))
     case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
@@ -77,6 +79,36 @@ private[leonardo] def agreeToWorkingPrecision(a: _Rational, b: _Rational, env: E
   val scale      = (a.num.abs * b.den).max(b.num.abs * a.den).max(a.den * b.den)
   difference <= scale
 
+/** [[agreeToWorkingPrecision]] for two exact values of which at least one is a surd (F_0231).
+ *
+ *  The F_0177 rule unchanged: a rational in the exact tier may be an irrational carried to the
+ *  working precision (a cube root squared), so a surd compared with one must agree to that
+ *  precision, not exactly -- or `(2^(1/4))^2 == 2^(1/2)` would turn false.  Both sides are read
+ *  at `wp + GuardDigits`, so the reading itself cannot decide the answer.
+ *
+ *  @return whether they agree, or `None` when either is not exact
+ */
+private[leonardo] def exactAgree(a: _Value, b: _Value, env: Environment): Option[Boolean] =
+  val digits = env.workingPrecision + GuardDigits
+  for qa <- _Surd.exactOf(a, digits); qb <- _Surd.exactOf(b, digits)
+  yield agreeToWorkingPrecision(qa, qb, env)
+
+/** The order of two exact values, at least one a surd: `0` when they agree to the working
+ *  precision ([[exactAgree]]), else the sign of their difference, decided exactly over one
+ *  radical and through the precise readings otherwise (which differ, so they cannot tie).
+ *
+ *  @return `-1`, `0` or `1`, or `None` when either is not exact
+ */
+private[leonardo] def exactOrder(a: _Value, b: _Value, env: Environment): Option[Int] =
+  exactAgree(a, b, env).flatMap {
+    case true  => Some(0)
+    case false =>
+      _Surd.subtract(a, b).flatMap(_Surd.signum).orElse {
+        val digits = env.workingPrecision + GuardDigits
+        for qa <- _Surd.exactOf(a, digits); qb <- _Surd.exactOf(b, digits) yield qa.compare(qb).sign
+      }
+  }
+
 /** Whether the relation between `lhs` and `rhs` treated two exact values as equal although they
  *  differ (F_0177): both sides exact — two rationals, or two matrices of them of one shape — every
  *  pair agreeing to the working precision, and at least one pair not exactly equal.  What the REPL
@@ -98,9 +130,11 @@ private[leonardo] def equalOnlyToWorkingPrecision(lhs: _Expression, rhs: _Expres
         if r1 == r2 && c1 == c2
       yield xs.zip(ys)
   pairs.exists { ps =>
-    val exact = ps.collect { case (x: _Rational, y: _Rational) => (x, y) }
-    exact.size == ps.size && exact.forall(agreeToWorkingPrecision(_, _, env)) &&
-      exact.exists((x, y) => x.compare(y) != 0)
+    // A surd counts as exact (F_0231): it is equal to another value exactly by `==`, and to a
+    // working-precision rational only by the tolerance, which is what the note reports.
+    val exact = ps.filter((x, y) => _Surd.isExact(x) && _Surd.isExact(y))
+    exact.size == ps.size && exact.forall((x, y) => exactAgree(x, y, env).contains(true)) &&
+      exact.exists((x, y) => x != y)
   }
 
 /** Whether two evaluated matrices of values are equal, cell by cell (F_0164): two rationals at the
@@ -110,6 +144,7 @@ private def matrixEqual(ra: Either[_Expression, _Value], rb: Either[_Expression,
                         tolerance: Double, env: Environment): Option[Boolean] =
   def cellEqual(a: _Value, b: _Value): Option[Boolean] = (a, b) match
     case (x: _Rational, y: _Rational) => Some(agreeToWorkingPrecision(x, y, env))
+    case (x, y) if _Surd.involves(x, y) => exactAgree(x, y, env)
     case _ =>
       for (ar, ai) <- _Complex.parts(a); (br, bi) <- _Complex.parts(b)
       yield math.abs(ar - br) <= tolerance && math.abs(ai - bi) <= tolerance

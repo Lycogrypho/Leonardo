@@ -280,8 +280,11 @@ the matrix's largest entry, so rescaling `A` never changes the verdict:
 Parser.parse("chol([[1, 2], [2, 1]])").get.eval(env).toExpression.toString
 ```
 
-In exact mode the factor is computed over the rationals and stays exact; a pivot whose square
-root is irrational takes it at the working precision, as every irrational in the exact tier does.
+In exact mode the factor is exact even when a pivot's square root is irrational: each column of
+`L` carries a single root, so the factor is made of surds — `chol([[4, 2], [2, 3]])` is
+`[[2, 0], [1, √2]]` — and `L·Lᵀ` gives back `A` exactly.  `det`, `inv`, `lu` and `A^n` likewise
+stay exact on a matrix whose surds share one root, and read two different roots at the working
+precision.
 
 ## Singular values: `svd`, `pinv`, `rank`, `cond`, `nullspace`, `orth`
 

@@ -40,7 +40,26 @@ class IrrationalTest extends AnyFlatSpec:
            s"got ${v.toBigDecimal(20)}")
   }
 
-  "the ill-conditioned quadratic" should "improve monotonically with the working precision" in
+  "the ill-conditioned quadratic" should "be solved exactly, whatever the working precision" in
+  {
+    // Since F_0231 the roots are quadratic surds, `-5·10⁷ ± √(25·10¹⁴ − 1)` exactly: the residual
+    // is zero, not merely small, at every working precision -- the knob the test below pinned
+    // before no longer has anything to improve.
+    for digits <- List(10, 30, 60) do
+      at("solve(x^2 + 1e8*x + 1 = 0, x)", digits) match
+        case Left(m) =>
+          val roots = m.children.collect { case eq: _Equation => eq.rhs }.collect { case v: _Value => v }
+          assert(roots.size == 2, s"$m")
+          for r <- roots do
+            val residual = for sq <- _Surd.multiply(r, r)
+                               lin <- _Surd.multiply(_Rational(BigInt(100000000)), r)
+                               s1 <- _Surd.add(sq, lin)
+                               s2 <- _Surd.add(s1, _Rational.One) yield s2
+            assert(residual.contains(_Rational.Zero), s"root $r at $digits digits: residual $residual")
+        case other => fail(s"solve did not produce a solution set: $other")
+  }
+
+  "a quadratic surd's working-precision reading" should "improve monotonically with the precision" in
   {
     // The property tier 2 adds over issue 1.1's per-case fix: 1.1 made this one formula
     // correct, this makes the accuracy a knob the user controls.
@@ -48,11 +67,14 @@ class IrrationalTest extends AnyFlatSpec:
     // Measured by the RESIDUAL of the recovered root, not against a reference constant --
     // an early version of this compared against a 30-digit literal and "found" an error of
     // 2e-40, which was the error in the literal, not in the root.
+    // The same property survives for a surd read as a rational (`exactOf`), which is what every
+    // computation needing a rational sees: the reading improves as the precision rises.
     def residualAt(digits: Int): BigDecimal =
       at("solve(x^2 + 1e8*x + 1 = 0, x)", digits) match
         case Left(m) =>
           val small = m.children.collect { case eq: _Equation => eq.rhs }
-                       .collect { case r: _Rational if r.abs < _Rational.One => r }
+                       .collect { case v: _Value => v }.flatMap(_Surd.exactOf(_, digits))
+                       .filter(_.abs < _Rational.One)
           small.headOption match
             case None    => fail(s"no small root at $digits digits")
             case Some(r) =>
@@ -66,7 +88,8 @@ class IrrationalTest extends AnyFlatSpec:
     val residuals = List(20, 30, 40, 60).map(residualAt)
     for (a, b) <- residuals.zip(residuals.tail) do
       assert(b < a, s"residual must shrink as precision rises, got $residuals")
-    assert(residuals.last < BigDecimal("1e-70"), s"60 digits should be very accurate: ${residuals.last}")
+    // A 60-digit reading leaves ~1e-60 per root, times the coefficient 1e8 in the residual.
+    assert(residuals.last < BigDecimal("1e-55"), s"60 digits should be very accurate: ${residuals.last}")
     // ...and every one of them already beats what a Double can do.
     val doubleResidual = BigDecimal(1.1102230246251565E-16)
     assert(residuals.head < doubleResidual, s"even 20 digits must beat Double: ${residuals.head}")
@@ -115,9 +138,20 @@ class IrrationalTest extends AnyFlatSpec:
 
   "a fractional power" should "reach the working precision too" in
   {
-    val root2 = rational("2^0.5", 30)
-    assert((root2.toBigDecimal(35) - BigDecimal("1.41421356237309504880168872420969807857")).abs
-             < BigDecimal("1e-28"), s"got ${root2.toBigDecimal(35)}")
+    // A cube root is not a quadratic surd, so it is still the working-precision rational.
+    val root3 = rational("2^(1/3)", 30)
+    assert((root3.toBigDecimal(35) - BigDecimal("1.25992104989487316476721060727822835057")).abs
+             < BigDecimal("1e-28"), s"got ${root3.toBigDecimal(35)}")
+  }
+
+  "a half-integer power" should "be the exact surd since F_0231, not a rational" in
+  {
+    at("2^0.5", 30) match
+      case Right(s: _Surd) =>
+        assert(_Surd.multiply(s, s).contains(_Rational(2)))
+        assert(_Surd.exactOf(s, 30).exists(r =>
+          (r.toBigDecimal(35) - BigDecimal("1.41421356237309504880168872420969807857")).abs < BigDecimal("1e-28")))
+      case other => fail(s"2^0.5 @30 is not a surd: $other")
   }
 
   // --- domain handling is unchanged ---

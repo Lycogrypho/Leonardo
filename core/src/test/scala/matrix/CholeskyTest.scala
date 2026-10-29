@@ -127,15 +127,26 @@ class CholeskyTest extends AnyFlatSpec:
     assert(cells.map { case _Number(d) => d; case other => fail(s"$other") } == Vector(2.0, 0.0, 1.0, 1.0))
   }
 
-  it should "take an irrational pivot at the working precision" in
+  it should "take an irrational pivot exactly, as a surd (F_0231)" in
   {
+    // It was the working-precision rational until F_0231; the factor is now exact, one radical
+    // per column, and L·Lᵀ reproduces A exactly.
     val cells = exactFactor("chol([[4, 2], [2, 3]])")
-    assert(cells.forall(_.isInstanceOf[_Rational]), s"not exact: $cells")
-    val two = _Rational.One.add(_Rational.One)
-    cells(3) match
-      case r: _Rational => r.multiply(r).subtract(two).abs match
-        case _Number(err) => assert(err < 1e-25, s"√2 is only good to $err")
-      case other => fail(s"$other")
+    assert(cells.take(3) == Vector(_Rational(2), _Rational(0), _Rational(1)), cells)
+    assert(cells(3) == _Surd.sqrtOf(_Rational(2)).getOrElse(fail("√2")))
+    assert(parse("chol([[4, 2], [2, 3]]) * transpose(chol([[4, 2], [2, 3]]))", Some(30)).eval(env).fold(identity, identity)
+      == _Matrix(2, 2, Vector(_Rational(4), _Rational(2), _Rational(2), _Rational(3))))
+  }
+
+  it should "give each column its own radical on a larger matrix" in
+  {
+    // Pivots 4, 2 and 8/3... every column one radical, every product of two cells of a column
+    // rational, so the factor is still exact and multiplies back exactly.
+    val a = "[[4, 2, 2], [2, 3, 1], [2, 1, 5]]"
+    val cells = exactFactor(s"chol($a)")
+    assert(cells.forall(_Surd.isExact), cells)
+    assert(cells.exists(_.isInstanceOf[_Surd]), cells)
+    assert(parse(s"chol($a) * transpose(chol($a)) == $a", Some(30)).eval(env) == Right(_Bool(true)))
   }
 
   it should "decline an exact indefinite or asymmetric matrix by exact comparison" in

@@ -27,12 +27,17 @@ import matrix._Matrix
 def sampleOf(r: Either[_Expression, _Value]): Option[Vector[_Value]] =
   _MatrixValue.cellsOf(r).map(_._3).filter(_.nonEmpty)
 
-/** Whether every entry is exact, so the field operations can stay exact. */
-private def allExact(xs: Vector[_Value]): Boolean = xs.forall(_.isInstanceOf[_Rational])
+/** Whether every entry is exact -- a rational or, since F_0231, a surd -- so the field operations
+ *  can stay exact. */
+private def allExact(xs: Vector[_Value]): Boolean = xs.forall(_Surd.isExact)
 
-/** The exact entries, when they all are. */
-private def exactly(xs: Vector[_Value]): Option[Vector[_Rational]] =
-  Option.when(allExact(xs))(xs.collect { case r: _Rational => r })
+/** The exact entries as rationals, when they all are exact: a surd is read as its
+ *  working-precision rational (F_0231), the value it stood for before, never as a `Double`. */
+private def exactly(xs: Vector[_Value], env: Environment): Option[Vector[_Rational]] =
+  if !allExact(xs) then None
+  else
+    val rs = xs.flatMap(_Surd.exactOf(_, env.workingPrecision))
+    Option.when(rs.size == xs.size)(rs)
 
 /** The entries as `Double`s, reading through the widening `_Number` extractor (the one copy
  *  since F_0147; `_Statistic.scala` carried a byte-identical `asDoubles`). */
@@ -49,7 +54,7 @@ private[statistics] def doubles(xs: Vector[_Value]): Option[Vector[Double]] =
 def sampleMean(xs: Vector[_Value], env: Environment): Option[_Value] =
   if xs.isEmpty then None
   else
-    exactly(xs) match
+    exactly(xs, env) match
       case Some(rs) =>
         val p   = env.rationalPolicy
         val sum = rs.reduceLeft((a, b) => a.add(b, p))
@@ -73,7 +78,7 @@ def sampleVariance(xs: Vector[_Value], ddof: Int, env: Environment): Option[_Val
   val n = xs.size
   if n <= ddof then None      // n = 1 has no unbiased variance, and n = 0 has none at all
   else
-    exactly(xs) match
+    exactly(xs, env) match
       case Some(rs) =>
         val p = env.rationalPolicy
         for
@@ -112,7 +117,7 @@ def sampleCovariance(xs: Vector[_Value], ys: Vector[_Value], env: Environment): 
   val n = xs.size
   if n != ys.size || n < 2 then None
   else
-    (exactly(xs), exactly(ys)) match
+    (exactly(xs, env), exactly(ys, env)) match
       case (Some(rx), Some(ry)) =>
         val p = env.rationalPolicy
         for
@@ -176,7 +181,10 @@ private[statistics] def spreadResolved(sd: Double, center: Double, n: Int): Bool
  *  @return the entries sorted, or `None` when an entry is not a real number
  */
 def sortedSample(xs: Vector[_Value]): Option[Vector[_Value]] =
-  exactly(xs).map(_.sorted: Vector[_Value]).orElse(doubles(xs).map(_.sorted.map(d => _Number(d))))
+  // Exact entries are sorted by the exact order and kept as they are, a surd included (F_0231):
+  // selection is not arithmetic, so the median of an exact sample is one of its entries.
+  if allExact(xs) then Some(xs.sortWith((a, b) => _Surd.compareExact(a, b).exists(_ < 0)))
+  else doubles(xs).map(_.sorted.map(d => _Number(d)))
 
 /** The `p`-quantile of a sample by Hyndman and Fan's type 7 or type 6 (F_0129, Decision 3).
  *
@@ -197,7 +205,7 @@ def sampleQuantile(xs: Vector[_Value], p: _Value, method: Int, env: Environment)
   if xs.isEmpty || (method != 6 && method != 7) then None
   else
     val n = xs.size
-    (exactly(xs), p) match
+    (exactly(xs, env), p) match
       case (Some(rs), q: _Rational) =>
         Option.when(q.signum >= 0 && q <= _Rational(1)) {
           val pol    = env.rationalPolicy
@@ -250,7 +258,10 @@ def binCounts(xs: Vector[Double], lo: Double, hi: Double, k: Int): Option[Vector
 
 /** The square root of a value, exact-tier aware. */
 private def rootOf(v: _Value, env: Environment): Option[_Value] = v match
-  case r: _Rational => exactSqrt(r, env.workingPrecision)
+  // F_0231: the root of a rational is its exact surd; of a surd, not closed, so the
+  // working-precision rational it always was.
+  case r: _Rational => _Surd.sqrtOf(r)
+  case s: _Surd     => _Surd.exactOf(s, env.workingPrecision).flatMap(exactSqrt(_, env.workingPrecision))
   case _Number(d)   => if d < 0.0 then None else finite(math.sqrt(d))
   case _            => None
 

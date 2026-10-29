@@ -32,9 +32,16 @@ private[leonardo] object OperandText:
    *  @return `text`, or `(text)`
    */
   def tight(text: String, asBase: Boolean): String =
-    if (asBase && text.startsWith("-")) || Imaginary.matches(text) || hasTopLevelSlash(text)
+    if (asBase && text.startsWith("-")) || Imaginary.matches(text) || hasTopLevelSlash(text) || impliedRoot(text)
     then s"($text)"
     else text
+
+  /** Whether `text` holds a `√` with something before it other than a leading minus: `2√13` is
+   *  an implicit product (F_0231), so `2√13 ^ x` would read as `2·(√13 ^ x)`.  A bare `√13` is
+   *  one factor and needs nothing. */
+  private def impliedRoot(text: String): Boolean =
+    val i = text.indexOf('√')
+    i > 0 && !(i == 1 && text.head == '-')
 
   /** A pure imaginary with a written magnitude, as `_Complex.display` prints one (`2.0i`, `-1.5E-7i`);
    *  a bare `i` is the constant, one token. */

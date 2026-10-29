@@ -191,12 +191,26 @@ abstract class _Function extends _Expression:
       exact: PartialFunction[_Rational, Either[_Expression, _Value]] = PartialFunction.empty): Either[_Expression, _Value] =
     arg.eval(env) match
       case Right(r: _Rational)     => exact.applyOrElse(r, (q: _Rational) => viaExact(q, env))
+      // F_0231: a node closed over surds says so through [[surdKernel]]; any other reads the surd
+      // as its working-precision rational, the value it stood for before -- never as a `Double`.
+      case Right(s: _Surd)         =>
+        surdKernel.applyOrElse(s, (x: _Surd) => _Surd.exactOf(x, env.workingPrecision)
+          .fold(real(x.toDouble).toRight(this))(q => exact.applyOrElse(q, (r: _Rational) => viaExact(r, env))))
       case Right(_Number(x))       => real(x).toRight(this)
       case Right(mv: _MatrixValue) => mapMatrix(mv, d => real(d).collect { case _Number(v) => v }.getOrElse(Double.NaN))
       case Right(c: _Complex)      => complex(c).toRight(rebuild(List(c)))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
       case Right(i: _Interval)     => intervalImage(i, env)
       case other                   => Left(rebuild(List(other.toExpression)))
+
+  /** The value of this function at an exact surd, for a node closed over the surds (F_0231):
+   *  `abs` is, since a surd's sign is decided exactly.  Empty by default, so every other node reads
+   *  the surd as its working-precision rational.  **A hook rather than a parameter of
+   *  [[evalUnary]]**: that method is part of a published non-sealed class, and a new parameter
+   *  would remove its old signature, a binary break; a new concrete member is additive.
+   *  @return the node's surd arm
+   */
+  protected def surdKernel: PartialFunction[_Surd, Either[_Expression, _Value]] = PartialFunction.empty
 
   /** The one evaluation of a two-argument function with a real kernel and no matrix or complex
    *  extension (F_0149): an exact argument goes through [[viaDouble]], two reals through `kernel`.
@@ -214,6 +228,9 @@ abstract class _Function extends _Expression:
       // cases, not a guard: by the second, the first argument is known inexact.
       case (Right(ra: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(ra.toDouble), bv), env)
       case (Right(av: _Value), Right(rb: _Rational)) => viaDouble(List(av, _Number(rb.toDouble)), env)
+      // A surd is exact like a rational, so it takes the same route back into the exact tier.
+      case (Right(sa: _Surd), Right(bv: _Value))     => viaDouble(List(_Number(sa.toDouble), bv), env)
+      case (Right(av: _Value), Right(sb: _Surd))     => viaDouble(List(av, _Number(sb.toDouble)), env)
       case (Right(_Number(x)), Right(_Number(y)))    => kernel(x, y).map(v => _Number(v)).toRight(this)
       case (ra, rb)                                  => Left(rebuild(List(ra.toExpression, rb.toExpression)))
 
@@ -303,6 +320,8 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
       // any base, so by the second the argument is known inexact and only the base is exact.
       case (Right(re: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(re.toDouble), bv), env)
       case (Right(ev: _Value), Right(rb: _Rational)) => viaDouble(List(ev, _Number(rb.toDouble)), env)
+      case (Right(se: _Surd), Right(bv: _Value))     => viaDouble(List(_Number(se.toDouble), bv), env)
+      case (Right(ev: _Value), Right(sb: _Surd))     => viaDouble(List(ev, _Number(sb.toDouble)), env)
       case (Right(ev: _Value), Right(bv: _Value)) =>
         (_Complex.logc(ev), _Complex.logc(bv)) match
           case (Some(le), Some(lb)) =>
@@ -327,8 +346,13 @@ case class Abs(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Abs(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    // The exact arm answers r.abs itself: abs is closed over the rationals.
+    // The exact arm answers r.abs itself: abs is closed over the rationals, and over the surds
+    // too (F_0231), whose sign is decided exactly.
     evalUnary(e, env)(x => realAny(abs(x)), c => realAny(hypot(c.re, c.im)), { case r => Right(r.abs) })
+
+  override protected def surdKernel: PartialFunction[_Surd, Either[_Expression, _Value]] =
+    case s if _Surd.signum(s).exists(_ < 0) => _Surd.negate(s).toRight(this)
+    case s                                  => Right(s)
 
 
 /** The sine function `sin(e)`.

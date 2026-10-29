@@ -183,9 +183,20 @@ e.execute("1/3 * 3")       // exactly one
 The mode is decided when the input is *parsed*, and it has to be: once `0.1` has been read
 as a `Double` the tenth that was meant is already gone, and no later stage can recover it.
 
-Exact are `+`, `-`, `*`, `/` and integer powers.  Everything else is irrational — every
-transcendental function, any fractional power — so it is computed and then re-approximated
-to the **working precision**, a separate setting from the display precision:
+Exact are `+`, `-`, `*`, `/` and integer powers, and **square roots**: the root of a fraction
+is kept as a surd `a + b√d`, displayed `√13` or `(3 + 2√2)` and typed with `√` (`√13`,
+`2√13`, `√(x + 1)`), so a quadratic's roots, a 2-norm, a standard deviation and a Cholesky
+factor come back exact.  Surds of one root combine exactly, in matrices too — `det`, `inv`, `lu`
+and `A^n` work over them — and `:save` writes them in ASCII, `(3 + 2 * 2^(1/2))`.  Everything
+else is irrational — every transcendental function, any other fractional power, two different
+roots together — so it is computed and then re-approximated to the **working precision**, a
+separate setting from the display precision:
+
+```scala mdoc
+e.execute("solve(x^2 - 2*x - 1 = 0, x)")
+e.execute("unset x_1")
+e.execute("unset x_2")
+```
 
 ```scala mdoc
 e.execute("exact precision 40")

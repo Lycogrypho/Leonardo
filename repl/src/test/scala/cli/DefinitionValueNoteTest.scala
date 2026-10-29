@@ -15,7 +15,8 @@ class DefinitionValueNoteTest extends AnyFlatSpec:
   "a definition that computes" should "append its current value as a note" in {
     val s = exact
     s.execute("G := [[4, 2], [2, 3]]")
-    assert(s.execute("L := chol(G)") == "L := chol(G)\n  = [[2, 0], [1, 1.41421]]")
+    // √2 since F_0231: the exact Cholesky factor is a surd, one radical per column.
+    assert(s.execute("L := chol(G)") == "L := chol(G)\n  = [[2, 0], [1, √2]]")
   }
 
   "a definition whose formula is refused" should "echo the formula alone" in {
@@ -44,7 +45,7 @@ class DefinitionValueNoteTest extends AnyFlatSpec:
     val s = exact
     s.execute("pretty on")
     s.execute("G := [[4, 2], [2, 3]]")
-    assert(s.execute("L := chol(G)") == "L := chol(G)\n  = [[2,       0]\n     [1, 1.41421]]")
+    assert(s.execute("L := chol(G)") == "L := chol(G)\n  = [[2,  0]\n     [1, √2]]")
   }
 
   "a decomposition row" should "count as computed" in {

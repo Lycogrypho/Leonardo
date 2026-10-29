@@ -129,6 +129,8 @@ object _Number:
   def unapply(e: _Expression): Option[Double] = e match
     case n: _Number   => Some(n.d)
     case r: _Rational => Some(r.toDouble)
+    // F_0231: a surd reads as the real number it is -- float contagion, exactness opt-in.
+    case s: _Surd     => Some(s.toDouble)
     // A based integer reads as its value: the base is a display property, so every
     // existing `case _Number(x)` site keeps matching and arithmetic simply yields decimal.
     case b: _Based    => Some(b.value)

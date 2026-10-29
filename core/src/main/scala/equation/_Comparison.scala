@@ -136,6 +136,8 @@ private[equation] def orderingOf(l: Either[_Expression, _Value], r: Either[_Expr
     // `_Number` case, which widens over `_Rational` and would otherwise read both as Doubles.
     case (Right(a: _Rational), Right(b: _Rational)) =>
       Some(if agreeToWorkingPrecision(a, b, env) then 0 else a.compare(b))
+    // F_0231: a surd beside an exact value, the same rule; must precede the widening arm.
+    case (Right(a: _Value), Right(b: _Value)) if _Surd.involves(a, b) => exactOrder(a, b, env)
     case (Right(_Number(a)), Right(_Number(b))) =>
       if a.isNaN || b.isNaN then None
       else

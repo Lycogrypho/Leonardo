@@ -512,7 +512,19 @@ object Parser extends JavaTokenParsers:
    *  rows are bracketed again, so `[[1, 2]]` is still a matrix. */
   lazy val factor: Parser[_Expression] =
     guard(letterAhead) ~> (function | functional) | matrixLiteral | intervalLiteral | value |
-    "(" ~> guardedExpr <~ ")"
+    "(" ~> guardedExpr <~ ")" | rootFactor
+
+  /** The square-root prefix: `√13`, `2√13`, `√(x + 1)` (F_0231 Decision A).
+   *
+   *  It exists so that an exact surd **displays as `√13` and that display re-parses** -- a printed
+   *  answer must read back as its own value (F_0241).  It applies to the factor that follows, so
+   *  `√13^2` is `(√13)^2` and `2√13` is `2·√13` by implicit multiplication; it builds
+   *  `Power(f, 1/2)` with the half from [[literalInt]], so in exact mode `√13` *is* the surd and
+   *  outside it the `Double` root, exactly as `13^0.5` would be.  A symbol, so no word is reserved
+   *  (2.13); the AsciiMath reader still turns `sqrt` into `(x)^(1/2)`.
+   */
+  lazy val rootFactor: Parser[_Expression] =
+    "√" ~> factor ^^ (f => Power(f, Ratio(literalInt(1), literalInt(2))))
 
   /** Succeeds, consuming nothing, when the next non-blank character is a letter (F_0235).
    *

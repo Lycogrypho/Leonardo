@@ -161,6 +161,26 @@ package "core" {
         below / equal -> Bool or unknown
     }
 
+    class "_Surd" <<value>> [[repl.html]] {
+        __ F_0231: the exact square root, a + b√d __
+        + a, b: _Rational   + d: BigInt (not a square)
+        + of(a, b, d): _Value  (b = 0 or square d -> _Rational)
+        + sqrtOf(r) / add / multiply / divide / pow : Option
+        + signum / compareExact (exact) / exactOf(v, digits)
+        sixth sibling of _Number, WIDENED like _Rational
+        one radical: √2 + √3 leaves through Real
+        equality by a, sign b, b²d: no canonical radicand
+        display 3 + 2√13 (grammar √); :save (a + b * d^(1/2))
+    }
+
+    class "ExactField" <<trait>> [[developer.html]] {
+        __ F_0231 Decision B: Q or Q(√d) __
+        RationalField / SurdField(d) over Quad(a, b)
+        fieldDeterminant / fieldInverse / fieldLu
+        fieldProduct / fieldMatrixPower
+        overExactField: two radicals -> working precision
+    }
+
     enum "LogicSemantics" <<data>> [[logic.html]] {
         MinMax        min / max            (default)
         Product       a*b / a+b-a*b
@@ -273,6 +293,10 @@ package "core" {
     "_Rational"    ..|> "_Value"
     "_Based"       ..|> "_Value"
     "_Interval"    ..|> "_Value"
+    "_Surd"        ..|> "_Value"
+    "_Surd"        ..>  "_Rational"    : a, b parts
+    "ExactField"   ..>  "_Surd"        : SurdField values
+    "ExactLinear"  ..>  "ExactField"   : the Q instance
     "_Rational"    ..>  "GcdPolicy"    : reduction policy per operation
     "_Rational"    ..>  "Environment"  : workingPrecision + rationalPolicy
     "Environment"  ..>  "LogicSemantics" : t-norm family field

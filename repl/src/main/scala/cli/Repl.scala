@@ -349,6 +349,9 @@ final class Session:
     // rounded Double for an exact value. `exact` is the full fraction in lowest terms, so a
     // rational that DISPLAYS as a decimal still round-trips through :save exactly.
     case r: _Rational => r.exact
+    // F_0231: a surd in its exact ASCII form, `(a + b * d^(1/2))`, before the widening arm; the
+    // display `√13` re-parses too, but `:save` stays ASCII (Decision A).
+    case s: _Surd     => s.exact
     // Before the _Number arm for the same reason as _Rational: _Number widens over _Based
     // and would write a bare decimal, losing the base. `toString` is the literal form
     // (0xFF, 0t1TT) or the tobase(...) call, both of which re-parse.
@@ -726,6 +729,7 @@ final class Session:
       // Before the _Number arm, for the same reason serializeValue is: the widening extractor
       // would round an exact value away before `display` ever chose a form for it.
       case r: _Rational    => Some(r.display(precision))
+      case s: _Surd        => Some(s.display(precision))   // F_0231: `3 + 2√13`, before the widening arm
       case b: _Based       => Some(b.display(precision))
       case d: probability._Distribution => Some(d.display(precision))
       case n: _Number      => Some(n.display(precision))

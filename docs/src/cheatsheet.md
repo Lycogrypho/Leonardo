@@ -25,7 +25,7 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `pretty on\|off` | Multi-line matrix display, echo included, and answers written with the fewest brackets and a binary minus, `4 - k*k` (default `off`); `:save` is unchanged; turns `latex` off |
 | `latex on\|off` | Also render each result as LaTeX (default `off`); the printed text is unchanged, and the browser REPL typesets it *beside* the text. Turns `pretty` off — a typeset matrix already carries the layout |
 | `names on\|off` | Announce each newly-seen free variable (default `off`). A name used as a function it is not — `sqrt(x)` — is reported whatever this is set to |
-| `exact on\|off` | Exact rational arithmetic (default `off`) |
+| `exact on\|off` | Exact rational arithmetic (default `off`); a square root of a fraction stays an exact surd, `√13` or `(3 + 2√2)`, typed with `√` (`√13`, `2√13`, `√(x + 1)`) and saved in ASCII as `13^(1/2)` |
 | `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000) |
 | `rationalize(x[, digits])` | Every decimal of `x` as its nearest fraction; the default digits are the fewest that give the small fractions the decimals look like (`1.9999999999999991` → `2`), else the working precision at most 15; a complex value or an interval declines. Offered in a note when an exact input came back as decimals that look exact |
 | `simplify <expr>` | Structural simplification, after evaluating every call in the expression (a derivative, a solver, `sin(1)`) as plain evaluation would. Definitions are expanded, numeric bindings are not |

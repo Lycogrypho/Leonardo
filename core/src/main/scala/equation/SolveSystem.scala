@@ -138,8 +138,11 @@ private def solveDetermined(
   // rationals -- before the dense path, whose widening `_Number` reading would take a `_Rational`
   // as the Double it approximates.  No tolerance decides anything here (F_0242: incremental, so
   // a contradiction is named where it arises).
+  // A surd coefficient (F_0231) is read as its working-precision rational, the value it stood for
+  // before; elimination over Q(√d) is the matrix kernels' business (Decision B).
   def toExact(e: _Expression): Option[_Rational] = e.eval(env) match
     case Right(r: _Rational) => Some(r)
+    case Right(s: _Surd)     => _Surd.exactOf(s, env.workingPrecision)
     case _                   => None
 
   (allOpt(A.map(row => allOpt(row.map(toExact)))), allOpt(b.map(toExact))) match

@@ -99,8 +99,10 @@ private def kindOf(v: _Value): Option[NormKind] = v match
 private def vectorNorm(cells: Vector[_Expression], k: NormKind, env: Environment): Option[Either[_Expression, _Value]] =
   val values = cells.collect { case v: _Value => v }
   val parts  = values.flatMap(_Complex.parts)
-  if parts.size == cells.size && values.forall(_.isInstanceOf[_Rational]) then
-    exactVectorNorm(values.collect { case q: _Rational => q }, k, env)
+  // A surd cell is read as its working-precision rational (F_0231), the value it stood for
+  // before; the norm of rational cells is itself exact or a surd.
+  if parts.size == cells.size && values.forall(_Surd.isExact) then
+    exactVectorNorm(values.flatMap(_Surd.exactOf(_, env.workingPrecision)), k, env)
   else if parts.size == cells.size then doubleVectorNorm(parts.map((re, im) => math.hypot(re, im)), k)
   else symbolicVectorNorm(cells, k, env)
 
@@ -119,8 +121,9 @@ private def doubleVectorNorm(ms: Vector[Double], k: NormKind): Option[Either[_Ex
     case NormKind.P(q, _)       => scaled(q)
   finiteOption(n).map(d => Right(_Number(d)))
 
-/** The norm of exact cells: the 1- and inf-norms exactly, the 2-norm's root at the working
- *  precision, a `p`-norm through `Power` in `p`'s own tier. */
+/** The norm of exact cells: the 1- and inf-norms exactly, the 2-norm as the exact surd of the
+ *  sum of squares (F_0231: `norm([[2], [3]])` is `√13`), a `p`-norm through `Power` in `p`'s own
+ *  tier. */
 private def exactVectorNorm(rs: Vector[_Rational], k: NormKind, env: Environment): Option[Either[_Expression, _Value]] =
   val policy = env.rationalPolicy
   val abs    = rs.map(_.abs)
@@ -128,8 +131,7 @@ private def exactVectorNorm(rs: Vector[_Rational], k: NormKind, env: Environment
     case NormKind.One => Some(Right(abs.reduceLeft((a, b) => a.add(b, policy))))
     case NormKind.Inf => Some(Right(abs.max))
     case NormKind.Two | NormKind.Fro =>
-      exactSqrt(abs.map(a => a.multiply(a, policy)).reduceLeft((a, b) => a.add(b, policy)), env.workingPrecision)
-        .map(Right(_))
+      _Surd.sqrtOf(abs.map(a => a.multiply(a, policy)).reduceLeft((a, b) => a.add(b, policy))).map(Right(_))
     case NormKind.P(_, _) => symbolicVectorNorm(abs, k, env)
 
 /** The norm of cells that are not all numbers, built from `abs`, `+` and powers: the sum is

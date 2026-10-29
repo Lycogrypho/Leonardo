@@ -78,26 +78,8 @@ private def pivotRow(m: Vector[Vector[_Rational]], k: Int): Option[Int] =
  *  @return the exact determinant
  */
 def exactDeterminant(cells: Vector[_Rational], n: Int, policy: GcdPolicy): _Rational =
-  @tailrec
-  def go(m: Vector[Vector[_Rational]], k: Int, acc: _Rational): _Rational =
-    if acc.isZero || k >= n then acc
-    else pivotRow(m, k) match
-      case None => _Rational.Zero   // a zero column: singular, determinant exactly zero
-      case Some(p) =>
-        val swapped = if p == k then m else m.updated(k, m(p)).updated(p, m(k))
-        val sign    = if p == k then acc else acc.negate
-        val pivot   = swapped(k)
-        val reduced = swapped.zipWithIndex.map { (row, i) =>
-          if i <= k then row
-          else row(k).divide(pivot(k), policy) match
-            case None    => row   // unreachable: the pivot is non-zero by construction
-            case Some(f) => row.zipWithIndex.map { (cell, j) =>
-              if j < k then cell else cell.subtract(f.multiply(pivot(j), policy), policy)
-            }
-        }
-        go(reduced, k + 1, sign.multiply(pivot(k), policy))
-
-  if n == 0 then _Rational.One else go(rowsOf(cells, n, n), 0, _Rational.One)
+  // The rational instance of `core.fieldDeterminant` since F_0231, which eliminates over Q(√d) too.
+  fieldDeterminant(RationalField(policy), cells, n)
 
 /** The exact inverse of a square rational matrix, by Gauss–Jordan elimination.
  *
@@ -127,32 +109,67 @@ def exactInverse(cells: Vector[_Rational], n: Int, policy: GcdPolicy): Option[Ve
  */
 def exactLu(cells: Vector[_Rational], n: Int,
             policy: GcdPolicy): (Vector[_Rational], Vector[_Rational], Vector[_Rational]) =
-  /** One elimination step at column `k`: the multipliers stored in place, as the dense kernel does. */
-  def step(state: (Vector[Vector[_Rational]], Vector[Int]), k: Int): (Vector[Vector[_Rational]], Vector[Int]) =
-    val (m, perm) = state
-    val p = (k until n).maxBy(i => m(i)(k).abs)   // the first of equal magnitudes, as the dense kernel
-    if m(p)(k).isZero then state
-    else
-      val swapped = if p == k then m else m.updated(k, m(p)).updated(p, m(k))
-      val order   = if p == k then perm else perm.updated(k, perm(p)).updated(p, perm(k))
-      val pivot   = swapped(k)
-      val reduced = swapped.zipWithIndex.map { (row, i) =>
-        if i <= k then row
-        else row(k).divide(pivot(k), policy) match
-          case None    => row   // unreachable: the pivot is non-zero by construction
-          case Some(f) => row.zipWithIndex.map { (cell, j) =>
-            if j < k then cell
-            else if j == k then f
-            else cell.subtract(f.multiply(pivot(j), policy), policy)
-          }
-      }
-      (reduced, order)
+  // The rational instance of `core.fieldLu` since F_0231.  The pivot choice reads magnitudes as
+  // Doubles there, where this compared exactly: only ties within a Double's resolution could
+  // pick differently, and the dense kernel compares Doubles too, so `P` agrees with it as before.
+  fieldLu(RationalField(policy), cells, n)
 
-  val (a, perm) = (0 until n).foldLeft((rowsOf(cells, n, n), Vector.range(0, n)))(step)
-  val l = Vector.tabulate(n, n)((i, j) => if i == j then _Rational.One else if j < i then a(i)(j) else _Rational.Zero)
-  val u = Vector.tabulate(n, n)((i, j) => if j >= i then a(i)(j) else _Rational.Zero)
-  val p = Vector.tabulate(n, n)((i, j) => if perm(i) == j then _Rational.One else _Rational.Zero)
-  (l.flatten, u.flatten, p.flatten)
+/** The Cholesky factor of a symmetric positive-definite rational matrix, **exactly** (F_0231).
+ *
+ *  Every pivot is rational and column `j` of `L` holds only rational multiples of `√pivotⱼ`:
+ *  `Lᵢₖ·Lⱼₖ` multiplies two cells of one column, so it is rational, and so is every sum before the
+ *  division by `Lⱼⱼ = √pivotⱼ`.  So the factor is computed in surd arithmetic with no
+ *  approximation -- `chol([[4, 2], [2, 7]])` is `[[2, 0], [1, √6]]` -- and `L·Lᵀ` reproduces `A`
+ *  exactly.  Should a step ever leave one radical, the working-precision factor
+ *  ([[exactCholesky]]) answers instead.
+ *
+ *  @param cells  the row-major exact cells
+ *  @param n      the dimension
+ *  @param policy the reduction policy of the fallback
+ *  @param digits the working precision of the fallback
+ *  @return the cells of `L`, or `None` when the matrix is not symmetric or not positive definite
+ */
+private[matrix] def exactCholeskyValues(cells: Vector[_Rational], n: Int, policy: GcdPolicy,
+                                        digits: Int): Option[Vector[_Value]] =
+  val a = rowsOf(cells, n, n)
+  enum Step:
+    case Done(l: Vector[Vector[_Value]])
+    case NotPd
+    case LeftField
+  def dot(x: Vector[_Value], y: Vector[_Value], upTo: Int): Option[_Value] =
+    (0 until upTo).foldLeft(Option[_Value](_Rational.Zero))((s, k) =>
+      s.flatMap(acc => _Surd.multiply(x(k), y(k)).flatMap(_Surd.add(acc, _))))
+  def column(l: Vector[Vector[_Value]], j: Int): Step =
+    dot(l(j), l(j), j).flatMap(_Surd.subtract(a(j)(j), _)) match
+      case Some(pivot: _Rational) =>
+        if pivot.signum <= 0 then Step.NotPd
+        else _Surd.sqrtOf(pivot) match
+          case None => Step.NotPd
+          case Some(ljj) =>
+            val filled = (j + 1 until n).foldLeft(Option(l.updated(j, l(j).updated(j, ljj)))) { (acc, i) =>
+              acc.flatMap(m => dot(m(i), m(j), j).flatMap(_Surd.subtract(a(i)(j), _)).flatMap(_Surd.divide(_, ljj))
+                .map(v => m.updated(i, m(i).updated(j, v))))
+            }
+            filled.fold(Step.LeftField)(Step.Done(_))
+      case _ => Step.LeftField
+  val symmetric = (0 until n).forall(i => (0 until i).forall(j => a(i)(j) == a(j)(i)))
+  if !symmetric then None
+  else
+    val start: Step = Step.Done(Vector.fill(n, n)(_Rational.Zero: _Value))
+    (0 until n).foldLeft(start) {
+      case (Step.Done(l), j) => column(l, j)
+      case (stopped, _)      => stopped
+    } match
+      case Step.Done(l)  => Some(l.flatten)
+      case Step.NotPd    => None
+      case Step.LeftField => exactCholesky(cells, n, policy, digits).map(_.map(x => x: _Value))
+
+/** The cells of a square matrix over the one field they share (F_0231 Decision B): the rationals,
+ *  or `Q(√d)` when every surd shares one radical.  `None` when a cell is not exact or two surds
+ *  do not combine, and the caller reads the cells through `_Surd.exactOf`.
+ *  @param m the symbolic matrix
+ *  @return the cells over one field */
+private[matrix] def exactFieldCells(m: _Matrix): Option[FieldCells] = fieldCells(m.elems)
 
 /** The Cholesky factor of a symmetric positive-definite rational matrix (F_0054).
  *

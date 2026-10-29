@@ -38,6 +38,9 @@ private def asLiteral(r: Either[_Expression, _Value]): Option[_Matrix] = r match
  */
 private def sumOf(a: _Expression, b: _Expression): _Expression = (a, b) match
   case (x: _Rational, y: _Rational) => x.add(y, _Rational.DefaultPolicy)
+  // F_0231: a surd cell, exact over one radical; otherwise left as a sum, which the matrix's own
+  // evaluation answers at the working precision (no environment here to read it).
+  case (x: _Value, y: _Value) if _Surd.involves(x, y) => _Surd.add(x, y).getOrElse(Sum(a, b))
   case (_Number(x), _Number(y))     => _Number(x + y)
   case (x: _Value, y: _Value) if isComplexPair(x, y) => _Complex.add(x, y).getOrElse(Sum(a, b))
   case _                            => Sum(a, b)
@@ -55,6 +58,7 @@ private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (a,
   case (z: _Rational, _) if z.isZero          => z
   case (_, z: _Rational) if z.isZero          => z
   case (x: _Rational, y: _Rational)           => x.multiply(y, _Rational.DefaultPolicy)
+  case (x: _Value, y: _Value) if _Surd.involves(x, y) => _Surd.multiply(x, y).getOrElse(Product(a, b))
   case (_Number(0.0), _) | (_, _Number(0.0))  => _Number(0)
   case (_Number(x), _Number(y))               => _Number(x * y)
   case (x: _Value, y: _Value) if isComplexPair(x, y) => _Complex.mul(x, y).getOrElse(Product(a, b))
@@ -68,7 +72,7 @@ private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (a,
  */
 private def collapse(m: _Matrix, orElse: _Expression): Either[_Expression, _Value] =
   val numbers = m.elems.collect { case _Number(d) => d }
-  if m.elems.exists(_.isInstanceOf[_Rational]) then Left(m)
+  if m.elems.exists(_Surd.isExact) then Left(m)   // a surd blocks the collapse too (F_0231)
   else if numbers.size == m.elems.size then _MatrixValue(m.rows, m.cols, numbers.toArray).guarded(orElse)
   else Left(m)
 
@@ -454,9 +458,11 @@ case class Determinant(m: _Expression) extends _Expression:
       case r => asLiteral(r) match
         // Exact entries go to Gaussian elimination, not the cofactor expansion: O(n^3)
         // rather than O(n!), so this path carries no dimension cap.
-        case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
-          exactCells(lit).map(c => Right(exactDeterminant(c, lit.rows, env.rationalPolicy)))
-            .getOrElse(Left(this))
+        // F_0231 Decision B: over Q, or over Q(√d) when the surds share one radical.
+        case Some(lit) if lit.rows == lit.cols && lit.elems.forall(_Surd.isExact) =>
+          overExactField(lit.elems, env.workingPrecision, env.rationalPolicy)(
+            [T] => (f: ExactField[T], c: Vector[T]) => f.toValue(fieldDeterminant(f, c, lit.rows))
+          ).toRight(this)
         case Some(lit) if lit.rows == lit.cols && lit.rows <= env.limits(Limit.MaxSymbolicDim) =>
           symbolicDet(lit).eval(env)
         case Some(_) => Left(this)   // non-square or over the cofactor cap
@@ -485,8 +491,10 @@ case class Inverse(m: _Expression) extends _MatrixOperation:
       case r => asLiteral(r) match
         // Exact entries: Gauss-Jordan over the rationals, uncapped, singular -> symbolic
         // (the same rule the dense kernel follows).
-        case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
-          exactCells(lit).flatMap(c => exactInverse(c, lit.rows, env.rationalPolicy)) match
+        case Some(lit) if lit.rows == lit.cols && lit.elems.forall(_Surd.isExact) =>
+          overExactField(lit.elems, env.workingPrecision, env.rationalPolicy)(
+            [T] => (f: ExactField[T], c: Vector[T]) => fieldInverse(f, c, lit.rows).map(_.map(f.toValue))
+          ).flatten match
             case Some(inv) => Left(_Matrix(lit.rows, lit.cols, inv.map(x => x: _Expression)))
             case None      => Left(Inverse(r.toExpression))
         case Some(lit) => symbolicInverse(lit, env.limits(Limit.MaxSymbolicDim)) match
@@ -611,13 +619,15 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
     val r = m.eval(env)
     r match
       // F_0226: an exact square operand is factored over the rationals, singular included.
-      case Left(lit: _Matrix) if lit.rows == lit.cols && exactCells(lit).isDefined =>
+      // F_0231 Decision B: over Q(√d) as over Q.
+      case Left(lit: _Matrix) if lit.rows == lit.cols && lit.elems.forall(_Surd.isExact) =>
         val n = lit.rows
-        exactCells(lit).fold(Left(this)) { cells =>
-          val (l, u, p) = exactLu(cells, n, env.rationalPolicy)
-          def mat(c: Vector[_Rational]) = _Matrix(n, n, c.map(x => x: _Expression))
-          Left(_Matrix(1, 3, Vector(mat(l), mat(u), mat(p))))
-        }
+        def mat(c: Vector[_Value]) = _Matrix(n, n, c.map(x => x: _Expression))
+        overExactField(lit.elems, env.workingPrecision, env.rationalPolicy)(
+          [T] => (f: ExactField[T], c: Vector[T]) =>
+            val (l, u, p) = fieldLu(f, c, n)
+            (l.map(f.toValue), u.map(f.toValue), p.map(f.toValue))
+        ).fold(Left(this))((l, u, p) => Left(_Matrix(1, 3, Vector(mat(l), mat(u), mat(p)))))
       case _ =>
         withDense(r, this, _LUDecomposition(_))(
           _.luDecompose.map((l, u, p) => Left(_Matrix(1, 3, Vector(l, u, p)))))
@@ -681,8 +691,11 @@ case class _Cholesky(m: _Expression) extends _MatrixOperation:
     m.eval(env) match
       case Right(mv: _MatrixValue) => mv.cholesky.toRight(this)
       case r => asLiteral(r) match
-        case Some(lit) if lit.rows == lit.cols && exactCells(lit).isDefined =>
-          exactCells(lit).flatMap(c => exactCholesky(c, lit.rows, env.rationalPolicy, env.workingPrecision)) match
+        // F_0231: the factor's cells are exact surds, one radical per column (see
+        // `exactCholeskyValues`); a surd operand is read at the working precision first.
+        case Some(lit) if lit.rows == lit.cols && lit.elems.forall(_Surd.isExact) =>
+          val cells = lit.elems.flatMap(_Surd.exactOf(_, env.workingPrecision))
+          exactCholeskyValues(cells, lit.rows, env.rationalPolicy, env.workingPrecision) match
             case Some(l) => Left(_Matrix(lit.rows, lit.cols, l.map(x => x: _Expression)))
             case None    => Left(_Cholesky(r.toExpression))
         case Some(lit) => denseOf(lit).flatMap(_.cholesky).toRight(_Cholesky(r.toExpression))

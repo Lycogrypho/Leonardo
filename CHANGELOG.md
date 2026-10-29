@@ -50,6 +50,14 @@ summarised here at release time.*
   `(… / 3/2)`, which typed back meant `(…/3)/2`, and a negative base printed `(-2.0 ^ x)`, which
   meant `-(2^x)`. They print `(… / (3/2))` and `((-2.0) ^ x)`. Every other printed form is
   unchanged, and saved sessions and share links were never affected.
+- **Square roots stay exact.** In exact mode the square root of a fraction is kept as a surd,
+  shown `√13` or `(3 + 2√2)` and typed back with `√` (`√13`, `2√13`, `√(x + 1)`): a quadratic's
+  roots (`solve(1 - 2*k^2 = 0, k)` binds `±√2/2`), a 2-norm, `stddev` and an exact `chol` come
+  back exact, and `det`, `inv`, `lu` and `A^n` work over a matrix whose surds share one root.
+  Arithmetic mixing two roots, or a function of one, gives the working-precision value as
+  before. `:save` writes surds in ASCII, `(3 + 2 * 2^(1/2))`. **Behaviour change**: these answers
+  printed decimals, and `(2^(1/2))^2 == 2` is now exactly equal, so its "working precision" note
+  no longer appears.
 - **`solveSystem` takes more equations than unknowns.** A consistent system is solved, exactly in
   exact mode, and an inconsistent one stays unevaluated with a note naming the equation at fault;
   every other refusal (fewer equations than unknowns, no unique solution, not linear) now says so

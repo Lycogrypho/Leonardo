@@ -54,6 +54,9 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
       // has no case of its own on purpose — it falls through to `_Number` and comes back a
       // `_Number`, which is exactly the promotion lattice's float contagion.
       case (Right(x: _Rational), Right(y: _Rational)) => Right(x.add(y, env.rationalPolicy))
+      // F_0231: a surd operand, exact over one radical, else the working-precision rational.
+      case (Right(x: _Value), Right(y: _Value)) if _Surd.involves(x, y) =>
+        _Surd.combine(x, y, env.workingPrecision)(_Surd.add, _ + _).toRight(this)
       case (Right(_Number(x)), Right(_Number(y))) => Right(_Number(x + y))
       case (Right(x: _MatrixValue), Right(y: _MatrixValue)) =>
         if x.rows == y.rows && x.cols == y.cols then x.add(y).guarded(this) else Left(this)
@@ -97,6 +100,8 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
       case (Right(z: _Rational), _) if z.isZero => Right(z)
       case (_, Right(z: _Rational)) if z.isZero => Right(z)
       case (Right(x: _Rational), Right(y: _Rational)) => Right(x.multiply(y, env.rationalPolicy))
+      case (Right(x: _Value), Right(y: _Value)) if _Surd.involves(x, y) =>
+        _Surd.combine(x, y, env.workingPrecision)(_Surd.multiply, _ * _).toRight(this)
       // zero short-circuit for everything scalar or unreducible: 0 * e folds to 0
       case (Right(_Number(0.0)), _) | (_, Right(_Number(0.0))) => Right(_Number(0.0))
       case (Right(_Number(x)), Right(_Number(y)))           => Right(_Number(x * y))
@@ -129,6 +134,10 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
       // domain error as below: `divide` returns None and the node stays symbolic.
       case (Right(x: _Rational), Right(y: _Rational)) =>
         x.divide(y, env.rationalPolicy).toRight(this)
+      // A zero divisor answers `None` from both halves (`fromReal` catches the `Real` division),
+      // so the node stays symbolic as for two rationals.
+      case (Right(x: _Value), Right(y: _Value)) if _Surd.involves(x, y) =>
+        _Surd.combine(x, y, env.workingPrecision)(_Surd.divide, _ / _).toRight(this)
       case (Right(_Number(x)), Right(_Number(y))) =>
         val r = x / y
         // x/0 and 0/0 are domain errors: stay symbolic instead of propagating ±Infinity/NaN
@@ -190,6 +199,13 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
     (base.eval(env), exp.eval(env)) match
       // Exact tier first -- see the ORDER note in Sum.
       case (Right(b: _Rational), Right(e: _Rational)) => ratPow(b, e, env)
+      // F_0231: a surd to an integer power is exact; to a fractional one, or anything to a surd
+      // power, a positive base leaves through `Real` as every irrational power always did.  A
+      // non-positive base falls through to the complex principal value below.
+      case (Right(b: _Surd), Right(e: _Rational)) if e.toBigIntExact.exists(_.isValidInt) =>
+        _Surd.pow(b, e.toBigIntExact.fold(0)(_.toInt), env.limits(Limit.MaxExactPowerBits)).toRight(this)
+      case (Right(b: _Value), Right(e: _Value)) if _Surd.involves(b, e) && _Surd.signum(b).exists(_ > 0) =>
+        _Surd.approximateOp(b, e, env.workingPrecision)((rb, re) => spire.math.Real.exp(spire.math.Real.log(rb) * re)).toRight(this)
       case (Right(_Number(b)), Right(_Number(e))) =>
         val r = pow(b, e)
         // A non-finite real result means the real power is undefined: fall back to the
@@ -240,7 +256,20 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
     e.toBigIntExact.filter(_.isValidInt) match
       case Some(k) => b.pow(k.toInt, env.rationalPolicy, env.limits(Limit.MaxExactPowerBits))
                         .toRight(this)
+      // F_0231: a half-integer power of a non-negative rational is a surd, `b^(k/2) = (√b)^k`,
+      // exact, where it used to be a working-precision rational.
+      case None if b.signum >= 0 && halfInteger(e) =>
+        halfNumerator(e).flatMap(k => _Surd.sqrtOf(b).flatMap(_Surd.pow(_, k, env.limits(Limit.MaxExactPowerBits))))
+          .toRight(this)
       case None    => fractionalPow(b, e, env)
+
+  /** Whether `e` is `k/2` with `k` odd: its reduced denominator is 2. */
+  private def halfInteger(e: _Rational): Boolean =
+    e.multiply(_Rational(2)).toBigIntExact.isDefined
+
+  /** The `k` of a half-integer `k/2`, when it fits an `Int`. */
+  private def halfNumerator(e: _Rational): Option[Int] =
+    e.multiply(_Rational(2)).toBigIntExact.filter(_.isValidInt).map(_.toInt)
 
   /** A rational base to a genuinely fractional power.
    *
@@ -295,15 +324,18 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
    *  @param env supplies the reduction policy and the size budget
    *  @return the exact power, rebuilt on `m`'s own node */
   private def exactMatrixPower(m: _MatrixShaped, e: Double, env: Environment): Option[Either[_Expression, _Value]] =
-    val cells = m.children.collect { case r: _Rational => r }.toVector
     val MaxMatrixExponent = 4.611686018427387904e18   // the dense path's bound, for the same reason
     if !Whole.isWhole(e) || math.abs(e) > MaxMatrixExponent then None
-    else rationalMatrixPower(cells, m.rows, e.toLong, env.rationalPolicy, env.limits(Limit.MaxExactPowerBits))
-      .map(c => Left(m.rebuild(c.toList)))
+    else
+      // F_0231 Decision B: over Q, or over Q(√d) when the surd cells share one radical.
+      overExactField(m.children.toVector, env.workingPrecision, env.rationalPolicy)(
+        [T] => (f: ExactField[T], c: Vector[T]) =>
+          fieldMatrixPower(f, c, m.rows, e.toLong, env.limits(Limit.MaxExactPowerBits)).map(_.map(f.toValue))
+      ).flatten.map(c => Left(m.rebuild(c.toList)))
 
   /** Whether `m` is square with every cell exact: the operand [[exactMatrixPower]] takes. */
   private def exactSquare(m: _MatrixShaped): Boolean =
-    m.rows == m.cols && m.children.nonEmpty && m.children.forall(_.isInstanceOf[_Rational])
+    m.rows == m.cols && m.children.nonEmpty && m.children.forall(_Surd.isExact)
 
   /** Binary exponentiation for a positive or zero integer power; `k = 0` yields the identity.
    *

@@ -68,7 +68,10 @@ class ExactEqualityTest extends AnyFlatSpec:
       (Parser.parse(l, Some(30)), Parser.parse(r, Some(30))) match
         case (Parser.Success(a, _), Parser.Success(b, _)) => equalOnlyToWorkingPrecision(a, b, env)
         case other                                        => fail(s"$other")
-    assert(check("(2^(1/2))^2", "2"))
+    // A cube root is still a working-precision rational, so the tolerance decides its identity.
+    assert(check("(2^(1/3))^3", "2"))
+    // A square root is an exact surd since F_0231: (√2)² is exactly 2, and the note stays silent.
+    assert(!check("(2^(1/2))^2", "2"))
     assert(!check("1/2", "2/4"))
     assert(!check("1/3", "0.33333"))
   }
