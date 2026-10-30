@@ -263,7 +263,7 @@ arx(_MatrixValue(1, 40, u.toArray), _MatrixValue(1, 40, y.toArray), 1, 1, 1, env
 ```
 
 `u` is `m×N` (a row per input) or `N×m`, so a plant with several inputs fits in one call and
-`b` comes back `nb×m`, a column per input; several outputs are one call per output. **The delay
+`b` comes back `nb×m`, a column per input. **The delay
 `nk` is an argument of the converters**, visible where it acts, so `b` holds exactly what was
 estimated: `arx2tf(a, b, nk, z)` gives the discrete transfer function, whose pole is the `0.8`
 above, and `arx2ss(a, b, nk)` a state-space row `[[A, B, C, D]]` (the observer canonical form).
@@ -279,6 +279,20 @@ uses — before least squares is asked: QR alone answers a barely varying input 
 that describe rounding, not the plant. A series too short for the orders declines too, and the
 REPL says which. With `na = 0` there is no `a`, and `arx` returns `0` in its place, the
 absent-group convention of `qp`.
+
+**Several outputs are one model, not one call each.** With `y` `p×N` (a row per output; the
+samples run along the longer side, so a row or a column is still one output) each output is
+regressed on the past of *every* output, and the model is
+`y[k] = A₁·y[k−1] + … + B₁·u[k−nk] + …` with `p×p` blocks `Aᵢ` coupling the outputs — what a set
+of single-output fits cannot see. `arx` then returns the blocks **stacked**: `a` is `(na·p)×p` =
+`[A₁; A₂; …]` and `b` is `(nb·p)×m` = `[B₁; B₂; …]`, which at one output are exactly the shapes
+above; with `na = 0`, `a` is `zeros(p, p)`, since a bare `0` would read as one output. The
+converters recognise a model with several outputs by its `a`: `arx2tf` gives the `p×m` transfer
+matrix `A(z)⁻¹B(z)` (up to six outputs, by cofactor expansion), and `arx2ss` the **block observer
+form**, `p·max(na, nb + nk − 1)` states. That realisation is **not minimal** — it is exact and
+simple, simulates identically, and `controllable` / `observable` show what is redundant. In
+Scala the model is `arxMimo(u, y, na, nb, nk, env)`, an `ArxMimoModel` of blocks, which `arx2tf`
+and `arx2ss` also take.
 
 ## Simulating a discrete model
 
@@ -456,6 +470,8 @@ so a breakaway point does not cross-connect them — and the browser REPL draws 
 > a, b := arx(u, y, 1, 1, 1)
 > arx2tf(a, b, 1, z)
 > A, B, C, D := arx2ss(a, b, 1)
+> a2, b2 := arx(u, Y, 1, 1, 1)                 (Y 2 x N, two outputs: stacked blocks)
+> arx2tf(a2, b2, 1, z)                          (the 2 x m transfer matrix)
 > tfpoles(1/(s^2 + 3*s + 2), s)
 > isStable(1/(s^2 + 3*s + 2), s)
 > isStableDiscrete(arx2tf(a, b, 1, z), z)

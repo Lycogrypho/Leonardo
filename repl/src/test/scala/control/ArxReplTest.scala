@@ -37,3 +37,21 @@ class ArxReplTest extends AnyFlatSpec:
     assert(short.contains("note: arx declined:") && short.contains("too short"), short)
     assert(s.execute("arx2ss(0, [[3]], 0)").contains("note: arx2ss declined:"))
   }
+
+  /** F_0093: two outputs coupled by `A₁ = [[0.5, 0.25], [0, 0.5]]`, `B₁ = [[1], [1]]` — the second
+   *  row is the single-output session's data, the first carries the coupling. */
+  it should "identify a coupled two-output model and convert its stacked blocks" in
+  {
+    val s = session()
+    s.execute("Y := [[0, 1, 0.75, 2.5, 0.8125, 3.4375, 3.484375, 0.375, 1.00390625, 0.66015625], " +
+              "[0, 1, 0.5, 2.25, 0.125, 3.0625, 2.53125, -0.734375, 0.6328125, 0.31640625]]")
+    s.execute("a, b := arx(u, Y, 1, 1, 1)")
+    // A bound the session can decide: `<` compares at the display tolerance, so `0 < 1e-9` is not.
+    assert(s.execute("norm(a - [[0.5, 0.25], [0, 0.5]]) < 0.001") == "true")
+    assert(s.execute("norm(b - [[1], [1]]) < 0.001") == "true")
+    s.execute("A, B, C, D := arx2ss(a, b, 1)")
+    assert(s.execute("size(A)") == s.execute("[[2, 2]]"))
+    assert(s.execute("size(arx2tf(a, b, 1, z))") == s.execute("[[2, 1]]"))
+    val short = s.execute("arx(u, Y, 5, 5, 1)")
+    assert(short.contains("note: arx declined:") && short.contains("too short"), short)
+  }

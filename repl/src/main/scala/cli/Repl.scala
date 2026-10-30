@@ -1085,12 +1085,13 @@ final class Session:
         l.detailed(env).left.toOption.map(w => s"linearize declined: ${describeLinearize(w)}")
       // F_0060: an identification or conversion refused says why -- above all when the data does
       // not excite the model, where a fit would have been numbers about rounding, not the plant.
+      // F_0093: declineReason, not detailed, for the two nodes that also answer several outputs.
       case (n: control._Arx, Left(_: control._Arx)) =>
-        n.detailed(env).left.toOption.map(w => s"arx declined: ${describeArx(w)}")
+        n.declineReason(env).map(w => s"arx declined: ${describeArx(w)}")
       case (n: control._ArxRegressors, Left(_: control._ArxRegressors)) =>
         n.detailed(env).left.toOption.map(w => s"arxRegressors declined: ${describeArx(w)}")
       case (n: control._Arx2Tf, Left(_: control._Arx2Tf)) =>
-        n.detailed(env).left.toOption.map(w => s"arx2tf declined: ${describeArx(w)}")
+        n.declineReason(env).map(w => s"arx2tf declined: ${describeArx(w)}")
       case (n: control._Arx2Ss, Left(_: control._Arx2Ss)) =>
         n.detailed(env).left.toOption.map(w => s"arx2ss declined: ${describeArx(w)}")
       // F_0092: the control analysis at the prompt says why it could not answer.

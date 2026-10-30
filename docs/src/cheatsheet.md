@@ -1019,9 +1019,14 @@ arx(u, y, na, nb, nk)           [[a, b]]  y[k] = sum a_i y[k-i] + sum b_l u[k-nk
                                 PREDICTOR sign: MATLAB's a is -a. u m x N (or N x m), y 1 x N;
                                 b is nb x m, a column per input; a is 0 when na = 0.
                                 Declines a short series and data that does not excite the model
-arxRegressors(u, y, na, nb, nk) [[X, Y]]  the regression arx solves
-arx2tf(a, b, nk, z)             B(z)/A(z), one per input (a 1 x m row for several)
+                                y p x N (several outputs): p x p blocks STACKED, a (na*p) x p,
+                                b (nb*p) x m; a is zeros(p, p) when na = 0
+arxMimo(u, y, na, nb, nk, env)  ArxMimoModel(a, b)  the blocks A_i (p x p), B_l (p x m)
+arxRegressors(u, y, na, nb, nk) [[X, Y]]  the regression arx solves; Y p columns
+arx2tf(a, b, nk, z)             B(z)/A(z), one per input (a 1 x m row for several);
+                                A(z)^-1 B(z), p x m, for stacked blocks (p <= 6)
 arx2ss(a, b, nk)                [[A, B, C, D]]  observer canonical form; nk is always explicit
+                                block observer form for stacked blocks: NOT minimal
                                 (all four also at the prompt)
 controllable(a, b) / observable(a, c)     Option[Boolean]
 c2dExact(a, b, ts)              (A_d, B_d) via expm of the block matrix; singular A is fine

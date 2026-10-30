@@ -2152,7 +2152,11 @@ declines: outside domain, non-real entry</data>
         <data key="n_members">__ F_0060: y[k] = sum a_i y[k-i] + sum b_l u[k-nk-l+1] __
 PREDICTOR sign (MATLAB's a is -a)
 arx / arxRegressors / arx2tf / arx2ss
-MISO: u m x N, b nb x m; nk explicit
+u m x N, b nb x m; nk explicit
+__ F_0093: y p x N, A_i p x p couple the outputs __
+arxMimo -&gt; ArxMimoModel; blocks STACKED at the prompt
+arx2tf: A(z)^-1 B(z), p x m (cofactors, p &lt;= 6)
+arx2ss: block observer form, NOT minimal
 declines: too short, not excited (svd rank)</data>
     </node>
     <node id="n197">

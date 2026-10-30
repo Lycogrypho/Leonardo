@@ -3584,15 +3584,19 @@ linearize(F, G, x, u, x0, u0[, affine])
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="140.0" width="476.0" x="0.0" y="0.0"/>
+              <y:Geometry height="204.0" width="476.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">Arx</y:NodeLabel>
               <y:UML stereotype="object">
                 <y:AttributeLabel>-- F_0060: y[k] = sum a_i y[k-i] + sum b_l u[k-nk-l+1] --
 arx / arxRegressors / arx2tf / arx2ss
-MISO: u m x N, b nb x m; nk explicit</y:AttributeLabel>
+u m x N, b nb x m; nk explicit
+-- F_0093: y p x N, A_i p x p couple the outputs --
+arxMimo -&gt; ArxMimoModel; blocks STACKED at the prompt
+arx2ss: block observer form, NOT minimal</y:AttributeLabel>
                 <y:MethodLabel>PREDICTOR sign (MATLAB's a is -a)
+arx2tf: A(z)^-1 B(z), p x m (cofactors, p &lt;= 6)
 declines: too short, not excited (svd rank)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
