@@ -2757,21 +2757,23 @@ answer is _Comparison / or / and / _Bool</y:AttributeLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/equations.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="236.0" width="404.0" x="0.0" y="0.0"/>
+              <y:Geometry height="268.0" width="404.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">SolveSystem</y:NodeLabel>
               <y:UML stereotype="utility">
                 <y:AttributeLabel>-- exact path --
-incremental elimination over Q:
+incremental elimination over an ExactField
 names the first contradicting equation
 -- dense path --
-m &gt; n: QR least squares, residual vs own terms
+QR least squares, residual vs own terms
 -- symbolic path --</y:AttributeLabel>
                 <y:MethodLabel>+ solveSystem(eqs, vars, env): Option[List]
 ~ solveSystemDetailed(...): Either[String, List]
 m &gt;= n equations (F_0242)
+(Q, or Q(sqrt d) for one radical, F_0247):
 square: Gaussian elimination (partial pivot)
+m &gt; n: svd rank test (F_0245), then
 Row reduction with simplifyFully (square only)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>

@@ -114,6 +114,37 @@ class SurdTest extends AnyFlatSpec:
       case other    => fail(s"$other")
   }
 
+  /** The value as a `Double` read through the widening extractor, as every site that does not know
+   *  surds reads it. */
+  private def asDouble(v: _Value): Double = v match
+    case _Number(x) => x
+    case other      => fail(s"not a number: $other")
+
+  "toDouble" should "read a large-radicand surd as the number it is, never spire's misrounding (F_0244)" in {
+    // The audit's probe: in exact mode the 2-norm of [[sqrt 2], [sqrt 2]] read as 1.0.
+    val norm = parser.Parser.parse("norm([[2^(1/2)], [2^(1/2)]])", Some(30))
+    assert(norm.successful)
+    norm.get.eval(Environment()) match
+      case Right(v) => assert(math.abs(asDouble(v) - 2.0) <= 1e-12, s"$v reads as ${asDouble(v)}")
+      case Left(e)  => fail(s"stayed symbolic: $e")
+    // A sweep of large radicands, against the value read at 40 digits.
+    val rnd = new scala.util.Random(20261030)
+    for _ <- 1 to 200 do
+      val p = BigInt(200, rnd) + 2
+      val q = BigInt(120, rnd) + 1
+      val s = get(_Surd.sqrtOf(get(_Rational.of(p, q))))
+      val want = asDouble(get(_Surd.exactOf(s, 40)))
+      assert(math.abs(asDouble(s) - want) <= 1e-15 * want, s"sqrt($p/$q): ${asDouble(s)} vs $want")
+  }
+
+  it should "keep its relative precision when the value is tiny after cancellation" in {
+    // sqrt(10^60 + 1) - 10^30 = 1/(sqrt(10^60 + 1) + 10^30), about 5e-31.
+    val d = BigInt(10).pow(60) + 1
+    val s = get(_Surd.of(_Rational(-BigInt(10).pow(30)), _Rational.One, d))
+    val want = 1.0 / (2.0 * 1e30)
+    assert(math.abs(asDouble(s) - want) <= 1e-12 * want, s"${asDouble(s)} vs $want")
+  }
+
 
 /** `10^k` as a spire rational, for the agreement bound. */
 private object SpireRationalHelper:

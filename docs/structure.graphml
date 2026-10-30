@@ -1668,11 +1668,13 @@ answer is _Comparison / or / and / _Bool</data>
 ~ solveSystemDetailed(...): Either[String, List]
 m &gt;= n equations (F_0242)
 __ exact path __
-incremental elimination over Q:
+incremental elimination over an ExactField
+(Q, or Q(sqrt d) for one radical, F_0247):
 names the first contradicting equation
 __ dense path __
 square: Gaussian elimination (partial pivot)
-m &gt; n: QR least squares, residual vs own terms
+m &gt; n: svd rank test (F_0245), then
+QR least squares, residual vs own terms
 __ symbolic path __
 Row reduction with simplifyFully (square only)</data>
     </node>

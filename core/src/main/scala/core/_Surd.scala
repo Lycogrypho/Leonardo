@@ -268,8 +268,19 @@ final class _Surd private (val a: _Rational, val b: _Rational, val d: BigInt) ex
 
   override def hashCode: Int = (a, b.signum, radicalSize).hashCode
 
-  /** The value as a `Double`, through `Real` so a large radicand does not overflow on the way. */
-  def toDouble: Double = _Surd.toReal(this).fold(Double.NaN)(_.toDouble)
+  /** The value as a `Double`, through `Real` so a large radicand does not overflow on the way.
+   *
+   *  **Never spire's `Real.toDouble`** (F_0244): it misrounded a surd with a large radicand and a
+   *  tiny coefficient, so `norm([[√2], [√2]])` read as `1.0`, and it lost relative precision on a
+   *  value small only after cancellation (`√(10⁶⁰ + 1) − 10³⁰`).  The value is read instead as a
+   *  rational at absolute precision `2⁻ᵇ` with `b` doubling until it carries 64 significant bits;
+   *  that ends, because a surd is never zero (`√d` is irrational), and a value below the smallest
+   *  subnormal stops the loop as `0.0` with its sign. */
+  def toDouble: Double = _Surd.toReal(this).fold(Double.NaN) { r =>
+    Iterator.iterate(128)(_ * 2).takeWhile(_ <= 4096).map(bits => (bits, r.toRational(bits)))
+      .collectFirst { case (bits, q) if q.abs * SpireRational(BigInt(2).pow(bits - 64)) >= 1 => q.toDouble }
+      .getOrElse(0.0)
+  }
 
   /** Renders at [[Environment.DefaultPrecision]], as [[display]] does. */
   override def toString: String = display(Environment.DefaultPrecision)

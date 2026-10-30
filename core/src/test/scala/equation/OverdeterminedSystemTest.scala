@@ -52,6 +52,37 @@ class OverdeterminedSystemTest extends AnyFlatSpec:
     assert(early.contains("equation 2"), early)
   }
 
+  "a numeric over-determined system" should "be declined when its columns are nearly dependent, not answered (F_0245)" in {
+    // At the least-squares fit x = 501, y = -500 the residual is small against the huge terms that
+    // cancel in it, yet the fit satisfies neither x + y = 1 nor x + y = 1.001.  Scaling the system
+    // must not move the verdict (the units rule).
+    for k <- Seq("1", "1000000", "0.000001") do
+      val s = s"solveSystem([[$k*x + $k*y = $k], [$k*x + $k*1.000001*y = $k], [$k*x + $k*y = $k*1.001]], x, y)"
+      assert(declined(eval(s, exact = false)), s"$s: ${eval(s, exact = false)}")
+      assert(reason(s, exact = false).exists(_.contains("nearly dependent")), reason(s, exact = false))
+  }
+
+  "an exact system with surd coefficients" should "be solved over the radical, not read as contradictory (F_0247)" in {
+    val root2 = Parser.parse("2^(1/2)", Some(30)).get.eval(env).fold(e => fail(s"$e"), identity)
+    assert(root2.isInstanceOf[_Surd])
+    // Two equal surds from different expressions: sqrt 8 / 2 and sqrt 2.
+    eval("solveSystem([[x = 2^(1/2)], [2*x = 8^(1/2)]], x)") match
+      case Left(_Equation(_, v)) => assert(v == root2, v)
+      case other                 => fail(s"$other")
+    // A square system over sqrt 2, solved exactly.
+    val half = Parser.parse("2^(1/2)/2", Some(30)).get.eval(env).fold(e => fail(s"$e"), identity)
+    eval("solveSystem([[x + y = 2^(1/2)], [x - y = 0]], x, y)") match
+      case Left(m: matrix._Matrix) => assert(m.elems.forall { case _Equation(_, v) => v == half; case _ => false }, m)
+      case other                   => fail(s"$other")
+  }
+
+  it should "still solve one whose radicals do not combine, at the working precision" in {
+    // sqrt 2 beside sqrt 3: read as working-precision rationals, where 8^(1/2) and 2*2^(1/2) differ in
+    // the last digit -- a difference the working precision cannot see, not a contradiction.
+    val s = "solveSystem([[x = 2^(1/2)], [2*x = 8^(1/2)], [y = 3^(1/2)]], x, y)"
+    assert(!declined(eval(s)), reason(s))
+  }
+
   it should "decline a consistent one that does not determine every unknown" in {
     val s = "solveSystem([[u + v = 1], [2*u + 2*v = 2], [3*u + 3*v = 3]], u, v)"
     assert(declined(eval(s)))

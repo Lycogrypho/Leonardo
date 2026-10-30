@@ -562,9 +562,9 @@ solveSystem([[u = 1], [v = 2], [u + v = 3]], u, v)   more equations than unknown
 solveSystem([[u = 1], [v = 2], [u + v = 4]], u, v)   inconsistent: unevaluated, the note names equation 3
 ```
 
-Numeric consistency is relative to each equation's own terms, at the display precision. Fewer
-equations than unknowns, a non-unique solution, a non-linear system and a symbolic over-determined
-system stay unevaluated, with the reason as a note.
+Numeric consistency is relative to each equation's own terms, at the display precision; nearly
+dependent columns are declined first. Fewer equations than unknowns, a non-unique solution, a
+non-linear system and a symbolic over-determined system stay unevaluated, with the reason as a note.
 
 ---
 

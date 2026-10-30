@@ -79,8 +79,10 @@ private[leonardo] def rationalizeExpr(e: _Expression, digits: Int): Either[Strin
   def number(d: Double): Either[String, _Expression] =
     _Rational.fromApproximation(d, digits).toRight(s"${_Number.render(d)} has no exact value")
   e match
-    // The exact arm first: the widening `_Number` would read a rational as a Double.
+    // The exact arms first: the widening `_Number` would read a rational or a surd (F_0246) as a
+    // Double, and `rationalize` would replace the exact value it was asked to produce.
     case r: _Rational  => Right(r)
+    case s: _Surd      => Right(s)
     case c: _Complex   => Left(s"$c is complex, and no exact complex value exists")
     case i: _Interval  => Left(s"$i is an interval, which has no single exact value")
     case _Number(d)    => number(d)
@@ -145,7 +147,7 @@ private[leonardo] def rationalizeDigits(ds: List[Double]): Option[Int] =
 /** The decimal leaves of an evaluated expression, a dense matrix's cells included, or `None` when
  *  it holds a value `rationalize` declines (a complex number, an interval). */
 private[leonardo] def decimalLeaves(e: _Expression): Option[List[Double]] = e match
-  case _: _Rational              => Some(Nil)
+  case _: _Rational | _: _Surd   => Some(Nil)
   case _: _Complex | _: _Interval => None
   case _Number(d)                => Some(List(d))
   case m: _MatrixValue           => Some(m.toVector.toList)

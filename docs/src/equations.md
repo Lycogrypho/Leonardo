@@ -197,7 +197,11 @@ Parser.parse("solveSystem([[u = 1], [v = 2], [u + v = 3]], u, v)").get.eval(env)
 
 With numeric coefficients, consistency is decided against each equation's own terms at the
 display precision, so the verdict does not depend on the units the equations are written in.
-Fewer equations than unknowns, a system that does not determine every unknown, a non-linear
+Coefficients whose columns are **nearly dependent** at that precision are declined first: there
+the least-squares fit has huge terms that cancel, and a residual the size of a real
+contradiction would pass as small against them.  Exact coefficients holding surds of one radical
+are eliminated over that radical, so `x = √2` beside `2x = √8` is solved, not read as a
+contradiction.  Fewer equations than unknowns, a system that does not determine every unknown, a non-linear
 one, and a symbolic system with more equations than unknowns all stay unevaluated, each with
 its reason at the prompt.
 

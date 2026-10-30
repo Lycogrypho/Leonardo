@@ -19,6 +19,15 @@ class RationalizeTest extends AnyFlatSpec:
     assert(eval("rationalize(1/3)") == Right(q(1, 3)))
   }
 
+  it should "leave an exact surd as it is, alone or in a matrix (F_0246)" in {
+    val root2 = eval("2^(1/2)", exactMode = true)
+    assert(root2.exists(_.isInstanceOf[_Surd]), root2)
+    assert(eval("rationalize(2^(1/2))", exactMode = true) == root2)
+    eval("rationalize([[2^(1/2), 1/3]])", exactMode = true) match
+      case Left(m: _Matrix) => assert(m.elems.headOption.exists(_.isInstanceOf[_Surd]) && m.elems(1) == q(1, 3), m)
+      case other            => fail(s"$other")
+  }
+
   it should "bound the denominator by 10^digits" in {
     // the best fraction with a denominator up to 100 to 3.14159
     assert(eval("rationalize(3.14159, 2)") == Right(q(311, 99)))

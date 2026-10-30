@@ -15,10 +15,12 @@ import scala.util.boundary, boundary.break
  *
  *  **More equations than unknowns** is how "is `b` a combination of these vectors?" is asked,
  *  so a consistent over-determined system is solved.  Exactly: incremental elimination over the
- *  rationals, which names the first equation contradicting the ones before it.  Numerically: the
- *  least-squares solution by QR (never the normal equations, which square the condition number),
- *  accepted only when every equation holds within `0.5·10⁻ᵖ` of **its own terms** -- an absolute
- *  tolerance would pass any inconsistent system scaled down far enough (the units rule).  A
+ *  rationals, or over `Q(√d)` when the coefficients hold surds of one radical (F_0247), which names
+ *  the first equation contradicting the ones before it.  Numerically: the least-squares solution
+ *  by QR (never the normal equations, which square the condition number), after a rank test that
+ *  declines nearly dependent columns (F_0245), accepted only when every equation holds within
+ *  `0.5·10⁻ᵖ` of **its own terms** -- an absolute tolerance would pass any inconsistent system
+ *  scaled down far enough (the units rule).  A
  *  symbolic over-determined system declines: deciding its consistency means deciding whether an
  *  expression vanishes.
  *
@@ -83,6 +85,11 @@ private def counted(k: Int, noun: String): String = if k == 1 then s"1 $noun" el
 private val NotLinear       = "not linear in the unknowns"
 private val NoUniqueExact   = "no unique solution: the equations do not determine every unknown"
 private val NoUniqueDense   = "no unique solution: the coefficients are linearly dependent"
+
+/** Why an over-determined numeric system with nearly dependent columns is declined (F_0245). */
+private def nearlyDependent(rank: Int, n: Int): String =
+  s"no unique solution: the coefficients are nearly dependent (numerical rank $rank of $n at the session precision), " +
+    "so a least-squares fit cannot tell a consistent system from an inconsistent one"
 private val SymbolicOverdetermined =
   "over-determined with symbolic coefficients: more equations than unknowns are solved only when every coefficient is a number"
 
@@ -134,21 +141,35 @@ private def solveDetermined(
   val b: Vector[_Expression] =
     exprs.map(expr => simplifyFully(Product(minusOne, expr.eval(zeroEnv).toExpression)))
 
-  // Exact path (F_0166): every coefficient and constant exact, so elimination over the
-  // rationals -- before the dense path, whose widening `_Number` reading would take a `_Rational`
+  // Exact path (F_0166): every coefficient and constant exact, so elimination over an exact
+  // field -- before the dense path, whose widening `_Number` reading would take a `_Rational`
   // as the Double it approximates.  No tolerance decides anything here (F_0242: incremental, so
-  // a contradiction is named where it arises).
-  // A surd coefficient (F_0231) is read as its working-precision rational, the value it stood for
-  // before; elimination over Q(√d) is the matrix kernels' business (Decision B).
-  def toExact(e: _Expression): Option[_Rational] = e.eval(env) match
-    case Right(r: _Rational) => Some(r)
-    case Right(s: _Surd)     => _Surd.exactOf(s, env.workingPrecision)
-    case _                   => None
+  // a contradiction is named where it arises).  Surds of one radical are eliminated over Q(√d),
+  // the field the matrix kernels use (F_0247): read each as its own working-precision rational,
+  // two equal surds from different expressions differed in the last digit and a consistent
+  // system was reported contradictory.
+  def solveOver[T](f: ExactField[T], cells: Vector[T], isZero: T => Boolean): Either[String, List[_Equation]] =
+    val rows = Vector.tabulate(m)(i => cells.slice(i * n, (i + 1) * n))
+    exactSolve(f, rows, cells.drop(m * n), equations, n, isZero).map(xs => variables.zip(xs.map(f.toValue)).map(_Equation(_, _)))
 
-  (allOpt(A.map(row => allOpt(row.map(toExact)))), allOpt(b.map(toExact))) match
-    case (Some(ea), Some(eb)) =>
-      return exactSolve(ea, eb, equations, n, env.rationalPolicy).map(xs => variables.zip(xs).map(_Equation(_, _)))
-    case _ => ()
+  val exactValues = allOpt((A.flatten ++ b).map(_.eval(env).toOption))
+  val policy      = env.rationalPolicy
+  val exactAnswer = exactValues.filter(_.forall(_Surd.isExact)).flatMap { vs =>
+    fieldCells(vs) match
+      case Some(FieldCells.OverQ(c))       => Some(solveOver(RationalField(policy), c, (r: _Rational) => r.isZero))
+      case Some(FieldCells.OverSurd(d, c)) => Some(solveOver(SurdField(d, policy), c, (q: Quad) => q.a.isZero && q.b.isZero))
+      case None =>
+        // Two radicals that do not combine (√2 beside √3): the cells are read as rationals at the
+        // working precision, as before F_0231, and a value is zero when it agrees with 0 at that
+        // precision (F_0177) -- an exact zero test would read the reading's last digit as a
+        // contradiction.
+        val rs = vs.flatMap(_Surd.exactOf(_, env.workingPrecision))
+        Option.when(rs.size == vs.size)(
+          solveOver(RationalField(policy), rs, (r: _Rational) => agreeToWorkingPrecision(r, _Rational.Zero, env)))
+  }
+  exactAnswer match
+    case Some(answer) => return answer
+    case None         => ()
 
   // Dense path: try to fold every coefficient and constant to a Double
   def toDouble(e: _Expression): Option[Double] = e.eval(env) match
@@ -160,7 +181,7 @@ private def solveDetermined(
 
   (denseA, denseB) match
     case (Some(da), Some(db)) =>
-      val solved = if m == n then gaussDense(da, db).toRight(NoUniqueDense) else leastSquaresConsistent(da, db, equations, env.precision)
+      val solved = if m == n then gaussDense(da, db).toRight(NoUniqueDense) else leastSquaresConsistent(da, db, equations, env)
       solved.map(xs => variables.zip(xs).map((v, x) => _Equation(v, _Number(x))))
     case _ if m > n => Left(SymbolicOverdetermined)
     case _ =>
@@ -169,45 +190,47 @@ private def solveDetermined(
       )
 
 
-/** One row of an exact elimination with its pivot column; the pivot entry is 1. */
-private type PivotRow = (Int, Vector[_Rational])
-
-/** Exact elimination of `[A | b]`, one equation at a time (F_0242).
+/** Exact elimination of `[A | b]` over a field, one equation at a time (F_0242; any exact field
+ *  since F_0247).
  *
  *  The basis is kept in reduced row-echelon form, so each new row is reduced against it in one
  *  pass.  A row that reduces to `0 = c` with `c != 0` **contradicts the equations before it**,
  *  which is the equation named; one that reduces to `0 = 0` is redundant.  At the end fewer pivots
  *  than unknowns means a consistent system that does not determine them all.
  *
+ *  @tparam T        the field's element type
+ *  @param f         the field
  *  @param a         the `m × n` coefficients
  *  @param b         the `m` constants
  *  @param equations the equations, for the message
  *  @param n         the number of unknowns
- *  @param policy    the rational reduction policy
+ *  @param isZero    what counts as zero: exact, or agreement with `0` at the working precision
+ *                   when the cells are readings of radicals that do not combine
  *  @return the solution, or why there is none
  */
-private def exactSolve(a: Vector[Vector[_Rational]], b: Vector[_Rational], equations: List[_Equation],
-                       n: Int, policy: GcdPolicy): Either[String, Vector[_Rational]] =
-  def eliminate(target: Vector[_Rational], unit: Vector[_Rational], p: Int): Vector[_Rational] =
-    val f = target(p)
-    if f.isZero then target else target.lazyZip(unit).map((x, y) => x.subtract(f.multiply(y, policy), policy))
+private def exactSolve[T](f: ExactField[T], a: Vector[Vector[T]], b: Vector[T], equations: List[_Equation],
+                          n: Int, isZero: T => Boolean): Either[String, Vector[T]] =
+  def eliminate(target: Vector[T], unit: Vector[T], p: Int): Vector[T] =
+    val c = target(p)
+    if f.isZero(c) then target else target.lazyZip(unit).map((x, y) => f.sub(x, f.mul(c, y)))
 
   val rows = a.lazyZip(b).map(_ :+ _)
-  rows.zipWithIndex.foldLeft[Either[String, Vector[PivotRow]]](Right(Vector.empty)) {
+  // Each basis row is its pivot column and the row itself, the pivot entry 1.
+  rows.zipWithIndex.foldLeft[Either[String, Vector[(Int, Vector[T])]]](Right(Vector.empty)) {
     case (failed @ Left(_), _) => failed
     case (Right(basis), (row, i)) =>
       val r = basis.foldLeft(row)((acc, pr) => eliminate(acc, pr._2, pr._1))
-      r.take(n).indexWhere(!_.isZero) match
-        case -1 if r(n).isZero => Right(basis)
-        case -1                => Left(s"inconsistent: equation ${i + 1} (${equations(i)}) contradicts the equations before it")
-        case p => r(p).reciprocal(policy) match
+      r.take(n).indexWhere(c => !isZero(c)) match
+        case -1 if isZero(r(n)) => Right(basis)
+        case -1                 => Left(s"inconsistent: equation ${i + 1} (${equations(i)}) contradicts the equations before it")
+        case p => f.div(f.one, r(p)) match
           case None      => Left(NoUniqueExact)   // unreachable: r(p) is not zero
           case Some(inv) =>
-            val unit = r.map(_.multiply(inv, policy))
+            val unit = r.map(f.mul(_, inv))
             Right(basis.map((q, br) => (q, eliminate(br, unit, p))) :+ (p, unit))
   }.flatMap { basis =>
     if basis.size < n then Left(NoUniqueExact)
-    else Right(Vector.tabulate(n)(j => basis.collectFirst { case (`j`, r) => r(n) }.getOrElse(_Rational(0))))
+    else Right(Vector.tabulate(n)(j => basis.collectFirst { case (`j`, r) => r(n) }.getOrElse(f.zero)))
   }
 
 /** The solution of `m > n` numeric equations, when they are consistent (F_0242).
@@ -220,17 +243,27 @@ private def exactSolve(a: Vector[Vector[_Rational]], b: Vector[_Rational], equat
  *  counts as satisfied, since a component whose true value is zero comes back as rounding noise
  *  and would otherwise miss its own term by 100%.  `qrDecompose`'s `None` is the rank test (2.11).
  *
+ *  **Nearly dependent columns are declined first** (F_0245), at the relative tolerance `rank`
+ *  uses (`svd` + `numericalRank`, the `arx` arrangement): there the least-squares terms are huge
+ *  and cancel, so a residual the size of an inconsistency passes as small against them --
+ *  `x + y = 1`, `x + 1.000001·y = 1`, `x + y = 1.001` was answered `x ≈ 501, y ≈ −500`, which
+ *  satisfies none of the three.  QR's own rank test refuses only exact dependence.
+ *
  *  @param a         the `m × n` coefficients
  *  @param b         the `m` constants
  *  @param equations the equations, for the message
- *  @param precision the session precision, which sets the tolerance
+ *  @param env       the environment, whose precision sets the tolerances and whose limits the SVD's work
  *  @return the solution, or why there is none
  */
 private def leastSquaresConsistent(a: Vector[Vector[Double]], b: Vector[Double], equations: List[_Equation],
-                                   precision: Int): Either[String, Vector[Double]] =
+                                   env: Environment): Either[String, Vector[Double]] =
   val m = a.size
   val n = a.head.size
-  _MatrixValue(m, n, a.flatten.toArray).qrDecompose match
+  val precision = env.precision
+  val design    = _MatrixValue(m, n, a.flatten.toArray)
+  val deficient = design.svd(env.limits)
+    .map((_, sigma, _) => matrix.numericalRank(sigma, matrix.rankTolerance(env))).filter(_ < n)
+  def fit: Either[String, Vector[Double]] = design.qrDecompose match
     case None => Left(NoUniqueDense)
     case Some((q, r)) =>
       val qtb = Vector.tabulate(n)(j => (0 until m).map(i => q(i, j) * b(i)).sum)
@@ -261,6 +294,7 @@ private def leastSquaresConsistent(a: Vector[Vector[Double]], b: Vector[Double],
         else
           val off = BigDecimal(residual.abs).round(new java.math.MathContext(3)).toString
           Left(s"inconsistent: no values satisfy every equation; at the least-squares fit equation ${worst + 1} (${equations(worst)}) is off by $off")
+  deficient.fold(fit)(rk => Left(nearlyDependent(rk, n)))
 
 
 /** Sequences an iterable of `Option`s into `Option[Vector]`; `None` if any element is `None`.
