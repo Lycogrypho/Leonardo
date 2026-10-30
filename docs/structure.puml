@@ -2273,10 +2273,12 @@ package "tools" <<Rectangle>> {
     class "PumlGraph" <<object>> [[developer.html]] {
         + read(text): Either[Vector, Diagram]
         + toGraphML(d): String
-        + offences(source, target): Vector
-        this diagram as GraphML for Gephi (F_0097);
+        + toYEd(d): String   (F_0098)
+        + offences(source, target, yed): Vector
+        this diagram as GraphML for Gephi (F_0097)
+        and for yEd (F_0098), from one reader;
         refuses what it does not know, and a
-        stale committed structure.graphml
+        stale committed copy of either
     }
     class "Files" <<utility>> [[developer.html]] {
         + GuardedRoots: Vector

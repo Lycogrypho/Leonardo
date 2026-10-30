@@ -2840,10 +2840,12 @@ script source, one-line scripts (F_0112)</data>
         <data key="n_url">developer.html</data>
         <data key="n_members">+ read(text): Either[Vector, Diagram]
 + toGraphML(d): String
-+ offences(source, target): Vector
-this diagram as GraphML for Gephi (F_0097);
++ toYEd(d): String   (F_0098)
++ offences(source, target, yed): Vector
+this diagram as GraphML for Gephi (F_0097)
+and for yEd (F_0098), from one reader;
 refuses what it does not know, and a
-stale committed structure.graphml</data>
+stale committed copy of either</data>
     </node>
     <node id="n262">
         <data key="n_label">Files</data>

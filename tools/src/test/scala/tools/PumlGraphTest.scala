@@ -106,6 +106,66 @@ class PumlGraphTest extends AnyFlatSpec:
            "docs/structure.graphml is stale: run `sbt graphml`")
   }
 
+  // --- F_0098: the yEd emitter, over the same reader ---
+
+  "the diagram reader" should "keep the skinparam legend, which the yEd output colours from" in {
+    val d = diagram(sample)
+    assert(d.styles.get(("class", "case", "BackgroundColor")).contains("#E6F4EA"), d.styles)
+  }
+
+  "the yEd writer" should "draw UML class boxes inside one group per package, with yEd's own elements" in {
+    val xml = PumlGraph.toYEd(diagram(sample))
+    val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder()
+      .parse(new java.io.ByteArrayInputStream(xml.getBytes("UTF-8")))
+    assert(doc.getElementsByTagName("y:UMLClassNode").getLength == 4)
+    assert(doc.getElementsByTagName("y:ProxyAutoBoundsNode").getLength == 2)   // core, scalar
+    assert(doc.getElementsByTagName("y:PolyLineEdge").getLength == 4)
+    assert(xml.contains("""yfiles.type="nodegraphics"""") && xml.contains("""yfiles.type="edgegraphics""""))
+    assert(xml.contains("""yfiles.foldertype="group""""))
+  }
+
+  it should "nest each class in its package's group" in {
+    val xml = PumlGraph.toYEd(diagram(sample))
+    // "Sum" is in scalar, the second group: its id is the group's id followed by ::
+    val group = """<node id="(n\d+)" yfiles.foldertype="group">[\s\S]*?>scalar<""".r.findFirstMatchIn(xml).map(_.group(1))
+    assert(group.exists(g => xml.contains(s"""<node id="$g::""")), xml)
+  }
+
+  it should "colour a box from the legend by its stereotype" in {
+    val xml = PumlGraph.toYEd(diagram(sample))
+    assert(xml.contains("""<y:Fill color="#E6F4EA" transparent="false"/>"""), "Sum is <<case>>")
+  }
+
+  it should "split members into attributes and operations, escaped" in {
+    val xml = PumlGraph.toYEd(diagram(sample))
+    assert(xml.contains("<y:MethodLabel>+ eval(env: Environment): Either[_Expression, _Value]</y:MethodLabel>"), xml)
+    assert(xml.contains("children: List"))
+    assert(xml.contains("a &amp; b &lt; c"))
+  }
+
+  it should "draw each relation with its own line and arrow, and its label" in {
+    val xml = PumlGraph.toYEd(diagram(sample))
+    def edge(line: String, arrow: String) = s"""type="$line"""" -> s"""target="$arrow""""
+    for (line, arrow) <- List(edge("dashed", "white_delta"), edge("line", "white_delta"),
+                              edge("dashed", "plain"), edge("line", "plain")) do
+      assert(xml.contains(line) && xml.contains(arrow), (line, arrow))
+    assert(xml.contains(">reads</y:EdgeLabel>") && xml.contains(">holds</y:EdgeLabel>"))
+  }
+
+  it should "link a box to its page on the published site, and be deterministic" in {
+    val xml = PumlGraph.toYEd(diagram(sample))
+    assert(xml.contains(">https://lycogrypho.github.io/Leonardo/calculus.html<"))
+    assert(PumlGraph.toYEd(diagram(sample)) == xml)
+  }
+
+  "the repository's diagram" should "match its committed yEd file, every legend colour readable by yEd" in {
+    val d = diagram(Files.read(Paths.get("docs", "structure.puml")))
+    val colours = d.styles.collect { case ((_, _, key), v) if key.endsWith("Color") => v }
+    assert(colours.nonEmpty && colours.forall(PumlGraph.colour(_).isDefined), d.styles)
+    assert(PumlGraph.offences(PumlGraph.DefaultSource, PumlGraph.DefaultTarget, Some(PumlGraph.DefaultYEdTarget)).isEmpty,
+           "docs/structure.yed.graphml is stale: run `sbt graphml`")
+  }
+
   it should "report a committed GraphML that drifted from the diagram" in {
     val dir    = java.nio.file.Files.createTempDirectory("leonardo-graphml-")
     val source = dir.resolve("s.puml")

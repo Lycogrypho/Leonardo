@@ -27,6 +27,8 @@ object PumlGraph:
   /** The diagram, and its committed conversion (Decision A: committed beside it). */
   val DefaultSource: Path = Paths.get("docs", "structure.puml")
   val DefaultTarget: Path = Paths.get("docs", "structure.graphml")
+  /** The yEd conversion (F_0098 Decision B: a second output of the same run, committed). */
+  val DefaultYEdTarget: Path = Paths.get("docs", "structure.yed.graphml")
 
   /** What a relation means, by its arrow. */
   enum Relation(val arrow: String, val word: String):
@@ -51,8 +53,12 @@ object PumlGraph:
    *  @param line where it is written, from 1 */
   final case class Edge(source: String, target: String, relation: Relation, label: String, line: Int)
 
-  /** The diagram as a graph, in source order. */
-  final case class Diagram(nodes: Vector[Node], edges: Vector[Edge])
+  /** The diagram as a graph, in source order.
+   *  @param styles the `skinparam` blocks' entries, `(element, stereotype, key) -> value`, the
+   *                stereotype empty for an unqualified entry: the colour legend the yEd output
+   *                reads (F_0098), so the legend stays the one definition of the colours */
+  final case class Diagram(nodes: Vector[Node], edges: Vector[Edge],
+                           styles: Map[(String, String, String), String] = Map.empty)
 
   private val Declaration =
     """^(abstract class|class|interface|enum)\s+"([^"]+)"((?:\s+<<[^>]+>>)*)(?:\s+\[\[([^\]]+)\]\])?\s*(\{)?$""".r
@@ -60,7 +66,8 @@ object PumlGraph:
   private val Package    = """^package\s+"([^"]+)"(?:\s+<<[^>]+>>)?\s*\{$""".r
   private val Link       = """^"([^"]+)"\s+(\S+)\s+"([^"]+)"(?:\s*:\s*(.*))?$""".r
   private val Directive  = """^(@startuml|@enduml|!define\s.*|hide\s.*|skinparam\s+[^{]*)$""".r
-  private val BlockOpen  = """^skinparam\s+\w+\s*\{$""".r
+  private val BlockOpen  = """^skinparam\s+(\w+)\s*\{$""".r
+  private val StyleEntry = """^(\w+)(?:<<([^>]+)>>)?\s+(\S+)$""".r
 
   /** Reads `text` as the diagram subset, or answers every refusal, each naming its line.
    *
@@ -75,6 +82,8 @@ object PumlGraph:
     var packages = List.empty[(String, Int)]            // innermost first, with the opening line
     var body     = Option.empty[(Node, Vector[String])] // a declaration whose `{` is open
     var block    = Option.empty[(String, Int)]          // the closing word and the opening line
+    var styling  = Option.empty[String]                 // the element of an open skinparam block
+    val styles   = Map.newBuilder[(String, String, String), String]
 
     for (raw, i) <- lines.zipWithIndex do
       val n = i + 1
@@ -84,12 +93,17 @@ object PumlGraph:
           if t == "}" then { nodes += node.copy(members = members); body = None }
           else if t.nonEmpty then body = Some((node, members :+ t))
         case (None, Some((close, _))) =>
-          if t == close then block = None
+          if t == close then { block = None; styling = None }
+          else styling.foreach { element =>
+            t match
+              case StyleEntry(key, stereo, value) => styles += ((element, Option(stereo).getOrElse("").trim, key) -> value)
+              case _ =>
+          }
         case _ =>
           t match
             case "" =>
             case c if c.startsWith("'") =>
-            case BlockOpen()    => block = Some(("}", n))
+            case BlockOpen(element) => block = Some(("}", n)); styling = Some(element)
             case l if l == "legend" || l.startsWith("legend ") => block = Some(("endlegend", n))
             case Directive(_)   =>
             case Package(name)  => packages = (name, n) :: packages
@@ -125,7 +139,7 @@ object PumlGraph:
       }
     }
     val all = errors.result()
-    if all.isEmpty then Right(Diagram(ns, es)) else Left(all)
+    if all.isEmpty then Right(Diagram(ns, es, styles.result())) else Left(all)
 
   /** Escapes text for an XML element or attribute. */
   private def escape(s: String): String =
@@ -172,21 +186,171 @@ object PumlGraph:
       Vector("""  <graph id="leonardo" edgedefault="directed">""") ++ nodes ++ edges ++
       Vector("  </graph>", "</graphml>")).mkString("", "\n", "\n")
 
-  /** Every refusal of `source`, and whether `target` still matches its conversion.
+  /** A `skinparam` colour as yEd reads it, `#RRGGBB`: a hex value as written, or one of the sixteen
+   *  basic colour names.  `None` for anything else, which the repository test refuses, so a new
+   *  legend entry yEd could not read fails there rather than turning white in the drawing.
+   *  @param value the colour as the legend writes it
+   *  @return the hex form, or `None`
+   */
+  def colour(value: String): Option[String] =
+    if value.matches("#[0-9A-Fa-f]{6}") then Some(value.toUpperCase)
+    else BasicColours.get(value.toLowerCase)
+
+  private val BasicColours = Map(
+    "white" -> "#FFFFFF", "black" -> "#000000", "gray" -> "#808080", "silver" -> "#C0C0C0",
+    "red" -> "#FF0000", "maroon" -> "#800000", "yellow" -> "#FFFF00", "olive" -> "#808000",
+    "lime" -> "#00FF00", "green" -> "#008000", "aqua" -> "#00FFFF", "teal" -> "#008080",
+    "blue" -> "#0000FF", "navy" -> "#000080", "fuchsia" -> "#FF00FF", "purple" -> "#800080")
+
+  /** Where a box's relative `[[page.html]]` link points: the published site, so it opens from yEd. */
+  val SiteRoot = "https://lycogrypho.github.io/Leonardo/"
+
+  /** How each relation is drawn in yEd: the line and the target arrow, PlantUML's own forms --
+   *  dashed for a dependency and a realisation, a hollow triangle for inheritance and realisation. */
+  private def drawn(r: Relation): (String, String) = r match
+    case Relation.Dependency  => ("dashed", "plain")
+    case Relation.Inheritance => ("line", "white_delta")
+    case Relation.Realisation => ("dashed", "white_delta")
+    case Relation.Association => ("line", "plain")
+
+  /** The diagram as yEd GraphML (F_0098): one `y:ProxyAutoBoundsNode` group per package, nested by
+   *  the package path; one `y:UMLClassNode` per declaration, its members split into attributes and
+   *  operations (a member with a `(`), coloured from the `skinparam` legend by its first stereotype
+   *  that has an entry; one `y:PolyLineEdge` per relation with its line, arrow and label; a box's
+   *  link as a `url` datum on the published site.
+   *
+   *  **Written to the shape `pyyed` emits** (Decision A: public yEd files, cited in `Done.md`), the
+   *  generator whose output yEd opens; the owner opens the result in yEd once.  No layout is
+   *  computed: every box sits at the origin with a size fitted to its text, and yEd's
+   *  *Layout ▸ Hierarchical* places them, as Graphviz does for the SVG.  Ids follow yEd's own
+   *  convention, a nested node's id prefixed by its group's (`n0::n3`).  Deterministic.
+   *
+   *  @param d the diagram
+   *  @return the yEd GraphML document, `\n`-terminated lines
+   */
+  def toYEd(d: Diagram): String =
+    def style(element: String, stereotypes: List[String], key: String, fallback: String): String =
+      stereotypes.iterator.flatMap(s => d.styles.get((element, s, key))).nextOption()
+        .orElse(d.styles.get((element, "", key))).flatMap(colour).getOrElse(fallback)
+
+    // The packages as a tree, in order of first appearance.
+    val paths = d.nodes.map(_.pkg).filter(_.nonEmpty).flatMap { p =>
+      val parts = p.split('.').toVector
+      parts.indices.map(i => parts.take(i + 1).mkString("."))
+    }.distinct
+    def children(parent: String): Vector[String] =
+      paths.filter(p => if parent.isEmpty then !p.contains('.') else p.startsWith(parent + ".") && !p.drop(parent.length + 1).contains('.'))
+
+    val out   = Vector.newBuilder[String]
+    val ids   = scala.collection.mutable.LinkedHashMap.empty[String, String]   // node name -> id
+    val arrow = style("class", Nil, "ArrowColor", "#444466")
+
+    def classNode(node: Node, id: String, indent: String): Unit =
+      ids(node.name) = id
+      val stereos   = node.stereotype.split(", ").toList.filter(_.nonEmpty)
+      val element   = if node.kind == "interface" then "interface" else "class"
+      val fill      = style(element, stereos, "BackgroundColor", "#FFFFFF")
+      val border    = style(element, stereos, "BorderColor", "#555577")
+      val (ops, attrs) = node.members.map(m => if m.startsWith("__") && m.endsWith("__") then s"-- ${m.stripPrefix("__").stripSuffix("__").trim} --" else m)
+        .partition(_.contains("("))
+      val label     = Vector(node.stereotype, if node.kind == "class" then "" else node.kind).filter(_.nonEmpty).mkString(", ")
+      val lines     = 1 + attrs.size + ops.size + (if label.nonEmpty then 1 else 0)
+      val longest   = (node.name +: (attrs ++ ops)).map(_.length).max
+      val (w, h)    = (math.max(80, longest * 8 + 20), 28 + 16 * lines)
+      out += s"""$indent<node id="$id">"""
+      if node.url.nonEmpty then
+        val url = if node.url.contains("://") then node.url else SiteRoot + node.url
+        out += s"""$indent  <data key="d1">${escape(url)}</data>"""
+      out += s"""$indent  <data key="d0">"""
+      out += s"""$indent    <y:UMLClassNode>"""
+      out += s"""$indent      <y:Geometry height="$h.0" width="$w.0" x="0.0" y="0.0"/>"""
+      out += s"""$indent      <y:Fill color="$fill" transparent="false"/>"""
+      out += s"""$indent      <y:BorderStyle color="$border" type="line" width="1.0"/>"""
+      out += s"""$indent      <y:NodeLabel modelName="internal" modelPosition="c">${escape(node.name)}</y:NodeLabel>"""
+      out += s"""$indent      <y:UML stereotype="${escape(label)}">"""
+      out += s"""$indent        <y:AttributeLabel>${escape(attrs.mkString("\n"))}</y:AttributeLabel>"""
+      out += s"""$indent        <y:MethodLabel>${escape(ops.mkString("\n"))}</y:MethodLabel>"""
+      out += s"""$indent      </y:UML>"""
+      out += s"""$indent    </y:UMLClassNode>"""
+      out += s"""$indent  </data>"""
+      out += s"""$indent</node>"""
+
+    /** The members of the graph `parent` (a package path, empty at the top): its classes, then its
+     *  sub-packages as groups, each id prefixed by `prefix`. */
+    def graph(parent: String, prefix: String, indent: String): Unit =
+      val classes = d.nodes.filter(_.pkg == parent)
+      classes.zipWithIndex.foreach((node, i) => classNode(node, s"${prefix}n$i", indent))
+      children(parent).zipWithIndex.foreach { (pkg, j) =>
+        val id = s"${prefix}n${classes.size + j}"
+        out += s"""$indent<node id="$id" yfiles.foldertype="group">"""
+        out += s"""$indent  <data key="d0">"""
+        out += s"""$indent    <y:ProxyAutoBoundsNode>"""
+        out += s"""$indent      <y:Realizers active="0">"""
+        out += s"""$indent        <y:GroupNode>"""
+        out += s"""$indent          <y:Fill color="${style("package", Nil, "BackgroundColor", "#F4F4FF")}" transparent="false"/>"""
+        out += s"""$indent          <y:BorderStyle color="${style("package", Nil, "BorderColor", "#7777AA")}" type="line" width="1.0"/>"""
+        out += s"""$indent          <y:NodeLabel modelName="internal" modelPosition="t">${escape(pkg.split('.').last)}</y:NodeLabel>"""
+        out += s"""$indent          <y:Shape type="rectangle"/>"""
+        out += s"""$indent          <y:State closed="false"/>"""
+        out += s"""$indent        </y:GroupNode>"""
+        out += s"""$indent      </y:Realizers>"""
+        out += s"""$indent    </y:ProxyAutoBoundsNode>"""
+        out += s"""$indent  </data>"""
+        out += s"""$indent  <graph edgedefault="directed" id="$id:">"""
+        graph(pkg, s"$id::", indent + "    ")
+        out += s"""$indent  </graph>"""
+        out += s"""$indent</node>"""
+      }
+
+    graph("", "", "    ")
+    // Edges at the top level, which contains both ends of every one (GraphML's rule for an edge
+    // between nodes of different groups).
+    d.edges.zipWithIndex.foreach { (e, i) =>
+      val (line, head) = drawn(e.relation)
+      out += s"""    <edge id="e$i" source="${ids(e.source)}" target="${ids(e.target)}">"""
+      out += s"""      <data key="d3">"""
+      out += s"""        <y:PolyLineEdge>"""
+      out += s"""          <y:LineStyle color="$arrow" type="$line" width="1.0"/>"""
+      out += s"""          <y:Arrows source="none" target="$head"/>"""
+      if e.label.nonEmpty then out += s"""          <y:EdgeLabel>${escape(e.label)}</y:EdgeLabel>"""
+      out += s"""        </y:PolyLineEdge>"""
+      out += s"""      </data>"""
+      out += s"""    </edge>"""
+    }
+
+    (Vector(
+      """<?xml version="1.0" encoding="UTF-8" standalone="no"?>""",
+      "<!-- Generated from docs/structure.puml by `sbt graphml` (F_0098), for yEd: open it and apply",
+      "     Layout > Hierarchical. Do not edit: `sbt checks` compares this file against a fresh conversion. -->",
+      """<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:java="http://www.yworks.com/xml/yfiles-common/1.0/java" """ +
+        """xmlns:sys="http://www.yworks.com/xml/yfiles-common/markup/primitives/2.0" xmlns:x="http://www.yworks.com/xml/yfiles-common/markup/2.0" """ +
+        """xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:y="http://www.yworks.com/xml/graphml" xmlns:yed="http://www.yworks.com/xml/yed/3" """ +
+        """xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://www.yworks.com/xml/schema/graphml/1.1/ygraphml.xsd">""",
+      """  <key for="node" id="d0" yfiles.type="nodegraphics"/>""",
+      """  <key attr.name="url" attr.type="string" for="node" id="d1"/>""",
+      """  <key attr.name="description" attr.type="string" for="node" id="d2"/>""",
+      """  <key for="edge" id="d3" yfiles.type="edgegraphics"/>""",
+      """  <graph edgedefault="directed" id="G">""") ++ out.result() ++
+      Vector("  </graph>", "</graphml>")).mkString("", "\n", "\n")
+
+  /** Every refusal of `source`, and whether `target` (and, when given, the yEd copy) still matches
+   *  its conversion.
    *
    *  @param source the `.puml` diagram
    *  @param target the committed GraphML
-   *  @return one finding per problem, empty when the diagram reads and the copy is current
+   *  @param yed    the committed yEd GraphML, when it is to be checked too (F_0098)
+   *  @return one finding per problem, empty when the diagram reads and the copies are current
    */
-  def offences(source: Path, target: Path): Vector[String] =
+  def offences(source: Path, target: Path, yed: Option[Path] = None): Vector[String] =
     read(Files.read(source)) match
       case Left(errors) => errors.map(e => s"$source: $e")
       case Right(d) =>
-        val fresh = toGraphML(d)
-        if !JFiles.exists(target) then Vector(s"$target: missing; run `sbt graphml`")
-        else if Files.read(target).replace("\r\n", "\n") != fresh then
-          Vector(s"$target: stale, it no longer matches $source; run `sbt graphml`")
-        else Vector.empty
+        def current(path: Path, fresh: String): Vector[String] =
+          if !JFiles.exists(path) then Vector(s"$path: missing; run `sbt graphml`")
+          else if Files.read(path).replace("\r\n", "\n") != fresh then
+            Vector(s"$path: stale, it no longer matches $source; run `sbt graphml`")
+          else Vector.empty
+        current(target, toGraphML(d)) ++ yed.toVector.flatMap(current(_, toYEd(d)))
 
   /** `--check`: report the refusals and a stale copy. Otherwise write the GraphML.
    *
@@ -197,8 +361,9 @@ object PumlGraph:
     val check = args.contains("--check")
     val paths = args.filterNot(_ == "--check").map(Paths.get(_))
     val (source, target) = (paths.headOption.getOrElse(DefaultSource), paths.lift(1).getOrElse(DefaultTarget))
+    val yed = paths.lift(2).getOrElse(DefaultYEdTarget)
     if check then
-      Files.report(offences(source, target), n => s"\n$source: $n diagram problem(s)",
+      Files.report(offences(source, target, Some(yed)), n => s"\n$source: $n diagram problem(s)",
         "The diagram reader refuses what it does not know (F_0097); after editing the diagram, run `sbt graphml`.")
     else
       read(Files.read(source)) match
@@ -206,5 +371,6 @@ object PumlGraph:
           Files.report(errors.map(e => s"$source: $e"), n => s"\n$source: $n diagram problem(s), nothing written")
         case Right(d) =>
           Files.write(target, toGraphML(d))
-          println(s"$target: ${d.nodes.size} nodes, ${d.edges.size} edges")
+          Files.write(yed, toYEd(d))
+          println(s"$target: ${d.nodes.size} nodes, ${d.edges.size} edges; $yed for yEd")
           0
