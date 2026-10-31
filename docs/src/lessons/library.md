@@ -9,7 +9,7 @@ has_children: true
 # Lessons: in your program
 <div style="clear:both"></div>
 
-Ten short lessons on using Leonardo as a **library** — a dependency in your own Scala code,
+Eleven short lessons on using Leonardo as a **library** — a dependency in your own Scala code,
 called from your own types. Each one builds something small and ends with an exercise, and the
 last one assembles the rest into a working program.
 

@@ -52,25 +52,25 @@ d.eval(env)
 | **Algebra** | `+` `-` `*` `/` `^`; `sin cos tan asin acos atan exp log`; `pi` `e` `i` |
 | **Calculus** | Symbolic differentiation, indefinite integration (rule table), definite integration (Simpson's rule) |
 | **Simplification** | Single-pass structural reduction; fixpoint `simplifyFully` |
-| **Matrices** | Symbolic `_Matrix` + dense `_MatrixValue`; sum, product, transpose, scale, determinant, inverse (`det`, `inv`, `1/A`) |
-| **Equations** | `_Equation` relation; `solve` (linear exact, quadratic, numeric bisection); `solveSystem` (Gaussian elimination) |
+| **Matrices** | Symbolic `_Matrix` + dense `_MatrixValue`; arithmetic, `det`, `inv`, the decompositions (`lu`, `qr`, `eig`, `jordan`, `chol`, `svd`), block matrices, `norm`, `dot`, `cross`, `trace`, `rank`, `pinv` |
+| **Equations** | `_Equation` relation; `solve` (linear exact, quadratic, numeric bisection, inequalities, matrix unknowns); `solveSystem`, with more equations than unknowns solved when consistent |
 | **Complex** | `_Complex(re, im)`; full field arithmetic; `exp log sin cos tan` on complex args; principal roots |
-| **Transforms** | Laplace, Fourier, inverse Laplace, and the one-sided z-transform and its inverse |
+| **Transforms** | Laplace, the two-sided and causal Fourier transforms, inverse Laplace, the one-sided z-transform and its inverse, `dft`/`idft`/`conv` |
 | **Series** | Taylor and Maclaurin, numeric Fourier series, Padé approximants, Laurent series about a pole |
 | **Logic** | Boolean, three-valued (Kleene), symmetric ternary, and fuzzy — one shared rule table |
-| **Probability & statistics** | Distributions as first-class values; `expect`/`variance` by linearity; Bayes' theorem and conjugate posteriors; seeded sampling and PRBS; descriptive statistics, regression by QR, elementary inference |
+| **Probability & statistics** | Distributions as first-class values; `expect`/`variance` by linearity; Bayes' theorem and conjugate posteriors; seeded sampling and PRBS; descriptive and order statistics, regression by QR (ridge and weighted too), recursive least squares, t, proportion, variance and independence tests, ANOVA |
 | **Optimization** | Stationary points solved and classified; convexity; Lagrange and KKT conditions; certified numeric `minimize`, `qp`, `lsqfit` and `nlp`; exact `lp` |
 | **Vector calculus** | `grad div curl laplacian` in Cartesian, cylindrical, and spherical coordinates; `jacobian hessian` in Cartesian |
-| **Control** | Transfer-function algebra, poles and stability, step/impulse response, Bode/Nyquist, state space, discretisation, ARX identification, LQR and the Kalman filter |
-| **ODEs** | First-order initial-value problems: closed forms where possible, Runge–Kutta otherwise |
-| **Exact arithmetic** | Opt-in rational tier with arbitrary-precision transcendentals and a user-settable working precision |
+| **Control** | Transfer-function algebra, poles and stability, the Routh table, step/impulse response, Bode/Nyquist, the root locus, state space, controllability and pole placement, discretisation, linearisation, ARX identification, MPC prediction matrices, LQR and the Kalman filter |
+| **ODEs** | Initial-value problems: closed forms where possible, linear systems by the matrix exponential, certified Runge–Kutta for nonlinear systems |
+| **Exact arithmetic** | Opt-in rational tier, square roots kept as exact surds (`√13`), arbitrary-precision transcendentals and a user-settable working precision; `rationalize` brings a decimal back |
 | **Intervals** | `[lo, hi]` values with rigorous, outward-rounded bounds through arithmetic and the elementary functions; a comparison of overlapping intervals answers `unknown` |
 | **Sampling** | `sample(e, v, lo, hi, n)` → `Vector[(Double, Double)]`; compiled `Double ⇒ Double` fast path |
 | **REPL** | Interactive session with bindings, named functions, session scripts |
 
 ## New here? Start with a lesson
 
-Twenty short lessons, each ending in an exercise, and every example on them is executed when this
+Twenty-one short lessons, each ending in an exercise, and every example on them is executed when this
 site is built. Two branches, by what you are holding:
 
 - **[Lessons: at the prompt](lessons/repl.md)** — the REPL, in a terminal or in your browser.
@@ -92,6 +92,7 @@ The pages below are the *reference*: they answer "what does this do?", where a l
 - [Logic](logic.md) — boolean, three-valued, symmetric ternary, and fuzzy logic
 - [Sequences](sequences.md) — Fibonacci and friends, and the generic tabulator
 - [Control Systems](control.md) — transfer functions, stability, response, discretisation
+- [Optimization](optimization.md) — stationary points, convexity, constrained and numeric optimisation
 - [Interactive REPL](repl.md) — session commands and scripts
 - [Browser REPL](https://lycogrypho.github.io/Leonardo/app/) — the same REPL, in your browser
 - [Cheat sheet](cheatsheet.md) — every REPL command on one page

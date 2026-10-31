@@ -84,7 +84,7 @@ This simple rule is the spine of the library: nothing throws when an answer is n
 
 When `exact` is set on, literals become exact rationals, so `0.1 + 0.2` is exactly `3/10` and `det` of the 3×3 Hilbert matrix is exactly `1/2160`.
 
-Transcendentals are arbitrary-precision rather than `Double`, so raising the working precision genuinely sharpens `sin` and `exp`. A decimal returns to the exact tier only on request, with `rationalize`.
+Square roots stay exact surds (`√13`, typed back with `√`), so a quadratic's roots and a 2-norm come back exact. Other transcendentals are arbitrary-precision rather than `Double`, so raising the working precision genuinely sharpens `sin` and `exp`. A decimal returns to the exact tier only on request, with `rationalize`.
 
 `exact` is off by default, because exactness comes with a performance price and for normal use the floating-point path is enough.
 
@@ -166,13 +166,14 @@ Differentiation, definite integration by Simpson's rule, and indefinite integrat
 
 Also the order functions: element-wise `maximum`/`minimum`, the reductions `max`/`min`, `clamp` and the smooth `softplus`, with derivatives at their kinks stated rather than guessed.
 
+More: [Expressions](https://lycogrypho.github.io/Leonardo/expressions.html) · [Calculus](https://lycogrypho.github.io/Leonardo/calculus.html).
 </details>
 </li>
 <li>
 <details>
 <summary><i>Matrices</i></summary>
 
-Literals of arbitrary expressions, which collapse to dense `Double` kernels once every cell is numeric, with all the standard operations:
+Literals of arbitrary expressions, which collapse to dense `Double` kernels once every cell is numeric (exact cells stay exact in exact mode), with all the standard operations:
 
 - determinant, inverse, trace and integer powers
 - the shape `size`
@@ -183,6 +184,7 @@ Literals of arbitrary expressions, which collapse to dense `Double` kernels once
 - the singular value decomposition `svd`, with `pinv`, `rank`, `cond` and the `nullspace`/`orth` bases
 - block assembly: `hcat`, `vcat`, `blkdiag`, `kron`, `repmat`, `submatrix`.
 
+More: [Matrices](https://lycogrypho.github.io/Leonardo/matrix.html).
 </details>
 </li>
 <li>
@@ -193,6 +195,7 @@ Literals of arbitrary expressions, which collapse to dense `Double` kernels once
 - inequalities, whose answer is a union of intervals
 - `solveSystem` for linear systems.
 
+More: [Equations](https://lycogrypho.github.io/Leonardo/equations.html).
 </details>
 </li>
 <li>
@@ -201,6 +204,7 @@ Literals of arbitrary expressions, which collapse to dense `Double` kernels once
 
 Boolean, three-valued Kleene, symmetric ternary and fuzzy logic share one rule table: the classical truth tables emerge as a special case of the more general ones.
 
+More: [Logic](https://lycogrypho.github.io/Leonardo/logic.html).
 </details>
 </li>
 <li>
@@ -230,6 +234,7 @@ Boolean, three-valued Kleene, symmetric ternary and fuzzy logic share one rule t
 - `lp`, exact linear programming over the rationals
 - `nlp`, constrained nonlinear programming by SQP or an augmented Lagrangian, answering a certified KKT point.
 
+More: [Optimization](https://lycogrypho.github.io/Leonardo/optimization.html).
 </details>
 </li>
 <li>
@@ -238,6 +243,7 @@ Boolean, three-valued Kleene, symmetric ternary and fuzzy logic share one rule t
 
 `grad`, `div`, `curl`, `laplacian`, `jacobian`, `hessian` over an explicit ordered coordinate tuple; the first four in Cartesian, cylindrical and both spherical conventions, `jacobian` and `hessian` in Cartesian coordinates.
 
+More: [Calculus](https://lycogrypho.github.io/Leonardo/calculus.html).
 </details>
 </li>
 <li>
@@ -275,6 +281,7 @@ Transfer functions are ordinary expressions rather than a carrier type, with:
 - the discrete Riccati equation with LQR
 - the Kalman filter.
 
+More: [Control Systems](https://lycogrypho.github.io/Leonardo/control.html).
 </details>
 </li>
 <li>
@@ -295,6 +302,7 @@ Transfer functions are ordinary expressions rather than a carrier type, with:
 - the factorial and gamma family with `erf`, `digamma` and the incomplete gamma and beta
 - Fibonacci and its relatives over one shared recurrence, plus a generic `tabulate`.
 
+More: [Sequences](https://lycogrypho.github.io/Leonardo/sequences.html).
 </details>
 </li>
 <li>
@@ -369,6 +377,7 @@ import conventions and a fuller tour.
 - [Features](https://lycogrypho.github.io/Leonardo/features.html)
 - [Cheat Sheet](https://lycogrypho.github.io/Leonardo/cheatsheet.html)
 - [REPL Guide](https://lycogrypho.github.io/Leonardo/repl.html)
+- The domain pages: [Expressions](https://lycogrypho.github.io/Leonardo/expressions.html), [Calculus](https://lycogrypho.github.io/Leonardo/calculus.html), [Matrices](https://lycogrypho.github.io/Leonardo/matrix.html), [Equations](https://lycogrypho.github.io/Leonardo/equations.html), [Logic](https://lycogrypho.github.io/Leonardo/logic.html), [Sequences](https://lycogrypho.github.io/Leonardo/sequences.html), [Control Systems](https://lycogrypho.github.io/Leonardo/control.html), [Optimization](https://lycogrypho.github.io/Leonardo/optimization.html)
 - Lessons [at the prompt](https://lycogrypho.github.io/Leonardo/lessons/repl.html) and [in your program](https://lycogrypho.github.io/Leonardo/lessons/library.html)
 - [Architecture](https://lycogrypho.github.io/Leonardo/architecture.html)
 - [Developer Guide](https://lycogrypho.github.io/Leonardo/developer.html)
@@ -378,7 +387,8 @@ import conventions and a fuller tour.
 
 The same command language runs in three places: the
 [browser app](https://lycogrypho.github.io/Leonardo/app/), which adds plotting (`plot`, `points`,
-`bode`, `nyquist`, `rlocus`, `hist`) and a math editor; the `cs launch` line above; and, from a
+`bode`, `nyquist`, `rlocus`, `hist`, and figures drawn with `curve`, `arrows` and `polygon`) and a
+math editor; the `cs launch` line above; and, from a
 clone, the `sbt repl` alias.
 
 ```
@@ -438,7 +448,7 @@ listed roughly by effort-to-value:
   classical integer functions; the cheapest of the open domains and already half-specified.
 - **Queueing theory** — the half of operational research still open; its other half, exact
   linear programming (`lp`), has shipped, and general MILP solving stays outside the library.
-- **Quaternions** — a fifth sibling of `_Number` on the established value pattern, with
+- **Quaternions** — a seventh sibling of `_Number` on the established value pattern, with
   non-commutative multiplication as the design risk to be handled deliberately.
 - **Tensor algebra** — generalising the matrix domain to N dimensions, with contraction and
   Einstein summation.

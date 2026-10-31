@@ -2233,8 +2233,11 @@ object Session:
          |  i == 0 - i*i*i      evaluates true""".stripMargin,
     "simplify" ->
       """|Structural simplification: remove identities, fold constants, cancel inverses.
-         |Matrix algebra is carried out first, then each element simplified.
-         |Numeric bindings are NOT applied (use bare evaluation for that).
+         |Matrix algebra is carried out first, then each element simplified.  Every node is
+         |evaluated bottom-up first, so simplify derive(sin(x), x) answers cos(x) and a solve
+         |inside it answers too (without binding).
+         |Numeric bindings are NOT applied (use bare evaluation for that) -- the one way it
+         |differs from evaluation.
          |  simplify x + 0      -> x
          |  simplify C          (C := A * B) executes the multiplication, simplifies each cell""".stripMargin,
     "expand" ->
@@ -2278,11 +2281,12 @@ object Session:
          |With it on, 0.1 + 0.2 is exactly 3/10 and 1/3 * 3 is exactly 1 -- neither of which
          |a Double can represent.  The mode is decided at PARSE time because it has to be:
          |once 0.1 has been read as a Double the tenth that was meant is already gone.
-         |WHAT STAYS EXACT: +, -, *, /, and integer powers.  Everything else -- every
-         |transcendental function, any fractional power -- is irrational, so it is computed
-         |and then re-approximated to the working precision.  Those kernels are still
-         |Double-accurate (~15 digits) whatever the working precision says, so raising it
-         |sharpens the ARITHMETIC around a sin(), not the sin() itself.
+         |WHAT STAYS EXACT: +, -, *, /, integer powers, and square roots, kept as the surd
+         |they are (sqrt(13) shows as √13 and types back with √).  Everything else -- every
+         |transcendental function, any other fractional power -- is irrational, so it is
+         |computed to the working precision (arbitrary precision, not a Double) and then
+         |carried on exactly.  Very large exact numbers are held to measured budgets: an
+         |operation past them stays unevaluated rather than running for minutes.
          |DISPLAY: a short fraction shows as n/d, a long one as a decimal at the display
          |precision -- but :save always writes the exact fraction, so nothing is lost.
          |MIXING: an exact value combined with an inexact one gives an inexact result.
@@ -2302,7 +2306,8 @@ object Session:
          |THE PRINTED ANSWER DOES NOT CHANGE.  The LaTeX is a SECOND channel, not a second
          |format, because a terminal cannot typeset and would be left showing markup where
          |an answer should be.  A front end that CAN typeset -- the browser REPL at
-         |/app is the one that does -- reads that channel and shows the formula instead.
+         |/app is the one that does -- reads that channel and shows the formula beside the
+         |text answer, which stays the canonical spelling.
          |WHAT IT EMITS: math-mode source with no surrounding delimiters, so the caller
          |chooses between $...$, \\[...\\] and a renderer's own API.  Fractions, radicals,
          |integrals, derivatives, limits, the transforms, matrices, Greek names and the
@@ -2333,8 +2338,10 @@ object Session:
          |  u := unknown                bind it like any other value""".stripMargin,
     "defuzz" ->
       """|Defuzzify a membership curve over [lo, hi] to a single crisp value.
-         |Uses the centre of gravity (centroid) over a 201-point grid.
+         |Uses the centre of gravity (centroid) over a 201-point grid; a fifth argument picks
+         |the method: centroid, mom (mean of maxima) or bisector (equal-area split).
          |  defuzz(trimf(x, 0, 5, 10), x, 0, 10)      -> 5.0   (apex of a symmetric triangle)
+         |  defuzz(trapmf(x, 0, 2, 4, 10), x, 0, 10, mom)   -> 3.0   (middle of the plateau)
          |  defuzz(gaussmf(x, 3, 1), x, 0, 6)         -> 3.0
          |Membership curves: trimf(x,a,b,c), trapmf(x,a,b,c,d), gaussmf(x,mean,sigma),
          |sigmf(x,a,c).  Hedges: very(d) = d^2, somewhat(d) = sqrt(d).
@@ -2390,9 +2397,9 @@ object Session:
          |  taylor(x^2, x, a, 2)        a symbolic centre is fine; the result is
          |                              a polynomial in (x - a)
          |The expansion variable stays FREE in the result, so binding it evaluates the
-         |polynomial.  Stays symbolic when the order is not an integer in 0..20, or when
-         |a coefficient cannot be differentiated -- maclaurin(Gamma(x), x, 3) needs the
-         |digamma function and so returns unevaluated rather than a bogus series.""".stripMargin,
+         |polynomial.  Stays unevaluated, with a note saying why, when the order is not an
+         |integer in 0..20 or a coefficient cannot be computed -- taylor(digamma(x), x, 1, 2)
+         |needs trigamma, which does not exist -- rather than returning a bogus series.""".stripMargin,
     "greek" ->
       """|Greek aliases for the special functions, and how to type them.
          |  Γ(z)   same as Gamma(z)     ALT-\ g   or   ALT-G
@@ -2416,10 +2423,10 @@ object Session:
          |  lgamma(1e5)                       ln|Gamma| -- finite where Gamma overflows
          |  Beta(1, 4)          -> 0.25       Beta(a,b) = Gamma(a)Gamma(b)/Gamma(a+b)
          |Gamma and Beta are capitalised so that lowercase "gamma" and "beta" stay
-         |available as ordinary variable names.  Poles (0, -1, -2, ...), 171! and
-         |beyond, and complex arguments all stay symbolic rather than returning
-         |infinities.  Differentiating Gamma needs the digamma function, which is not
-         |implemented, so derive(Gamma(x), x) stays symbolic.""".stripMargin,
+         |available as ordinary variable names.  Poles (0, -1, -2, ...) and 171! and beyond
+         |stay unevaluated rather than returning infinities (exact mode computes n! exactly
+         |up to 10000); Gamma also takes a complex argument.  derive(Gamma(x), x) is
+         |Gamma(x)*digamma(x).""".stripMargin,
     "env" ->
       """|List current precision, numeric bindings, and symbolic definitions.
          |  env""".stripMargin,
@@ -2464,7 +2471,9 @@ object Session:
          |  integral(x^2, x)            -> ((1.0 / 3.0) * (x ^ 3.0))""".stripMargin,
     "samples" ->
       """|Sample a function over a uniform grid, returning tab-separated (x, f(x)) pairs.
-         |Non-finite values (div-by-zero, domain errors) are silently skipped.
+         |Non-finite values (div-by-zero, domain errors) are skipped, and a note says how many:
+         |"note: only N of M samples had a finite value".  An expression defined only at whole
+         |numbers (a sum with the variable in a bound) is refused, naming the grid that fits.
          |n defaults to 200; x values are in ascending order.
          |  samples sin(x) x -10 10
          |  samples f x 0 5 100    (f must be a defined function)""".stripMargin,
@@ -2496,24 +2505,30 @@ object Session:
          |(their transforms need Dirac deltas, or do not exist).""".stripMargin,
     "invlaplace" ->
       """|Compute the inverse Laplace transform L-1{f(s)} with output variable t.
-         |Rational f(s) = N(s)/D(s) with degree of D <= 2: linear, repeated, and complex
-         |poles (partial fractions / completing the square), plus linearity.
+         |Rational f(s) = N(s)/D(s) by partial fractions: simple, repeated and complex poles of
+         |any degree, plus linearity.
          |  invlaplace(1/s^2, s, t)          -> t
          |  invlaplace(1/(s-3), s, t)        -> exp(3*t)
          |  invlaplace(2/(s^2+4), s, t)      -> sin(2*t)
          |  invlaplace(3/((s-2)^2+9), s, t)  -> exp(2*t)*sin(3*t) via completing the square
-         |Stays symbolic for deg D >= 3, symbolic coefficients, or non-rational input.""".stripMargin,
+         |  invlaplace(1/s^3, s, t)          -> t^2/2 (a repeated pole)
+         |Stays unevaluated for a repeated irreducible quadratic beyond the square, symbolic
+         |coefficients, or non-rational input.""".stripMargin,
     "eigen" ->
       """|Compute the eigenvalues of a square matrix.
          |Returns a 1xn row [[l1, ..., ln]]; real eigenvalues are _Number, complex pairs are _Complex.
-         |Uses QR iteration with Wilkinson shifts; stays symbolic if the operand is not dense.
+         |Balancing, Hessenberg reduction and the Francis double-shift QR iteration; listed by
+         |real part, then imaginary part.  An exact operand is read as dense.
          |  eigen([[4, 1], [1, 3]])          -> [[4.61803, 2.38197]]
          |  eigen([[0, -1], [1, 0]])         -> [[(0.0 + 1.0i), (0.0 - 1.0i)]]
          |Access element k (1-based): at(eigen(A), 1, k)""".stripMargin,
     "solveSystem" ->
-      """|Solve a square system of n linear equations in n unknowns.
-         |Gaussian elimination (dense) or symbolic row-reduction (symbolic coefficients).
+      """|Solve m linear equations in n unknowns, m >= n: more equations than unknowns are
+         |solved when they are consistent, exactly in exact mode (also over a surd's radical)
+         |or by least squares checked against each equation; nearly dependent numeric columns,
+         |an inconsistent system and an under-determined one are declined with a note.
          |  solveSystem([[2*x + y = 3, x - y = 0]], x, y)   -> [[x = 1.0, y = 1.0]]
+         |  solveSystem([[u = 1], [v = 2], [u + v = 3]], u, v)   the equations as a column
          |  Named equation matrices work: solveSystem(S, x, y)""".stripMargin,
   )
 
@@ -2559,7 +2574,19 @@ object Session:
       |logic symmetric on|off  spell truth values as -1 / 0 / 1 instead of
       |                     false / unknown / true (symmetric ternary; default: off)
       |logic <semantics>    fuzzy t-norm: minmax | product | lukasiewicz (default: minmax)
-      |defuzz(e, v, lo, hi) defuzzify a membership curve to a crisp value (centroid)
+      |defuzz(e, v, lo, hi[, method])  defuzzify a curve: centroid (default) | mom | bisector
+      |cnf(e), dnf(e)       conjunctive / disjunctive normal form
+      |matrices             det( inv( lu( qr( eig( jordan( chol( svd( pinv( rank( norm(
+      |                     dot( cross( trace( size( expm( hcat( vcat( kron( submatrix(
+      |statistics           mean( variance( median( sort( quantile( regress( ttest( proptest(
+      |                     chisqtest( vartest( anova( bincounts( bayes( posterior( draw(
+      |control              tfpoles( tfzeros( isStable( c2d( stateSpace( dlsim( routhTable(
+      |                     acker( controllable( ctrb( linearize( arx( dlqr( kalmanStep(
+      |optimization         stationary( convex( lagrange( kkt( minimize( qp( lsqfit( nlp( lp(
+      |transforms           laplace( fourier( fourierCausal( invlaplace( ztrans( dft( conv(
+      |exact values         rationalize(x) makes a decimal exact; √13 types an exact root
+      |                     every function, with its arguments, is in the cheat sheet:
+      |                     https://lycogrypho.github.io/Leonardo/cheatsheet.html
       |env                  list precision, bindings, and definitions
       |unset <name>         remove a binding or definition
       |:load <file>         run a session script (bindings/definitions/commands)

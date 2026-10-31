@@ -44,17 +44,15 @@
     <script src="vendor/plotly.min.js" charset="utf-8"></script>
 
     <!--
-      MathLive, vendored on the same terms, for the `latex on` toggle (issue F_0016 step 5).
+      MathLive, vendored on the same terms, for the `latex on` toggle (issue F_0016 step 5) and
+      the math editor (F_0017): the FULL build, described in the next comment.  It does not
+      bundle @cortex-js/compute-engine (it is looked up on globalThis and simply declined when
+      absent), which was checked before vendoring: shipping a second CAS inside a page whose
+      purpose is the first one would be absurd.
 
-      This is the SSR distribution: the conversion functions and NOTHING else - no mathfield
-      element, no virtual keyboard, and therefore none of the package's 232 KB of keyboard
-      sounds. 111 KB gzipped against the full build's 227 KB, for the one call this page
-      makes. Neither build bundles @cortex-js/compute-engine (it is looked up on globalThis
-      and simply declined when absent), which was checked before vendoring: shipping a second
-      CAS inside a page whose purpose is the first one would be absurd.
-
-      The fonts are fetched only when a glyph needs them, so with `latex off` - the default -
-      none of the 254 KB of woff2 is ever requested.
+      The fonts are fetched only when a glyph needs them: a session that never typesets and
+      never opens the editor requests none of the 254 KB of woff2, and an editor user pays them
+      on the first keystroke.
     -->
     <link rel="stylesheet" href="vendor/mathlive/mathlive-static.css">
     <link rel="stylesheet" href="vendor/mathlive/mathlive-fonts.css">

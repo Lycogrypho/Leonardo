@@ -240,7 +240,7 @@ package "core" {
         MaxQpVariables, MaxLpBits, MaxLpWork, MaxGroebnerBasis, ...
         + default: Long  (the published constant's value)
         one case per work or size budget (F_0124);
-        every package's, 51 in all
+        every package's, 57 in all
     }
 
     class "Keyworded" <<trait>> [[developer.html]] {
@@ -747,6 +747,21 @@ package "scalar" {
     "_Sequence" ..> "Sequences" : linRec kernels at eval
     "_Tabulate" ..> "_Matrix"   : the row of terms
 
+    class "_Reduction" <<case>> [[sequences.html]] {
+        __ F_0037: sum / product over an integer range __
+        kind, e, v (BINDER), lo, hi
+        folded with reduce, never a seeded fold:
+          an exact sum stays exact
+        empty range = the identity (0 or 1)
+        symbolic terms expand
+    }
+    enum "ReduceKind" <<data>> [[sequences.html]] {
+        Sum      sum(e, k, lo, hi)
+        Product  product(e, k, lo, hi)
+    }
+    "_Reduction" --|> "_Functional"
+    "_Reduction" ..> "ReduceKind"
+
     class "Syntax" <<object>> [[expressions.html]] {
         simplify() / simplifyFully()
         expand()
@@ -860,7 +875,8 @@ package "matrix" {
     class "_EigenDecomposition" <<case>> [[matrix.html]] {
         m : _Expression
         __ eigen(A) → [[λ₁, λ₂, …, λₙ]] __
-        QR iteration + Wilkinson shifts
+        Francis double-shift QR (balanced Hessenberg, F_0100)
+        sorted by core.rootOrder (F_0230)
         real → _Number; complex pair → _Complex
         result: Left(_Matrix(1,n,...))
     }
@@ -1458,10 +1474,21 @@ package "logic" {
         __ F_0133: cnf(e) / dnf(e) __
         unevaluated on a refusal, never the input
     }
+    enum "DefuzzMethod" <<data>> [[logic.html]] {
+        Centroid      centroid
+        MeanOfMaxima  mom
+        Bisector      bisector
+    }
+    enum "NormalKind" <<data>> [[logic.html]] {
+        CNF  cnf
+        DNF  dnf
+    }
     "_DefuzzifyBy" --|> "_Expression"
     "_NormalForm"  --|> "_Expression"
     "_DefuzzifyBy" ..> "Defuzzify"
     "_NormalForm"  ..> "NormalForm"
+    "_DefuzzifyBy" ..> "DefuzzMethod"
+    "_NormalForm"  ..> "NormalKind"
     "Defuzzify"   ..> "Compile"       : compile() fast path (logic -> scalar)
 
     "_Connective" ..> "Kleene"        : asTruth + min-max kernels at eval
@@ -1626,6 +1653,9 @@ package "control" {
         routhTable / dcgain
         bode / nyquist: one substitution s -> i*w
           on the existing _Complex closure
+        rootLocus / rootLocusSweep (F_0140):
+          roots of den + K*num, matched into
+          continuous branches
     }
 
     class "_Series"          <<case>> [[control.html]]
@@ -1746,6 +1776,10 @@ package "control" {
         ctrb / obsv: the matrices; or a model row
     }
     "_Structure" ..> "StateSpace" : ctrbOf / fullRowRank
+    enum "StructureKind" <<data>> [[control.html]] {
+        Controllable  Observable  Ctrb  Obsv
+    }
+    "_Structure" ..> "StructureKind"
     class "_Acker" <<case>> [[control.html]] {
         __ F_0138: acker(A, B, poles) __
         K = e_n' C^-1 phi(A), u = -K x
@@ -2023,6 +2057,12 @@ package "statistics" <<Rectangle>> {
         Welch / pooled, less / greater slot words
         every tail read directly, never 1 - cdf
     }
+    enum "Alternative" <<data>> [[developer.html]] {
+        TwoSided  (default)
+        Less      less
+        Greater   greater
+    }
+    "_TTest / _PropTest / _ChiSqTable / _VarTest / _Anova" ..> "Alternative"
     "_Quantile / _Sort / _BinCounts" ..> "Descriptive"
     "_TTest / _PropTest / _ChiSqTable / _VarTest / _Anova" ..> "Descriptive"
     "_Statistic"     ..> "Moments" : distribution arg -> probability.Moments
@@ -2045,6 +2085,8 @@ package "probability" <<Rectangle>> {
         Binomial  Poisson
         StudentT  ChiSquared   (added by 4.Q)
         BetaDist  GammaDist    (F_0050; gammadist is SHAPE-RATE)
+        Geometric  Hypergeometric  (F_0132)
+        FDist                  (F_0131)
     }
 
     enum "Query" <<data>> [[developer.html]] {
@@ -2227,6 +2269,7 @@ package "parser" {
 "Parser" ..> "_VectorOperator" : grad / div / curl / laplacian / jacobian / hessian (6.24)
 "Parser" ..> "_Sequence"       : fib / lucas / pell / jacobsthal (6.28)
 "Parser" ..> "_Tabulate"       : tabulate(e, k, lo, hi)
+"Parser" ..> "_Reduction"      : sum / product(e, k, lo, hi)
 "Parser" ..> "Si / Ci / Ei / Li"   : Si / Ci / Ei / li (3.15)
 "Parser" ..> "FresnelS / FresnelC" : fresnelS / fresnelC
 
@@ -2404,6 +2447,13 @@ package "cli" <<Rectangle>> {
 
     "Svg" ..> "Figure" : draws
 
+    class "AsciiMath" <<utility>> [[repl.html]] {
+        __ F_0017: MathLive's AsciiMath into this grammar __
+        + toGrammar(source): Either[String, String]
+        whitelist = Parser.ReservedWords; refuses the rest
+        int / d/dx / lim / sum / prod / choose convert
+    }
+
     class "ColorScheme" <<data>> [[repl.html]] {
         command / function / constant
         number / operator / equation
@@ -2442,6 +2492,7 @@ package "cli" <<Rectangle>> {
 "Session" ..> "Conventional" : pretty on -> answers and echoes
 "Session" ..> "Figure"      : figurePlot reads drawing lines
 "Session" ..> "Svg"         : figure()
+"AsciiMath" ..> "Parser"    : ReservedWords whitelist
 "Session" ..> "ToLatex"     : latex on -> lastLatex (a SECOND channel;\nthe printed text is unchanged)
 
 legend right

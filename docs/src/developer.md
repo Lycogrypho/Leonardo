@@ -62,16 +62,19 @@ core           _Expression, _Value, Environment, _Number, _Bool, _MatrixValue, �
 scalar         Sum, Product, Ratio, Power, functions, Derive, Integrate, Simplify, …
   ↑
 ── the domain packages, each importing core + scalar (some also one another, one-way): ──
-matrix         _Matrix, MatSum, MatProduct, decompositions, expm
+matrix         _Matrix, MatSum, MatProduct, decompositions, expm, chol, svd, norm, blocks
 equation       _Equation, _Comparison, _Solve, SolveSystem     (also imports matrix, logic)
-transform      Laplace, Fourier, inverse Laplace, z-transform
+transform      Laplace, Fourier, inverse Laplace, z-transform, dft, conv  (also imports matrix)
 ode            _ODE, SolveODE, SolveODESymbolic
 logic          connectives, Kleene/fuzzy rule table, CNF/DNF, defuzzification
 probability    distributions, moments by linearity
 statistics     descriptive stats, regression, inference        (also imports matrix, probability)
 domain         rendering of the domain analysis into relations (also imports equation, logic)
 vector         grad/div/curl/laplacian/jacobian/hessian        (also imports matrix)
-control        transfer functions, stability, discretisation   (also imports matrix, transform)
+control        transfer functions, state space, MPC, ARX, LQR   (also imports matrix, transform,
+                                                                 vector, statistics; a leaf)
+optimize       stationary points, convexity, qp, lsqfit, nlp, lp (also imports matrix, equation,
+                                                                 vector, logic)
   ↑
 parser         Parser — string → AST; imports every domain
 latex          ToLatex — AST → LaTeX source; display only, nothing reads it back
@@ -563,15 +566,18 @@ disagree about what the session is set to — and because each pair *is* the com
 restores it, a panel can write a new value back as `execute(s"$k $v")` with no per-setting
 knowledge.  **Adding a setting means adding a pair**, which gets it saved, listed and
 offered as a control at once; the order in that list is the order a script replays, so
-`exact precision` must stay before `exact` and both before the bindings.
+`exact precision` must stay before `exact`.  `script` writes the `exact` pair *around* the
+values rather than before them: each value goes under the mode it must be parsed in (`exact
+off` for a `Double`, `exact on` for an exact value), since exact mode is a parse-time decision.
 
 **A reader for another notation validates names itself; it never delegates the refusal.**
 `cli.AsciiMath` turns MathLive's AsciiMath into grammar text, and its whitelist is
 `Parser.ReservedWords` — the same surface the REPL's own call-syntax note uses, so the two
 cannot disagree about what a function is.  Handing unrecognised text to `Parser.parse` in the
-hope of an error would produce a silent product instead, for the reason above.  What it cannot
-convert it **refuses by name**, quoting the grammar's spelling: a binder becomes
-"write `integral(f, x)`" rather than a guess at which token was the integrand.  That choice is
+hope of an error would produce a silent product instead, for the reason above.  The calculus binders
+and the reductions convert, the differential or the subscript delimiting each so nothing is
+guessed; what it cannot convert it **refuses by name**, quoting the grammar's spelling (`oint`,
+the transform braces, a `lim` without its `(x->a)`).  That choice is
 why reading AsciiMath is a rewrite table rather than a parser — the arithmetic core already
 *is* this grammar, and only the notation around it differs.
 
@@ -579,8 +585,9 @@ why reading AsciiMath is a rewrite table rather than a parser — the arithmetic
 this shape — 3.3 slice F's domain note, and F_0030's two name notes — and the discipline is what
 makes them safe to add: the library's results stay byte-identical, so nothing that already
 worked can begin to fail.  Two rules come with it.  **A note must clear `Session.lastLatex`**,
-because a consumer shows the formula *instead of* the text and would silently drop the note
-(F_0020).  And **a note must be suppressed while `load` replays a script**, whose output is a
+because the formula would otherwise be offered as the answer while saying less than the text
+(F_0020; the browser shows it beside the text since F_0031, but a consumer may still show it
+alone).  And **a note must be suppressed while `load` replays a script**, whose output is a
 transcript rather than a result.
 
 **F_0030's call-syntax check reads the input text, not the parsed result**, and that is forced
@@ -603,11 +610,34 @@ command that produces an expression means wrapping its result in `withLatex`**, 
 only thing to remember here.
 
 **The condition is not "an expression was produced" but "the text says nothing the formula
-does not"**, because a consumer shows the formula *instead of* the text.  So `load` clears the
+does not"**, because a consumer may show the formula in place of the text.  So `load` clears the
 channel after a script — its output is a transcript, and typesetting the last line would drop
 every other one — and `evaluate` skips it when a domain note is appended, since the note is
 prose absent from the rendering.  A new command whose text carries anything the rendering
 omits belongs in that list.
+
+**`pretty on` is also a notation, and it is a display, never a format.**  `cli.Conventional`
+writes answers, matrix cells, the `simplify`/`expand` output and the definition echo with the
+fewest brackets and a binary minus (`4 - k*k`).  It writes only the infix nodes (`Sum`,
+`Product`, `Ratio`, `Power`, the matrix operations, the relations); every other node is rebuilt
+over its children's text and keeps its own `toString`, so a node added later displays correctly
+with no change.  `toString`, `script`, share links and the LaTeX channel are untouched, and
+`ConventionalTest` holds that the text re-parses to the same value.  **A node that prints infix
+without brackets must be added to `Conventional`**, or its operands may lose brackets they need.
+
+**A figure is data before it is a picture.**  `Session.figurePlot` reads the drawing commands
+(`plot`, `points`, `bode`, `nyquist`, `rlocus`, `hist`, `curve`, `arrows`, `polygon`, layers
+separated by `;`) into `cli.Figure` layers, from the same sampled data the commands use, never
+from printed text.  Two renderers draw them: `cli.Svg` a static SVG (published through the one
+method `Session.figure(lines*)`, which the lessons call at build time) and `web.PlotSpec` the
+same layers with Plotly.  The SVG must be byte-identical on both platforms, so every number
+reaches it through `_Number.render` or a `BigDecimal`.
+
+**`cli.ShareEncoding` is published API.**  The run-link fragment format — the key, the
+32000-character cap, an `encodeURIComponent` re-implemented from code points — is shared by the
+browser and the lesson helper, and the course repository builds its links through the released
+artifact, so MiMa protects it.  A session too long to carry yields no link, never a truncated
+one, since half a script reloads as a valid but different session.
 
 ---
 
@@ -732,9 +762,9 @@ Linear system solver uses Gaussian elimination with partial pivoting.
 |---|---|---|
 | LU | Partial pivoting (Doolittle) | [Wikipedia — LU decomposition](https://en.wikipedia.org/wiki/LU_decomposition) |
 | QR | Modified Gram–Schmidt | [Wikipedia — QR decomposition](https://en.wikipedia.org/wiki/QR_decomposition) |
-| Eigenvalues | QR iteration with Wilkinson shifts; 2×2 analytic fallback for complex pairs | [Wikipedia — QR algorithm](https://en.wikipedia.org/wiki/QR_algorithm) |
+| Eigenvalues | Balancing, Hessenberg reduction and the Francis double-shift QR iteration (EISPACK `balanc`/`elmhes`/`hqr`); trailing 1x1 and 2x2 blocks solved directly | [Wikipedia — QR algorithm](https://en.wikipedia.org/wiki/QR_algorithm) |
 | Eigenvectors | Null-space RREF for each eigenvalue | [Wikipedia — Eigendecomposition](https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix) |
-| Jordan | Spectral decomposition (diagonalizable case); stays symbolic for defective matrices | [Wikipedia — Jordan normal form](https://en.wikipedia.org/wiki/Jordan_normal_form) |
+| Jordan | An exact matrix whose eigenvalues are all rational: the exact Jordan form, blocks included (chains from the null spaces of `(A − λI)ᵏ`). Otherwise the spectral decomposition (diagonalizable case); a defective numeric matrix stays symbolic | [Wikipedia — Jordan normal form](https://en.wikipedia.org/wiki/Jordan_normal_form) |
 
 Dense matrix multiply uses 64×64 block tiling (L1-cache-sized tiles) and parallel row
 blocks above a 2¹⁶ work threshold.
@@ -1083,8 +1113,9 @@ Two consequences worth knowing before extending this:
   pivot search only looks for a non-zero entry.
 
 What still computes in `Double`, by demoting an exact operand rather than losing the
-operation: the iterative decompositions (`qr`, `eigen`, `eig`, and `jordan` unless every
-eigenvalue is rational), which cannot be exact whatever their input.  `lu` is finite elimination,
+operation: the iterative decompositions (`qr`, `eigen`, `eig`), which cannot be exact, and
+`jordan` unless every eigenvalue is rational -- then its Jordan form is exact, blocks included.
+`lu` is finite elimination,
 so it is exact over the rationals (F_0226, a singular matrix included), and so is `A^n` (F_0227):
 `Power` lives in `scalar`, which cannot reach `matrix`, so the rational kernels both need sit in
 `core/ExactLinear.scala`.
@@ -1383,6 +1414,11 @@ Follow the `matrix` or `transform` package as a template.
 
 ## Test conventions
 
+**`sbt test` needs the 3 GB heap that `.jvmopts` gives the launcher**: the Scala.js linker
+builds the `coreJS` and `replModuleJS` test bundles in parallel and runs out of memory at the
+default heap.  The file is read on every platform, CI included, so no workflow sets memory of
+its own.
+
 Tests use `AnyFlatSpec` + `BeforeAndAfter`.  Test files mirror the main source layout under
 `core/src/test/scala/` — or `repl/src/test/scala/` when the test drives `cli.Session`, since
 the library module cannot see the `cli` package.  A `testOnly` glob selects by *package* and
@@ -1470,13 +1506,13 @@ Key build file sections:
 | `lazy val docs` | Runs mdoc; `publish / skip := true`.  Separate because `MdocPlugin` adds `org.scalameta:mdoc` to the enabled project's `libraryDependencies`, from where it reaches the published POM |
 | `lazy val tools` | The repository's own guards (F_0027); `publish / skip := true`, not aggregated, and **forked** — a guard's answer is its exit code, and `sys.exit` in sbt's own JVM would end the session mid-`checks` |
 | `lazy val web` | The browser front end; Scala.js only, `publish / skip := true`, **not aggregated** — linking a bundle on every `sbt test` would put front-end work in the path of every library change, so `web/test` is named explicitly by `ci.yml` |
-| `lazy val root` | Pure aggregate over the three; publishes nothing |
+| `lazy val root` | Pure aggregate over the four (`coreJVM`, `coreJS`, `replModuleJVM`, `replModuleJS`); publishes nothing |
 | `sbt checks` | Every repository guard in one sbt boot; what `ci.yml` runs |
 | `sbt app` | Links the browser REPL and assembles `web/target/app/` — `index.html`, `main.js`, `Banner.svg` (copied from `docs/src`, so the page and the docs site carry one logo), `vendor/` — the directory `pages.yml` deploys to `/app` and anyone can serve as-is |
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
 | `sbt unidoc` | One combined API across both modules → `target/scala-<version>/api`; this is what the site publishes, and what keeps `cli` in the reference |
-| `sbt mimaReportBinaryIssues` | Checks both published modules against `mimaBaseline` (currently `3.7.2`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in the release commit; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
+| `sbt mimaReportBinaryIssues` | Checks both published modules against `mimaBaseline` (currently `3.8.2`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in a **separate commit once the release resolves from Central** -- a baseline naming a version Central does not serve yet turns `ci.yml` red; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
 
 The `-Wconf:src=.*package\\.scala:silent` option suppresses the "No class, trait or object
 defined" structural warning for pure package-doc stub files.
@@ -1523,9 +1559,9 @@ no third-party origin, works offline, and cannot break when someone else's CDN d
 for a page whose selling point is that no user data leaves the browser is a promise worth
 keeping literal.  Three things go with each one, and a missing one is the failure mode:
 
-1. the files under `web/vendor/`, with **only the parts that are used** — MathLive is
-   vendored as its render-only SSR build, which drops the editor, the virtual keyboard and
-   232 KB of keyboard sounds and halves the weight;
+1. the files under `web/vendor/`, with **only the parts that are used** — MathLive is the
+   full build because the page has a math editor, but its 232 KB of keyboard sounds are left
+   out (`soundsDirectory = null`), and Plotly is the `cartesian` distribution;
 2. a `NOTICE` entry reproducing the licence and recording the **SHA-256** and the source URL,
    so the bytes can be checked against upstream later;
 3. a line in `pages.yml`'s *Verify the deployed app is complete* step, because the failure
@@ -1539,8 +1575,8 @@ algebra system inside a page whose purpose is the first one would be absurd.
 
 ### One-time repairs need standing guards
 
-Four CI checks exist because a one-time sweep of a decaying condition does not stay swept.
-They live in the `tools` project and run as `sbt checks` — one sbt boot for all four, and the
+Eight guards exist because a one-time sweep of a decaying condition does not stay swept.
+They live in the `tools` project and run as `sbt checks` — one sbt boot for all eight, and the
 same command CI runs:
 
 | Guard | Protects |
@@ -1549,6 +1585,10 @@ same command CI runs:
 | `CheckCharset` | against bad repairs landing in an unrelated script |
 | `CheckActionPins` | every workflow `uses:`, and the site's Jekyll `remote_theme:`, naming a commit SHA, not a tag or branch |
 | `CheckScalaVersion` | no file under `.github/` spelling the Scala version |
+| `CheckDocLinks` | every relative link and asset under `docs/src` resolving, in the right case (mdoc only warns) |
+| `CheckCsp` | `web/index.html`'s Content-Security-Policy and the hashes of its inline scripts staying in step |
+| `PumlGraph --check` | `docs/structure.puml` reading as a graph, and the committed GraphML copies (Gephi, yEd) matching it |
+| `CheckReservedWords` | every call word of the grammar being in `Parser.ReservedWords` |
 
 **What the encoding guards scan is a constant, not an argument list.**  `Files.GuardedRoots`
 names every tree and file the two of them cover, and both default to it when given no paths —

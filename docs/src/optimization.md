@@ -53,7 +53,9 @@ Leonardo **eliminates**: it solves an equation that is linear in one unknown, or
 one unknown left, substitutes, and repeats. The subtle step is dividing by a coefficient that
 depends on the other unknowns — the points where that coefficient is zero would silently
 disappear, so the solver also follows that branch. Here, solving the first gradient component
-for `x` divides by `2y`, and the branch `y = 0` is the one that finds `(0, 0)` and `(3, 0)`:
+for `x` divides by `2y`, and the branch `y = 0` is the one that finds `(0, 0)` and `(3, 0)`.
+In exact mode a stationary point whose coordinates are rational is answered exactly (`x = 1`, not
+`x = 1.0`); an irrational one comes back at the working precision:
 
 ```scala mdoc
 run("stationary(x*y*(x + y - 3), x, y)")

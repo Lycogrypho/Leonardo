@@ -20,9 +20,12 @@ import parser.Parser
  *  `Parser.ReservedWords`, the same surface F_0030's REPL diagnostic uses, so the browser
  *  reader and the prompt cannot disagree about what counts as a function.
  *
- *  **What is not converted is refused by name.**  The binders are declined with the grammar's
- *  own spelling rather than pattern-matched out of an undocumented intermediate form;
- *  supporting them is a bounded follow-up, not a gap in the design.
+ *  **What is not converted is refused by name.**  The calculus binders (`int`, `d/dx`, `lim`)
+ *  convert since F_0033 and the reductions (`sum`, `prod`, `choose`) since F_0037; what remains
+ *  refused -- `oint`, the transform braces, and the shape-less spelling of each structured form
+ *  (a `lim` without its `(x->a)`, a `sum` without its range, an `int` without its differential)
+ *  -- is refused with the grammar's own spelling, never pattern-matched out of an undocumented
+ *  intermediate form.
  *
  *  It lives in `repl` rather than in `web` because it concerns the input *language*, not the
  *  browser: it emits grammar text and validates names exactly as `Session` does, so the two

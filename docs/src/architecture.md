@@ -25,8 +25,9 @@ every domain package imports `core` (and usually `scalar`); nothing imports `cli
 ```
 
 The picture is a simplification — some domains also import each other in one direction
-(`equation` imports `logic`, `statistics` imports `probability` and `matrix`, `control`
-imports `transform` and `matrix`) — but the invariants hold everywhere: `core` imports no
+(`equation` imports `logic`; `statistics` imports `probability` and `matrix`; `transform`
+imports `matrix`; `control` imports `transform`, `matrix`, `vector` and `statistics`; `optimize`
+imports `matrix`, `equation`, `vector` and `logic`) — but the invariants hold everywhere: `core` imports no
 domain, every arrow is one-way, and `parser` and `cli` sit above all of them.
 
 `latex` sits in that top band too, and for a reason worth stating: **a renderer that must
@@ -52,7 +53,8 @@ free of any terminal dependency — the one thing that would have blocked a Scal
 ## Running off the JVM
 
 Both modules **cross-build for Scala.js**, and the whole suite runs on Node as well as the JVM:
-1832 library cases on each, plus the REPL's. The port needed two platform-specific pieces in
+every library case except the one that needs real threads, and every REPL case except those
+that drive JLine or files. The port needed two platform-specific pieces in
 the library and four in the REPL; everything else is the same source.
 
 | Platform-specific | Why |
@@ -79,8 +81,10 @@ change; CI names it explicitly instead.
 
 **It is almost entirely not there**, which is the point. `Session.step` already dispatches
 every command on both platforms, so the page is a text box, a transcript and a history ring.
-Only two things are genuinely browser-only: the `plot` / `points` commands, which a terminal
-cannot honour, and the shareable link.
+Only two things are genuinely browser-only: the drawing commands (`plot`, `points`, `bode`,
+`nyquist`, `rlocus`, `hist`, `curve`, `arrows`, `polygon`), which a terminal cannot honour, and
+the shareable link. A figure is data before it is a picture, so the same lines also render as
+an SVG image ahead of time (`Session.figure`), which is how the lessons show their figures.
 
 The settings panel is the same argument again. It is generated from `Session.settings` — the
 `(command, argument)` pairs `:save` already writes — and a changed control issues the command
@@ -92,17 +96,17 @@ from the session after every line rather than tracked alongside it.
 |---|---|
 | Leonardo, the whole CAS | 3.46 MB raw, **475 KB gzipped** |
 | Plotly (`cartesian` distribution, vendored) | 1.3 MB raw, **436 KB gzipped** |
-| MathLive (SSR — render-only — build, vendored) | 397 KB raw, **111 KB gzipped** |
-| The KaTeX maths fonts | 254 KB, fetched **only when a formula needs them** |
+| MathLive (full build, with the math editor, vendored) | 844 KB raw, **227 KB gzipped** |
+| The KaTeX maths fonts | 254 KB, fetched **only when a formula or the editor needs them** |
 
 About a megabyte for a computer algebra system with interactive plotting and typeset output,
 which is what removed the one real risk in the plan: no module splitting and no lazy loading
 is needed.
 
-**Only MathLive's SSR build is vendored**, which is "rendering engine only" taken literally:
-it exports the conversion functions and nothing else, so no mathfield element, no virtual
-keyboard and none of the package's 232 KB of keyboard sounds ship — at half the weight of the
-full build. Neither build bundles a second CAS: `@cortex-js/compute-engine` is looked up on
+**MathLive's full build is vendored**, because the page has a math editor: the `<math-field>`
+element and the conversion functions the typesetting uses come in one file (it replaced the
+render-only build, 111 KB gzipped, when the editor arrived). Its 232 KB of keyboard sounds are
+not shipped, by decision. It bundles no second CAS: `@cortex-js/compute-engine` is looked up on
 `globalThis` and its conversions simply decline when it is absent.
 
 **Plotting adopts no Scala dependency.** Plotly's input is plain JSON, so the facade is a
@@ -117,7 +121,8 @@ Nothing the user types leaves the tab: the CAS is in the bundle, sessions live i
 never transmit.
 
 The diagram below is generated automatically from `docs/structure.puml` by
-running `sbt puml` (or `sbt site` which runs the full pipeline).
+running `sbt puml` (or `sbt site` which runs the full pipeline); `sbt graphml` writes the same
+diagram as GraphML for Gephi and for yEd, and a repository guard keeps both copies current.
 
 ## Class and package diagram
 
@@ -168,19 +173,19 @@ running `sbt puml` (or `sbt site` which runs the full pipeline).
 
 | Package | Role | Documentation |
 |---------|------|---------------|
-| **`core`** | `_Expression` trait, `_Value` marker, `_Number`, `_Bool`, `_Complex`, `_Rational`, `_Truth`, `_Based`, `_Variable`, `_MatrixValue`, `Environment` — the foundation shared by every domain | [Expressions & Evaluation](expressions.md) |
+| **`core`** | `_Expression` trait, `_Value` marker, `_Number`, `_Bool`, `_Complex`, `_Rational`, `_Surd`, `_Interval`, `_Truth`, `_Based`, `_Variable`, `_MatrixValue`, `Environment` and its configurable work budgets — the foundation shared by every domain | [Expressions & Evaluation](expressions.md) |
 | **`scalar`** | AST nodes (`Sum`, `Product`, `Power`, functions, functionals) and all algorithms: `derive`, `integrate`, `simplify`, `expand`, `normalize`, `compile`, `sample`, series expansions, domain analysis, plus a data-driven rewrite-rule engine (`Rewrite`) backing the parameterised table of integrals (`IntegralRules`) | [Expressions & Evaluation](expressions.md) · [Calculus](calculus.md) |
-| **`matrix`** | `_Matrix` symbolic node + `_MatrixOperation` nodes, constructors, the decompositions, `expm` and `chol`; dense `_MatrixValue` kernels live in `core` | [Matrices](matrix.md) |
+| **`matrix`** | `_Matrix` symbolic node + `_MatrixOperation` nodes, constructors, block matrices, the decompositions, `expm`, `chol`, the SVD and what reads off it (`pinv`, `rank`, `cond`, `nullspace`, `orth`), `norm`, `dot`, `cross`, `trace`, `size`, `rationalize`; dense `_MatrixValue` kernels live in `core` | [Matrices](matrix.md) |
 | **`equation`** | `_Equation`, `_Comparison`, `_EqualityCheck` relation nodes; `solve` (equations, inequalities, matrix unknowns) and `solveSystem` | [Equations & Complex Numbers](equations.md) |
-| **`transform`** | Laplace, Fourier, inverse Laplace, and the one-sided z-transform and its inverse | [Features](features.md) |
+| **`transform`** | Laplace, the two-sided and causal Fourier transforms, inverse Laplace, the one-sided z-transform and its inverse, and `dft`/`idft`/`conv` | [Features](features.md) |
 | **`ode`** | `_ODE` node; closed-form linear and separable tiers, linear systems by the matrix exponential, Runge–Kutta for the rest — vector systems certified by step doubling — and the public `odeStep`/`odeSolve` | [Features](features.md) |
 | **`logic`** | The five connectives over one Kleene/fuzzy rule table; simplification, CNF/DNF, truth tables, membership curves, defuzzification | [Logic](logic.md) |
-| **`probability`** | Distributions as first-class values; `pdf`/`cdf`/`prob`/`quantile`; `expect`/`variance` by a linearity rule table; Bayes' theorem over hypotheses and conjugate posteriors (`bayes`, `posterior`); seeded draws by inversion and PRBS (`draw`, `prbs`) | [Features](features.md) |
-| **`statistics`** | Descriptive statistics, regression by QR, elementary inference (`ttest`, `confint`, `chisqtest`) | [Features](features.md) |
+| **`probability`** | Distributions as first-class values (the geometric, hypergeometric and F families included); `pdf`/`cdf`/`prob`/`quantile`; `expect`/`variance` by a linearity rule table; Bayes' theorem over hypotheses and conjugate posteriors (`bayes`, `posterior`); seeded draws by inversion and PRBS (`draw`, `prbs`) | [Features](features.md) |
+| **`statistics`** | Descriptive and order statistics, regression by QR (ordinary, ridge, weighted), recursive least squares, inference (`ttest`, `proptest`, `chisqtest`, `vartest`, `anova`, `confint`), `bincounts` | [Features](features.md) |
 | **`domain`** | Renders the neutral domain analysis (`domain`, `differentiable`, `singularities`) into relation nodes | [Features](features.md) |
 | **`vector`** | `grad`/`div`/`curl`/`laplacian`/`jacobian`/`hessian` over an ordered coordinate tuple, in three coordinate systems | [Calculus](calculus.md) |
-| **`optimize`** | Stationary points by elimination with case splits, their classification, convexity from principal minors, Lagrange multipliers, the KKT conditions, and a certified numeric `minimize` | [Optimization](optimization.md) |
-| **`control`** | Transfer-function algebra, stability, time and frequency response, state space, discretisation | [Control Systems](control.md) |
+| **`optimize`** | Stationary points by elimination with case splits and Gröbner bases, their classification, convexity from principal minors, Lagrange multipliers, the KKT conditions, and the certified numeric solvers: `minimize`, `qp`, `lsqfit`, `nlp`, and the exact `lp` | [Optimization](optimization.md) |
+| **`control`** | Transfer-function algebra, stability, the Routh table, time and frequency response, the root locus, state space, controllability and pole placement, discretisation, linearisation, ARX identification, discrete simulation, MPC prediction matrices, LQR and the Kalman filter | [Control Systems](control.md) |
 | **`latex`** | `ToLatex(e)` — an expression as math-mode LaTeX source, display only; nothing reads it back | [Interactive REPL](repl.md#latex) |
 | **`parser`** | Recursive-descent `Parser` (extends `JavaTokenParsers`); produces all AST node types; `ReservedWords` guard | [Getting Started](getting-started.md) |
 | **`cli`** | Interactive `Session` (pure, IO-free core) + `repl` read loop; session scripts (`:save`/`:load`). **Ships as the separate `leonardo-repl` artifact** | [Interactive REPL](repl.md) |

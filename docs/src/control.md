@@ -97,9 +97,9 @@ isStable(tf("1/(s^2 + 1)"), s)
 
 The last one is the marginal case, and it is `false`. An oscillator that never decays is not a
 stable system. A [Routh array](https://en.wikipedia.org/wiki/Routh%E2%80%93Hurwitz_stability_criterion)
-is available as `routhTable(g, s)` for inspecting a margin by hand — from Scala only, since
-it has no grammar production and `routh` is consequently an ordinary variable name, not a
-reserved word — but `isStable` does not consult it: Routh's degenerate cases (a zero in the first column, an identically zero row) each
+is available as `routhTable(g, s)` for inspecting a margin by hand, at the prompt too, under
+that name (`routh` stays an ordinary variable name, since it shipped unreserved) — but
+`isStable` does not consult it: Routh's degenerate cases (a zero in the first column, an identically zero row) each
 need their own repair, and a mishandled one yields a wrong verdict rather than a refusal. Root
 location has neither failure mode.
 
@@ -481,6 +481,7 @@ so a breakaway point does not cross-connect them — and the browser REPL draws 
 > routhTable(1/(s^3 + 2*s^2 + 3*s + 4), s)
 > controllable([[0, 1], [0, 0]], [[0], [1]])
 > ctrb([[0, 1], [0, 0]], [[0], [1]])
+> obsv([[0, 1], [0, 0]], [[1, 0]])
 > acker([[0, 1], [0, 0]], [[0], [1]], [[-1 + i, -1 - i]])
 > rlocus 1/(s*(s + 2)) s 0.1 10            (browser only: draws the locus)
 ```

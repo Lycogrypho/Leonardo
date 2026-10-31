@@ -112,6 +112,13 @@ exclude:
   - logo3.svg
   - logo_bkp.svg
   - logo_bkp2.svg
+  # Raster exports referenced by no page (D_0219, checked 2026-10-31): kept in the repository,
+  # not published.
+  - Logo.png
+  - Logo3.png
+  - logo2_small.jpg
+  - logo2_small.png
+  - logo2_small2.jpg
   - _assets
   - Gemfile
   - Gemfile.lock

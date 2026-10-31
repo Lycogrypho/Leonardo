@@ -63,6 +63,12 @@ Whether an assignment binds a value or defines a function is decided by the righ
 alone: a constant expression folds to a value, an expression with free variables becomes a
 definition.
 
+A definition whose formula already computes with the current bindings says so on a second
+line, `  = …`, so `L := chol(G)` (which computes) and `M := chol(B)` for a `B` that `chol`
+refuses no longer echo alike; the definition itself stays late-bound.  In exact mode a matrix
+assigned with no name in its formula, such as `A := [[1, 2], [3, 4]]`, echoes the matrix rather
+than the formula.
+
 ### Freezing a result: `consolidate`
 
 `name := consolidate(expr)` is the opposite of a late-bound definition: the expression is
@@ -237,9 +243,10 @@ e.execute("H * inv(H)")    // exactly the identity
 though a compute cap remains, since an unbounded factorial is easy to type by accident.
 
 `lu` and `A^n` are exact on an exact matrix, a singular one included for `lu` (a zero on `U`'s
-diagonal).  What still computes in `Double`: the iterative decompositions (`qr`, `eigen`, `eig`,
-and `jordan` unless every eigenvalue is rational), which cannot be exact whatever their input
-and demote an exact operand rather than refuse it.
+diagonal).  What still computes in `Double`: the iterative decompositions (`qr`, `eigen`,
+`eig`), which cannot be exact and demote an exact operand rather than refuse it, and `jordan`
+unless every eigenvalue is rational -- then its Jordan form is exact, blocks included.  Square
+roots stay exact surds (`√13`, typed back with `√`).
 
 Mixing an exact value with an inexact one gives an inexact result.  That is deliberate:
 absorbing the `Double` would be lossless, but it would dress representation error up as an
@@ -252,8 +259,9 @@ becomes `2`; when a decimal does not look like one, the default is the working p
 most 15 (all a `Double` carries).  A matrix becomes an exact matrix, a symbolic expression
 keeps its shape.  A complex number or an interval has no exact form, so the call declines and
 says why.  When an exact input comes back as decimals that all look like small fractions, the
-REPL offers it in a note, and the offer is exactly what `rationalize(...)` gives; an irrational
-such as `norm([[2], [3]])` gets no such offer:
+REPL offers it in a note, and the offer is exactly what `rationalize(...)` gives; a decimal
+that does not look like a small fraction gets no such offer, and a square root needs none (in
+exact mode `norm([[2], [3]])` is the exact `√13`):
 
 ```scala mdoc
 e.execute("qr([[3, 0], [4, 5]])")
@@ -309,16 +317,17 @@ setting behave identically.
 **The calculus notations convert** — an integral written as an integral becomes
 `integral(f, x)`, with bounds `integral(f, x, a, b)` and iterated integrals nesting inside
 out; `d/dx` (and `∂/∂x`, and `d²/dx²`) becomes `derive(f, x)`; a limit with its subscript
-becomes `limit(f, x, a)`, one-sided arrows and `∞` included; `|x|` becomes `abs(x)`, the
-modulus included.  A limit's or derivative's
+becomes `limit(f, x, a)`, one-sided arrows and `∞` included; a summation or a product with
+its range becomes `sum(f, k, lo, hi)` or `product(f, k, lo, hi)`, and a binomial `binom(n, k)`;
+`|x|` becomes `abs(x)`, the modulus included, and `∥x∥` becomes `norm(x)`.  A limit's or derivative's
 operand extends to the end of its bracket group — the standard reading — so brackets are how
 you confine it.
 
 **What cannot be converted is refused rather than submitted**, and
 the reason is the section below: handing the grammar something it does not recognise produces a
-confident product, not an error.  A refusal names the spelling to use — a summation reports
-`tabulate(f, k, lo, hi)`, an integral missing its differential names `integral(f, x)` — and
-leaves the field alone so it can be corrected.
+confident product, not an error.  A refusal names the spelling to use — an integral missing
+its differential names `integral(f, x)`, a limit missing its `(x → a)` names `limit(f, x, a)`,
+and a contour integral is refused outright — and leaves the field alone so it can be corrected.
 
 On Enter the transcript shows **both spellings of what you drew**: the formula, typeset, and
 the grammar text it became — which is what runs, what the history keeps, and what `:save`
@@ -332,7 +341,7 @@ The editor is only in the browser.  A terminal cannot typeset, which is the same
 The grammar has **no unknown-identifier error**.  An unrecognised name is a perfectly good
 variable and juxtaposition is multiplication, so `sqrt(x)` is not an error — it is the *product*
 of a free variable named `sqrt` with `x`.  There is no `sqrt` function; a radical is written
-`x^0.5` or `x^(1/2)`.  The same is true of a miscapitalised built-in: `Sin(x)` is `Sin` times
+`√x`, `x^0.5` or `x^(1/2)` (in exact mode `√13` stays the exact surd).  The same is true of a miscapitalised built-in: `Sin(x)` is `Sin` times
 `x`.
 
 So the REPL says so:
@@ -423,8 +432,8 @@ plot is never built from this text.
 
 The count defaults to 200 and is capped at 100 000 — generous for any figure, and refused
 rather than attempted beyond that, because the whole grid is built before anything is drawn.
-The same bounds apply to the browser's `plot`, `points`, `bode` and `nyquist`, which read
-their arguments through the same code.
+The same bounds apply to the browser's `plot`, `points`, `bode`, `nyquist`, `rlocus`, `hist`
+and `curve`, which read their arguments through the same code.
 
 **A sample with no finite value is dropped, and the count says so.**  A pole, an argument
 outside the domain, or a `sum` whose bound is not a whole number all leave a grid point with

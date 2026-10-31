@@ -9,7 +9,7 @@ nav_order: 2
 <div style="clear:both"></div>
 
 *New to Leonardo? **[Lessons: in your program](lessons/library.md)** is the guided path through
-this page and everything after it — ten short lessons, each with an exercise. If you would
+this page and everything after it — eleven short lessons, each with an exercise. If you would
 rather type at a prompt than write Scala, start at
 **[Lessons: at the prompt](lessons/repl.md)** instead, which needs no installation at all.*
 
@@ -50,6 +50,13 @@ import it.grypho.scala.leonardo.equation.*  // _Equation, solve, solveSystem
 import it.grypho.scala.leonardo.parser.Parser
 import it.grypho.scala.leonardo.cli.Session   // leonardo-repl artifact, not leonardo
 ```
+
+The other domain packages follow the same pattern, each importing only `core` and `scalar` (and
+some one another): `transform` (Laplace, Fourier, z, `dft`), `ode`, `logic`, `probability`,
+`statistics`, `domain`, `vector`, `control`, `optimize` and `latex`. Import the one a task
+needs rather than all of them, and pick one call style: importing `scalar.*` beside
+`scalar.Syntax.*` makes every bare call such as `derive(e, x)` ambiguous, since the extension
+methods share the functions' names. [Architecture](architecture.md) shows how the packages layer.
 
 ## Parsing
 
@@ -104,7 +111,9 @@ expr.eval(highPrecision)
 
 ## Using the REPL
 
-Launch with `sbt repl` (or `sbt "runMain it.grypho.scala.leonardo.cli.repl"`).
+Launch with `sbt repl` from a clone of the repository (the alias for
+`sbt "replModuleJVM/runMain it.grypho.scala.leonardo.cli.repl"`; a bare `runMain` fails from the
+root aggregate).
 Programmatically, `Session.execute` is the pure testable core:
 
 ```scala mdoc:silent

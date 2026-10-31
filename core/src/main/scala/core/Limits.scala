@@ -130,7 +130,9 @@ enum Limit(val default: Long):
 
   // ── transforms (F_0137) ──
 
-  /** The length of a `dft`/`idft`, by the direct `N²` sum; `DftTest` bounds the time at it. */
+  /** The length of a `dft`/`idft`, by the direct `N²` sum; `DftTest` bounds the time at it.
+   *  Measured at the cap (F_0179): Node alone 1.52–1.68 s, Node under the full `sbt test`
+   *  2.87–7.56 s, the JVM under the full run 0.58–1.30 s. */
   case MaxDftLength extends Limit(8192)
   /** The products `n·m` a floating-point `conv` may form (F_0144), set by **Node**: at the cap,
    *  5000 × 5000, 0.78 s there against 32 ms on the JVM; `10⁸` took 4.1 s on Node and 194 ms on

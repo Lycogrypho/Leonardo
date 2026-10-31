@@ -93,7 +93,9 @@ object _Distribution:
    *  Its cdf has no closed form, so the masses are tabulated once per distribution (log-space
    *  ratios, normalised) and every query reads the table: `quantile` and `draw` call the cdf
    *  dozens of times per answer, so recomputing a sum each time would multiply the cost by that.
-   *  A table of a million doubles is 8 MB and is built by a million ratios.  **Fixed, not a
+   *  A table of a million doubles is 8 MB and is built by a million ratios: measured at the cap
+   *  (D_0152, `hypergeometric(4000000, 2000000, 999999)`, the first query building the table),
+   *  0.10 s on the JVM and 0.15 s on Node.  **Fixed, not a
    *  `core.Limit`**: the factory and the kernels take no environment, the integrator-parameter
    *  precedent recorded in the F_0124 inventory.
    */

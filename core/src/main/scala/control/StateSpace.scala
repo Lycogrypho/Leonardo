@@ -100,7 +100,8 @@ enum StructureKind(val word: String) extends Keyworded:
   /** `obsv(A, C)` -- the observability matrix `[C; C·A; …; C·Aⁿ⁻¹]`. */
   case Obsv extends StructureKind("obsv")
 
-  /** Whether the question is about the output pair `(A, C)` rather than the input pair. */
+  /** Whether the question is about the output pair `(A, C)` rather than the input pair.
+   *  @return `true` for `observable` and `obsv`, which are asked of the dual pair */
   def dual: Boolean = this == Observable || this == Obsv
 
 

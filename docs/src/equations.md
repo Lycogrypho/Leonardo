@@ -170,7 +170,8 @@ Parser.parse("solve(A * X + X * B = C, X)").get.eval(sylvesterEnv)
 
 The system is solvable only when it is non-singular — for Sylvester, when `A` and
 `−B` share no eigenvalue; otherwise the equation has no (unique) solution and the
-solve node stays symbolic. Coefficients must reduce to dense matrices for this tier.
+solve node stays symbolic. Exact coefficients are solved over the rationals and the answer is
+exact, up to 36 vectorized unknowns; numeric ones go through the dense kernel, up to 400.
 
 ### Linear systems
 

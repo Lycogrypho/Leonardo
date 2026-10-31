@@ -18,7 +18,9 @@ The public support site (prose + tutorials + API reference) is published to
 | Path | Role |
 |---|---|
 | `docs/src/*.md` | The prose pages (single source, shared with the `mdoc`/Scaladoc pipeline). Each carries `title` + `nav_order` front matter that the [Just the Docs](https://just-the-docs.com) theme uses to build the sidebar. |
-| `docs/src/*.svg` | Images referenced by the prose (`Banner.svg`, `logo_bw.svg`, `structure.svg`). |
+| `docs/src/*.svg` | Images referenced by the prose (`Banner.svg`, `logo_bw.svg`, `structure.svg`). Unreferenced raster exports stay in the repository but are on `_config.yml`'s `exclude:` list. |
+| `docs/src/lessons/` | The two lesson branches (`repl.md` and `r1`–`r10`, `library.md` and `l1`–`l11`): `has_children` sections whose children name their parent by **title**. One directory down, so every relative link and asset needs `../`. |
+| `docs/helper/` | The `docs` project's own Scala, outside `mdocIn` on purpose (mdoc would publish anything non-markdown under it): `Lesson.scala`, which executes a lesson's REPL transcripts, builds their run links and writes their SVG figures, and its suite (`sbt docs/test`). |
 | `docs/src/js/` | Vendored site scripts, published as-is. Currently only `svg-pan-zoom.min.js` (v3.6.1, BSD 2-Clause — notice reproduced in `NOTICE`), which makes the architecture diagram pannable and zoomable. Fetched pinned by commit SHA from `raw.githubusercontent.com/bumbu/svg-pan-zoom/31e763aa8e011693cf6086a357011825168b897d/dist/svg-pan-zoom.min.js`; SHA-256 `f463710320089c61d0f57cec2b886c02de04e21eb92ebd22eaa327fdf0a6b7c6`. **Deliberately vendored, not CDN-loaded**: a CDN script tag executes whatever the CDN serves that day, the same mutable-reference problem that led to SHA-pinning the workflow actions. This directory must NOT be underscore-prefixed — Jekyll skips `_`-prefixed paths, which is why `_assets` (the Scaladoc CSS) is on the `exclude:` list and never published. |
 | `docs/_config.yml` | Jekyll + Just the Docs configuration (remote theme, base URL, nav aux-links). **The theme is pinned to a commit** (F_0217): it is published on the site's origin beside `/app`, no bot sees it, so a bump is by hand, recorded in `NOTICE`, and `sbt checks` refuses an unpinned one. |
 | `docs/Gemfile` | Ruby gems for building the site (CI + local preview). **Includes `jekyll-include-cache`, which the theme needs and `remote_theme` does not install** -- see the note below. |
@@ -130,7 +132,7 @@ page.  `index.md` keeps its full-width `Banner.svg` header, which was always del
 Requires Ruby (3.x) and Bundler:
 
 ```bash
-sbt mdoc          # produce target/mdoc first -- it is what the site renders
+sbt docs/mdoc     # produce target/mdoc first -- it is what the site renders
 cd docs
 bundle install
 bundle exec jekyll serve --source ../target/mdoc --config _config.yml
@@ -138,4 +140,4 @@ bundle exec jekyll serve --source ../target/mdoc --config _config.yml
 ```
 
 To preview the API alongside it, run `sbt "docs/mdoc; unidoc; injectApiStyles"` and copy
-`target/scala-3.3.6/api` into the served tree under `api/`.
+`target/scala-<version>/api` into the served tree under `api/`.

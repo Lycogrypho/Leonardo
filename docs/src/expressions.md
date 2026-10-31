@@ -118,8 +118,10 @@ simplify(Ln(Exp(x))).toString
 ## Expansion
 
 `expand` distributes multiplication over addition, expands integer powers of sums up to the
-20th, and collects like terms as it goes, so `(a + b)^20` is 21 terms. The terms keep the order
-they first appear in. A product whose expansion would be deeper than the library's limit of 200
+20th, and collects like terms as it goes, so `(a + b)^20` is 21 terms. An answer that is a
+polynomial in **one** variable is written by descending degree, the textbook form; with several
+variables the terms keep the order they first appear in. A sum over a numeric divisor is divided
+term by term (`(4x + 6y)/2` expands to `2x + 3y`). A product whose expansion would be deeper than the library's limit of 200
 levels (a sum is as deep as it has terms) is left as written rather than built; at the REPL a
 note says so:
 

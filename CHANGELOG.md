@@ -25,47 +25,95 @@ the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
 ## Unreleased
 
-*Gathered for the next release; rename to its version before tagging.  It lists this round's
-changes (F_0223–F_0240); earlier unreleased work since 3.8.2 is in `Done.md` and must be
-summarised here at release time.*
+*Gathered for the next release; rename to its version before tagging.  Everything on `main`
+since 3.8.2 (which was cut from a maintenance branch and carried one fix) is here.  MiMa finds no
+binary change against 3.8.2 so far, so the number is decided at release time from its report.*
 
-- **Figures without a browser.** `Session.figure(lines*)` draws the drawing commands as an SVG
-  image (`plot`, `points`, `hist`, `bode`, `nyquist`, `rlocus`, and the new `curve`, `arrows` and
-  `polygon`), several separated by `;` as layers on shared axes. The browser REPL draws the same
-  lines, so a figure in a page built ahead of time can be redrawn at `/app` from the same text.
-- **`cli.ShareEncoding` is public API**: the run-link fragment format, with its contract (a
-  session too long yields no link, never a truncated one).
-- **Exact arithmetic reaches further.** On exact input, `lu` factors over the rationals — a
-  singular matrix included, with a zero on `U`'s diagonal — and `A^n` is exact (declined past
-  the exact power cap rather than demoted); `stationary` answers rational points exactly.
-- **Behaviour changes in printed output.** `eigen`, `eig` and the numeric `jordan` list
-  eigenvalues by real part, then imaginary part (the `tfpoles` order), not in the QR iteration's
-  order; `expand` divides a sum by a numeric divisor term by term and writes a polynomial in one
-  variable by descending degree; a definition whose formula already computes echoes its current
-  value on a `= …` line; `rationalize(x)` defaults to the digits that give the small fraction a
-  decimal looks like (`1.9999999999999991` becomes `2`), and a `qr` of dependent columns says why
-  it stays unevaluated.
-- **A printed answer re-parses to its own value.** A computed fraction, an imaginary, or a negative
-  number in a divisor or a power is now bracketed: an exact `solveSystem` answer printed
-  `(… / 3/2)`, which typed back meant `(…/3)/2`, and a negative base printed `(-2.0 ^ x)`, which
-  meant `-(2^x)`. They print `(… / (3/2))` and `((-2.0) ^ x)`. Every other printed form is
-  unchanged, and saved sessions and share links were never affected.
-- **Square roots stay exact.** In exact mode the square root of a fraction is kept as a surd,
-  shown `√13` or `(3 + 2√2)` and typed back with `√` (`√13`, `2√13`, `√(x + 1)`): a quadratic's
-  roots (`solve(1 - 2*k^2 = 0, k)` binds `±√2/2`), a 2-norm, `stddev` and an exact `chol` come
-  back exact, and `det`, `inv`, `lu` and `A^n` work over a matrix whose surds share one root.
-  Arithmetic mixing two roots, or a function of one, gives the working-precision value as
-  before. `:save` writes surds in ASCII, `(3 + 2 * 2^(1/2))`. **Behaviour change**: these answers
-  printed decimals, and `(2^(1/2))^2 == 2` is now exactly equal, so its "working precision" note
-  no longer appears.
-- **`solveSystem` takes more equations than unknowns.** A consistent system is solved, exactly in
-  exact mode, and an inconsistent one stays unevaluated with a note naming the equation at fault;
-  every other refusal (fewer equations than unknowns, no unique solution, not linear) now says so
-  too. The equations may be written as a column, `[[eq1], [eq2]]`. In exact mode a system with a
-  zero right side, such as `u = 0`, is now answered exactly; it came back in decimals.
-- **An exact matrix assignment echoes the matrix.** In exact mode `A := [[1, 2], [3, 4]]` now stacks
-  under `pretty on` like any other matrix, and `G := 2 * [[1, 2], [3, 4]]` or
-  `H := transpose([[1, 2], [3, 4]])`, whose right side names no variable, echoes the matrix it computes instead of the formula.
+**New in the library and at the prompt**
+
+- **Optimisation, a new package.** `stationary` lists every stationary point of a polynomial
+  objective (elimination with case splits, an exact Gröbner basis where that gives up) and the
+  REPL classifies each as a local minimum, maximum or saddle; `convex` proves or refutes
+  convexity; `lagrange` and `kkt` handle equality and inequality constraints. Numerically:
+  `minimize` (`gd`, `newton`, `bfgs`, `pbfgs`, the method always named), `qp` for convex
+  quadratic programs (positive definite or semidefinite), `lsqfit` for nonlinear least squares and
+  curve fits, `nlp` for constrained nonlinear programs (`sqp`, `auglag`), and `lp`, an exact linear
+  program solver. Every numeric answer is certified; an uncertified one is declined with the
+  reason as a note.
+- **Control and MPC.** `mpcMatrices` (prediction matrices), `linearize` (a nonlinear model at an
+  operating point), `arx` / `arx2tf` / `arx2ss` (identification from data, several inputs, and
+  several coupled outputs), `dlsim` (discrete simulation), `dare`, `dlqr`, `dlyap`, `kalmanGain`,
+  `kalmanStep` (the stabilising solution only), and at the prompt `tfpoles`, `tfzeros`, `isStable`,
+  `isStableDiscrete`, `stateSpace`, `c2d` (now also `foh`, `impulse`, `matched`, `forward`,
+  `backward`, and prewarped Tustin), `controllable`, `observable`, `ctrb`, `obsv`, `routhTable` and
+  `acker`. The browser draws a root locus (`rlocus`).
+- **Matrices.** `chol`, block matrices (`hcat`, `vcat`, `blkdiag`, `repmat`, `kron`, `ones`,
+  `submatrix`), `svd`, `pinv`, `rank`, `cond`, `nullspace`, `orth`, `norm` (1, 2, inf, `fro` or any
+  `p` for a vector), `dot`, `cross`, `trace` and `size`. `eigen` now answers random dense matrices
+  (a Francis double-shift QR iteration replaced one that declined most of them from 3×3 up).
+- **Statistics and probability.** Bayesian inference (`betadist`, `gammadist`, `bayes`,
+  `posterior`), seeded sampling (`draw`, reproducible across the JVM and the browser) and `prbs`;
+  ridge and weighted regression; recursive least squares (`rls`); `median`, `sort` and sample
+  `quantile`; two-sample, proportion, variance and independence tests and `anova`; the
+  geometric, hypergeometric and F families; `bincounts`, and `hist` in the browser.
+- **Calculus, equations and more.** `ode` solves linear systems by the matrix exponential and
+  integrates time-varying and nonlinear systems with a certified error, and `odeStep` / `odeSolve`
+  expose the integrator; Taylor coefficients come from power-series arithmetic (faster, and exact
+  on exact input); `maximum`, `minimum`, `max`, `min`, `clamp`, `softplus`; interval arithmetic
+  with rigorous bounds, `[lo, hi]`; `dft`, `idft`, `conv`; `cnf`, `dnf` and the defuzzification
+  methods at the prompt; `solveSystem` with more equations than unknowns, the equations also
+  written as a column `[[eq1], [eq2]]`, every refusal with its reason.
+- **Exact arithmetic reaches further.** Calculus stays exact on exact input and on names bound to
+  exact values; `lu` (a singular matrix included), `A^n`, `jordan` with rational eigenvalues,
+  Sylvester and Lyapunov equations, `solveSystem` and `stationary`'s rational points are exact; in
+  exact mode two values are equal when they agree to the working precision, with a note saying so;
+  square roots stay exact surds, shown `√13` and typed back with `√`; `rationalize(x)` makes a
+  decimal exact on request, and the REPL offers it when an exact input came back as decimals that
+  look exact.
+- **Library API.** Every work and size budget is configurable through `Environment.limits`
+  (`env.withLimit(Limit.X, n)`); the REPL and the browser keep the defaults. `compile` takes
+  several variables or a whole matrix. `cli.ShareEncoding`, the run-link format, is public, and
+  `Session.figure` draws the drawing commands as an SVG image.
+- **REPL and browser.** Under `pretty on` answers use the fewest brackets and a binary minus
+  (`4 - k*k`); a definition whose formula already computes echoes its current value on a `= …`
+  line, and an exact matrix assignment echoes the matrix; the browser adds `curve`, `arrows`,
+  `polygon` and layered figures (`;`), and enforces a Content-Security-Policy.
+
+**Answers that changed** — re-check results that depended on these:
+
+- `fourier` is the **two-sided** transform and declines where the integral diverges
+  (`fourier(exp(-t), t, w)` declines; the old one-sided answer is `fourierCausal`).
+- `eigen`, `eig` and the numeric `jordan` list eigenvalues by real part, then imaginary part.
+- `expand` writes a one-variable polynomial by descending degree and divides a sum by a numeric
+  divisor term by term.
+- `minimize` answers only a minimiser, never a maximum or saddle; `stationary` calls an extremum
+  local.
+- A numeric `limit` that only seemed to converge declines (`limit(sin(x)/1e7, x, inf)`).
+- `jacobian` and `hessian` are Cartesian only, and `grad`/`hessian` refuse a vector argument;
+  `eig` refuses a defective matrix instead of returning dependent eigenvectors.
+- `differentiable(step(x), x)` is `x != 0` (it was `false`).
+- A computed fraction, imaginary or negative number in a divisor or a power is printed bracketed,
+  so a printed answer types back as itself; exact square roots print `√2` where they printed
+  decimals (`:save` writes them as `(2^(1/2))`), and `(2^(1/2))^2 == 2` is exactly true, so its
+  working-precision note no longer appears; `rationalize(x)` defaults to the digits that give the
+  small fraction; a `qr` of dependent columns says why it stays unevaluated.
+- `solveSystem` declines an over-determined numeric system whose columns are nearly dependent.
+- Very large exact numbers are now held to measured budgets: an exact `+ − × ÷` or matrix power
+  past them stays unevaluated instead of running for minutes.
+
+**Fixes.** Dozens of thresholds that silently assumed unit-sized input are now relative to the
+problem's own scale (rank, pivots, roots, degrees, certificates), so the same question in other
+units gets the same answer. The 2026-10-23 audit's edge cases — wrong answers and wrong refusals
+across limits, inequalities, transforms, statistics and the math editor — are fixed. `:save` and
+share links write every value at full precision and reload it in its own tier. Named exact
+matrices multiply exactly, and a matrix is never used as a scale factor. Nothing deeper than the
+browser can walk is accepted or built. A large matrix literal parses several times faster.
+
+**Supply chain.** MathLive is at 0.111.1, the floor its security advisories require. The release
+build overrides BouncyCastle to 1.86, clear of the 1.78.1 advisories. Workflows hold no more
+permission or stored credential than their steps need. The architecture diagram is exported as
+GraphML for Gephi and yEd under a standing check, and an eighth guard keeps the grammar's words
+reserved.
 
 ## 3.8.2 — 2026-10-06
 
