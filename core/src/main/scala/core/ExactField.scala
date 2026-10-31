@@ -31,8 +31,15 @@ private[leonardo] trait ExactField[T]:
   def magnitude(a: T): Double
   /** The largest bit length in `a`, the size the power budget estimates from. */
   def bits(a: T): Int
+  /** The denominators of `a`'s rational parts (F_0249): what the power budget clears first. */
+  def denominators(a: T): List[BigInt]
+  /** The largest bit length among the parts of `a·d`, integers when `d` is a common denominator of
+   *  `a`'s parts (F_0249), plus the radicand's for a surd field, as [[bits]] counts it. */
+  def scaledBits(a: T, d: BigInt): Int
   /** `a` as a value of the language: a rational, or a surd / rational over `√d`. */
   def toValue(a: T): _Value
+  /** A rational as an element of the field (F_0250): a count or a constant a kernel divides by. */
+  def fromRational(r: _Rational): T
 
 /** The rationals, under a reduction policy. */
 private[leonardo] final class RationalField(policy: GcdPolicy) extends ExactField[_Rational]:
@@ -46,7 +53,10 @@ private[leonardo] final class RationalField(policy: GcdPolicy) extends ExactFiel
   def isZero(a: _Rational): Boolean = a.isZero
   def magnitude(a: _Rational): Double = math.abs(a.toDouble)
   def bits(a: _Rational): Int = a.maxBitLength
+  def denominators(a: _Rational): List[BigInt] = List(a.den)
+  def scaledBits(a: _Rational, d: BigInt): Int = (a.num * (d / a.den)).bitLength
   def toValue(a: _Rational): _Value = a
+  def fromRational(r: _Rational): _Rational = r
 
 /** An element `a + b·√d` of `Q(√d)`. */
 private[leonardo] final case class Quad(a: _Rational, b: _Rational)
@@ -72,7 +82,11 @@ private[leonardo] final class SurdField(d: BigInt, policy: GcdPolicy) extends Ex
   def isZero(x: Quad): Boolean = x.a.isZero && x.b.isZero
   def magnitude(x: Quad): Double = math.abs(x.a.toDouble + x.b.toDouble * math.sqrt(d.toDouble))
   def bits(x: Quad): Int = math.max(x.a.maxBitLength, x.b.maxBitLength) + d.bitLength
+  def denominators(x: Quad): List[BigInt] = List(x.a.den, x.b.den)
+  def scaledBits(x: Quad, c: BigInt): Int =
+    math.max((x.a.num * (c / x.a.den)).bitLength, (x.b.num * (c / x.b.den)).bitLength) + d.bitLength
   def toValue(x: Quad): _Value = _Surd.of(x.a, x.b, d).getOrElse(x.a)
+  def fromRational(r: _Rational): Quad = Quad(r, _Rational.Zero)
 
 /** Exact cells read over one field: every cell rational, or every cell in `Q(√d)` for a single
  *  radical class (F_0231 Decision B). */
@@ -158,15 +172,11 @@ private[leonardo] def fieldInverse[T](f: ExactField[T], cells: Vector[T], n: Int
   go(augmented, 0).map(m => Vector.tabulate(n, n)((i, j) => m(i)(j + n)).flatten)
 
 /** The `k`-th power of a square matrix over a field, by binary exponentiation; a negative power is
- *  the inverse's.  Held to `maxBits` before any product, the `_Rational.pow` rule: each product
- *  adds at most `b + ⌈log₂ n⌉` bits to an entry of `b` bits. */
+ *  the inverse's.  Held to two budgets before any product ([[withinPowerBudget]]). */
 private[leonardo] def fieldMatrixPower[T](f: ExactField[T], cells: Vector[T], n: Int, k: Long,
-                                          maxBits: Long): Option[Vector[T]] =
+                                          maxBits: Long, maxWork: Long): Option[Vector[T]] =
   val base = if k >= 0 then Some(cells) else fieldInverse(f, cells, n)
-  base.filter { b =>
-    val bits = b.map(f.bits).maxOption.getOrElse(0) + (32 - Integer.numberOfLeadingZeros(n))
-    BigInt(math.abs(k)) * bits <= maxBits
-  }.map { b =>
+  base.filter(withinPowerBudget(f, _, n, math.abs(k), maxBits, maxWork)).map { b =>
     val identity = Vector.tabulate(n * n)(i => if i / n == i % n then f.one else f.zero)
     @annotation.tailrec
     def go(result: Vector[T], factor: Vector[T], e: Long): Vector[T] =
@@ -176,6 +186,28 @@ private[leonardo] def fieldMatrixPower[T](f: ExactField[T], cells: Vector[T], n:
         if e == 1 then next else go(next, fieldProduct(f, factor, factor, n), e >> 1)
     go(identity, b, math.abs(k))
   }
+
+/** Whether `b^k` stays within the budgets (F_0249), estimated before any product.
+ *
+ *  **Denominators are cleared first**: with `D` the lcm of the cells' denominators, `b = M/D` for
+ *  an integer matrix `M`, so `b^k = M^k/D^k`.  Each product adds at most `bits(M) + ⌈log₂ n⌉` bits
+ *  to an entry of `M^k`, and `D^k` has `k·bits(D)`; their sum is held to `maxBits`, the
+ *  `_Rational.pow` rule.  The integer-only estimate `|k|·(b + ⌈log₂ n⌉)` it replaced ignored that a
+ *  reduced denominator is an lcm of path products of distinct denominators: on a 5×5 matrix of
+ *  `1/prime` cells it under-counted by up to seven times and admitted `A^5000`.  **And bits are not
+ *  the cost of a fraction, its gcd reduction is** (F_0248's measurement): the `n³` reductions of
+ *  the last product, each of `size · bits(D^k)`, are held to `maxWork`.  An integer matrix has
+ *  `D = 1` and is held by its size alone, as before.
+ *
+ *  @return whether the power may be attempted
+ */
+private def withinPowerBudget[T](f: ExactField[T], b: Vector[T], n: Int, k: Long, maxBits: Long, maxWork: Long): Boolean =
+  val d     = b.flatMap(f.denominators).foldLeft(BigInt(1))((acc, q) => acc / acc.gcd(q) * q)
+  val logN  = 32 - Integer.numberOfLeadingZeros(n)
+  val entry = BigInt(k) * (b.map(f.scaledBits(_, d)).maxOption.getOrElse(0) + logN)
+  val denom = if d == BigInt(1) then BigInt(0) else BigInt(k) * d.bitLength
+  val size  = entry + denom
+  size <= maxBits && (denom == BigInt(0) || BigInt(n).pow(3) * size * denom <= maxWork)
 
 /** The exact determinant of a square matrix over a field, by Gaussian elimination: a row swap
  *  flips the sign, and a column with no non-zero pivot means a singular matrix, determinant zero. */

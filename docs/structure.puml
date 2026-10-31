@@ -179,6 +179,8 @@ package "core" {
         fieldDeterminant / fieldInverse / fieldLu
         fieldProduct / fieldMatrixPower
         overExactField: two radicals -> working precision
+        F_0249: A^n budget clears denominators,
+          holds size and gcd-reduction work
     }
 
     enum "LogicSemantics" <<data>> [[logic.html]] {
@@ -923,6 +925,7 @@ package "matrix" {
         the shape decides: row/column = vector
         vector 2- and p-norms scaled by the largest modulus
         matrix 2-norm = largest singular value, never eigen(A'A)
+        F_0250: surd cells over Q(sqrt d), exact
     }
 
     class "Rationalize" <<utility>> [[matrix.html]] {
@@ -1942,7 +1945,8 @@ package "statistics" <<Rectangle>> {
         sampleStdDev / Covariance / Correlation
         variance is TWO-PASS: E[X^2]-E[X]^2 loses
           its digits for a large mean (cf. issue 1.1)
-        exact on an exact sample (field ops only);
+        exact on an exact sample (field ops only,
+          over Q(sqrt d) for surds, F_0250);
           stddev needs a root -> core.exactSqrt
     }
 

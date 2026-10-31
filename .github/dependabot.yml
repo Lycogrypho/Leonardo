@@ -44,10 +44,11 @@ updates:
   #
   # Jekyll and its plugins were the last dependency set here that nothing tracked: actions
   # are SHA-pinned above, Scala libraries are versioned in build.sbt and bumped by Scala
-  # Steward. The exposure is real but bounded -- `pages.yml` runs with `contents: read`,
-  # `pages: write`, `id-token: write`, so a compromised gem executing during `jekyll build`
-  # could deface the published site, but cannot reach the GPG signing key in release.yml or
-  # the repository-writing PAT in scala-steward.yml.
+  # Steward. The exposure is real but bounded -- `pages.yml`'s build job, where `jekyll build`
+  # runs, holds only `contents: read`; since F_0217 `pages: write` and `id-token: write` belong
+  # to the separate `deploy` job, which runs no gem. A compromised gem could still alter the
+  # site artifact it builds, but cannot reach the GPG signing key in release.yml or the
+  # repository-writing PAT in scala-steward.yml.
   #
   # THIS ENTRY IS ONLY HALF THE FIX, deliberately. Against a Gemfile alone Dependabot can
   # act only when a release falls OUTSIDE the `~>` constraint -- a jekyll 5.0 -- which

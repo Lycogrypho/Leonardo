@@ -202,7 +202,9 @@ display 3 + 2√13 (grammar √); :save (a + b * d^(1/2))</data>
 RationalField / SurdField(d) over Quad(a, b)
 fieldDeterminant / fieldInverse / fieldLu
 fieldProduct / fieldMatrixPower
-overExactField: two radicals -&gt; working precision</data>
+overExactField: two radicals -&gt; working precision
+F_0249: A^n budget clears denominators,
+holds size and gcd-reduction work</data>
     </node>
     <node id="n16">
         <data key="n_label">LogicSemantics</data>
@@ -1269,7 +1271,8 @@ past MaxExpressionDepth when symbolic</data>
 _Norm(x, NormOrder): a scalar result
 the shape decides: row/column = vector
 vector 2- and p-norms scaled by the largest modulus
-matrix 2-norm = largest singular value, never eigen(A'A)</data>
+matrix 2-norm = largest singular value, never eigen(A'A)
+F_0250: surd cells over Q(sqrt d), exact</data>
     </node>
     <node id="n121">
         <data key="n_label">Rationalize</data>
@@ -2463,7 +2466,8 @@ sampleMean / sampleVariance(ddof)
 sampleStdDev / Covariance / Correlation
 variance is TWO-PASS: E[X^2]-E[X]^2 loses
 its digits for a large mean (cf. issue 1.1)
-exact on an exact sample (field ops only);
+exact on an exact sample (field ops only,
+over Q(sqrt d) for surds, F_0250);
 stddev needs a root -&gt; core.exactSqrt</data>
     </node>
     <node id="n225">

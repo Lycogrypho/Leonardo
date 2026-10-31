@@ -48,6 +48,8 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
+      // F_0248: past the exact tier's budgets the node stays as written, before any BigInt work.
+      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env) => Left(this)
       // ORDER IS LOAD-BEARING: `_Number` is a widening extractor that also matches a
       // `_Rational` (see core._Number.unapply), so the exact case has to come first or two
       // rationals would be read as Doubles and silently lose their exactness.  A MIXED pair
@@ -99,6 +101,7 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
       // multiplying by zero makes an exact zero less exact.
       case (Right(z: _Rational), _) if z.isZero => Right(z)
       case (_, Right(z: _Rational)) if z.isZero => Right(z)
+      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env) => Left(this)   // F_0248
       case (Right(x: _Rational), Right(y: _Rational)) => Right(x.multiply(y, env.rationalPolicy))
       case (Right(x: _Value), Right(y: _Value)) if _Surd.involves(x, y) =>
         _Surd.combine(x, y, env.workingPrecision)(_Surd.multiply, _ * _).toRight(this)
@@ -130,6 +133,7 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
+      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env) => Left(this)   // F_0248
       // Exact tier first — see the ORDER note in Sum.  A zero denominator is the same
       // domain error as below: `divide` returns None and the node stays symbolic.
       case (Right(x: _Rational), Right(y: _Rational)) =>
@@ -225,8 +229,8 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
         matrixPower(m, e).getOrElse(Left(this))
       // A matrix with exact entries stays a symbolic `_Matrix` rather than collapsing, so it
       // arrives here as a `Left`.  Every cell exact and the matrix square: the power is taken over
-      // the rationals by `core.rationalMatrixPower` (F_0227), held to `MaxExactPowerBits` and
-      // declined past it (the `_Rational.pow` rule), and the node rebuilt with the exact cells.
+      // an exact field (F_0227, F_0231), held to `MaxExactPowerBits` and `MaxExactReductionWork`
+      // and declined past them (F_0249), and the node rebuilt with the exact cells.
       // A mixed literal is inexact and is read as dense -- demoting beats losing `A^n`.
       case (Left(m: _MatrixShaped), Right(_Number(e))) if exactSquare(m) =>
         exactMatrixPower(m, e, env).getOrElse(Left(this))
@@ -316,8 +320,9 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
 
   /** `m^e` over the rationals when `m` is square with every cell exact and `e` whole (F_0227);
    *  `None` otherwise, or for a singular base to a negative power, or past
-   *  `Limit.MaxExactPowerBits`.  A singular base declines here and again on the dense path,
-   *  so the node stays unevaluated either way.
+   *  `Limit.MaxExactPowerBits` / `Limit.MaxExactReductionWork` (F_0249).  The caller then leaves
+   *  the node unevaluated: the dense path is not tried for an exact matrix, which it would demote
+   *  (this comment said the opposite until F_0252).
    *
    *  @param m   the exact square matrix node
    *  @param e   the exponent
@@ -330,7 +335,8 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       // F_0231 Decision B: over Q, or over Q(√d) when the surd cells share one radical.
       overExactField(m.children.toVector, env.workingPrecision, env.rationalPolicy)(
         [T] => (f: ExactField[T], c: Vector[T]) =>
-          fieldMatrixPower(f, c, m.rows, e.toLong, env.limits(Limit.MaxExactPowerBits)).map(_.map(f.toValue))
+          fieldMatrixPower(f, c, m.rows, e.toLong, env.limits(Limit.MaxExactPowerBits),
+                           env.limits(Limit.MaxExactReductionWork)).map(_.map(f.toValue))
       ).flatten.map(c => Left(m.rebuild(c.toList)))
 
   /** Whether `m` is square with every cell exact: the operand [[exactMatrixPower]] takes. */
@@ -352,3 +358,33 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
       n >>= 1
       if n > 0 then factor = factor.multiply(factor)
     result
+
+
+/** Whether an exact `+ − × ÷` on `x` and `y` would pass the exact tier's budgets (F_0248),
+ *  estimated before any `BigInt` work: the result's size, `bits(x) + bits(y)`, against
+ *  [[core.Limit.MaxExactOperandBits]], and its gcd reduction, that size times the denominators'
+ *  bits, against [[core.Limit.MaxExactReductionWork]] -- measured, the reduction is what costs,
+ *  so an integer (a one-bit denominator) is held by its size alone.  `false` unless both operands
+ *  are exact, so the `Double`, complex and matrix arms are untouched.
+ *
+ *  @param x   the left operand
+ *  @param y   the right operand
+ *  @param env the environment, whose limits hold the budgets
+ *  @return whether the operation should stay unevaluated
+ */
+private[scalar] def overExactBudget(x: _Value, y: _Value, env: Environment): Boolean =
+  (exactSize(x), exactSize(y)) match
+    case (Some((bx, dx)), Some((by, dy))) =>
+      val size = bx + by
+      size > env.limits(Limit.MaxExactOperandBits) || size * (dx + dy) > env.limits(Limit.MaxExactReductionWork)
+    case _ => false
+
+/** An exact value's size and its denominators' size, in bits: a rational's largest part and its
+ *  denominator; a surd's largest part plus its radicand, and the larger of its parts'
+ *  denominators.  `None` for a value that is not exact. */
+private def exactSize(v: _Value): Option[(Long, Long)] = v match
+  case r: _Rational => Some((r.maxBitLength.toLong, r.den.bitLength.toLong))
+  case s: _Surd     =>
+    Some((math.max(s.a.maxBitLength, s.b.maxBitLength).toLong + s.d.bitLength,
+          math.max(s.a.den.bitLength, s.b.den.bitLength).toLong))
+  case _            => None

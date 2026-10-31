@@ -69,3 +69,21 @@ class ExactLuPowerTest extends AnyFlatSpec:
       case Left(_: _Matrix) | Right(_) => fail("answered past the cap")
       case Left(_)                     => succeed
   }
+
+  /** A 5x5 matrix of distinct `1/prime` cells: the reduced denominators of its powers are lcms of
+   *  path products, which the integer bound `|k|·(b + ⌈log₂ n⌉)` under-counted by up to seven
+   *  times (F_0249), so `A^5000` was admitted and ran for minutes. */
+  private val primes = "[[" + List(2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97)
+    .map(p => s"1/$p").grouped(5).map(_.mkString(", ")).mkString("], [") + "]]"
+
+  it should "decline a rational power whose denominators grow past the budget, promptly (F_0249)" in {
+    val start = System.nanoTime()
+    exact(s"$primes^5000") match
+      case Left(_: _Matrix) | Right(_) => fail("answered past the budget")
+      case Left(_)                     => succeed
+    assert((System.nanoTime() - start) / 1e9 < 5.0, "the refusal must come before the work")
+    // A small power of the same matrix is still answered exactly.
+    exact(s"$primes^3") match
+      case Left(m: _Matrix) => assert(m.elems.forall(_.isInstanceOf[_Rational]), m)
+      case other            => fail(s"$other")
+  }

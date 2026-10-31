@@ -39,6 +39,18 @@ private def exactly(xs: Vector[_Value], env: Environment): Option[Vector[_Ration
     val rs = xs.flatMap(_Surd.exactOf(_, env.workingPrecision))
     Option.when(rs.size == xs.size)(rs)
 
+/** Runs `run` over the field the sample's exact entries share (F_0250): `Q`, or `Q(√d)` for surds of
+ *  one radical, so a surd sample's mean and variance stay surds where they read every surd as its
+ *  own working-precision rational before; two radicals that do not combine fall back to those
+ *  rationals.  `None` when an entry is not exact, and the caller takes the `Double` path. */
+private def overSample[R](xs: Vector[_Value], env: Environment)
+                         (run: [T] => (ExactField[T], Vector[T]) => Option[R]): Option[Option[R]] =
+  if !allExact(xs) then None else overExactField(xs, env.workingPrecision, env.rationalPolicy)(run)
+
+/** The mean of field elements. */
+private def fieldMean[T](f: ExactField[T], cs: Vector[T]): Option[T] =
+  f.div(cs.reduceLeft(f.add), f.fromRational(_Rational(cs.size)))
+
 /** The entries as `Double`s, reading through the widening `_Number` extractor (the one copy
  *  since F_0147; `_Statistic.scala` carried a byte-identical `asDoubles`). */
 private[statistics] def doubles(xs: Vector[_Value]): Option[Vector[Double]] =
@@ -54,12 +66,9 @@ private[statistics] def doubles(xs: Vector[_Value]): Option[Vector[Double]] =
 def sampleMean(xs: Vector[_Value], env: Environment): Option[_Value] =
   if xs.isEmpty then None
   else
-    exactly(xs, env) match
-      case Some(rs) =>
-        val p   = env.rationalPolicy
-        val sum = rs.reduceLeft((a, b) => a.add(b, p))
-        sum.divide(_Rational(rs.size), p)
-      case None => doubles(xs).flatMap(ds => finite(ds.sum / ds.size))
+    overSample(xs, env)([T] => (f: ExactField[T], cs: Vector[T]) => fieldMean(f, cs).map(f.toValue)) match
+      case Some(mean) => mean
+      case None       => doubles(xs).flatMap(ds => finite(ds.sum / ds.size))
 
 /** The variance, dividing by `n − ddof`.
  *
@@ -78,15 +87,12 @@ def sampleVariance(xs: Vector[_Value], ddof: Int, env: Environment): Option[_Val
   val n = xs.size
   if n <= ddof then None      // n = 1 has no unbiased variance, and n = 0 has none at all
   else
-    exactly(xs, env) match
-      case Some(rs) =>
-        val p = env.rationalPolicy
-        for
-          m  <- sampleMean(xs, env).collect { case r: _Rational => r }
-          ss  = rs.map(x => { val d = x.subtract(m, p); d.multiply(d, p) })
-                  .reduceLeft((a, b) => a.add(b, p))
-          v  <- ss.divide(_Rational(n - ddof), p)
-        yield v
+    overSample(xs, env)([T] => (f: ExactField[T], cs: Vector[T]) =>
+      fieldMean(f, cs).flatMap { m =>
+        val ss = cs.map(x => { val d = f.sub(x, m); f.mul(d, d) }).reduceLeft(f.add)
+        f.div(ss, f.fromRational(_Rational(n - ddof))).map(f.toValue)
+      }) match
+      case Some(variance) => variance
       case None =>
         doubles(xs).flatMap { ds =>
           val m = ds.sum / n
@@ -117,17 +123,17 @@ def sampleCovariance(xs: Vector[_Value], ys: Vector[_Value], env: Environment): 
   val n = xs.size
   if n != ys.size || n < 2 then None
   else
-    (exactly(xs, env), exactly(ys, env)) match
-      case (Some(rx), Some(ry)) =>
-        val p = env.rationalPolicy
-        for
-          mx <- sampleMean(xs, env).collect { case r: _Rational => r }
-          my <- sampleMean(ys, env).collect { case r: _Rational => r }
-          ss  = rx.zip(ry).map((a, b) => a.subtract(mx, p).multiply(b.subtract(my, p), p))
-                  .reduceLeft((a, b) => a.add(b, p))
-          v  <- ss.divide(_Rational(n - 1), p)
-        yield v
-      case _ =>
+    // One field for both samples, so a surd in either is read over the same radical.
+    overSample(xs ++ ys, env)([T] => (f: ExactField[T], cs: Vector[T]) =>
+      val (cx, cy) = cs.splitAt(n)
+      for
+        mx <- fieldMean(f, cx)
+        my <- fieldMean(f, cy)
+        ss  = cx.lazyZip(cy).map((a, b) => f.mul(f.sub(a, mx), f.sub(b, my))).reduceLeft(f.add)
+        v  <- f.div(ss, f.fromRational(_Rational(n - 1)))
+      yield f.toValue(v)) match
+      case Some(covariance) => covariance
+      case None =>
         for
           dx <- doubles(xs); dy <- doubles(ys)
           mx  = dx.sum / n; my = dy.sum / n

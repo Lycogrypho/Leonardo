@@ -304,14 +304,16 @@ display 3 + 2√13 (grammar √); :save (a + b * d^(1/2))</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/developer.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="140.0" width="412.0" x="0.0" y="0.0"/>
+              <y:Geometry height="172.0" width="412.0" x="0.0" y="0.0"/>
               <y:Fill color="#FFFFFF" transparent="false"/>
               <y:BorderStyle color="#555577" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">ExactField</y:NodeLabel>
               <y:UML stereotype="trait">
                 <y:AttributeLabel>fieldDeterminant / fieldInverse / fieldLu
 fieldProduct / fieldMatrixPower
-overExactField: two radicals -&gt; working precision</y:AttributeLabel>
+overExactField: two radicals -&gt; working precision
+F_0249: A^n budget clears denominators,
+holds size and gcd-reduction work</y:AttributeLabel>
                 <y:MethodLabel>-- F_0231 Decision B: Q or Q(√d) --
 RationalField / SurdField(d) over Quad(a, b)</y:MethodLabel>
               </y:UML>
@@ -2096,7 +2098,7 @@ past MaxExpressionDepth when symbolic</y:AttributeLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/matrix.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="140.0" width="468.0" x="0.0" y="0.0"/>
+              <y:Geometry height="156.0" width="468.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">Norm</y:NodeLabel>
@@ -2105,7 +2107,8 @@ past MaxExpressionDepth when symbolic</y:AttributeLabel>
 vector 2- and p-norms scaled by the largest modulus</y:AttributeLabel>
                 <y:MethodLabel>-- F_0039: norm(x[, 1 | 2 | inf | fro | p]) --
 _Norm(x, NormOrder): a scalar result
-matrix 2-norm = largest singular value, never eigen(A'A)</y:MethodLabel>
+matrix 2-norm = largest singular value, never eigen(A'A)
+F_0250: surd cells over Q(sqrt d), exact</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -4110,7 +4113,7 @@ MaxLpWork bounds the time (~2 s on Node, measured)</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/developer.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="188.0" width="364.0" x="0.0" y="0.0"/>
+              <y:Geometry height="204.0" width="364.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">Descriptive</y:NodeLabel>
@@ -4122,7 +4125,8 @@ stddev needs a root -&gt; core.exactSqrt</y:AttributeLabel>
                 <y:MethodLabel>entries row-major (shape irrelevant)
 sampleMean / sampleVariance(ddof)
 its digits for a large mean (cf. issue 1.1)
-exact on an exact sample (field ops only);</y:MethodLabel>
+exact on an exact sample (field ops only,
+over Q(sqrt d) for surds, F_0250);</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>

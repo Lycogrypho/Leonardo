@@ -99,10 +99,15 @@ private def kindOf(v: _Value): Option[NormKind] = v match
 private def vectorNorm(cells: Vector[_Expression], k: NormKind, env: Environment): Option[Either[_Expression, _Value]] =
   val values = cells.collect { case v: _Value => v }
   val parts  = values.flatMap(_Complex.parts)
-  // A surd cell is read as its working-precision rational (F_0231), the value it stood for
-  // before; the norm of rational cells is itself exact or a surd.
+  // Exact cells are read over one field (F_0250): surds of one radical stay surds, so the 1- and
+  // inf-norms are exact and a 2-norm whose squares are rational is the exact root.  Read as
+  // working-precision rationals they gave 2.41421 for |sqrt 2| + 1, and a 2-norm rooted a
+  // ~110-digit rational.  Two radicals that do not combine are still read that way.
   if parts.size == cells.size && values.forall(_Surd.isExact) then
-    exactVectorNorm(values.flatMap(_Surd.exactOf(_, env.workingPrecision)), k, env)
+    fieldCells(values) match
+      case Some(FieldCells.OverSurd(d, qs)) => surdVectorNorm(SurdField(d, env.rationalPolicy), values, qs, k, env)
+      case Some(FieldCells.OverQ(rs))       => exactVectorNorm(rs, k, env)
+      case None                             => exactVectorNorm(values.flatMap(_Surd.exactOf(_, env.workingPrecision)), k, env)
   else if parts.size == cells.size then doubleVectorNorm(parts.map((re, im) => math.hypot(re, im)), k)
   else symbolicVectorNorm(cells, k, env)
 
@@ -133,6 +138,24 @@ private def exactVectorNorm(rs: Vector[_Rational], k: NormKind, env: Environment
     case NormKind.Two | NormKind.Fro =>
       _Surd.sqrtOf(abs.map(a => a.multiply(a, policy)).reduceLeft((a, b) => a.add(b, policy))).map(Right(_))
     case NormKind.P(_, _) => symbolicVectorNorm(abs, k, env)
+
+/** The norm of cells over `Q(√d)` (F_0250): `|x|` is `x` or `−x` by its exact sign, the 1-norm
+ *  and the sum of squares are field sums, the inf-norm the exact largest; the 2-norm is the exact
+ *  root when the sum of squares is rational, else a working-precision rational -- the root of
+ *  `a + b√d` is no surd.  A `p`-norm goes through `Power`, as for rationals. */
+private def surdVectorNorm(f: SurdField, values: Vector[_Value], qs: Vector[Quad], k: NormKind,
+                           env: Environment): Option[Either[_Expression, _Value]] =
+  val negative = values.map(v => _Surd.signum(v).exists(_ < 0))
+  val absQ     = qs.lazyZip(negative).map((q, neg) => if neg then f.negate(q) else q)
+  val absV     = absQ.map(f.toValue)
+  k match
+    case NormKind.One => Some(Right(f.toValue(absQ.reduceLeft(f.add))))
+    case NormKind.Inf => Some(Right(absV.reduceLeft((a, b) => if _Surd.compareExact(a, b).exists(_ >= 0) then a else b)))
+    case NormKind.Two | NormKind.Fro =>
+      f.toValue(absQ.map(q => f.mul(q, q)).reduceLeft(f.add)) match
+        case r: _Rational => _Surd.sqrtOf(r).map(Right(_))
+        case s            => _Surd.toReal(s).flatMap(x => fromReal(x.sqrt, env.workingPrecision)).map(Right(_))
+    case NormKind.P(_, _) => symbolicVectorNorm(absV, k, env)
 
 /** The norm of cells that are not all numbers, built from `abs`, `+` and powers: the sum is
  *  accumulated one term at a time and refused past the expression-depth limit, and the max-norm

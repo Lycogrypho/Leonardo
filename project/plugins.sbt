@@ -13,6 +13,16 @@ addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.1.1")
 //
 // Check https://mvnrepository.com/artifact/com.github.sbt/sbt-ci-release for the latest.
 addSbtPlugin("com.github.sbt"     % "sbt-ci-release"   % "1.12.1")
+// F_0253: sbt-pgp 2.3.2 (from sbt-ci-release 1.12.1, both the latest) resolves BouncyCastle
+// 1.78.1, which carries advisories (GHSA-574f-3g2m-x479, GHSA-9pwp-9qqc-pr26,
+// GHSA-c3fc-8qff-9hwx, GHSA-qp49-qgx5-5m26 on bcprov; CVE-2026-3505 fixed in 1.84); 1.86 has none
+// (deps.dev, 2026-10-30).  Build-time only -- it runs in release.yml's publish job and never
+// reaches a published POM -- so the override costs nothing a consumer sees.  REMOVE IT once
+// sbt-pgp itself depends on BC >= 1.84: an override left behind would pin an old version later.
+dependencyOverrides ++= Seq(
+  "org.bouncycastle" % "bcpg-jdk18on"   % "1.86",
+  "org.bouncycastle" % "bcprov-jdk18on" % "1.86",
+)
 // One combined Scaladoc across both modules (issue 5.2 phase 1.1). Without it the module
 // split would fragment the published /api into two disjoint trees, and `cli` would drop out
 // of the API reference entirely. Build-only, like PlantUML: an sbt plugin never appears in a

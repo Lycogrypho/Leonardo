@@ -42,8 +42,9 @@ private[leonardo] def rationalInverse(cells: Vector[_Rational], n: Int,
  *  @param k       the exponent
  *  @param policy  the reduction policy
  *  @param maxBits the most bits an entry may reach
- *  @return the cells of the power, or `None` for a singular base to a negative power or past
- *          `maxBits` */
+ *  @param maxWork the reduction work the last product may cost (F_0249)
+ *  @return the cells of the power, or `None` for a singular base to a negative power or past a
+ *          budget */
 private[leonardo] def rationalMatrixPower(cells: Vector[_Rational], n: Int, k: Long, policy: GcdPolicy,
-                                          maxBits: Long): Option[Vector[_Rational]] =
-  fieldMatrixPower(RationalField(policy), cells, n, k, maxBits)
+                                          maxBits: Long, maxWork: Long): Option[Vector[_Rational]] =
+  fieldMatrixPower(RationalField(policy), cells, n, k, maxBits, maxWork)

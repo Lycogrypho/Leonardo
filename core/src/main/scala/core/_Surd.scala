@@ -56,16 +56,28 @@ object _Surd:
     else exactRoot(d) match
       case Some(r) => Some(a.add(b.multiply(_Rational(r))))
       case None    =>
-        val (coef, rest) = (2 to TrialRoot).foldLeft((BigInt(1), d)) { case ((c, m), k) =>
-          val sq = BigInt(k) * k
-          if sq > m then (c, m)
-          else
-            @annotation.tailrec
-            def strip(c0: BigInt, m0: BigInt): (BigInt, BigInt) =
-              if m0 % sq == 0 then strip(c0 * k, m0 / sq) else (c0, m0)
-            strip(c, m)
-        }
+        val (coef, rest) = stripSquares(d)
         Some(new _Surd(a, b.multiply(_Rational(coef)), rest))
+
+  /** `d` as `c²·m` with every `k²`, `k <= TrialRoot`, moved into `c`, **stopping once `k²` passes
+   *  what is left** (F_0252): the loop used to run all 999 divisors whatever the radicand. */
+  private def stripSquares(d: BigInt): (BigInt, BigInt) =
+    @annotation.tailrec
+    def loop(k: Int, c: BigInt, m: BigInt): (BigInt, BigInt) =
+      val sq = BigInt(k) * k
+      if k > TrialRoot || sq > m then (c, m)
+      else if m % sq == 0 then loop(k, c * k, m / sq)
+      else loop(k + 1, c, m)
+    loop(2, BigInt(1), d)
+
+  /** `a + b·√d` for a radicand taken from an existing surd (F_0252): already free of small squares
+   *  and not a perfect square, so only the collapse when `b` vanishes is left -- [[of]]'s root test
+   *  and trial division would find nothing, at the cost of an integer square root and up to 999
+   *  divisions per operation.  `d = 1` is the radicand of two rationals aligned. */
+  private def kept(a: _Rational, b: _Rational, d: BigInt): Option[_Value] =
+    if b.isZero then Some(a)
+    else if d == BigInt(1) then Some(a.add(b))
+    else Some(new _Surd(a, b, d))
 
   /** The exact square root of a non-negative rational: `√(p/q) = √(p·q)/q`.
    *  @param r the radicand
@@ -104,11 +116,11 @@ object _Surd:
 
   /** `x + y`, exactly, when both share a radical. */
   def add(x: _Value, y: _Value): Option[_Value] =
-    aligned(x, y).flatMap((a1, b1, a2, b2, d) => of(a1.add(a2), b1.add(b2), d))
+    aligned(x, y).flatMap((a1, b1, a2, b2, d) => kept(a1.add(a2), b1.add(b2), d))
 
   /** `-x`. */
   def negate(x: _Value): Option[_Value] =
-    parts(x).flatMap((a, b, d) => of(a.negate, b.negate, d))
+    parts(x).flatMap((a, b, d) => kept(a.negate, b.negate, d))
 
   /** `x − y`, exactly, when both share a radical. */
   def subtract(x: _Value, y: _Value): Option[_Value] = negate(y).flatMap(add(x, _))
@@ -116,7 +128,7 @@ object _Surd:
   /** `x · y = (a₁a₂ + b₁b₂d) + (a₁b₂ + a₂b₁)√d`, exactly, when both share a radical. */
   def multiply(x: _Value, y: _Value): Option[_Value] =
     aligned(x, y).flatMap { (a1, b1, a2, b2, d) =>
-      of(a1.multiply(a2).add(b1.multiply(b2).multiply(_Rational(d))), a1.multiply(b2).add(a2.multiply(b1)), d)
+      kept(a1.multiply(a2).add(b1.multiply(b2).multiply(_Rational(d))), a1.multiply(b2).add(a2.multiply(b1)), d)
     }
 
   /** `x / y`, by the conjugate: `x·(a₂ − b₂√d) / (a₂² − b₂²d)`.  The denominator vanishes only for
@@ -129,12 +141,12 @@ object _Surd:
       if den.isZero then None
       else
         for
-          conj <- of(a2, b2.negate, d)
+          conj <- kept(a2, b2.negate, d)
           num  <- multiply(x, conj)
           (na, nb, nd) <- parts(num)
           qa <- na.divide(den)
           qb <- nb.divide(den)
-          q  <- of(qa, qb, nd)
+          q  <- kept(qa, qb, nd)
         yield q
     }
 

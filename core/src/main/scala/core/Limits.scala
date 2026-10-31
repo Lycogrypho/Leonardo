@@ -163,6 +163,21 @@ enum Limit(val default: Long):
    *  `gd` 52 / 305 ms, `newton` 0.32 / 1.7 s; at 200, `pbfgs` 0.34 / 1.4 s; at 400, 2.5 / 8.9 s. */
   case MaxMinimizeVariables extends Limit(100)
 
+  // ── the exact tier's arithmetic (F_0248) ──
+
+  /** The bits an exact `+ − × ÷` result may reach, estimated as `bits(x) + bits(y)` before the
+   *  `BigInt` work (F_0248; `pow` has its own, [[MaxExactPowerBits]]).  A share link could double
+   *  an operand per line, `b := a*a`, `c := b*b`, and nothing held it.  Measured on integers, JVM /
+   *  Node: two 2¹⁹-bit operands multiply in 0.24 / 0.78 s, two 2²⁰-bit ones in 1.0 / 2.8 s. */
+  case MaxExactOperandBits extends Limit(1048576)
+  /** The gcd reduction an exact fraction's result may cost, estimated as its size times its
+   *  denominator's, `(bits(x) + bits(y))·(denBits(x) + denBits(y))` (F_0248).  **The reduction, not
+   *  the product, is what costs**: measured, JVM / Node, a product or sum of two fractions with
+   *  2¹⁴-bit parts takes 0.04–0.10 / 0.23–0.28 s, 2¹⁵-bit parts (the cap) 0.15–0.29 / 0.88–1.13 s,
+   *  2¹⁶-bit parts 0.55 / 3.6 s and 2¹⁸-bit parts 8.3 / 64 s, where two 2¹⁸-bit integers take
+   *  0.03 / 0.15 s.  An integer's denominator is one bit, so integers are held by size alone. */
+  case MaxExactReductionWork extends Limit(4294967296L)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

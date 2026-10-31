@@ -158,9 +158,11 @@ Parser.parse("norm([[1, -2], [-3, 4]], inf)").get.eval(env)
 Parser.parse("norm([[1, -2], [-3, 4]])").get.eval(env)
 ```
 
-All four stay exact on exact cells (a 2-norm's root at the working precision; the matrix
-2-norm demotes, as `svd` does) and build a symbolic answer from symbolic cells, except the
-max-norm and a matrix's operator norms, which stay unevaluated. A `Double` 2-norm is scaled by
+All four stay exact on exact cells, surds of one radical included: `norm([[2], [3]])` is `√13`
+and `norm([[√2], [1]], 1)` is `1 + √2`; a 2-norm whose sum of squares is not rational takes
+its root at the working precision, and the matrix 2-norm demotes, as `svd` does.  Symbolic
+cells give a symbolic answer, except the max-norm and a matrix's operator norms, which stay
+unevaluated. A `Double` 2-norm is scaled by
 its largest entry before squaring, so `norm([[1e200], [1e200]])` is not an overflow.
 
 ## Dense evaluation

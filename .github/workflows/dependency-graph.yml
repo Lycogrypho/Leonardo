@@ -43,6 +43,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # F_0251: the stored credential would sit in .git/config, with this job's
+        # `contents: write`, while sbt loads the build to extract the graph. The submission
+        # action takes its own token input and needs none of it -- the F_0217 rule of release.yml.
+        with:
+          persist-credentials: false
 
       - name: Set up JDK
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
