@@ -25,10 +25,6 @@ the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
 ## 3.8.3 — 2026-11-01
 
-*Gathered for the next release; rename to its version before tagging.  Everything on `main`
-since 3.8.2 (which was cut from a maintenance branch and carried one fix) is here.  MiMa finds no
-binary change against 3.8.2 so far, so the number is decided at release time from its report.*
-
 **New in the library and at the prompt**
 
 - **Optimisation, a new package.** `stationary` lists every stationary point of a polynomial

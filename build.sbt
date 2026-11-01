@@ -635,3 +635,11 @@ addCommandAlias("checks",
 // docs/structure.graphml. Run after editing docs/structure.puml, beside `sbt puml`; the
 // `checks` alias fails while the committed copy is stale.
 addCommandAlias("graphml", ";tools/runMain it.grypho.scala.leonardo.tools.graphml")
+
+// The build's own plugin tree against osv.dev (F_0001 step 2a, the owner's Decision 2): run BY
+// HAND before each tag and never in `checks` or ci.yml, since it sends the coordinates to a third
+// party.  `reload plugins` enters the meta-build, whose `osvClasspath` (project/osv.sbt) writes its
+// classpath; `reload return` comes back and the forked tool maps each jar to a coordinate and asks.
+addCommandAlias("osvPlugins",
+  ";reload plugins ;osvClasspath ;reload return" +
+  " ;tools/runMain it.grypho.scala.leonardo.tools.osv target/osv/plugin-classpath.txt")
