@@ -51,7 +51,9 @@ class ExactOperandBudgetTest extends AnyFlatSpec:
     val base  = _Rational.of(BigInt(3), BigInt(7)).getOrElse(fail("no fraction"))
     val start = System.nanoTime
     val p     = base.pow(300000).getOrElse(fail("declined"))   // 17.9 s on the JVM before
-    assert((System.nanoTime - start) / 1e9 < 2.0)
+    // 8 s, not 2: Node took 2.8 s in a loaded full run (the BigInt powers alone), and the gcd this
+    // pins as gone costs several times that on either platform.
+    assert((System.nanoTime - start) / 1e9 < 8.0)
     assert(p.num == BigInt(3).pow(300000) && p.den == BigInt(7).pow(300000))
     // An unreduced base still comes out in lowest terms, the sign in the numerator.
     val unreduced = _Rational.of(BigInt(-4), BigInt(6)).getOrElse(fail("no fraction"))

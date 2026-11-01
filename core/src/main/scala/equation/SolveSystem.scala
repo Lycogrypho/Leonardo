@@ -176,9 +176,8 @@ private def solveDetermined(
         // contradiction.  Each row is first divided, exactly, by its largest entry (F_0260): the
         // agreement test has an absolute floor of 1, so a system written in units of 10⁻³¹ read
         // every coefficient as zero and declined.  The readings carry the working precision
-        // relative to each value's own size: `exactOf` keeps an absolute number of decimals, so
-        // `√2·10⁻³¹` read as `0` before any test could look at it.
-        val rs = vs.flatMap(c => _Surd.exactOf(c, env.workingPrecision + decadesBelowOne(c)))
+        // relative to each value's own size since F_0271, so `√2·10⁻³¹` no longer reads as `0`.
+        val rs = vs.flatMap(c => _Surd.exactOf(c, env.workingPrecision))
         Option.when(rs.size == vs.size)(
           solveOver(RationalField(policy, budget), normalisedRows(rs, m, n, policy),
                     (r: _Rational) => agreeToWorkingPrecision(r, _Rational.Zero, env)))
@@ -205,12 +204,6 @@ private def solveDetermined(
         variables.zip(xs).map((v, x) => _Equation(v, simplifyFully(x).eval(env).toExpression))
       )
 
-
-/** How many decades a value lies below `1`, so a reading at absolute decimals keeps its relative
- *  precision (F_0260); `0` for a value of size `1` or more, or zero. */
-private def decadesBelowOne(v: _Value): Int = v match
-  case _Number(d) if d != 0.0 && math.abs(d) < 1.0 => math.ceil(-math.log10(math.abs(d))).toInt
-  case _                                           => 0
 
 /** `[A | b]`, row-major `A` then `b`, with each row divided exactly by its largest entry in
  *  magnitude (F_0260), so a zero test at the working precision is relative to the row's own size.

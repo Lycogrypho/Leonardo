@@ -334,7 +334,7 @@ Parser.parse("cond([[1, 0], [0, 0.001]])").get.eval(env).toExpression.toString
 Two bases are read off the same decomposition, at the same rank. `nullspace(A)` returns an
 orthonormal basis of the null space `{x : A·x = 0}` as the columns of an `n×(n − rank)` matrix,
 and `orth(A)` an orthonormal basis of the range as an `m×rank` one; both take `rank`'s optional
-tolerance, so `cols(nullspace(A)) + cols(orth(A)) = n` always holds. A subspace with no basis —
+tolerance, so `size(nullspace(A), 2) + size(orth(A), 2) = n` always holds. A subspace with no basis —
 the null space of a full-column-rank matrix, the range of the zero matrix — answers `false`, since
 a matrix cannot have zero columns. A basis is unique only up to rotation, so check one by what it
 does, not by its entries:

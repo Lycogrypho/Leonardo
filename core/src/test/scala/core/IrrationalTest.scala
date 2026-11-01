@@ -166,10 +166,18 @@ class IrrationalTest extends AnyFlatSpec:
            "asin beyond 1 is not a real value")
   }
 
-  "sin(pi)" should "stay exactly zero at every precision" in
+  "sin(pi)" should "be below the working precision and equal to 0 at it" in
   {
+    // `pi` is its reading at the working precision, so sin(pi) is the sine of that reading:
+    // exactly 0 by decimal places until F_0271, a nonzero value below 10^-wp since (the
+    // owner's Decision 3 keeps the working precision in significant digits for a nonzero value).
+    // Its equality with 0 is decided at the working precision (F_0177), and holds.
     for digits <- List(15, 30, 60) do
-      assert(rational("sin(pi)", digits) == _Rational.Zero, s"sin(pi) @$digits")
+      val s = rational("sin(pi)", digits)
+      assert(s.abs.toBigDecimal(digits + 20) < BigDecimal(s"1e-$digits"), s"sin(pi) @$digits = $s")
+      at("sin(pi) == 0", digits) match
+        case Right(b) => assert(b == _Bool(true), s"sin(pi) == 0 @$digits")
+        case other    => fail(s"$other")
   }
 
   // --- display must not report a non-zero value as zero ---
@@ -227,4 +235,49 @@ class IrrationalTest extends AnyFlatSpec:
       case Parser.Success(e, _) =>
         assert(e.eval(new Environment()) == Right(_Number(math.sin(1.0 / 3.0))))
       case other => fail(s"parse failed: $other")
+  }
+
+  // --- F_0271: decimal places, but never fewer significant digits for a nonzero value ---
+
+  /** The relative difference of an exact reading from a reference decimal. */
+  private def relativeError(r: _Rational, reference: String): BigDecimal =
+    val ref = BigDecimal(reference)
+    ((r.toBigDecimal(80) - ref) / ref).abs
+
+  "a small irrational" should "keep the working precision in significant digits, not read as 0 (F_0271)" in
+  {
+    // By decimal places alone exp(-100) read as 0 at 30 digits and exp(-60) kept one digit.  Each
+    // is checked against its reciprocal, which is above one and so read exactly as before.
+    for k <- List(60, 100, 1000) do
+      val small = rational(s"exp(-$k)", 30)
+      val large = rational(s"exp($k)", 30)
+      assert(!small.isZero, s"exp(-$k) read as 0")
+      assert((small.multiply(large).toBigDecimal(60) - 1).abs < BigDecimal("1e-28"), s"exp(-$k) = $small")
+    // ln(1 + 10^-40) is 10^-40 to forty digits; it read as 0.
+    val l = rational("ln(1 + 10^-40)", 30)
+    assert(relativeError(l, "1e-40") < BigDecimal("1e-29"), s"$l")
+  }
+
+  it should "leave a value of one or more exactly as it was" in
+  {
+    // The places only grow below one: e and exp(10) read as before.
+    val e = rational("exp(1)", 30)
+    assert(e == fromReal(spire.math.Real.e, 30).getOrElse(fail("no e")))
+    assert(e.den.bitLength <= 100, s"e carries 30 places, not more: ${e.den.bitLength} bits")
+  }
+
+  "a kernel's rational zero" should "be exactly zero, read without a search (F_0271)" in
+  {
+    // sin(0), tan(0), asin(0), atan(0), ln(1) and acos(1) are built as exact Reals, so the
+    // magnitude search, which cannot end on a true zero before its cap, never runs.
+    for s <- List("sin(0)", "tan(0)", "asin(0)", "atan(0)", "ln(1)", "acos(1)") do
+      val start = System.nanoTime
+      assert(rational(s, 30).isZero, s)
+      assert((System.nanoTime - start) / 1e9 < 0.5, s"$s took the search path")
+  }
+
+  "a value below the reading's reach" should "read at the decimal places, as before (F_0271)" in
+  {
+    // Past MaxReadingDecades the search settles for the places alone.
+    assert(rational(s"exp(-${3 * MaxReadingDecades})", 30).isZero)
   }

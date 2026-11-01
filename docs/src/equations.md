@@ -8,6 +8,9 @@ nav_order: 7
 # Equations & Complex Numbers
 <div style="clear:both"></div>
 
+*New to solving at the prompt? **[R5 — Equations](lessons/r5.md)** walks through `solve` and
+its answers in one short lesson. This page is the reference.*
+
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.core.*
 import it.grypho.scala.leonardo.scalar.*

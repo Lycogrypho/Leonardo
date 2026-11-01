@@ -94,14 +94,16 @@ from the session after every line rather than tracked alongside it.
 
 | Weight over the wire | |
 |---|---|
-| Leonardo, the whole CAS | 3.46 MB raw, **475 KB gzipped** |
+| Leonardo, the whole CAS | 7.27 MB raw, **957 KB gzipped** (measured 2026-11-01) |
 | Plotly (`cartesian` distribution, vendored) | 1.3 MB raw, **436 KB gzipped** |
 | MathLive (full build, with the math editor, vendored) | 845 KB raw, **228 KB gzipped** |
 | The KaTeX maths fonts | 254 KB, fetched **only when a formula or the editor needs them** |
 
-About a megabyte for a computer algebra system with interactive plotting and typeset output,
-which is what removed the one real risk in the plan: no module splitting and no lazy loading
-is needed.
+About 1.6 MB on a first visit for a computer algebra system with interactive plotting and
+typeset output, then nothing: the files are cached, and a session never fetches another script.
+The CAS has doubled since the first measurement (3.46 MB raw, 475 KB gzipped) as the library
+grew; one download of that size is still no reason for module splitting or lazy loading, which
+would add a second request at the moment a user first types a command.
 
 **MathLive's full build is vendored**, because the page has a math editor: the `<math-field>`
 element and the conversion functions the typesetting uses come in one file (it replaced the

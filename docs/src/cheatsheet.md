@@ -20,13 +20,13 @@ For full detail on any command run `help <command>` at the REPL prompt.
 | `help` / `?` | Full command listing |
 | `help <cmd>` / `? <cmd>` | Detail for one command |
 | `env` / `vars` | Show all bindings and definitions |
-| `precision <n>` | Set display/comparison precision (default 5) |
+| `precision <n>` | Set display/comparison precision (default 5, 0 to 15) |
 | `colors dark\|light\|none` | Syntax-highlight scheme (default `dark`) |
 | `pretty on\|off` | Multi-line matrix display, echo included, and answers written with the fewest brackets and a binary minus, `4 - k*k` (default `off`); `:save` is unchanged; turns `latex` off |
 | `latex on\|off` | Also render each result as LaTeX (default `off`); the printed text is unchanged, and the browser REPL typesets it *beside* the text. Turns `pretty` off — a typeset matrix already carries the layout |
 | `names on\|off` | Announce each newly-seen free variable (default `off`). A name used as a function it is not — `sqrt(x)` — is reported whatever this is set to |
 | `exact on\|off` | Exact rational arithmetic (default `off`); a square root of a fraction stays an exact surd, `√13` or `(3 + 2√2)`, typed with `√` (`√13`, `2√13`, `√(x + 1)`) and saved in ASCII as `13^(1/2)`; a quadratic's irrational roots and a 2-norm come back as exact surds (`norm([[2], [3]])` is `√13`) |
-| `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000) |
+| `exact precision <n>` | Digits an irrational is approximated to (default 30, 1 to 1000): decimal places, and never fewer significant digits for a value below one, so `exp(-100)` is `3.7201E-44`, not `0` |
 | `rationalize(x[, digits])` | Every decimal of `x` as its nearest fraction; the default digits are the fewest that give the small fractions the decimals look like (`1.9999999999999991` → `2`), else the working precision at most 15; a complex value or an interval declines. Offered in a note when an exact input came back as decimals that look exact |
 | `simplify <expr>` | Structural simplification, after evaluating every call in the expression (a derivative, a solver, `sin(1)`) as plain evaluation would. Definitions are expanded, numeric bindings are not |
 | `expand <expr>` | Distribute products over sums and collect like terms; same preparation as `simplify`. An answer in one variable is written by **descending** degree (`(x + 1)^2` → `x^2 + 2x + 1`); several variables keep the order they first appear in. A sum over a numeric divisor is divided term by term: `(4x3 + 6x4)/2` → `2x3 + 3x4`. A product whose expansion would be deeper than 200 levels (about 200 terms) is left as written, with a note |
@@ -177,11 +177,11 @@ unevaluated on a complex or truth value and on a name with no value yet.
 | Syntax | Result | Notes |
 |---|---|---|
 | `fact(5)` | `120.0` | Exact for integers up to `170!`; `171!` stays symbolic |
-| `fact(0.5)` | `0.88623` | Analytic continuation, = `Gamma(1.5)` = `sqrt(pi)/2` |
+| `fact(0.5)` | `0.88623` | Analytic continuation, = `Gamma(1.5)` = `√pi/2` |
 | `dfact(7)` | `105.0` | Double factorial `7!! = 7*5*3*1` |
 | `mfact(10, 3)` | `280.0` | Multifactorial, step 3: `10*7*4*1` |
 | `Gamma(5)` | `24.0` | `Gamma(n) = (n-1)!`. Capitalised so that lowercase `gamma` remains usable as an ordinary variable name. Poles (0, -1, -2, ...), overflow and complex arguments all stay symbolic rather than returning infinities |
-| `Gamma(0.5)` | `1.77245` | = `sqrt(pi)` |
+| `Gamma(0.5)` | `1.77245` | = `√pi` |
 | `lgamma(1e5)` | | `ln\|Gamma\|` — finite where `Gamma` overflows |
 | `Beta(1, 4)` | `0.25` | `Gamma(a)Gamma(b)/Gamma(a+b)`; capitalised so that `beta` remains a variable name |
 | `Γ(5)` | `24.0` | Greek alias; type it with `ALT-\ g` or `ALT-G`. Parses to the same node; `toString` always emits the ASCII spelling, so `:save` scripts stay portable |
@@ -244,7 +244,7 @@ unevaluated on a complex or truth value and on a name with no value yet.
 | `pvariance(x)` / `pstddev(x)` | Population forms, dividing by `n` |
 | `covariance(x, y)` / `correlation(x, y)` | Two-sample statistics |
 | `regress(X, y)` | Least squares by QR; no intercept column added |
-| `regress(X, y, lambda)` | Ridge: `min \|X b - y\|^2 + lambda \|b\|^2`, `lambda >= 0`; by QR on `[X; sqrt(lambda) I]`, never `X'X` |
+| `regress(X, y, lambda)` | Ridge: `min \|X b - y\|^2 + lambda \|b\|^2`, `lambda >= 0`; by QR on `[X; √lambda I]`, never `X'X` |
 | `wregress(X, y, w)` | Weighted: `min sum w_i (x_i b - y_i)^2`, each `w_i >= 0`; a zero weight drops its row |
 | `rls(theta, P, phi, y, lambda)` | One recursive-least-squares update → `[[theta', P']]`; `theta` n x m, `P` n x n, `phi` n x 1, `y` m x 1 (or a number), `lambda` in (0, 1]; use `theta, P := rls(theta, P, ...)` |
 | `median(x)` | The middle order statistic; for a distribution, its 0.5 quantile |
@@ -295,8 +295,8 @@ An answer that cannot be proved complete is not given: the call stays as written
 |---|---|
 | `derive(sin(x), x)` | `cos(x)` |
 | `derive(x^3, x)` | `(3.0 * (x ^ 2.0))` |
-| `derive(f, x, y)` | Mixed partial ∂²f/∂x∂y |
-| `derive(f, x, x)` | Second derivative d²f/dx² |
+| `derive(derive(f, x), y)` | Mixed partial ∂²f/∂x∂y; at the prompt `derive` takes one variable (the varargs `derive(e, x, y)` is library API) |
+| `derive(derive(f, x), x)` | Second derivative d²f/dx² |
 
 ### Indefinite integration
 
@@ -320,7 +320,7 @@ An answer that cannot be proved complete is not given: the call stays as written
 | `integral(1/(x^2 + 1)^0.5, x)` | `asinh(x)` | Hyperbolic substitution |
 | `integral(1/(2 + cos(x)), x)` | | Weierstrass `t = tan(x/2)` |
 | `integral(sin(x)/x, x)` | `Si(x)` | Special integral functions |
-| `integral(exp(-x^2), x)` | `sqrt(pi)/2 * erf(x)` | |
+| `integral(exp(-x^2), x)` | `(0.88623 * erf(x))` | `√pi/2 · erf(x)` |
 | `integral(1/ln(x), x)` | `li(x)` | |
 | `integral(asin(x), x)` | `x*asin(x) + (1-x^2)^0.5` | From the data-driven table |
 | `integral(sin(2*x)*cos(5*x), x)` | | Product-to-sum |
@@ -497,13 +497,13 @@ round-trip, while remaining usable as `255` everywhere.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `0b1011` | `1011` | Binary literal (= 11) |
-| `0o17` | `17` | Octal (= 15) |
-| `0xff` | `FF` | Hexadecimal (= 255) |
-| `0t1TT` | `1TT` | Balanced ternary, digits 1, 0, T = -1 (= 5) |
-| `tobase(255, 16)` | `FF` | Any radix 2..36 |
-| `balanced(5)` | `1TT` | Balanced ternary conversion |
-| `0xFF + 1` | `256` | Arithmetic is decimal: the tag is display-only |
+| `0b1011` | `0b1011` | Binary literal (= 11) |
+| `0o17` | `0o17` | Octal (= 15) |
+| `0xff` | `0xFF` | Hexadecimal (= 255) |
+| `0t1TT` | `0t1TT` | Balanced ternary, digits 1, 0, T = -1 (= 5) |
+| `tobase(255, 16)` | `0xFF` | Any radix 2..36; a radix with no prefix prints as the `tobase` call |
+| `balanced(5)` | `0t1TT` | Balanced ternary conversion |
+| `0xFF + 1` | `256.0` | Arithmetic is decimal: the tag is display-only |
 
 ---
 
@@ -605,10 +605,10 @@ unaffected.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `(2 + 3i) * (1 - i)` | `(5.0 + 1.0i)` | |
+| `(2 + 3i) * (1 - i)` | `(5.0 + i)` | |
 | `exp(i * pi)` | `-1.0` | Euler's formula |
-| `(-1)^0.5` | `(0.0 + 1.0i)` | Principal value |
-| `ln(-1)` | `(0.0 + 3.14159i)` | |
+| `(-1)^0.5` | `i` | Principal value |
+| `ln(-1)` | `3.14159i` | |
 
 ---
 

@@ -49,11 +49,27 @@ val GuardDigits: Int = 10
 def toReal(r: _Rational): Real =
   Real(SpireRational(r.num, r.den))
 
-/** Materialises a `Real` back into the exact tier at `digits` decimal places.
+/** How many decades below one a reading looks for a small nonzero value before it settles for
+ *  the decimal places alone (F_0271).
+ *
+ *  A `Real` that is exactly zero reads as zero at every precision, so the search needs an end;
+ *  the trivial zeros of the kernels (`sin(0)`, `ln(1)`) never reach it, being built as exact
+ *  `Real`s.  The cost of an invisible value is a reading at `digits + 500` places; 500 reaches
+ *  `exp(-1150)`, and the cap is what bounds the time of a value below it, which reads `0`.
+ */
+val MaxReadingDecades: Int = 500
+
+/** Materialises a `Real` back into the exact tier at `digits` decimal places, and never fewer
+ *  than `digits` significant digits for a nonzero value (F_0271, the owner's Decision 3).
  *
  *  Computes at `digits + `[[GuardDigits]] and then takes the best rational with denominator
  *  at most `10^digits`, which is the same bounded-denominator step the rest of the tier uses
  *  — so the result carries the working precision and no more, and its operands stay small.
+ *  **A value below one gets as many more places as it lies decades below one**: by decimal
+ *  places alone `exp(-100)` read as `0` and `exp(-60)` kept one digit, the units rule in the
+ *  exact tier's own definition of precision.  The magnitude is found by reading at doubling
+ *  precision until the value shows, up to [[MaxReadingDecades]]; a value still invisible
+ *  there reads at the decimal places, as before.  An exact `Real` is read as itself.
  *
  *  @param x      the computed value
  *  @param digits the working precision in decimal digits
@@ -61,14 +77,31 @@ def toReal(r: _Rational): Real =
  */
 def fromReal(x: Real, digits: Int): Option[_Rational] =
   val target = math.max(digits, 1)
+  def at(places: Int): SpireRational = x.toRational(Real.digitsToBits(places + GuardDigits))
+  @scala.annotation.tailrec
+  def decadesBelowOne(places: Int): Int =
+    val q = at(places)
+    if !q.isZero then decadesOf(q)
+    else if places - target >= MaxReadingDecades then 0
+    else decadesBelowOne(math.min(2 * places, target + MaxReadingDecades))
   try
-    val q = x.toRational(Real.digitsToBits(target + GuardDigits))
-    _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt, _Rational.thresholdFor(target))
-      .map(_.approximateToDigits(target))
+    val (places, q) = x match
+      case Real.Exact(n) => (target, n)
+      case _ =>
+        val p = target + decadesBelowOne(target)
+        (p, at(p))
+    _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt, _Rational.thresholdFor(places))
+      .map(_.approximateToDigits(places))
   catch
     // A `Real` is a function from precision to approximation; a pathological argument can
     // fail to converge rather than return.  Staying symbolic is the house response.
     case _: ArithmeticException | _: IllegalArgumentException => None
+
+/** How many decades a nonzero rational lies below one, read off the bit lengths and rounded up
+ *  (an extra place is harmless); `0` for a value of one or more. */
+private def decadesOf(q: SpireRational): Int =
+  val bits = q.denominator.toBigInt.bitLength - q.numerator.toBigInt.abs.bitLength + 1
+  if bits <= 0 then 0 else math.ceil(bits * math.log10(2.0)).toInt
 
 /** The square root of a non-negative rational, at `digits` decimal places.
  *
@@ -83,7 +116,9 @@ def fromReal(x: Real, digits: Int): Option[_Rational] =
  *  @return the root at that precision, or `None` for a negative radicand
  */
 def exactSqrt(r: _Rational, digits: Int): Option[_Rational] =
-  if r.signum < 0 then None else fromReal(toReal(r).sqrt, digits)
+  if r.signum < 0 then None
+  else if r.isZero then Some(_Rational.Zero)
+  else fromReal(toReal(r).sqrt, digits)
 
 /** A positive rational raised to a rational power, at `digits` decimal places.
  *

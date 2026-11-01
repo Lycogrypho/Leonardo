@@ -97,11 +97,13 @@ class ExactModeTest extends AnyFlatSpec:
     assert(math.abs(s.toDouble - math.sin(1.0 / 3.0)) < 1e-12)
   }
 
-  it should "make sin(pi) exactly zero" in
+  it should "keep sin(pi) below the working precision, and the kernels' rational zeros exact" in
   {
-    // pi becomes a rational approximation, so sin of it is ~1.2e-16 rather than 0.  The
-    // re-approximation to the working precision is what snaps that noise to an exact zero.
-    assert(rational("sin(pi)") == _Rational.Zero)
+    // pi becomes a rational approximation, so sin of it is a tiny nonzero number.  Read at decimal
+    // places alone it snapped to 0; since F_0271 the reading keeps its significant digits, so it
+    // is the sine of the approximation -- below 10^-30, and equal to 0 at the working precision
+    // (IrrationalTest pins the equality).  The kernels' own rational zeros stay exact.
+    assert(rational("sin(pi)").abs.toBigDecimal(60) < BigDecimal(s"1e-$Digits"))
     assert(rational("ln(1)") == _Rational.Zero)
     assert(rational("exp(0)") == _Rational.One)
   }

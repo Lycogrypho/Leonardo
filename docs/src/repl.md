@@ -215,6 +215,13 @@ so a single `pi*e` takes about 0.1 s at 100 digits, 2 s at 1000 and a full minut
 unbounded setting therefore bought an unbounded computation, which a terminal could only end
 with Ctrl-C and a browser tab could not end at all.  1000 is still 33× the default.
 
+The working precision counts **decimal places, and never fewer significant digits for a value
+below one**: at the default 30, `exp(-100)` is `3.7201E-44` to thirty digits of its own size rather
+than `0`.  So `sin(pi)` reads as the sine of `pi`'s thirty-digit approximation, a number near
+`10⁻⁴³`, not `0` — and `sin(pi) == 0` is still `true`, since two exact values are equal when they
+agree to the working precision, with a note saying so.  A value more than 500 decades below one
+reads as `0`.
+
 Those kernels are genuinely arbitrary-precision, so raising the working precision sharpens
 the `sin()` itself and not merely the arithmetic around it:
 

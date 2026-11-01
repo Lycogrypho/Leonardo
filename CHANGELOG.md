@@ -111,6 +111,10 @@ binary change against 3.8.2 so far, so the number is decided at release time fro
   rather than fits untested, a large over-determined one whose rank it cannot test.
 - In exact mode `limit` at a surd point, a limit that is a surd, sums and products of exact limits at
   infinity, and `laplace`/`invlaplace` with a shifted step keep their exact answers.
+- In exact mode the working precision keeps its digits for a small value: `exp(-100)` is
+  `3.7201E-44` (it was `0`) and `ln(1 + 10^-40)` is `1.0E-40`.  As a consequence `sin(pi)` shows the
+  sine of `pi`'s approximation, a number near `10^-43`, where it showed `0`; `sin(pi) == 0` is still
+  `true`, with its working-precision note.
 
 **Fixes.** Dozens of thresholds that silently assumed unit-sized input are now relative to the
 problem's own scale (rank, pivots, roots, degrees, certificates), so the same question in other

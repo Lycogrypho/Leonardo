@@ -8,6 +8,9 @@ nav_order: 5
 # Calculus
 <div style="clear:both"></div>
 
+*New to calculus at the prompt? **[R4 — Calculus](lessons/r4.md)** walks through derivatives,
+integrals and limits in one short lesson. This page is the reference.*
+
 ```scala mdoc:silent
 import it.grypho.scala.leonardo.core.*
 import it.grypho.scala.leonardo.scalar.*

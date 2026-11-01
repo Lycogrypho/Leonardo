@@ -280,7 +280,7 @@ case class Ln(e: _Expression) extends _Function with NamedFunction:
    *  `viaDouble` already owns, and ln(0) is undefined either way.
    */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
-    Some(r => if r.signum > 0 then Some(Real.log(toReal(r))) else None)
+    Some(r => if r == _Rational.One then Some(Real.zero) else if r.signum > 0 then Some(Real.log(toReal(r))) else None)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     // ln of a negative number is the principal complex value ln|x| + i*pi; ln(0) is undefined
@@ -366,9 +366,9 @@ case class Sin(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sin(c.head)
 
-  /** sin is defined on the whole real line. */
+  /** sin is defined on the whole real line; its one rational zero is built exact (F_0271). */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
-    Some(r => Some(Real.sin(toReal(r))))
+    Some(r => Some(if r.isZero then Real.zero else Real.sin(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(sin(x)), _Complex.sinc)
@@ -409,7 +409,7 @@ case class Tg(e: _Expression) extends _Function with NamedFunction:
    *  here is exactly rational, so it can never land on one.
    */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
-    Some(r => Some(Real.tan(toReal(r))))
+    Some(r => Some(if r.isZero then Real.zero else Real.tan(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(tan(x)), _Complex.tanc)
@@ -430,7 +430,7 @@ case class Asin(e: _Expression) extends _Function with NamedFunction:
 
   /** `asin` is real only on `[-1, 1]`. */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
-    Some(r => if r.abs <= _Rational.One then Some(Real.asin(toReal(r))) else None)
+    Some(r => if r.isZero then Some(Real.zero) else if r.abs <= _Rational.One then Some(Real.asin(toReal(r))) else None)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realNotNaN(asin(x)))
@@ -450,7 +450,7 @@ case class Acos(e: _Expression) extends _Function with NamedFunction:
 
   /** `acos` is real only on `[-1, 1]`. */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
-    Some(r => if r.abs <= _Rational.One then Some(Real.acos(toReal(r))) else None)
+    Some(r => if r == _Rational.One then Some(Real.zero) else if r.abs <= _Rational.One then Some(Real.acos(toReal(r))) else None)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realNotNaN(acos(x)))
@@ -470,7 +470,7 @@ case class Atan(e: _Expression) extends _Function with NamedFunction:
 
   /** `atan` is defined on the whole real line. */
   override protected def exactKernel: Option[_Rational => Option[Real]] =
-    Some(r => Some(Real.atan(toReal(r))))
+    Some(r => Some(if r.isZero then Real.zero else Real.atan(toReal(r))))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(atan(x)))

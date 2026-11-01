@@ -520,6 +520,11 @@ lazy val web = (project in file("web"))
     // docs site already takes with svg-pan-zoom.
     scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.NoModule) },
 
+    // No source map in the published bundle (F_0272, the owner's Decision 1): `app` copies
+    // `main.js` alone, so the `sourceMappingURL` the linker writes named a file the app never
+    // carried -- a 404 in every browser's developer tools.  The test bundle keeps its map.
+    Compile / fullLinkJS / scalaJSLinkerConfig ~= { _.withSourceMap(false) },
+
     app := {
       val linked = (Compile / fullLinkJSOutput).value
       val vendor = baseDirectory.value / "vendor"
