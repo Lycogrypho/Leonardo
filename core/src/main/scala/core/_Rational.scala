@@ -385,9 +385,21 @@ final class _Rational private (val num: BigInt, val den: BigInt) extends _Value 
    */
   def pow(k: Int, policy: GcdPolicy, maxBits: Long): Option[_Rational] =
     if k != 0 && BigInt(maxBitLength) * math.abs(k.toLong) > maxBits then None
-    else if k >= 0 then Some(_Rational.make(num.pow(k), den.pow(k), policy))
-    else if isZero then None
-    else Some(_Rational.make(den.pow(-k), num.pow(-k), policy))
+    else if k < 0 && isZero then None
+    else policy match
+      // The benchmark's lazy arm must vary reduction alone, so it keeps the plain construction.
+      case GcdPolicy.Lazy =>
+        if k >= 0 then Some(_Rational.make(num.pow(k), den.pow(k), policy))
+        else Some(_Rational.make(den.pow(-k), num.pow(-k), policy))
+      // F_0256: powers of coprime parts stay coprime, so the base is reduced once and the power
+      // needs no gcd -- `make` would run one on parts of up to `maxBits` (`(3/7)^300000` took
+      // 17.9 s on the JVM, inside the size budget, for a reduction that finds 1).
+      case _ =>
+        val (rn, rd) = _Rational.reduce(num, den)
+        if k >= 0 then Some(new _Rational(rn.pow(k), rd.pow(k)))
+        else
+          val (n, d) = (rd.pow(-k), rn.pow(-k))
+          Some(if d.signum < 0 then new _Rational(-n, -d) else new _Rational(n, d))
 
   /** The additive inverse. */
   def negate: _Rational = new _Rational(-num, den)

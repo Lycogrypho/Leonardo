@@ -68,7 +68,7 @@ MIT licence, reproduced as its terms require:
 
 --------------------------------------------------------------------------------
 
-VENDORED: MathLive v0.111.1, full build (web/vendor/mathlive/)
+VENDORED: MathLive v0.111.3, full build (web/vendor/mathlive/)
 
 Used only by the browser front end to typeset the LaTeX the `latex` package
 emits (issue F_0016) and, since F_0017, to provide the `<math-field>` editor and
@@ -76,8 +76,14 @@ the LaTeX-to-AsciiMath conversion the input reader consumes. It is not part of
 the published library artifacts, and no Scala code binds to it -- the facades
 pass and receive strings.
 
-0.111.1 IS A SECURITY FLOOR, not merely the version that happened to be
-current (audits of 2026-10-01 and 2026-10-18). XSS advisories exist against
+0.111.2 IS A SECURITY FLOOR, not merely the version that happened to be
+current (audits of 2026-10-01, 2026-10-18 and 2026-10-31). 0.111.2 (2026-10-31)
+lists under Security that virtual-keyboard, proxy and mathfield postMessage
+traffic is validated same-origin by default, that cross-window settings can no
+longer supply custom layouts, that a message can no longer choose a new command
+recipient, and that opaque "null" origins are no longer equated -- relevant
+because /app can be framed by another site (re-vendored at 0.111.3 by F_0261).
+Earlier advisories: XSS advisories exist against
 earlier MathLive releases, all in the convertLatexToMarkup path the page's
 MathRender uses: CVE-2025-29049 (\htmlData, <= 0.103.0, fixed 0.104.0),
 CVE-2026-54705 (\text{}/\mbox{} unescaped, <= 0.109.2, fixed in exactly
@@ -86,7 +92,7 @@ Advisories (\enclose attributes, unquoted \htmlData/\href values, MathML
 `notation`, SSML text, unvalidated CSS in `style`; re-vendored by F_0145).
 A vendored library is invisible to Scala Steward and Dependabot alike, so
 nothing automated will ever warn about it: if this file is ever re-vendored,
-the replacement must be >= 0.111.1, and the advisory database should be
+the replacement must be >= 0.111.2, and the advisory database should be
 re-checked the same way. 0.111.0's breaking changes removed only the
 MathJSON/compute-engine APIs; convertLatexToMarkup and
 convertLatexToAsciiMath were checked present in the new build.
@@ -105,25 +111,27 @@ declines the MathJSON conversions when it is absent -- verified before
 vendoring, because shipping a second CAS inside a page whose purpose is the
 first one would be absurd.
 
-The 0.111.1 bytes were taken from the npm registry tarball, verified against
+The 0.111.3 bytes were taken from the npm registry tarball, verified against
 the registry's own `dist.integrity` (SHA-512) before extraction. The twenty
-KaTeX font files are byte-identical to 0.110.0's, and mathlive-fonts.css
-differs only in its version comment. (0.110.0 had come from the jsDelivr
+KaTeX font files are byte-identical to 0.110.0's and 0.111.1's, and
+mathlive-fonts.css and mathlive-static.css differ from 0.111.1's only in their
+version comment; convertLatexToMarkup, convertLatexToAsciiMath and
+MathfieldElement.soundsDirectory were checked present. (0.110.0 had come from the jsDelivr
 mirror, the registry being unreachable then; the mirror was checked by
 re-fetching the previously vendored SSR file against its recorded hash,
 DC4B57D226EA371CDBA11727257424879DB7179CCBA851C171AFA782DE90BD10.)
 
-  SHA-256 (mathlive.min.js, 843924 bytes, upstream mathlive.min.js):
-           51E9AB5C4739209A2951A550042DCECB99AD3047269C1D791D09D7D613226EAE
+  SHA-256 (mathlive.min.js, 844574 bytes, upstream mathlive.min.js):
+           F66762B4B3EB4D808C6022F196433611934B14E5FADBBD84C40D0DBB199294C7
   SHA-256 (mathlive-static.css):
-           889BB4F93D07E31B996B4C972C172400FD50DDB489D6D5B7F5BEA0D133C48B99
+           AAF529CC13CA6217A2C817B7FAB57A667EBEE5C5474B60A78A5BAB5BF16C590C
   SHA-256 (mathlive-fonts.css):
-           4FD7EB386F3FC1F9A13BEB10123BE5FBBA01A8FA2FC9F1F4BE979F1DA86CA255
-  SHA-256 (source package mathlive-0.111.1.tgz, which contains fonts/ verbatim):
-           F285CD7B8AB5CBD67D792305C753DD4B6444F1799E012C2AEF701EB87FE95F8B
+           8C81348E723DEA1C3D1E75FB6B02863EC63D6027C92BC64A6F155094B61E01DC
+  SHA-256 (source package mathlive-0.111.3.tgz, which contains fonts/ verbatim):
+           CF02C04B2E412A0223ADD1AED4ED11E30551920ABB11B9BD7C7C73B9DCFADECB
   SHA-512 (the same tarball, the registry's dist.integrity):
-           RVaC7NO02Lmx3ZNUxOHR2xCRpcvTfBb2BtdgV60cTanAMufaUkWcPPB2VxChcsNeL+0rTQKqOPDYxXLPOXJI+A==
-  Source:  https://registry.npmjs.org/mathlive/-/mathlive-0.111.1.tgz
+           S+guzZeefkHAMbi9MPvMjcpKP6B4p9Z38nzgR4e8xAXgSWdJb0tBsnWH32eUc7PhydHGDv1WCwUPgHEhSTWgTg==
+  Source:  https://registry.npmjs.org/mathlive/-/mathlive-0.111.3.tgz
 
 MIT licence, reproduced as its terms require:
 

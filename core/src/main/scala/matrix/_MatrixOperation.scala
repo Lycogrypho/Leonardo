@@ -460,7 +460,7 @@ case class Determinant(m: _Expression) extends _Expression:
         // rather than O(n!), so this path carries no dimension cap.
         // F_0231 Decision B: over Q, or over Q(√d) when the surds share one radical.
         case Some(lit) if lit.rows == lit.cols && lit.elems.forall(_Surd.isExact) =>
-          overExactField(lit.elems, env.workingPrecision, env.rationalPolicy)(
+          overExactField(lit.elems, env.workingPrecision, env.rationalPolicy, ExactBudget.of(env.limits))(
             [T] => (f: ExactField[T], c: Vector[T]) => f.toValue(fieldDeterminant(f, c, lit.rows))
           ).toRight(this)
         case Some(lit) if lit.rows == lit.cols && lit.rows <= env.limits(Limit.MaxSymbolicDim) =>
@@ -492,7 +492,7 @@ case class Inverse(m: _Expression) extends _MatrixOperation:
         // Exact entries: Gauss-Jordan over the rationals, uncapped, singular -> symbolic
         // (the same rule the dense kernel follows).
         case Some(lit) if lit.rows == lit.cols && lit.elems.forall(_Surd.isExact) =>
-          overExactField(lit.elems, env.workingPrecision, env.rationalPolicy)(
+          overExactField(lit.elems, env.workingPrecision, env.rationalPolicy, ExactBudget.of(env.limits))(
             [T] => (f: ExactField[T], c: Vector[T]) => fieldInverse(f, c, lit.rows).map(_.map(f.toValue))
           ).flatten match
             case Some(inv) => Left(_Matrix(lit.rows, lit.cols, inv.map(x => x: _Expression)))
@@ -623,7 +623,7 @@ case class _LUDecomposition(m: _Expression) extends _Expression:
       case Left(lit: _Matrix) if lit.rows == lit.cols && lit.elems.forall(_Surd.isExact) =>
         val n = lit.rows
         def mat(c: Vector[_Value]) = _Matrix(n, n, c.map(x => x: _Expression))
-        overExactField(lit.elems, env.workingPrecision, env.rationalPolicy)(
+        overExactField(lit.elems, env.workingPrecision, env.rationalPolicy, ExactBudget.of(env.limits))(
           [T] => (f: ExactField[T], c: Vector[T]) =>
             val (l, u, p) = fieldLu(f, c, n)
             (l.map(f.toValue), u.map(f.toValue), p.map(f.toValue))

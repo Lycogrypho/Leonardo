@@ -1696,9 +1696,16 @@ final class Session:
         case None => Left(s"hist: <bins> must be between 1 and ${Session.MaxSampleCount}, got: ${kStr.getOrElse(sturges)}")
         case Some(k) =>
           val (lo, hi) = if xs.min < xs.max then (xs.min, xs.max) else (xs.min - 0.5, xs.max + 0.5)
-          statistics.binCounts(xs, lo, hi, k)
-            .map(cs => Session.Histogram(exprStr, Vector.tabulate(k + 1)(i => if i == k then hi else lo + i * (hi - lo) / k), cs))
-            .toRight("hist: the sample could not be binned")
+          // In halves, as `binCounts` (F_0150, F_0266): `hi − lo` overflows for a sample spanning the
+          // `Double` range, which gave a NaN edge and a figure with nothing in it.  A bin wider than
+          // the largest `Double` cannot be drawn at all, and is refused with the reason.
+          val halfWidth = (hi / 2 - lo / 2) / k
+          if !(2 * halfWidth).isFinite then
+            Left(s"hist: a bin over this range would be wider than the largest number; give more than $k bins")
+          else
+            statistics.binCounts(xs, lo, hi, k)
+              .map(cs => Session.Histogram(exprStr, Vector.tabulate(k + 1)(i => if i == k then hi else (lo / 2 + i * halfWidth) * 2), cs))
+              .toRight("hist: the sample could not be binned")
 
     rest.trim match
       case "" => Left("usage: hist <sample> [<bins>]")

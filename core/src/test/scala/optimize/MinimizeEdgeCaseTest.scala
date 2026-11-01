@@ -67,3 +67,33 @@ class MinimizeEdgeCaseTest extends AnyFlatSpec:
     assert(!minimize(f, vs, Vector.fill(101)(1.0), None, MinimizeMethod.GradientDescent, raised)
                .left.exists(_.isInstanceOf[MinimizeFailure.InvalidInput]))
   }
+
+  "the minimiser check" should "see a maximum below the witness's first step (F_0258)" in {
+    // 0 is a local maximum: the x^4 term dominates below |x| = 1e-8, where a fixed 1e-6 step never looked.
+    for m <- Seq(MinimizeMethod.BFGS, MinimizeMethod.GradientDescent) do
+      assert(run("1e48*x^6 - 1e32*x^4", 0.0, m) == Left(MinimizeFailure.NotAMinimum), m)
+    // Its units twin still refuses, and a degenerate minimum at any scale is still answered.
+    assert(run("x^6 - x^4", 0.0, MinimizeMethod.BFGS) == Left(MinimizeFailure.NotAMinimum))
+    assert(run("1e48*x^6 + 1e32*x^4", 0.0, MinimizeMethod.BFGS).map(_.x) == Right(Vector(0.0)))
+  }
+
+  "minimize" should "be unmoved by a constant added to the objective (F_0258)" in {
+    for c <- Seq("", " - 1e101", " + 1e200") do
+      run(s"(x-1)^2$c", 0.0, MinimizeMethod.BFGS) match
+        case Right(r)  => assert(math.abs(r.x(0) - 1.0) < 1e-4, s"$c: $r")
+        case Left(why) => fail(s"$c: $why")
+  }
+
+  it should "answer a steep objective by every method, as it answers the unit one (F_0258)" in {
+    // Plain descent takes steps of the gradient's own size, so a 1e-40-flat objective is beyond it
+    // by design: every other method rescales.
+    for k <- Seq("1e-40*", "", "1e40*"); m <- MinimizeMethod.values
+        if !(k == "1e-40*" && m == MinimizeMethod.GradientDescent) do
+      run(s"${k}(x-1)^2", 0.0, m) match
+        case Right(r)  => assert(math.abs(r.x(0) - 1.0) < 1e-4, s"$k $m: $r")
+        case Left(why) => fail(s"$k $m: $why")
+  }
+
+  it should "still report a genuinely unbounded objective" in {
+    assert(run("-x^3", 1.0, MinimizeMethod.BFGS) == Left(MinimizeFailure.Unbounded))
+  }

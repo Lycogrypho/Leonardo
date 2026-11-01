@@ -156,3 +156,13 @@ class LaurentTest extends AnyFlatSpec:
                s"expected the four-argument form, got ${e.toString}")
       case other => fail(s"parse failed: $other")
   }
+
+  "a regular point" should "not be read as a pole because the coefficients are small (F_0259)" in {
+    // 1e-8*x^2 - 2e-8 is 1e-8 at x = 1, not zero: the poles are at +-sqrt(2).  The absolute floor
+    // gave a series with a 5e7/(x - 1) term.  Scaled or not, the answer must be the same kind.
+    val small = run("laurent(1/(1e-8*x^2 - 2e-8), x, 1, 1, 2)")
+    val unit  = run("laurent(1/(x^2 - 2), x, 1, 1, 2)")
+    assert(staysSymbolic("laurent(1/(1e-8*x^2 - 2e-8), x, 1, 1, 2)") == staysSymbolic("laurent(1/(x^2 - 2), x, 1, 1, 2)"),
+           s"$small vs $unit")
+    assert(!small.contains("/ (x + -1.0)"), small)
+  }

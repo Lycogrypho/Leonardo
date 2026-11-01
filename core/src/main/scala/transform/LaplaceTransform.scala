@@ -51,14 +51,20 @@ private def coeffOfT(ex: _Expression, tv: String)(using lit: Int => _Value): Opt
   case Ratio(inner, d) if !d.freeVars.contains(tv)        => coeffOfT(inner, tv).map(c => Ratio(c, d))
   case _                                                   => None
 
-/** Returns `Some(a)` when `inner` matches `tv - a` for a positive numeric `a`.
- *  Handles both the parser-native form `Sum(tv, Product(-1, a))` and the folded
- *  `Sum(tv, _Number(-a))`.
+/** Returns `Some((a, k))` when `inner` matches `tv + k` for a negative numeric constant `k`, with
+ *  `a = −k > 0`: the parser-native `Sum(tv, Product(-1, a))`, the folded `Sum(tv, _Number(-a))`,
+ *  and any constant term.  **Both in the constant's own tier** (F_0263): the shift was read as a
+ *  `Double` and rebuilt as `_Number(-a)`, so in exact mode `laplace(step(t-2), t, s)` answered
+ *  `exp(-2.0*s)/s`.
  */
-private def shiftOf(inner: _Expression, tv: String): Option[Double] = inner match
-  case Sum(vv: _Variable, _Number(a)) if vv.variable == tv && a < 0                          => Some(-a)
-  case Sum(vv: _Variable, Product(_Number(c), _Number(a))) if vv.variable == tv && c * a < 0 => Some(-(c * a))
-  case _                                                                                       => None
+private def shiftOf(inner: _Expression, tv: String): Option[(_Value, _Value)] = inner match
+  case Sum(vv: _Variable, rest) if vv.variable == tv && rest.freeVars.isEmpty =>
+    rest.eval(new Environment()).toOption.collect {
+      case k @ _Number(d) if d < 0 =>
+        val a = Product(_Rational.literalLike(-1, k), k).eval(new Environment()).toOption.getOrElse(_Number(-d))
+        (a, k)
+    }
+  case _ => None
 
 /** Returns `Some((n, g))` when `e = t^n * g` or `g * t^n` for positive integer `n <= MaxLaplacePowerN`.
  *  Bare `t^n` (no other factor) is excluded -- it is covered by the dedicated power rule.
@@ -105,11 +111,11 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String)(
   // Stays symbolic if G stays symbolic.
   def secondShift(inner: _Expression, g: _Expression): _Expression =
     shiftOf(inner, tv) match
-      case Some(a) =>
-        val gShifted = simplifyFully(substitute(g, Map(tv -> Sum(t, _Number(a)))))
+      case Some((a, minusA)) =>
+        val gShifted = simplifyFully(substitute(g, Map(tv -> Sum(t, a))))
         val G        = laplaceImpl(gShifted, t, s, tv)
         if G.isInstanceOf[_Laplace] then _Laplace(e, t, s)
-        else Product(Exp(Product(_Number(-a), s)), G)
+        else Product(Exp(Product(minusA, s)), G)
       case None => _Laplace(e, t, s)
 
   e match
@@ -165,8 +171,8 @@ private def laplaceImpl(e: _Expression, t: _Variable, s: _Variable, tv: String)(
 
     // L{u(t-a)} = exp(-a*s)/s  (second-shift: shifted unit step, a > 0)
     case _Heaviside(inner) => shiftOf(inner, tv) match
-      case Some(a) => Ratio(Exp(Product(_Number(-a), s)), s)
-      case None    => _Laplace(e, t, s)
+      case Some((_, minusA)) => Ratio(Exp(Product(minusA, s)), s)
+      case None              => _Laplace(e, t, s)
 
     // L{u(t-a)*g(t-a)} = exp(-a*s)*G(s)  (full second-shift theorem, both Product orderings)
     case Product(_Heaviside(inner), g) => secondShift(inner, g)

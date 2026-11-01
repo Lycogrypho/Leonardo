@@ -96,7 +96,7 @@ from the session after every line rather than tracked alongside it.
 |---|---|
 | Leonardo, the whole CAS | 3.46 MB raw, **475 KB gzipped** |
 | Plotly (`cartesian` distribution, vendored) | 1.3 MB raw, **436 KB gzipped** |
-| MathLive (full build, with the math editor, vendored) | 844 KB raw, **227 KB gzipped** |
+| MathLive (full build, with the math editor, vendored) | 845 KB raw, **228 KB gzipped** |
 | The KaTeX maths fonts | 254 KB, fetched **only when a formula or the editor needs them** |
 
 About a megabyte for a computer algebra system with interactive plotting and typeset output,

@@ -304,7 +304,7 @@ display 3 + 2√13 (grammar √); :save (a + b * d^(1/2))</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/developer.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="172.0" width="412.0" x="0.0" y="0.0"/>
+              <y:Geometry height="220.0" width="412.0" x="0.0" y="0.0"/>
               <y:Fill color="#FFFFFF" transparent="false"/>
               <y:BorderStyle color="#555577" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">ExactField</y:NodeLabel>
@@ -313,7 +313,10 @@ display 3 + 2√13 (grammar √); :save (a + b * d^(1/2))</y:MethodLabel>
 fieldProduct / fieldMatrixPower
 overExactField: two radicals -&gt; working precision
 F_0249: A^n budget clears denominators,
-holds size and gcd-reduction work</y:AttributeLabel>
+holds size and gcd-reduction work
+F_0264: ExactBudget, a cumulative account per
+kernel run; withinBudget -&gt; None on a breach
+F_0256: exactResultBits, the unreduced estimate</y:AttributeLabel>
                 <y:MethodLabel>-- F_0231 Decision B: Q or Q(√d) --
 RationalField / SurdField(d) over Quad(a, b)</y:MethodLabel>
               </y:UML>

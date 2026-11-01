@@ -181,6 +181,9 @@ package "core" {
         overExactField: two radicals -> working precision
         F_0249: A^n budget clears denominators,
           holds size and gcd-reduction work
+        F_0264: ExactBudget, a cumulative account per
+          kernel run; withinBudget -> None on a breach
+        F_0256: exactResultBits, the unreduced estimate
     }
 
     enum "LogicSemantics" <<data>> [[logic.html]] {

@@ -715,7 +715,9 @@ Four-tier engine, most specific first:
 3. **Structural rules at ±∞** — polynomial degree comparison, `exp`/`ln`/`atan` shapes.
 4. **Epsilon perturbation** — sample at `point ± ε` and `point ± 0.001ε`; agree within a
    relative tolerance of 1e-5.  For two-sided limits both flanks must agree with each other
-   as well.
+   as well.  `ε` is capped six decades below the smallest scale written in the expression,
+   and the samples at ±∞ start beyond its largest one (F_0257): where a numeric tier samples
+   is a claim about the units, and a fixed `ε` steps over a feature narrower than itself.
 
 ### Simplification
 

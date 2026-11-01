@@ -31,6 +31,22 @@ class SessionIOTest extends AnyFlatSpec with BeforeAndAfter:
     assert(!SessionIO.exists("s"))
   }
 
+  it should "answer, not throw, when the browser blocks storage (F_0268)" in {
+    // Blocked storage throws SecurityError from the property read and from getItem.
+    js.Dynamic.global.Object.defineProperty(global.globalThis, "localStorage", js.Dynamic.literal(
+      configurable = true,
+      get = (() => throw js.JavaScriptException("SecurityError")): js.Function0[js.Any]))
+    assert(SessionIO.read("s") == Left("browser storage is not available here"))
+    assert(!SessionIO.exists("s"))
+    assert(SessionIO.write("s", "x := 3").isLeft)
+    js.special.delete(global.globalThis, "localStorage")
+    global.globalThis.localStorage = js.Dynamic.literal(
+      getItem = (_: String) => throw js.JavaScriptException("SecurityError"),
+      setItem = (_: String, _: String) => throw js.JavaScriptException("SecurityError"))
+    assert(SessionIO.read("s").isLeft)
+    assert(!SessionIO.exists("s"))
+  }
+
   it should "report a missing session, and read back a saved one" in {
     install()
     assert(SessionIO.read("s") == Left("no saved session named 's'"))

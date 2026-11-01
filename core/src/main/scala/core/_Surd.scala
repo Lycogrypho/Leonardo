@@ -291,7 +291,7 @@ final class _Surd private (val a: _Rational, val b: _Rational, val d: BigInt) ex
   def toDouble: Double = _Surd.toReal(this).fold(Double.NaN) { r =>
     Iterator.iterate(128)(_ * 2).takeWhile(_ <= 4096).map(bits => (bits, r.toRational(bits)))
       .collectFirst { case (bits, q) if q.abs * SpireRational(BigInt(2).pow(bits - 64)) >= 1 => q.toDouble }
-      .getOrElse(0.0)
+      .getOrElse(if _Surd.signum(this).exists(_ < 0) then -0.0 else 0.0)   // the sign the comment promises (F_0264)
   }
 
   /** Renders at [[Environment.DefaultPrecision]], as [[display]] does. */

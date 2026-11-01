@@ -141,6 +141,13 @@ class LessonTest extends AnyFlatSpec with Matchers:
     val lines = (1 to 1200).map(i => s"name_this_a_rather_long_identifier_$i := $i")
     an[RuntimeException] should be thrownBy Lesson().preparation(lines)
   }
+  it should "fail the build on a setup line the session refuses (F_0267)" in {
+    // A mistyped data line left the exercise without its data while the link still published.
+    val parse = intercept[RuntimeException](Lesson().preparation(Seq("A := [[2, 1], [1, 2")))
+    parse.getMessage should include("refused")
+    an[RuntimeException] should be thrownBy Lesson().preparation(Seq("A := [[1]]", "samples"))
+  }
+
 
   "the run link" should "be omitted rather than truncated when the session is too large" in {
     val lesson = Lesson()

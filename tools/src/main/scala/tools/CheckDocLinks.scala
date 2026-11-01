@@ -31,7 +31,7 @@ object CheckDocLinks:
   /** Markdown `](target)` and HTML `src="target"` / `href="target"`, which is every way a page
    *  here names another file.  Reference-style links are not used in this documentation.
    */
-  private val Targets = """\]\(([^)\s]+)\)|(?:src|href)="([^"\s]+)"""".r
+  private val Targets = """\]\(([^)\s]+)(?:\s+"[^"]*")?\)|(?:src|href)="([^"\s]+)"""".r   // a title too (F_0269)
 
   /** A fence opens or closes on ``` or ~~~ at the start of a line, whatever follows it. */
   private val Fence = """^\s*(?:```|~~~)""".r
@@ -69,21 +69,27 @@ object CheckDocLinks:
    *  @return one finding per offending link, and how many files were read
    */
   def offences(roots: Seq[Path]): (Vector[String], Int) =
-    val files = roots.toVector.flatMap(Files.walk(_, Set(".md")))
-    val found = files.flatMap { file =>
+    val files = roots.toVector.flatMap(root => Files.walk(root, Set(".md")).map(f => (root, f)))
+    val found = files.flatMap { (root, file) =>
       targetsOf(Files.read(file)).flatMap { (target, line) =>
         val relative = pathPart(target)
         if relative.isEmpty then None
         else
           // The base is the real path, so a case difference can only come from the link itself.
-          val resolved = file.toAbsolutePath.getParent.toRealPath().resolve(relative).normalize
-          if !JFiles.exists(resolved) then
-            Some(s"$file:$line: broken link '$target'")
-          else
-            // Exists is not enough: Windows and macOS match case-insensitively where the Linux
-            // runner that publishes the site does not.
-            caseMismatch(resolved, resolved.toRealPath())
-              .map((asked, real) => s"$file:$line: wrong case '$target' — '$asked' is '$real' on disk")
+          // A target the platform cannot name is an offence, not a crash (F_0269).
+          try
+            val resolved = file.toAbsolutePath.getParent.toRealPath().resolve(relative).normalize
+            if !JFiles.exists(resolved) then
+              Some(s"$file:$line: broken link '$target'")
+            else if !resolved.toRealPath().startsWith(root.toAbsolutePath.toRealPath()) then
+              // The site is built from this tree: a file outside it is not published (F_0269).
+              Some(s"$file:$line: '$target' is outside $root, so the site will not serve it")
+            else
+              // Exists is not enough: Windows and macOS match case-insensitively where the Linux
+              // runner that publishes the site does not.
+              caseMismatch(resolved, resolved.toRealPath())
+                .map((asked, real) => s"$file:$line: wrong case '$target' — '$asked' is '$real' on disk")
+          catch case _: java.nio.file.InvalidPathException => Some(s"$file:$line: '$target' is not a valid path")
       }
     }
     (found, files.size)

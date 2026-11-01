@@ -41,14 +41,69 @@ private[leonardo] trait ExactField[T]:
   /** A rational as an element of the field (F_0250): a count or a constant a kernel divides by. */
   def fromRational(r: _Rational): T
 
-/** The rationals, under a reduction policy. */
-private[leonardo] final class RationalField(policy: GcdPolicy) extends ExactField[_Rational]:
+/** The exact operation an estimate is for: each builds a different unreduced numerator and
+ *  denominator (F_0256). */
+private[leonardo] enum ExactOp:
+  case Add, Multiply, Divide
+
+/** The bit lengths of the unreduced result `n/d` of `x op y`, from the operands' numerator and
+ *  denominator bit lengths (F_0256): a quotient's denominator holds the divisor's numerator, and a
+ *  sum is `max + 1` bits, not a product's sum of sizes.  The reduction that follows costs about
+ *  `n·d` (F_0248's measurement).  One estimate for the operator arms and the field kernels.
+ *
+ *  @return `(bits n, bits d)` */
+private[leonardo] def exactResultBits(op: ExactOp, nx: Long, dx: Long, ny: Long, dy: Long): (Long, Long) =
+  op match
+    case ExactOp.Add      => (math.max(nx + dy, ny + dx) + 1, dx + dy)
+    case ExactOp.Multiply => (nx + ny, dx + dy)
+    case ExactOp.Divide   => (nx + dy, dx + ny)
+
+/** The exact tier's two budgets for one kernel run over a field (F_0264): each operation's unreduced
+ *  result held to [[Limit.MaxExactOperandBits]], and the reduction work of **all** its operations
+ *  together held to [[Limit.MaxExactReductionWork]], checked before the `BigInt` work.  The operator
+ *  arms check one operation through `scalar.overExactBudget`, where the expression's depth bounds
+ *  how many there are; the kernels that compute over a field (`mean`, `variance`, `det`, `inv`, `lu`,
+ *  the surd norms, `solveSystem`'s exact path) called `_Rational` arithmetic directly, so no budget
+ *  applied, and a kernel runs as many operations as its data has entries: the variance of 600 exact
+ *  values with distinct denominators took 18 s on the JVM, each operation within the per-operation
+ *  budget.  **Stateful, so one instance per run** ([[ExactBudget.of]] builds a fresh one); the shared
+ *  [[ExactBudget.Unlimited]] keeps no account. */
+private[leonardo] final class ExactBudget(val maxBits: Long, val maxWork: Long):
+  private var spent = 0L
+  /** Throws [[ExactBudgetExceeded]] when `x op y` would pass the size budget, or take the run's
+   *  reduction work past its budget. */
+  def check(op: ExactOp, x: _Rational, y: _Rational): Unit =
+    if maxBits != Long.MaxValue || maxWork != Long.MaxValue then
+      val (n, d) = exactResultBits(op, x.num.bitLength.max(1).toLong, x.den.bitLength.toLong,
+                                       y.num.bitLength.max(1).toLong, y.den.bitLength.toLong)
+      spent += n * d
+      if math.max(n, d) > maxBits || spent > maxWork then throw ExactBudgetExceeded
+
+private[leonardo] object ExactBudget:
+  /** No budget: what a kernel run without an environment gets. */
+  val Unlimited: ExactBudget = ExactBudget(Long.MaxValue, Long.MaxValue)
+  /** The budgets an environment carries. */
+  def of(limits: Limits): ExactBudget =
+    ExactBudget(limits(Limit.MaxExactOperandBits), limits(Limit.MaxExactReductionWork))
+
+/** Thrown by a budgeted field operation; caught where the kernel was entered ([[withinBudget]]),
+ *  so the node stays unevaluated, as every other refusal does.  A control throwable rather than an
+ *  `Option` threaded through every field operation, which would change every kernel's signature. */
+private[leonardo] object ExactBudgetExceeded extends scala.util.control.ControlThrowable
+
+/** `body`, or `None` when a budgeted field operation inside it refused. */
+private[leonardo] def withinBudget[R](body: => R): Option[R] =
+  try Some(body) catch case ExactBudgetExceeded => None
+
+/** The rationals, under a reduction policy and the exact budgets (F_0264). */
+private[leonardo] final class RationalField(policy: GcdPolicy, budget: ExactBudget = ExactBudget.Unlimited)
+    extends ExactField[_Rational]:
   def zero: _Rational = _Rational.Zero
   def one: _Rational = _Rational.One
-  def add(a: _Rational, b: _Rational): _Rational = a.add(b, policy)
-  def sub(a: _Rational, b: _Rational): _Rational = a.subtract(b, policy)
-  def mul(a: _Rational, b: _Rational): _Rational = a.multiply(b, policy)
-  def div(a: _Rational, b: _Rational): Option[_Rational] = a.divide(b, policy)
+  def add(a: _Rational, b: _Rational): _Rational = { budget.check(ExactOp.Add, a, b); a.add(b, policy) }
+  def sub(a: _Rational, b: _Rational): _Rational = { budget.check(ExactOp.Add, a, b); a.subtract(b, policy) }
+  def mul(a: _Rational, b: _Rational): _Rational = { budget.check(ExactOp.Multiply, a, b); a.multiply(b, policy) }
+  def div(a: _Rational, b: _Rational): Option[_Rational] = { budget.check(ExactOp.Divide, a, b); a.divide(b, policy) }
   def negate(a: _Rational): _Rational = a.negate
   def isZero(a: _Rational): Boolean = a.isZero
   def magnitude(a: _Rational): Double = math.abs(a.toDouble)
@@ -61,23 +116,26 @@ private[leonardo] final class RationalField(policy: GcdPolicy) extends ExactFiel
 /** An element `a + b·√d` of `Q(√d)`. */
 private[leonardo] final case class Quad(a: _Rational, b: _Rational)
 
-/** `Q(√d)` for a positive non-square `d`, under a reduction policy.  Division by the conjugate:
- *  `a + b√d` is zero only when `a = b = 0`, since `d` is not a perfect square. */
-private[leonardo] final class SurdField(d: BigInt, policy: GcdPolicy) extends ExactField[Quad]:
+/** `Q(√d)` for a positive non-square `d`, under a reduction policy and the exact budgets, which
+ *  every rational operation inside an element's arithmetic is held to (F_0264).  Division by the
+ *  conjugate: `a + b√d` is zero only when `a = b = 0`, since `d` is not a perfect square. */
+private[leonardo] final class SurdField(d: BigInt, policy: GcdPolicy, budget: ExactBudget = ExactBudget.Unlimited)
+    extends ExactField[Quad]:
   private val dq = _Rational(d)
+  private val q  = RationalField(policy, budget)
   def zero: Quad = Quad(_Rational.Zero, _Rational.Zero)
   def one: Quad = Quad(_Rational.One, _Rational.Zero)
-  def add(x: Quad, y: Quad): Quad = Quad(x.a.add(y.a, policy), x.b.add(y.b, policy))
-  def sub(x: Quad, y: Quad): Quad = Quad(x.a.subtract(y.a, policy), x.b.subtract(y.b, policy))
+  def add(x: Quad, y: Quad): Quad = Quad(q.add(x.a, y.a), q.add(x.b, y.b))
+  def sub(x: Quad, y: Quad): Quad = Quad(q.sub(x.a, y.a), q.sub(x.b, y.b))
   def mul(x: Quad, y: Quad): Quad =
-    Quad(x.a.multiply(y.a, policy).add(x.b.multiply(y.b, policy).multiply(dq, policy), policy),
-         x.a.multiply(y.b, policy).add(x.b.multiply(y.a, policy), policy))
+    Quad(q.add(q.mul(x.a, y.a), q.mul(q.mul(x.b, y.b), dq)),
+         q.add(q.mul(x.a, y.b), q.mul(x.b, y.a)))
   def div(x: Quad, y: Quad): Option[Quad] =
-    val den = y.a.multiply(y.a, policy).subtract(y.b.multiply(y.b, policy).multiply(dq, policy), policy)
+    val den = q.sub(q.mul(y.a, y.a), q.mul(q.mul(y.b, y.b), dq))
     if den.isZero then None
     else
       val n = mul(x, Quad(y.a, y.b.negate))
-      for qa <- n.a.divide(den, policy); qb <- n.b.divide(den, policy) yield Quad(qa, qb)
+      for qa <- q.div(n.a, den); qb <- q.div(n.b, den) yield Quad(qa, qb)
   def negate(x: Quad): Quad = Quad(x.a.negate, x.b.negate)
   def isZero(x: Quad): Boolean = x.a.isZero && x.b.isZero
   def magnitude(x: Quad): Double = math.abs(x.a.toDouble + x.b.toDouble * math.sqrt(d.toDouble))
@@ -120,22 +178,25 @@ private[leonardo] def fieldCells(values: Vector[_Expression]): Option[FieldCells
 /** Runs `run` over the field exact cells share (F_0231 Decision B): `Q` when every cell is
  *  rational, `Q(√d)` when the surds share one radical, and -- when two radicals meet -- over the
  *  cells' working-precision rationals, which is what every kernel computed before F_0231.  `None`
- *  when a cell is not exact at all.
+ *  when a cell is not exact at all, or when an operation inside the kernel passed `budget`
+ *  (F_0264).
  *
  *  @param values the cells
  *  @param digits the working precision of the fallback reading
  *  @param policy the rational reduction policy
+ *  @param budget the exact budgets every field operation is held to
  *  @param run    the kernel, polymorphic in the element type
  *  @return the kernel's result
  */
-private[leonardo] def overExactField[R](values: Vector[_Expression], digits: Int, policy: GcdPolicy)
+private[leonardo] def overExactField[R](values: Vector[_Expression], digits: Int, policy: GcdPolicy,
+                                        budget: ExactBudget)
                                        (run: [T] => (ExactField[T], Vector[T]) => R): Option[R] =
   fieldCells(values) match
-    case Some(FieldCells.OverQ(c))       => Some(run(RationalField(policy), c))
-    case Some(FieldCells.OverSurd(d, c)) => Some(run(SurdField(d, policy), c))
+    case Some(FieldCells.OverQ(c))       => withinBudget(run(RationalField(policy, budget), c))
+    case Some(FieldCells.OverSurd(d, c)) => withinBudget(run(SurdField(d, policy, budget), c))
     case None if values.forall(_Surd.isExact) =>
       val rs = values.flatMap(_Surd.exactOf(_, digits))
-      Option.when(rs.size == values.size)(run(RationalField(policy), rs))
+      if rs.size == values.size then withinBudget(run(RationalField(policy, budget), rs)) else None
     case None => None
 
 /** The exact product of two square matrices over a field. */

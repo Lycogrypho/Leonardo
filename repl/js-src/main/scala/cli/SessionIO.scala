@@ -37,8 +37,12 @@ private[cli] object SessionIO:
    *  the one operator JavaScript guarantees will not throw on an undeclared name.
    */
   private def storage: Option[js.Dynamic] =
-    if js.typeOf(global.localStorage) == "undefined" then None
-    else present(global.localStorage)
+    // A browser with storage blocked throws `SecurityError` on merely reading the property
+    // (F_0268), and that escaped `Session.step`, where the page has no handler.
+    try
+      if js.typeOf(global.localStorage) == "undefined" then None
+      else present(global.localStorage)
+    catch case NonFatal(_) => None
 
   /** A platform value, absent when it is JavaScript `null` (which `Option` maps to `None`) or
    *  `undefined` (which it does not) — so no `null` comparison appears here (F_0214). */
@@ -52,9 +56,9 @@ private[cli] object SessionIO:
     storage match
       case None => Left("browser storage is not available here")
       case Some(s) =>
-        present(s.getItem(Prefix + name))
-          .map(_.asInstanceOf[String])
-          .toRight(s"no saved session named '$name'")
+        // `getItem` can throw as the property read can (F_0268).
+        try present(s.getItem(Prefix + name)).map(_.asInstanceOf[String]).toRight(s"no saved session named '$name'")
+        catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse("storage read refused"))
 
   /** Whether a session of that name is already saved, so `:save` can say it replaced one
    *  (F_0151: `setItem` overwrites silently).
@@ -62,7 +66,7 @@ private[cli] object SessionIO:
    *  @return whether the key is there
    */
   def exists(name: String): Boolean =
-    storage.exists(s => present(s.getItem(Prefix + name)).isDefined)
+    storage.exists(s => try present(s.getItem(Prefix + name)).isDefined catch case NonFatal(_) => false)
 
   /** Writes a session script.
    *  @param name the session name

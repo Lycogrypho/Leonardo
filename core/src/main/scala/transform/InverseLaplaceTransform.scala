@@ -41,15 +41,20 @@ def inverseLaplaceOf(f: _Expression, s: _Variable, t: _Variable): _Expression =
   val result = inverseImpl(f, s, t)
   if result.isInstanceOf[_InverseLaplace] then result else simplifyFully(result)
 
-/** Returns `Some(a)` for a positive `a` when `inner` matches `-a * sv` (the exponent of `exp(-a*s)`). */
-private def negShiftOf(inner: _Expression, sv: String): Option[Double] = inner match
-  case Product(_Number(c), vv: _Variable) if vv.variable == sv && c < 0 => Some(-c)
-  case Product(vv: _Variable, _Number(c)) if vv.variable == sv && c < 0 => Some(-c)
-  // Any other spelling of `-a·s` — `-s/2` parses as a ratio (F_0189).
-  case other => collect(other, _Variable(sv)).flatMap {
-    case Vector(c0, c1) => for z <- numericValue(c0) if z == 0.0; k <- numericValue(c1) if k < 0 yield -k
-    case _              => None
-  }
+/** Returns `Some(k)` for the negative coefficient `k = −a` when `inner` matches `k · sv` (the
+ *  exponent of `exp(-a*s)`), **in `k`'s own tier** (F_0263): it was read as a `Double`, so in exact
+ *  mode `invlaplace(exp(-2*s)/s, s, t)` answered `step(t - 2.0)`. */
+private def negShiftOf(inner: _Expression, sv: String): Option[_Value] =
+  def negative(c: _Expression): Option[_Value] =
+    c.eval(new Environment()).toOption.collect { case k @ _Number(d) if d < 0 => k }
+  inner match
+    case Product(c, vv: _Variable) if vv.variable == sv && c.freeVars.isEmpty => negative(c)
+    case Product(vv: _Variable, c) if vv.variable == sv && c.freeVars.isEmpty => negative(c)
+    // Any other spelling of `-a·s` — `-s/2` parses as a ratio (F_0189).
+    case other => collect(other, _Variable(sv)).flatMap {
+      case Vector(c0, c1) => for z <- numericValue(c0) if z == 0.0; k <- negative(c1) yield k
+      case _              => None
+    }
 
 /** Applies the second-shift theorem: `L^-1{exp(-a*s) * F(s)} = u(t-a) * f(t-a)`.
  *
@@ -63,12 +68,12 @@ private def negShiftOf(inner: _Expression, sv: String): Option[Double] = inner m
 private def inverseSecondShift(
     inner: _Expression, F: _Expression, s: _Variable, t: _Variable
 ): Option[_Expression] =
-  negShiftOf(inner, s.variable).flatMap { a =>
+  negShiftOf(inner, s.variable).flatMap { minusA =>
     val ft = inverseImpl(F, s, t)
     if ft.isInstanceOf[_InverseLaplace] then None
     else
-      val ftShifted = simplifyFully(substitute(ft, Map(t.variable -> Sum(t, _Number(-a)))))
-      Some(Product(_Heaviside(Sum(t, _Number(-a))), ftShifted))
+      val ftShifted = simplifyFully(substitute(ft, Map(t.variable -> Sum(t, minusA))))
+      Some(Product(_Heaviside(Sum(t, minusA)), ftShifted))
   }
 
 /** Recursive rule dispatcher for the inverse Laplace transform. */

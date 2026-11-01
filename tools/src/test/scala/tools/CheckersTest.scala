@@ -111,6 +111,15 @@ class CheckersTest extends AnyFlatSpec:
     assert(found.isEmpty, s"expected the fragment stripped: $found")
   }
 
+  it should "read a link with a title, and refuse a target outside the tree or an invalid one (F_0269)" in
+  {
+    val titled = fixture("page.md" -> "[t](missing.md \"a title\")\n")
+    assert(CheckDocLinks.offences(List(titled))._1.size == 1)
+    val outer = fixture("outside.md" -> "# o\n", "site/page.md" -> "[o](../outside.md)\n")
+    val (found, _) = CheckDocLinks.offences(List(outer.resolve("site")))
+    assert(found.exists(_.contains("outside")), found)
+  }
+
   // --- action pins -------------------------------------------------------------------
 
   "the action-pin guard" should "flag a tag and a branch, which are both mutable" in
@@ -219,6 +228,14 @@ class CheckersTest extends AnyFlatSpec:
   {
     val found = CheckCsp.offences(Paths.get("web", "index.html"))
     assert(found.isEmpty, found)
+  }
+
+  it should "match tags and handlers in any case, and flag a permissive script source (F_0269)" in
+  {
+    assert(CheckCsp.offences(page("script-src 'self'", "<SCRIPT>leonardoStart();</SCRIPT>")).exists(_.contains(StartHash)))
+    assert(CheckCsp.offences(page("script-src 'self'", "<button onClick=\"go()\">Go</button>")).exists(_.contains("onClick")))
+    for src <- Seq("*", "https:", "data:") do
+      assert(CheckCsp.offences(page(s"script-src 'self' $src", "")).exists(_.contains(s"allows $src")), src)
   }
 
   // --- the Scala version -------------------------------------------------------------
@@ -369,4 +386,16 @@ class CheckersTest extends AnyFlatSpec:
     assert(words.size > 150 && words.contains("fourierCausal") && words.contains("sin"), words.size)
     assert(words.contains("ctrb") && words.contains("observable"), "the StructureKind words are read")
     assert(CheckReservedWords.offences(Paths.get("core", "src", "main", "scala", "parser", "Parser.scala")).isEmpty)
+  }
+
+  it should "see past a character literal and a triple-quoted string, and refuse an interpolated production (F_0269)" in
+  {
+    // `'"'` used to open a string that swallowed the production after it.
+    val quoted = CheckReservedWords.offences(parserFile("\"sin\"", "  val q = '\"'\n  val f = \"sin(\" | \"cos(\""))
+    assert(quoted.size == 1 && quoted.head.contains("cos"), quoted)
+    // A `//` inside a triple-quoted regex blanked the rest of its line as a comment.
+    val triple = CheckReservedWords.offences(parserFile("\"sin\"", "  val r = \"\"\"a//b\"\"\".r; val f = \"cos(\""))
+    assert(triple.size == 1 && triple.head.contains("cos"), triple)
+    val interpolated = CheckReservedWords.offences(parserFile("\"sin\"", "  val f = s\"${k.word}(\""))
+    assert(interpolated.exists(_.contains("interpolation")), interpolated)
   }

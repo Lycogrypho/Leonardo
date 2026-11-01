@@ -25,6 +25,27 @@ class ExactReachTest extends AnyFlatSpec:
     assert(value("limit((2*x^2 + x)/(3*x^2 + 1), x, inf)") == Right(q(2, 3)))
     assert(value("limit((x + 1)/(x^2 + 1), x, inf)") == Right(_Rational(0)))
   }
+  it should "take a surd point and give a surd answer exactly (F_0263)" in {
+    assert(value("limit(x^2, x, 2^(1/2))") == Right(_Rational(2)))
+    value("limit(x^(1/2), x, 2)") match
+      case Right(s: _Surd) => assert(s == _Surd.sqrtOf(_Rational(2)).getOrElse(fail("no root")), s)
+      case other           => fail(s"$other")
+  }
+
+  it should "combine exact limits of a sum and a product at infinity exactly (F_0263)" in {
+    assert(value("limit(1/3 + 1/x, x, inf)") == Right(q(1, 3)))
+    assert(value("limit((1/3)*(2 + 1/x), x, inf)") == Right(q(2, 3)))
+  }
+
+  "laplace and invlaplace" should "keep an exact shift exact (F_0263)" in {
+    val fwd = value("laplace(step(t - 2), t, s)").fold(identity, identity)
+    assert(!fwd.toString.contains("2.0") && _Rational.containsExact(fwd), fwd)
+    val inv = value("invlaplace(exp(-2*s)/s, s, t)").fold(identity, identity)
+    assert(!inv.toString.contains("2.0"), inv)
+    val shifted = value("laplace(step(t - 2)*(t - 2), t, s)").fold(identity, identity)
+    assert(!shifted.toString.contains("2.0"), shifted)
+  }
+
 
   "laurent" should "keep an exact coefficient exact, a constant beside the pole included" in {
     val r = value("laurent(1/(3*x^2), x, 0, 2, 1)").fold(identity, identity)

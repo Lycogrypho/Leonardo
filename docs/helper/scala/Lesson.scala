@@ -99,12 +99,19 @@ final class Lesson(pageDir: String = "", outputRoot: java.nio.file.Path = Lesson
    *  **A session too long to carry fails the build** rather than printing nothing, unlike
    *  [[show]]'s link: there the transcript still teaches without its link, while here the link is
    *  the whole of the output, and an exercise silently missing its data is the worse failure.
+   *  **So does a line the session refuses** (F_0267): a parse error or an evaluation error left the
+   *  exercise's data unset while the link still published, a different session under the same
+   *  words.  Nothing is printed to show a refusal, so the build is the only place it can surface.
    *
    *  @param lines the commands to run, in order
    *  @return the markdown link
    */
   private[docs] def preparation(lines: Seq[String]): String =
-    lines.foreach(session.execute)
+    lines.foreach { line =>
+      val answer = session.execute(line)
+      if Lesson.Refusals.exists(answer.startsWith) then
+        sys.error(s"lesson.prepare: `$line` was refused: ${answer.linesIterator.nextOption().getOrElse(answer)}")
+    }
     linkTo(Lesson.ExerciseLabel)
       .getOrElse(sys.error(s"lesson.prepare: the session is too large to carry in a link (${lines.size} lines)"))
 
@@ -184,3 +191,7 @@ object Lesson:
 
   /** The label of [[Lesson.prepare]]'s link: it opens an exercise rather than replaying a block. */
   val ExerciseLabel: String = "open this exercise"
+
+  /** How the session's answer to a line it refuses begins (F_0267): the prefixes `Session` writes
+   *  for a line it could not parse or evaluate, and for a command used wrongly. */
+  val Refusals: Seq[String] = Seq("parse error:", "evaluation error:", "usage:")

@@ -104,15 +104,29 @@ object PlotSpec:
    *  @return a Plotly `{data, layout}` document
    */
   def histogram(edges: Seq[Double], counts: Seq[Int], label: String): String =
-    val bins  = edges.zip(edges.drop(1)).zip(counts).filter { case ((a, b), _) => finite(a) && finite(b) }
-    val trace = obj(
+    document(barTrace(label, edges, counts), title = label, xTitle = label, yTitle = "count", equalAxes = false)
+
+  /** One bar per bin, centred on it and as wide as it: the one builder `histogram` and a figure's
+   *  `Bars` layer share (F_0266; they carried a copy each).  The centre is `a/2 + b/2`, which cannot
+   *  overflow, and a bin whose edges or width are not finite is left out whole — `Infinity` is not
+   *  JSON, and one such value makes the whole document unparseable.
+   *
+   *  @param name   the trace's name
+   *  @param edges  the `k + 1` bin edges, ascending
+   *  @param counts the `k` counts
+   *  @param extra  further fields of the trace (a colour)
+   *  @return a Plotly bar trace */
+  private def barTrace(name: String, edges: Seq[Double], counts: Seq[Int], extra: (String, String)*): String =
+    val bins = edges.zip(edges.drop(1)).zip(counts)
+      .filter { case ((a, b), _) => finite(a) && finite(b) && finite(b - a) }
+    val fields = Seq(
       "type"  -> str("bar"),
-      "name"  -> str(label),
-      "x"     -> arr(bins.map { case ((a, b), _) => (a + b) / 2 }),
+      "name"  -> str(name),
+      "x"     -> arr(bins.map { case ((a, b), _) => a / 2 + b / 2 }),
       "y"     -> arr(bins.map(_._2.toDouble)),
       "width" -> arr(bins.map { case ((a, b), _) => b - a })
-    )
-    document(trace, title = label, xTitle = label, yTitle = "count", equalAxes = false)
+    ) ++ extra
+    obj(fields*)
 
   /** A Bode diagram: magnitude and phase stacked over one shared logarithmic frequency axis.
    *
@@ -201,10 +215,7 @@ object PlotSpec:
                 "showarrow" -> "true", "arrowhead" -> "2", "arrowwidth" -> "2", "arrowcolor" -> str(c), "text" -> str("")))
               (Seq(xy(n, c, (0.0, 0.0) +: t, "mode" -> str("markers"), markers(c))), heads)
             case Layer.Bars(n, e, k) =>
-              val bins = e.zip(e.drop(1)).zip(k).filter { case ((a, b), _) => finite(a) && finite(b) }
-              (Seq(obj("type" -> str("bar"), "name" -> str(n), "marker" -> obj("color" -> str(c)),
-                       "x" -> arr(bins.map { case ((a, b), _) => (a + b) / 2 }), "y" -> arr(bins.map(_._2.toDouble)),
-                       "width" -> arr(bins.map { case ((a, b), _) => b - a }))), Seq.empty)
+              (Seq(barTrace(n, e, k, "marker" -> obj("color" -> str(c)))), Seq.empty)
             case Layer.Locus(n, bs, ps, zs) =>
               (bs.map(b => xy(n, c, b, "mode" -> str("lines"), lines(c))) :+
                xy(s"$n poles", c, ps, "mode" -> str("markers"), "marker" -> obj("color" -> str(c), "symbol" -> str("x"), "size" -> "11")) :+

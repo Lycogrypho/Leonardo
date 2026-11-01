@@ -90,6 +90,14 @@ private val NoUniqueDense   = "no unique solution: the coefficients are linearly
 private def nearlyDependent(rank: Int, n: Int): String =
   s"no unique solution: the coefficients are nearly dependent (numerical rank $rank of $n at the session precision), " +
     "so a least-squares fit cannot tell a consistent system from an inconsistent one"
+/** Why an exact elimination stopped: an operation passed the exact tier's budgets (F_0264). */
+private val PastExactBudget =
+  "no answer: the exact elimination passed the exact-arithmetic budgets (Limit.MaxExactOperandBits / MaxExactReductionWork)"
+
+/** Why an over-determined numeric system is declined when its rank cannot be tested (F_0265). */
+private val RankUntested =
+  "no answer: the rank test needs a singular value decomposition, which declined (past Limit.MaxSvdWork, or no convergence), " +
+    "and without it a least-squares fit cannot tell a consistent system from an inconsistent one"
 private val SymbolicOverdetermined =
   "over-determined with symbolic coefficients: more equations than unknowns are solved only when every coefficient is a number"
 
@@ -150,22 +158,30 @@ private def solveDetermined(
   // system was reported contradictory.
   def solveOver[T](f: ExactField[T], cells: Vector[T], isZero: T => Boolean): Either[String, List[_Equation]] =
     val rows = Vector.tabulate(m)(i => cells.slice(i * n, (i + 1) * n))
-    exactSolve(f, rows, cells.drop(m * n), equations, n, isZero).map(xs => variables.zip(xs.map(f.toValue)).map(_Equation(_, _)))
+    withinBudget(exactSolve(f, rows, cells.drop(m * n), equations, n, isZero))
+      .getOrElse(Left(PastExactBudget))
+      .map(xs => variables.zip(xs.map(f.toValue)).map(_Equation(_, _)))
 
   val exactValues = allOpt((A.flatten ++ b).map(_.eval(env).toOption))
   val policy      = env.rationalPolicy
+  val budget      = ExactBudget.of(env.limits)   // F_0264: elimination over a field is held too
   val exactAnswer = exactValues.filter(_.forall(_Surd.isExact)).flatMap { vs =>
     fieldCells(vs) match
-      case Some(FieldCells.OverQ(c))       => Some(solveOver(RationalField(policy), c, (r: _Rational) => r.isZero))
-      case Some(FieldCells.OverSurd(d, c)) => Some(solveOver(SurdField(d, policy), c, (q: Quad) => q.a.isZero && q.b.isZero))
+      case Some(FieldCells.OverQ(c))       => Some(solveOver(RationalField(policy, budget), c, (r: _Rational) => r.isZero))
+      case Some(FieldCells.OverSurd(d, c)) => Some(solveOver(SurdField(d, policy, budget), c, (q: Quad) => q.a.isZero && q.b.isZero))
       case None =>
         // Two radicals that do not combine (√2 beside √3): the cells are read as rationals at the
         // working precision, as before F_0231, and a value is zero when it agrees with 0 at that
         // precision (F_0177) -- an exact zero test would read the reading's last digit as a
-        // contradiction.
-        val rs = vs.flatMap(_Surd.exactOf(_, env.workingPrecision))
+        // contradiction.  Each row is first divided, exactly, by its largest entry (F_0260): the
+        // agreement test has an absolute floor of 1, so a system written in units of 10⁻³¹ read
+        // every coefficient as zero and declined.  The readings carry the working precision
+        // relative to each value's own size: `exactOf` keeps an absolute number of decimals, so
+        // `√2·10⁻³¹` read as `0` before any test could look at it.
+        val rs = vs.flatMap(c => _Surd.exactOf(c, env.workingPrecision + decadesBelowOne(c)))
         Option.when(rs.size == vs.size)(
-          solveOver(RationalField(policy), rs, (r: _Rational) => agreeToWorkingPrecision(r, _Rational.Zero, env)))
+          solveOver(RationalField(policy, budget), normalisedRows(rs, m, n, policy),
+                    (r: _Rational) => agreeToWorkingPrecision(r, _Rational.Zero, env)))
   }
   exactAnswer match
     case Some(answer) => return answer
@@ -189,6 +205,22 @@ private def solveDetermined(
         variables.zip(xs).map((v, x) => _Equation(v, simplifyFully(x).eval(env).toExpression))
       )
 
+
+/** How many decades a value lies below `1`, so a reading at absolute decimals keeps its relative
+ *  precision (F_0260); `0` for a value of size `1` or more, or zero. */
+private def decadesBelowOne(v: _Value): Int = v match
+  case _Number(d) if d != 0.0 && math.abs(d) < 1.0 => math.ceil(-math.log10(math.abs(d))).toInt
+  case _                                           => 0
+
+/** `[A | b]`, row-major `A` then `b`, with each row divided exactly by its largest entry in
+ *  magnitude (F_0260), so a zero test at the working precision is relative to the row's own size.
+ *  A row of zeros is left as it is.  Scaling a row is an equivalent system: the solution and which
+ *  equation contradicts which are unchanged. */
+private def normalisedRows(cells: Vector[_Rational], m: Int, n: Int, policy: GcdPolicy): Vector[_Rational] =
+  val scale = Vector.tabulate(m)(i => (cells.slice(i * n, (i + 1) * n) :+ cells(m * n + i)).map(_.abs).max)
+  def scaled(c: _Rational, i: Int): _Rational =
+    if scale(i).isZero then c else c.divide(scale(i), policy).getOrElse(c)
+  Vector.tabulate(m * n)(k => scaled(cells(k), k / n)) ++ Vector.tabulate(m)(i => scaled(cells(m * n + i), i))
 
 /** Exact elimination of `[A | b]` over a field, one equation at a time (F_0242; any exact field
  *  since F_0247).
@@ -261,8 +293,9 @@ private def leastSquaresConsistent(a: Vector[Vector[Double]], b: Vector[Double],
   val n = a.head.size
   val precision = env.precision
   val design    = _MatrixValue(m, n, a.flatten.toArray)
-  val deficient = design.svd(env.limits)
-    .map((_, sigma, _) => matrix.numericalRank(sigma, matrix.rankTolerance(env))).filter(_ < n)
+  // No SVD, no rank test, and no answer (F_0265): past `MaxSvdWork`, or without convergence, the
+  // fit ran untested and a large nearly dependent system was answered as before F_0245.
+  val rank      = design.svd(env.limits).map((_, sigma, _) => matrix.numericalRank(sigma, matrix.rankTolerance(env)))
   def fit: Either[String, Vector[Double]] = design.qrDecompose match
     case None => Left(NoUniqueDense)
     case Some((q, r)) =>
@@ -294,7 +327,10 @@ private def leastSquaresConsistent(a: Vector[Vector[Double]], b: Vector[Double],
         else
           val off = BigDecimal(residual.abs).round(new java.math.MathContext(3)).toString
           Left(s"inconsistent: no values satisfy every equation; at the least-squares fit equation ${worst + 1} (${equations(worst)}) is off by $off")
-  deficient.fold(fit)(rk => Left(nearlyDependent(rk, n)))
+  rank match
+    case None                => Left(RankUntested)
+    case Some(rk) if rk < n  => Left(nearlyDependent(rk, n))
+    case Some(_)             => fit
 
 
 /** Sequences an iterable of `Option`s into `Option[Vector]`; `None` if any element is `None`.

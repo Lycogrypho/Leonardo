@@ -249,3 +249,26 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
     parse("limit(1/x, x, 0)").eval(env).toExpression match
       case _: _Limit => // expected: stays symbolic
       case other     => fail(s"expected symbolic _Limit but got $other")
+
+  // ────────── F_0257: the numeric tiers sample beyond the expression's own scales ──────────
+
+  private def unanswered(s: String): Boolean = parse(s).eval(env).toExpression.isInstanceOf[_Limit]
+
+  "the numeric limit tiers" should "see a feature below the default sample points (F_0257)" in:
+    // exp(-1e-20/x) changes only below x = 1e-20: it read 1.0 from samples at 1e-8.
+    approx("limit(exp(-1e-20/x), x, 0, +)", 0.0, 0.0)
+    approx("limit(exp(-1/x), x, 0, +)", 0.0, 0.0)            // its unit twin, unchanged
+    // 1/(1 + 1e-20/x) tends to 0 like x: two samples cannot certify a limit 0 (F_0211), but it
+    // must no longer answer the 1.0 the samples above the feature showed.
+    assert(unanswered("limit(1/(1 + 1e-20/x), x, 0, +)"))
+
+  it should "see a sign change of the denominator below the default step (F_0257)" in:
+    // x(x - 1e-10) is negative on (0, 1e-10) and positive left of 0: no two-sided limit.
+    assert(unanswered("limit(1/(x*(x - 1e-10)), x, 0)"))
+    assert(parse("limit(1/(x*(x - 1e-10)), x, 0, -)").eval(env).toExpression == _Number(Double.PositiveInfinity))
+    assert(unanswered("limit(1/(x*(x - 1)), x, 0)"))         // the unit twin agrees
+
+  it should "sample infinity beyond the expression's largest scale (F_0257)" in:
+    // abs(x) is lost against 1e30 at 1e10 and 1e15, so this answered 1.0 for a limit 0.
+    assert(unanswered("limit(1e30/(abs(x) + 1e30), x, inf)"))
+    assert(unanswered("limit(1/(abs(x) + 1), x, inf)") == unanswered("limit(1e30/(abs(x) + 1e30), x, inf)"))

@@ -45,7 +45,9 @@ private def exactly(xs: Vector[_Value], env: Environment): Option[Vector[_Ration
  *  rationals.  `None` when an entry is not exact, and the caller takes the `Double` path. */
 private def overSample[R](xs: Vector[_Value], env: Environment)
                          (run: [T] => (ExactField[T], Vector[T]) => Option[R]): Option[Option[R]] =
-  if !allExact(xs) then None else overExactField(xs, env.workingPrecision, env.rationalPolicy)(run)
+  if !allExact(xs) then None
+  else overExactField(xs, env.workingPrecision, env.rationalPolicy, ExactBudget.of(env.limits))(run)
+    .orElse(Some(None))   // past the exact budgets (F_0264): no answer, and no Double fallback either
 
 /** The mean of field elements. */
 private def fieldMean[T](f: ExactField[T], cs: Vector[T]): Option[T] =

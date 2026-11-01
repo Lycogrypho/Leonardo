@@ -60,3 +60,13 @@ class HistogramReplTest extends AnyFlatSpec:
     assert(Session().histogramBins("y").isLeft)
     assert(Session().histogramBins("[[1, 2]] 0").isLeft)
   }
+
+  it should "bin a sample spanning the whole Double range with finite edges, or say why not (F_0266)" in {
+    // hi - lo overflowed: the first edge was NaN and the figure drew nothing, while `bincounts`
+    // answered [1, 1].
+    Session().histogramBins("[[-1e308, 1e308]] 2") match
+      case Right(h)  => assert(h.edges == Vector(-1e308, 0.0, 1e308) && h.counts == Vector(1, 1), h)
+      case Left(why) => fail(why)
+    // One bin would be 2e308 wide: refused with the reason rather than drawn as nothing.
+    assert(Session().histogramBins("[[-1e308, 1e308]] 1").left.exists(_.contains("wider")))
+  }

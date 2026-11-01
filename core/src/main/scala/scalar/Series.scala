@@ -336,15 +336,18 @@ private def rationalRegularise(f: _Expression, v: _Variable, point: _Expression,
       }
     case _ => None
 
-/** Divides `cs` by `(v − root)`, or `None` when that leaves a remainder. */
+/** Divides `cs` by `(v − root)`, or `None` when that leaves a remainder.  The remainder is
+ *  `p(root)`, judged against the terms that form it, `Σ|cᵢ||root|ⁱ` (F_0259): against
+ *  `max(1, max|cᵢ|)` an absolute floor read `1e-8·x² − 2e-8` as vanishing at `1` and gave `laurent`
+ *  a pole at a regular point. */
 private def deflateExact(cs: Vector[Double], root: Double): Option[Vector[Double]] =
   if degreeOf(cs) < 1 then None      // cs is magnitude-trimmed (F_0125)
   else
     val desc      = cs.reverse
     val out       = desc.tail.scanLeft(desc.head)((acc, c) => acc * root + c)
     val remainder = out.last
-    val scale     = math.max(1.0, cs.map(math.abs).max)
-    Option.when(math.abs(remainder) <= 1e-7 * scale)(out.init.reverse)
+    val terms     = cs.zipWithIndex.map((c, i) => math.abs(c) * math.pow(math.abs(root), i)).sum
+    Option.when(math.abs(remainder) <= 1e-7 * terms)(out.init.reverse)
 
 /** Rebuilds a dense coefficient vector as an expression in `v`. */
 private def polyToExpr(cs: Vector[Double], v: _Variable): _Expression =

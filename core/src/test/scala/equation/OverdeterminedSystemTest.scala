@@ -61,6 +61,15 @@ class OverdeterminedSystemTest extends AnyFlatSpec:
       assert(declined(eval(s, exact = false)), s"$s: ${eval(s, exact = false)}")
       assert(reason(s, exact = false).exists(_.contains("nearly dependent")), reason(s, exact = false))
   }
+  it should "be declined, not fitted untested, when the rank test cannot run (F_0265)" in {
+    // Past MaxSvdWork the SVD declines; the least-squares fit used to run without the F_0245 check.
+    val tight = env.withLimit(Limit.MaxSvdWork, 10)
+    val p     = parse(Consistent, exact = false)
+    assert(declined(p.eval(tight)), p.eval(tight))
+    assert(p.declineReason(tight).exists(_.contains("rank test")), p.declineReason(tight))
+    assert(!declined(p.eval(env)))   // with the default budget it is answered
+  }
+
 
   "an exact system with surd coefficients" should "be solved over the radical, not read as contradictory (F_0247)" in {
     val root2 = Parser.parse("2^(1/2)", Some(30)).get.eval(env).fold(e => fail(s"$e"), identity)
@@ -81,6 +90,18 @@ class OverdeterminedSystemTest extends AnyFlatSpec:
     // the last digit -- a difference the working precision cannot see, not a contradiction.
     val s = "solveSystem([[x = 2^(1/2)], [2*x = 8^(1/2)], [y = 3^(1/2)]], x, y)"
     assert(!declined(eval(s)), reason(s))
+  }
+
+  it should "solve such a system whatever the units of its coefficients (F_0260)" in {
+    // The working-precision zero test had an absolute floor of 1: in units of 1e-31 every
+    // coefficient read as zero and the system was declined as not determining the unknowns.
+    for k <- Seq("", "/10^31", "*10^31") do
+      val s = s"solveSystem([[2^(1/2)*x$k = 3^(1/2)$k], [y = 1]], x, y)"
+      eval(s) match
+        case Left(matrix._Matrix(1, 2, Vector(_Equation(_, xv: _Value), _Equation(_, yv: _Value)))) =>
+          val (xd, yd) = (xv match { case _Number(d) => d; case o => fail(s"$o") }, yv match { case _Number(d) => d; case o => fail(s"$o") })
+          assert(math.abs(xd - math.sqrt(1.5)) < 1e-12 && math.abs(yd - 1) < 1e-12, s"$k: $xd, $yd")
+        case other => fail(s"$k: $other ${reason(s)}")
   }
 
   it should "decline a consistent one that does not determine every unknown" in {

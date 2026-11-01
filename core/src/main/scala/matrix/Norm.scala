@@ -105,7 +105,8 @@ private def vectorNorm(cells: Vector[_Expression], k: NormKind, env: Environment
   // ~110-digit rational.  Two radicals that do not combine are still read that way.
   if parts.size == cells.size && values.forall(_Surd.isExact) then
     fieldCells(values) match
-      case Some(FieldCells.OverSurd(d, qs)) => surdVectorNorm(SurdField(d, env.rationalPolicy), values, qs, k, env)
+      case Some(FieldCells.OverSurd(d, qs)) =>
+        withinBudget(surdVectorNorm(SurdField(d, env.rationalPolicy, ExactBudget.of(env.limits)), values, qs, k, env)).flatten
       case Some(FieldCells.OverQ(rs))       => exactVectorNorm(rs, k, env)
       case None                             => exactVectorNorm(values.flatMap(_Surd.exactOf(_, env.workingPrecision)), k, env)
   else if parts.size == cells.size then doubleVectorNorm(parts.map((re, im) => math.hypot(re, im)), k)

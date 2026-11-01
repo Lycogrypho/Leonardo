@@ -157,3 +157,12 @@ class PlotSpecTest extends AnyFlatSpec:
     val trace = doc.data.asInstanceOf[js.Array[js.Dynamic]](0)
     assert(trace.x.asInstanceOf[js.Array[Double]].isEmpty)
   }
+
+  "a histogram spec" should "stay valid JSON when a bin is wider than the largest number (F_0266)" in {
+    // b - a = Infinity is not JSON: the bin is left out whole, and the centre a/2 + b/2 never overflows.
+    val doc   = parsed(PlotSpec.histogram(Vector(-1e308, 0.0, 1e308), Vector(1, 1), "x"))
+    val trace = doc.data.asInstanceOf[js.Array[js.Dynamic]](0)
+    assert(trace.x.asInstanceOf[js.Array[Double]].toVector == Vector(-5e307, 5e307))
+    val wide  = parsed(PlotSpec.histogram(Vector(-1e308, 1e308), Vector(2), "x"))
+    assert(wide.data.asInstanceOf[js.Array[js.Dynamic]](0).x.asInstanceOf[js.Array[Double]].isEmpty)
+  }

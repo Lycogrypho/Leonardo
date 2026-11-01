@@ -128,7 +128,7 @@ private def inTier(n: Int, m: Int, values: Vector[_Value], env: Environment): Op
      take(n * m + n * n, n), take(n * m + n * n + n, m), xs.last)
   if values.forall(_.isInstanceOf[_Rational]) then
     val (t, p, f, y, l) = split(values.collect { case r: _Rational => r })
-    rlsStep(RationalField(env.rationalPolicy), t, p, f, y, l)
+    rlsStep(new RationalField(env.rationalPolicy), t, p, f, y, l)
       .map((t1, p1) => (_Matrix(n, m, t1.flatten), _Matrix(n, n, p1.flatten)))
   else
     val (t, p, f, y, l) = split(values.collect { case _Number(d) => d })

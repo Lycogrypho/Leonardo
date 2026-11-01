@@ -99,7 +99,18 @@ binary change against 3.8.2 so far, so the number is decided at release time fro
   small fraction; a `qr` of dependent columns says why it stays unevaluated.
 - `solveSystem` declines an over-determined numeric system whose columns are nearly dependent.
 - Very large exact numbers are now held to measured budgets: an exact `+ − × ÷` or matrix power
-  past them stays unevaluated instead of running for minutes.
+  past them stays unevaluated instead of running for minutes — a quotient of two large integers
+  included, and the exact `mean`, `variance`, `det`, `inv`, `lu` and `solveSystem` over a long or
+  large-denominator input.  A sum of two large integers, refused before, is now computed.
+- `limit` looks at the scales an expression is written with: `limit(exp(-1e-20/x), x, 0, +)` is `0`
+  (it was `1.0`), and limits whose two sides disagree below the old sample points, or whose value
+  shows only past the old samples at infinity, now decline instead of answering wrongly.
+- `minimize` refuses a maximum hidden below its old witness step, and answers steep, flat or shifted
+  objectives it declined (`1e40*(x-1)^2`, `(x-1)^2 - 1e101`).  A `laurent` expansion no longer puts a
+  pole at a regular point; `solveSystem` solves a system with two radicals in any units, and declines,
+  rather than fits untested, a large over-determined one whose rank it cannot test.
+- In exact mode `limit` at a surd point, a limit that is a surd, sums and products of exact limits at
+  infinity, and `laplace`/`invlaplace` with a shifted step keep their exact answers.
 
 **Fixes.** Dozens of thresholds that silently assumed unit-sized input are now relative to the
 problem's own scale (rank, pivots, roots, degrees, certificates), so the same question in other
@@ -108,12 +119,16 @@ across limits, inequalities, transforms, statistics and the math editor — are 
 share links write every value at full precision and reload it in its own tier. Named exact
 matrices multiply exactly, and a matrix is never used as a scale factor. Nothing deeper than the
 browser can walk is accepted or built. A large matrix literal parses several times faster.
+`hist` on a sample spanning the whole number range draws its bins, or says why it cannot; the
+browser's `:save`/`:load` answer when storage is blocked instead of failing silently.
 
-**Supply chain.** MathLive is at 0.111.1, the floor its security advisories require. The release
+**Supply chain.** MathLive is at 0.111.3, past 0.111.2's security release (the math editor's
+virtual keyboard accepts messages from its own origin only), the floor its advisories require. The release
 build overrides BouncyCastle to 1.86, clear of the 1.78.1 advisories. Workflows hold no more
 permission or stored credential than their steps need. The architecture diagram is exported as
 GraphML for Gephi and yEd under a standing check, and an eighth guard keeps the grammar's words
-reserved.
+reserved; three guards were tightened where they could be passed (HTML case, titled links, string
+literals).
 
 ## 3.8.2 — 2026-10-06
 

@@ -36,9 +36,10 @@ def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, e
   point.eval(env) match
     // An exact point is tried exactly first (F_0210): `limit(x^2, x, 1/3)` answered 0.11111.
     // Placed before the widening `_Number` arm, which would read the rational as a Double.
-    case Right(r: _Rational) =>
+    // A surd point too (F_0263): `limit(x^2, x, 2^(1/2))` answered `2.0`.
+    case Right(r @ _Number(d)) if _Surd.isExact(r) =>
       exactLimit(e, v, r, env, env.limits.count(Limit.MaxHopitalSteps))
-        .getOrElse(limitFinite(e, v, r.toDouble, dir, env, env.limits.count(Limit.MaxHopitalSteps)))
+        .getOrElse(limitFinite(e, v, d, dir, env, env.limits.count(Limit.MaxHopitalSteps)))
     case Right(_Number(p)) =>
       if p.isInfinite then limitInfinity(e, v, p, env)
       else limitFinite(e, v, p, dir, env, env.limits.count(Limit.MaxHopitalSteps))
@@ -49,17 +50,17 @@ def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, e
  *  exact `0/0`.  The derivatives are taken in the expression's own tier, so an exact numerator
  *  stays exact through each step.  Anything else — a one-sided question, a pole, a decimal —
  *  falls through unchanged, so no answer that was not exact before is changed. */
-private def exactLimit(e: _Expression, v: _Variable, p: _Rational, env: Environment, stepsLeft: Int): Option[_Expression] =
+private def exactLimit(e: _Expression, v: _Variable, p: _Value, env: Environment, stepsLeft: Int): Option[_Expression] =
   def at(x: _Expression): Option[_Value] = x.eval(env.withBinding(v.variable, p)).toOption
-  if jumpsAt(e, v, p.toDouble, env) then None
+  def zero(x: Option[_Value]): Boolean = x.exists(y => _Surd.signum(y).contains(0))
+  val pd = p match { case _Number(d) => d; case _ => Double.NaN }
+  if jumpsAt(e, v, pd, env) then None
   else at(e) match
-    case Some(r: _Rational) => Some(r)
+    // A surd answer too (F_0263): `limit(x^(1/2), x, 2)` answered `1.41421`.
+    case Some(r) if _Surd.isExact(r) => Some(r)
     case _ => e match
-      case Ratio(num, den) if stepsLeft > 0 =>
-        (at(num), at(den)) match
-          case (Some(a: _Rational), Some(b: _Rational)) if a.signum == 0 && b.signum == 0 =>
-            exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, env, stepsLeft - 1)
-          case _ => None
+      case Ratio(num, den) if stepsLeft > 0 && zero(at(num)) && zero(at(den)) =>
+        exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, env, stepsLeft - 1)
       case _ => None
 
 /** Evaluates `e` with `v` bound to `p`; returns `Some(d)` iff the result is a concrete `_Number`. */
@@ -104,7 +105,7 @@ private def cOverZero(
   e: _Expression, den: _Expression, v: _Variable, p: Double,
   dir: LimitDir, env: Environment, signN: Double
 ): _Expression =
-  val eps = math.max(1e-8, math.abs(p) * 1e-8)
+  val eps = math.min(math.max(1e-8, math.abs(p) * 1e-8), smallScale(e, v, env) * FeatureMargin)
   def signedInf(sampleP: Double): _Expression =
     numericAt(den, v, sampleP, env)
       .map(d => _Number(signN * math.signum(d) * Double.PositiveInfinity))
@@ -127,7 +128,7 @@ private def cOverZero(
 private def limitEpsilon(
   e: _Expression, v: _Variable, p: Double, dir: LimitDir, env: Environment
 ): _Expression =
-  val eps = math.max(1e-8, math.abs(p) * 1e-6)
+  val eps = math.min(math.max(1e-8, math.abs(p) * 1e-6), smallScale(e, v, env) * FeatureMargin)
   def estimate(x1: Double, x2: Double): Option[Double] =
     (numericAt(e, v, x1, env), numericAt(e, v, x2, env)) match
       case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite && converged(y1, y2, 1e-5) => Some((y1 + y2) / 2)
@@ -206,8 +207,10 @@ private def limitInfinity(e: _Expression, v: _Variable, p: Double, env: Environm
               if r.isNaN then numericInfFallback(ex, v, p, env) else _Number(r)
             case _ => numericInfFallback(ex, v, p, env)
 
+    // Two finite exact limits combine exactly (F_0263): `limit(1/3 + 1/x, x, inf)` answered 0.33333.
     case Sum(a, b) =>
       (go(a), go(b)) match
+        case (la, lb) if exactFinite(la) && exactFinite(lb) => Sum(la, lb).eval(env).toExpression
         case (_Number(da), _Number(db)) =>
           val s = da + db
           if s.isNaN then _Limit(ex, v, _Number(p), LimitDir.Both) else _Number(s)
@@ -215,6 +218,7 @@ private def limitInfinity(e: _Expression, v: _Variable, p: Double, env: Environm
 
     case Product(a, b) =>
       (go(a), go(b)) match
+        case (la, lb) if exactFinite(la) && exactFinite(lb) => Product(la, lb).eval(env).toExpression
         case (_Number(da), _Number(db)) =>
           val s = da * db
           if s.isNaN then _Limit(ex, v, _Number(p), LimitDir.Both) else _Number(s)
@@ -252,15 +256,47 @@ private def limitInfinity(e: _Expression, v: _Variable, p: Double, env: Environm
 
   go(e)
 
-/** Numeric fallback at ∞: evaluates at two large values and checks convergence. */
+/** Whether a limit is an exact value: a rational or a surd, never an infinity (which is a
+ *  `Double`), so combining two of them exactly is sound. */
+private def exactFinite(x: _Expression): Boolean = _Surd.isExact(x)
+
+/** Numeric fallback at ∞: evaluates at two large values and checks convergence.  The samples sit
+ *  at least six decades beyond the expression's largest scale (F_0257): at the fixed `10¹⁰` and
+ *  `10¹⁵`, `limit(1e30/(abs(x) + 1e30), x, inf)` answered `1.0` for a limit `0`. */
 private def numericInfFallback(e: _Expression, v: _Variable, p: Double, env: Environment): _Expression =
-  val sign = if p.isPosInfinity then 1 else -1
-  (numericAt(e, v, sign * 1e10, env), numericAt(e, v, sign * 1e15, env)) match
+  val sign  = if p.isPosInfinity then 1 else -1
+  val shift = math.min(math.max(1.0, largeScale(e, v, env) / FeatureMargin / 1e10), 1e290)
+  (numericAt(e, v, sign * 1e10 * shift, env), numericAt(e, v, sign * 1e15 * shift, env)) match
     case (Some(y1), Some(y2)) if y1.isInfinite && y2.isInfinite && math.signum(y1) == math.signum(y2) =>
       _Number(y1)
     case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite && converged(y1, y2, 1e-6) =>
       _Number(y2)
     case _ => _Limit(e, v, _Number(p), LimitDir.Both)
+
+/** How far beyond a scale written in the expression the numeric tiers sample: six decades
+ *  (F_0257).  `exp(-1e-20/x)` changes only below `x ≈ 10⁻²⁰`, so its limit at `0⁺` read `1.0` from
+ *  samples at `10⁻⁸` and `10⁻¹¹`; `1/(x*(x - 1e-10))` changes sign at `10⁻¹⁰`, so `±10⁻⁸` saw
+ *  one sign and answered `inf` for a limit that does not exist.  The default windows are kept
+ *  whenever the expression's scales lie inside them, so every other answer is unchanged. */
+private val FeatureMargin = 1e-6
+
+/** The magnitudes of the constants `e` is written with, and of the numbers its other free names
+ *  are bound to: the scales at which it can change. */
+private def scalesOf(e: _Expression, v: _Variable, env: Environment): Iterable[Double] =
+  def leaves(x: _Expression): Iterable[Double] = x match
+    case _Number(d)              => Seq(math.abs(d))
+    case w: _Variable if w != v  => env.get(w.variable).collect { case _Number(d) => math.abs(d) }
+    case other                   => other.children.flatMap(leaves)
+  leaves(e).filter(m => m > 0.0 && m.isFinite)
+
+/** The smallest scale in `e`: `min(|c|, 1/|c|)` over its constants, `1` when it has none — a
+ *  large constant multiplying `x` makes a feature at `1/c` as surely as a small one does at `c`. */
+private def smallScale(e: _Expression, v: _Variable, env: Environment): Double =
+  scalesOf(e, v, env).map(m => math.min(m, 1.0 / m)).minOption.getOrElse(1.0)
+
+/** The largest scale in `e`: `max(|c|, 1/|c|)` over its constants, `1` when it has none. */
+private def largeScale(e: _Expression, v: _Variable, env: Environment): Double =
+  scalesOf(e, v, env).map(m => math.max(m, 1.0 / m)).maxOption.getOrElse(1.0)
 
 /** Whether two samples agree to `tol` **of their own size** (F_0211).
  *

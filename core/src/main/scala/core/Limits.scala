@@ -167,13 +167,16 @@ enum Limit(val default: Long):
 
   // ── the exact tier's arithmetic (F_0248) ──
 
-  /** The bits an exact `+ − × ÷` result may reach, estimated as `bits(x) + bits(y)` before the
-   *  `BigInt` work (F_0248; `pow` has its own, [[MaxExactPowerBits]]).  A share link could double
+  /** The bits an exact `+ − × ÷` result may reach, estimated from the unreduced numerator and
+   *  denominator the operation builds (`core.exactResultBits`, F_0256) before the `BigInt` work
+   *  (F_0248; `pow` has its own, [[MaxExactPowerBits]]).  A share link could double
    *  an operand per line, `b := a*a`, `c := b*b`, and nothing held it.  Measured on integers, JVM /
    *  Node: two 2¹⁹-bit operands multiply in 0.24 / 0.78 s, two 2²⁰-bit ones in 1.0 / 2.8 s. */
   case MaxExactOperandBits extends Limit(1048576)
-  /** The gcd reduction an exact fraction's result may cost, estimated as its size times its
-   *  denominator's, `(bits(x) + bits(y))·(denBits(x) + denBits(y))` (F_0248).  **The reduction, not
+  /** The gcd reduction an exact fraction's result may cost, estimated as `bits(n)·bits(d)` of the
+   *  unreduced `n/d` the operation builds (F_0248, per operation since F_0256: a quotient's
+   *  denominator holds the divisor's numerator); a kernel over an exact field (`variance`, `det`,
+   *  `inv`, ...) is held to it for **all** its operations together (F_0264).  **The reduction, not
    *  the product, is what costs**: measured, JVM / Node, a product or sum of two fractions with
    *  2¹⁴-bit parts takes 0.04–0.10 / 0.23–0.28 s, 2¹⁵-bit parts (the cap) 0.15–0.29 / 0.88–1.13 s,
    *  2¹⁶-bit parts 0.55 / 3.6 s and 2¹⁸-bit parts 8.3 / 64 s, where two 2¹⁸-bit integers take

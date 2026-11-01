@@ -49,7 +49,7 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
       // F_0248: past the exact tier's budgets the node stays as written, before any BigInt work.
-      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env) => Left(this)
+      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env, ExactOp.Add) => Left(this)
       // ORDER IS LOAD-BEARING: `_Number` is a widening extractor that also matches a
       // `_Rational` (see core._Number.unapply), so the exact case has to come first or two
       // rationals would be read as Doubles and silently lose their exactness.  A MIXED pair
@@ -101,7 +101,7 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
       // multiplying by zero makes an exact zero less exact.
       case (Right(z: _Rational), _) if z.isZero => Right(z)
       case (_, Right(z: _Rational)) if z.isZero => Right(z)
-      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env) => Left(this)   // F_0248
+      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env, ExactOp.Multiply) => Left(this)   // F_0248
       case (Right(x: _Rational), Right(y: _Rational)) => Right(x.multiply(y, env.rationalPolicy))
       case (Right(x: _Value), Right(y: _Value)) if _Surd.involves(x, y) =>
         _Surd.combine(x, y, env.workingPrecision)(_Surd.multiply, _ * _).toRight(this)
@@ -133,7 +133,7 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (a.eval(env), b.eval(env)) match
-      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env) => Left(this)   // F_0248
+      case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env, ExactOp.Divide) => Left(this)   // F_0248, F_0256
       // Exact tier first — see the ORDER note in Sum.  A zero denominator is the same
       // domain error as below: `divide` returns None and the node stays symbolic.
       case (Right(x: _Rational), Right(y: _Rational)) =>
@@ -333,7 +333,7 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
     if !Whole.isWhole(e) || math.abs(e) > MaxMatrixExponent then None
     else
       // F_0231 Decision B: over Q, or over Q(√d) when the surd cells share one radical.
-      overExactField(m.children.toVector, env.workingPrecision, env.rationalPolicy)(
+      overExactField(m.children.toVector, env.workingPrecision, env.rationalPolicy, ExactBudget.of(env.limits))(
         [T] => (f: ExactField[T], c: Vector[T]) =>
           fieldMatrixPower(f, c, m.rows, e.toLong, env.limits(Limit.MaxExactPowerBits),
                            env.limits(Limit.MaxExactReductionWork)).map(_.map(f.toValue))
@@ -361,29 +361,34 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
 
 
 /** Whether an exact `+ − × ÷` on `x` and `y` would pass the exact tier's budgets (F_0248),
- *  estimated before any `BigInt` work: the result's size, `bits(x) + bits(y)`, against
- *  [[core.Limit.MaxExactOperandBits]], and its gcd reduction, that size times the denominators'
- *  bits, against [[core.Limit.MaxExactReductionWork]] -- measured, the reduction is what costs,
- *  so an integer (a one-bit denominator) is held by its size alone.  `false` unless both operands
- *  are exact, so the `Double`, complex and matrix arms are untouched.
+ *  estimated before any `BigInt` work from the unreduced result `n/d` the operation builds: its
+ *  size, `max(bits n, bits d)`, against [[core.Limit.MaxExactOperandBits]], and the gcd that
+ *  reduces it, `bits n · bits d`, against [[core.Limit.MaxExactReductionWork]] -- measured, the
+ *  reduction is what costs.  **The estimate is per operation** (F_0256): a quotient's denominator
+ *  holds the divisor's numerator, so `a/b` of two large integers reduces by `gcd(a, b)` although
+ *  each operand has a one-bit denominator -- sized as a product it took 23 s on the JVM inside the
+ *  budget; a sum is `max + 1` bits, not a product's `bx + by`.  On F_0248's measured cases (two
+ *  integers, two fractions multiplied) the estimate is unchanged.  `false` unless both operands are
+ *  exact, so the `Double`, complex and matrix arms are untouched.
  *
  *  @param x   the left operand
  *  @param y   the right operand
  *  @param env the environment, whose limits hold the budgets
+ *  @param op  the operation about to run
  *  @return whether the operation should stay unevaluated
  */
-private[scalar] def overExactBudget(x: _Value, y: _Value, env: Environment): Boolean =
+private[scalar] def overExactBudget(x: _Value, y: _Value, env: Environment, op: ExactOp): Boolean =
   (exactSize(x), exactSize(y)) match
-    case (Some((bx, dx)), Some((by, dy))) =>
-      val size = bx + by
-      size > env.limits(Limit.MaxExactOperandBits) || size * (dx + dy) > env.limits(Limit.MaxExactReductionWork)
+    case (Some((nx, dx)), Some((ny, dy))) =>
+      val (n, d) = exactResultBits(op, nx, dx, ny, dy)   // the one estimate the field kernels share (F_0264)
+      math.max(n, d) > env.limits(Limit.MaxExactOperandBits) || n * d > env.limits(Limit.MaxExactReductionWork)
     case _ => false
 
-/** An exact value's size and its denominators' size, in bits: a rational's largest part and its
- *  denominator; a surd's largest part plus its radicand, and the larger of its parts'
- *  denominators.  `None` for a value that is not exact. */
+/** An exact value's numerator and denominator size, in bits: a rational's two parts; a surd's
+ *  larger part plus its radicand, and the larger of its parts' denominators.  `None` for a value
+ *  that is not exact. */
 private def exactSize(v: _Value): Option[(Long, Long)] = v match
-  case r: _Rational => Some((r.maxBitLength.toLong, r.den.bitLength.toLong))
+  case r: _Rational => Some((r.num.bitLength.toLong.max(1L), r.den.bitLength.toLong))
   case s: _Surd     =>
     Some((math.max(s.a.maxBitLength, s.b.maxBitLength).toLong + s.d.bitLength,
           math.max(s.a.den.bitLength, s.b.den.bitLength).toLong))

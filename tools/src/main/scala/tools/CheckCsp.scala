@@ -36,13 +36,18 @@ object CheckCsp:
   /** HTML comments, removed first: the page's comments mention `<script src>` in prose. */
   private val Comment = """(?s)<!--.*?-->""".r
 
-  private val Policy = """<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"""".r
+  // HTML is case-insensitive, so every pattern below is (F_0269): `<SCRIPT>` and `onClick=` passed.
+  private val Policy = """(?i)<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"""".r
 
   /** A `<script>` with no `src` attribute, and its body. */
-  private val InlineScript = """(?s)<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>""".r
+  private val InlineScript = """(?is)<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>""".r
 
   private val Tag     = """<[a-zA-Z][^>]*>""".r
-  private val Handler = """\s(on[a-z]+)\s*=""".r
+  private val Handler = """(?i)\s(on[a-z]+)\s*=""".r
+
+  /** `script-src` sources that allow script from anywhere of a kind, which a hash-listed policy
+   *  exists to exclude (F_0269): any host, any `https:`/`http:` origin, `data:` and `blob:` URLs. */
+  private val Permissive = Set("*", "https:", "http:", "data:", "blob:")
 
   /** The CSP source expression allowing `script`: `'sha256-…'` over its UTF-8 bytes.
    *
@@ -70,7 +75,8 @@ object CheckCsp:
             val scripts = InlineScript.findAllMatchIn(html).map(_.group(1)).toVector
             val hashes  = scripts.map(hashSource)
             val listed  = sources.filter(_.startsWith("'sha256-"))
-            val unsafe  = sources.filter(s => s == "'unsafe-inline'" || s == "'unsafe-eval'")
+            val unsafe  = sources.filter(s => s.toLowerCase == "'unsafe-inline'" || s.toLowerCase == "'unsafe-eval'" ||
+                                              Permissive.contains(s.toLowerCase))
               .map(s => s"$page: script-src allows $s, which the policy exists to exclude")
             val spans = scripts.filter(s => s.contains('\n') || s.contains('\r'))
               .map(s => s"$page: an inline script spans lines; keep it on one line, so its hash does not depend on the checkout's line endings: ${s.trim.take(60)}")

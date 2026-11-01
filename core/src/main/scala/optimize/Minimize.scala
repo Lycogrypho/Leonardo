@@ -215,9 +215,25 @@ private def stationarity(g: Vector[Double], x: Vector[Double], x0: Vector[Double
 /** The tight stopping target on `stationarity`: far below any precision's certificate. */
 private val Target: Double = 1e-10
 
-/** The value below which the objective is taken to be unbounded — far beyond any value a
- *  bounded problem posed in this language reaches, and still well inside `Double`'s range. */
-private val UnboundedBelow: Double = -1e100
+/** How far below the current value a trial value must fall to be read as unbounded: `10¹⁰⁰`
+ *  times the current value's magnitude, or `-∞` itself.  **Relative** (F_0258): it was the
+ *  absolute `-1e100`, so `minimize((x-1)^2 - 1e101, …)` declined as unbounded and the documented
+ *  invariance under `f → f + c` failed.  A genuinely unbounded direction is also caught by the
+ *  Wolfe bracket's 60 doublings. */
+private val UnboundedRatio: Double = 1e100
+
+/** Whether the trial value `fn` reads as unbounded below from the current value `fx`. */
+private def unboundedBelow(fn: Double, fx: Double): Boolean =
+  fn == Double.NegativeInfinity || fn < fx - UnboundedRatio * math.abs(fx)
+
+/** The first trial step of a line search with no curvature information yet: `1/‖d‖∞`, a move of
+ *  unit length whatever the scale of `f` (F_0258).  A full step along `−∇f` moves `‖∇f‖` units, so
+ *  on `1e40·(x − 1)²` it overshot by `10⁴⁰`, and on `1e-40·(x − 1)²` it moved `10⁻⁴‰` and changed
+ *  no value: both declined.  A unit move is unchanged by `f → k·f + c`; the backtracking and the
+ *  BFGS rescaling after the first step take care of the rest. */
+private def firstStep(d: Vector[Double]): Double =
+  val n = normInf(d)
+  if n > 0.0 && (1.0 / n).isFinite then 1.0 / n else 1.0
 
 /** Answers `x` if its `stationarity` `s` passes the certificate, else the stall it is.
  *  `g` is the (projected) gradient, reported beside the answer. */
@@ -234,8 +250,13 @@ private def certify(p: Problem, s: Double, x: Vector[Double], fx: Double, g: Vec
 /** Whether `x`, where the gradient vanishes exactly, is a local minimum (F_0199): the Hessian's
  *  eigenvalues, read relative to the largest, decide when it has no zero eigenvalue — a negative
  *  one is a maximum or a saddle.  A degenerate Hessian (`x⁴` and `x³` both have `0` at `0`)
- *  falls back to the objective one small step either way along each coordinate, `10⁻⁶` of the
- *  coordinate's own size; any lower value is a witness that `x` is not a minimum. */
+ *  falls back to the objective either way along each coordinate at a **shrinking** sequence of
+ *  steps, from `10⁻⁶` of the coordinate's own size down until the step no longer moves it; any
+ *  lower value is a witness that `x` is not a minimum.  One fixed step was a claim about the units
+ *  (F_0258): on `1e48·x⁶ − 1e32·x⁴` the `x⁶` term already dominated at `10⁻⁶`, and the maximum at
+ *  `0` was answered as a minimum.  Shrinking cannot meet a distant lower value, so a genuine local
+ *  minimum is never refused for one; near a degenerate critical point the lowest-order term
+ *  decides as the step shrinks. */
 private def locallyMinimal(p: Problem, x: Vector[Double], fx: Double): Boolean =
   val n = x.size
   val eigen = p.hess(x).flatMap(h => _MatrixValue(n, n, h).eigenDecompose).map(_.collect { case _Number(d) => d })
@@ -249,9 +270,14 @@ private def locallyMinimal(p: Problem, x: Vector[Double], fx: Double): Boolean =
 
 private def perturbedMinimal(p: Problem, x: Vector[Double], fx: Double): Boolean =
   x.indices.forall { i =>
-    val d = 1e-6 * math.max(math.abs(x(i)), 1.0)
-    Seq(d, -d).forall(s => p.value(x.updated(i, x(i) + s)).forall(_ >= fx))
+    Iterator.iterate(1e-6 * math.max(math.abs(x(i)), 1.0))(_ / 10)
+      .takeWhile(d => d > 0.0 && x(i) + d != x(i)).take(MaxWitnessSteps)
+      .forall(d => Seq(d, -d).forall(s => p.value(x.updated(i, x(i) + s)).forall(_ >= fx)))
   }
+
+/** The most steps the shrinking witness takes per coordinate: from `10⁻⁶` past the smallest
+ *  normal `Double`. */
+private val MaxWitnessSteps = 320
 
 /** At the iteration cap: the certificate still decides.  The tight test is a target, not the
  *  contract — a point that passes the precision's certificate is answered however it was
@@ -320,8 +346,10 @@ private def bfgs(p: Problem, x0: Vector[Double]): Either[MinimizeFailure, Minimi
     else
       val d0 = h.map(row => -dot(row, g))
       // A direction that does not descend means the approximation has gone bad: restart it.
-      val (d, hk) = if dot(d0, g) < 0 then (d0, h) else (g.map(-_), identity)
-      wolfe(p, x, fx, g, d) match
+      val restart = !(dot(d0, g) < 0)
+      val (d, hk) = if restart then (g.map(-_), identity) else (d0, h)
+      // The first step has no curvature to scale it (F_0258); later ones carry the rescaled H.
+      wolfe(p, x, fx, g, d, if k == 0 || restart then firstStep(d) else 1.0) match
         case Left(fail) => searchFailed(p, fail(k), st, x, fx, g, k)
         case Right((alpha, xn, fn, gnew)) =>
           if stagnant(x, xn, fx, fn) then certify(p, stationarity(gnew, xn, x0, f0, fn), xn, fn, gnew, k + 1)
@@ -389,9 +417,10 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
           if active(i) then 0.0 else -(0 until n).filterNot(active).map(j => h(i)(j) * g(j)).sum)
         else Vector.tabulate(n)(i => if active(i) then 0.0 else -g(i))
       val freeG = Vector.tabulate(n)(i => if active(i) then 0.0 else g(i))
-      val (d, hk) =
-        if dot(raw, freeG) < 0 then (raw, h) else (freeG.map(-_), identity)
-      armijo(p, x, fx, g, d, clamp) match
+      val restart = !(dot(raw, freeG) < 0)
+      val (d, hk) = if restart then (freeG.map(-_), identity) else (raw, h)
+      // The first step has no curvature to scale it (F_0258).
+      armijo(p, x, fx, g, d, clamp, if k == 0 || restart then firstStep(d) else 1.0) match
         case Left(fail) => searchFailed(p, fail(k), st, x, fx, pg, k, interior(x))
         case Right((xn, fn)) =>
           p.grad(xn) match
@@ -426,29 +455,33 @@ private def boxed(p: Problem, x0: Vector[Double], lo: Vector[Double], hi: Vector
 private val C1 = 1e-4
 private val C2 = 0.9
 
-/** Backtracking from the full step until `f(P(x + αd)) ≤ f(x) + c₁·gᵀ(P(x + αd) − x)`.
+/** Backtracking from the step `init` until `f(P(x + αd)) ≤ f(x) + c₁·gᵀ(P(x + αd) − x)`.
  *
- *  `project` is the identity without bounds.  Fails once the step shrinks below any
- *  representable change of `x`.  A failure is reported as a function of the iteration
- *  number, which only the caller knows. */
+ *  `project` is the identity without bounds.  Fails once the step no longer changes `x` at all
+ *  (F_0258: it was `α < 10⁻²⁰`, a claim about the units of `d`), or past [[MaxHalvings]].  A
+ *  failure is reported as a function of the iteration number, which only the caller knows. */
 private def armijo(p: Problem, x: Vector[Double], fx: Double, g: Vector[Double], d: Vector[Double],
-                   project: Vector[Double] => Vector[Double])
+                   project: Vector[Double] => Vector[Double], init: Double = 1.0)
     : Either[Int => MinimizeFailure, (Vector[Double], Double)] =
   @annotation.tailrec
-  def search(alpha: Double): Either[Int => MinimizeFailure, (Vector[Double], Double)] =
-    if alpha < 1e-20 then Left(k => MinimizeFailure.LineSearchFailed(k))
-    else
-      val xn = project(axpy(alpha, d, x))
-      p.value(xn) match
-        case Some(fn) if fn < UnboundedBelow => Left(_ => MinimizeFailure.Unbounded)
-        case Some(fn) if fn <= fx + C1 * dot(g, xn.lazyZip(x).map(_ - _)) => Right((xn, fn))
-        case _ => search(alpha / 2)
-  search(1.0)
+  def search(alpha: Double, k: Int): Either[Int => MinimizeFailure, (Vector[Double], Double)] =
+    val xn = project(axpy(alpha, d, x))
+    if k > MaxHalvings || xn == x then Left(i => MinimizeFailure.LineSearchFailed(i))
+    else p.value(xn) match
+      case Some(fn) if unboundedBelow(fn, fx) => Left(_ => MinimizeFailure.Unbounded)
+      case Some(fn) if fn <= fx + C1 * dot(g, xn.lazyZip(x).map(_ - _)) => Right((xn, fn))
+      case _ => search(alpha / 2, k + 1)
+  search(init, 0)
+
+/** The most halvings a line search makes: enough to pass from a unit step to the smallest
+ *  subnormal `Double`, so the step's effect on `x`, not this count, ends the search. */
+private val MaxHalvings = 1100
 
 /** A strong-Wolfe line search (Nocedal & Wright, algorithms 3.5 and 3.6, bisection zoom).
  *
  *  @return the step length, the new point, its value and its gradient */
-private def wolfe(p: Problem, x: Vector[Double], fx: Double, g: Vector[Double], d: Vector[Double])
+private def wolfe(p: Problem, x: Vector[Double], fx: Double, g: Vector[Double], d: Vector[Double],
+                  init: Double = 1.0)
     : Either[Int => MinimizeFailure, (Double, Vector[Double], Double, Vector[Double])] =
   val dphi0 = dot(g, d)
   type Hit = (Double, Vector[Double], Double, Vector[Double])
@@ -458,7 +491,9 @@ private def wolfe(p: Problem, x: Vector[Double], fx: Double, g: Vector[Double], 
 
   @annotation.tailrec
   def zoom(lo: Double, flo: Double, hi: Double, k: Int): Either[Int => MinimizeFailure, Hit] =
-    if k > 60 || math.abs(hi - lo) <= 1e-16 * math.max(1.0, math.abs(lo)) then
+    // Ends when the two ends name the same point (F_0258: it was `|hi − lo| ≤ 10⁻¹⁶·max(1, |lo|)`,
+    // a claim about the units of `d`).
+    if k > MaxHalvings || axpy(lo, d, x) == axpy(hi, d, x) then
       Left(i => MinimizeFailure.LineSearchFailed(i))
     else
       val mid = (lo + hi) / 2
@@ -476,13 +511,13 @@ private def wolfe(p: Problem, x: Vector[Double], fx: Double, g: Vector[Double], 
     else at(alpha) match
       case None => zoom(prev, fprev, alpha, 0)
       case Some((xa, fa, ga, da)) =>
-        if fa < UnboundedBelow then Left(_ => MinimizeFailure.Unbounded)
+        if unboundedBelow(fa, fx) then Left(_ => MinimizeFailure.Unbounded)
         else if fa > fx + C1 * alpha * dphi0 || (k > 0 && fa >= fprev) then zoom(prev, fprev, alpha, 0)
         else if math.abs(da) <= -C2 * dphi0 then Right((alpha, xa, fa, ga))
         else if da >= 0 then zoom(alpha, fa, prev, 0)
         else bracket(alpha, fa, alpha * 2, k + 1)
 
-  bracket(0.0, fx, 1.0, 0)
+  bracket(0.0, fx, init, 0)
 
 /** Solves `H·s = g` by Cholesky, or `None` when `H` is not positive definite — which is the
  *  cheapest test there is, and the reason Newton uses it rather than an inverse. */

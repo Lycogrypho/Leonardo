@@ -40,6 +40,8 @@ object CheckReservedWords:
   private val Generated  = """([A-Z][A-Za-z0-9_]*)\.values\.toList\.map\s*\{\s*(\w+)\s*=>\s*\(\s*\2\.(\w+)\s*\+\s*"\("""".r
   /** Any production built by concatenating `"("`, generated or not. */
   private val Built      = """\+\s*"\("""".r
+  /** A production built by interpolation, `s"${k.word}("` (F_0269): its word cannot be read. */
+  private val Interpolated = """\$\{[^}]*\}\("""".r
 
   /** The words a grammar parses as calls, and the generated productions whose words could not be
    *  read (each a finding). */
@@ -60,9 +62,12 @@ object CheckReservedWords:
       .map(text => Case.findAllMatchIn(text).map(_.group(1)).toVector)
       .filter(_.nonEmpty)
 
-  /** `text` with `//` and `/* */` comments blanked, string literals kept intact. */
+  /** `text` with `//` and `/* */` comments blanked, string literals kept intact -- triple-quoted
+   *  ones and character literals too (F_0269): a `'"'` opened a string that swallowed the code
+   *  after it, and a `//` inside a `"""…"""` regex blanked the rest of its line. */
   private def withoutComments(text: String): String =
     val out = new StringBuilder
+    val Triple = "\"\"\""
     var i = 0
     var inString = false
     while i < text.length do
@@ -72,6 +77,16 @@ object CheckReservedWords:
         if c == '\\' && i + 1 < text.length then { out += text(i + 1); i += 1 }
         else if c == '"' then inString = false
         i += 1
+      else if text.startsWith(Triple, i) then
+        // Up to the closing quotes, which may be followed by more quotes belonging to the string.
+        val close = text.indexOf(Triple, i + 3)
+        val end   = if close < 0 then text.length else Iterator.from(close + 3).find(j => j >= text.length || text(j) != '"').getOrElse(text.length)
+        out ++= text.substring(i, end)
+        i = end
+      else if c == '\'' && i + 2 < text.length && (text(i + 2) == '\'' || (text(i + 1) == '\\' && i + 3 < text.length && text(i + 3) == '\'')) then
+        val end = if text(i + 2) == '\'' then i + 3 else i + 4
+        out ++= text.substring(i, end)
+        i = end
       else if c == '"' then { inString = true; out += c; i += 1 }
       else if text.startsWith("//", i) then
         while i < text.length && text(i) != '\n' do i += 1
@@ -127,7 +142,9 @@ object CheckReservedWords:
     val unreadable =
       read.collect { case (name, None) => s"cannot read the words of `$name`, which builds productions" } ++
         Option.when(Built.findAllMatchIn(grammar).size > generated.size)(
-          "cannot read the word of a production built with `+ \"(\"` outside the `Kind.values` shape")
+          "cannot read the word of a production built with `+ \"(\"` outside the `Kind.values` shape") ++
+        Option.when(Interpolated.findFirstIn(grammar).isDefined)(
+          "cannot read the word of a production built by interpolation (`s\"${…}(\"`)")
     Words((literal ++ read.flatMap(_._2.getOrElse(Vector.empty))).distinct.sorted, unreadable)
 
   /** The check, as an exit code, over the given file or the parser.
