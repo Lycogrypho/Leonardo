@@ -56,3 +56,7 @@ package tools
 /** Writes the architecture diagram as GraphML, or with `--check` refuses what the reader does not
  *  know and a stale committed copy. See [[PumlGraph]]. */
 @main def graphml(args: String*): Unit = sys.exit(PumlGraph.run(args))
+
+/** Asks osv.dev about the meta-build's coordinates; by hand before a tag, never in `checks` or CI.
+ *  Through the `osvPlugins` alias, which writes the coordinates first. See [[OsvQuery]]. */
+@main def osv(args: String*): Unit = sys.exit(OsvQuery.run(args))
