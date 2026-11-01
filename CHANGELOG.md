@@ -23,7 +23,7 @@ Each section's body is published verbatim as that tag's GitHub Release, extracte
 `.github/workflows/release.yml`. **Write the section before tagging**, and keep the heading in
 the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
-## Unreleased
+## 3.8.3 — 2026-11-01
 
 *Gathered for the next release; rename to its version before tagging.  Everything on `main`
 since 3.8.2 (which was cut from a maintenance branch and carried one fix) is here.  MiMa finds no
