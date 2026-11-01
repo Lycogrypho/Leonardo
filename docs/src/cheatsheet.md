@@ -11,6 +11,11 @@ nav_order: 13
 Quick reference for the interactive REPL and all mathematical expressions.
 For full detail on any command run `help <command>` at the REPL prompt.
 
+A *Result* written as code is **exactly what a fresh session prints** at the default settings —
+`55.0`, `((x ^ 3.0) / 3.0)` — and is checked on every build by running the row; the mathematical
+form, where it reads differently, is in the *Notes*.  A table that needs a setting (`exact on`) says
+so above it.
+
 ---
 
 ## REPL session commands
@@ -137,25 +142,33 @@ unevaluated on a complex or truth value and on a name with no value yet.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `fib(10)` | `55` | Standard indexing: `fib(0)=0`, `fib(1)=1` (OEIS A000045) |
-| `fib(100)` | `354224848179261915075` | In exact mode Fibonacci is computed over arbitrary-precision integers: a `Double` stops being exact at `fib(78)`, so this is not an approximation |
+| `fib(10)` | `55.0` | Standard indexing: `fib(0)=0`, `fib(1)=1` (OEIS A000045) |
 | `fib(n, 1, 1)` | | The classic rabbit pair = `fib(n+1)` |
 | `fib(5, 1.5, -pi)` | | Any numeric seeds — not just integers |
-| `lucas(6)` | `18` | = `fib(n, 2, 1)` |
-| `pell(5)` | `29` | `x(n) = 2x(n-1) + x(n-2)` |
-| `jacobsthal(5)` | `11` | `x(n) = x(n-1) + 2x(n-2)` |
-| `binom(10, 5)` | `252` | Generalised: `binom(-1, 3) = -1` |
-| `catalan(5)` | `42` | |
-| `harmonic(4)` | `2.0833` | Exact mode gives `25/12` |
+| `lucas(6)` | `18.0` | = `fib(n, 2, 1)` |
+| `pell(5)` | `29.0` | `x(n) = 2x(n-1) + x(n-2)` |
+| `jacobsthal(5)` | `11.0` | `x(n) = x(n-1) + 2x(n-2)` |
+| `binom(10, 5)` | `252.0` | Generalised: `binom(-1, 3) = -1` |
+| `catalan(5)` | `42.0` | |
+| `harmonic(4)` | `2.08333` | |
+
+Under `exact on` the same functions answer over the integers and rationals:
+
+<!-- cheatsheet-setup: exact on -->
+| Syntax | Result | Notes |
+|---|---|---|
+| `fib(100)` | `354224848179261915075` | Over arbitrary-precision integers: a `Double` stops being exact at `fib(78)`, so this is not an approximation |
+| `harmonic(4)` | `25/12` | |
+| `sum(1/k, k, 1, 3)` | `11/6` | An exact term stays exact |
 
 ### tabulate — a row of terms
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `tabulate(fib(k), k, 0, 8)` | `[[0, 1, 1, 2, 3, 5, 8, 13, 21]]` | Works for *any* expression, not just the sequences; `k` is a binder |
-| `tabulate(binom(4, k), k, 0, 4)` | `[[1, 4, 6, 4, 1]]` | A Pascal row |
-| `tabulate(k^2, k, 1, 5)` | `[[1, 4, 9, 16, 25]]` | |
-| `at(tabulate(fib(k), k, 0, 10), 1, 11)` | `55` | The result is an ordinary 1×n matrix, so `at` (1-based), tuple assignment and `:save` all apply |
+| `tabulate(fib(k), k, 0, 8)` | `[[0.0, 1.0, 1.0, 2.0, 3.0, 5.0, 8.0, 13.0, 21.0]]` | Works for *any* expression, not just the sequences; `k` is a binder |
+| `tabulate(binom(4, k), k, 0, 4)` | `[[1.0, 4.0, 6.0, 4.0, 1.0]]` | A Pascal row |
+| `tabulate(k^2, k, 1, 5)` | `[[1.0, 4.0, 9.0, 16.0, 25.0]]` | |
+| `at(tabulate(fib(k), k, 0, 10), 1, 11)` | `55.0` | The result is an ordinary 1×n matrix, so `at` (1-based), tuple assignment and `:save` all apply |
 
 ### sum / product — the terms folded
 
@@ -165,9 +178,8 @@ unevaluated on a complex or truth value and on a name with no value yet.
 | `sum(k^2, k, 1, 4)` | `30.0` | |
 | `product(k, k, 1, 5)` | `120.0` | |
 | `sum(binom(4, k), k, 0, 4)` | `16.0` | A Pascal row, added up |
-| `sum(k*x, k, 1, 3)` | `x + 2x + 3x` | Symbolic terms **expand** |
+| `sum(k*x, k, 1, 3)` | `(((1.0 * x) + (2.0 * x)) + (3.0 * x))` | `x + 2x + 3x`: symbolic terms **expand** |
 | `sum(k, k, 1, 0)` | `0.0` | The empty sum; `product` gives 1 |
-| `sum(1/k, k, 1, 3)` | `11/6` | Under `exact on`: an exact term stays exact |
 | `sum(k, k, 1, n)` | | A free bound stays symbolic; the range is capped like `tabulate`'s, so a mistyped bound declines |
 
 ---
@@ -224,9 +236,9 @@ unevaluated on a complex or truth value and on a name with no value yet.
 |---|---|---|
 | `bayes(prior, likelihood)` | the normalised posterior | Bayes' theorem over a finite set of hypotheses: two rows (or columns) in, the posterior out in the same shape; exact on exact input |
 | `posterior(prior, lik, data)` | an ordinary distribution | Conjugate update; the likelihood is the family with its unknown parameter left **free**, and `pdf`/`cdf`/`quantile`/`expect` apply to the result. Anything outside the three pairs below stays symbolic |
-| `posterior(betadist(a, b), binomial(n, p), k)` | `betadist(a + k, b + n - k)` | |
-| `posterior(gammadist(k, r), poisson(l), [[x1, x2]])` | `gammadist(k + sum x, r + n)` | |
-| `posterior(normal(m0, s0), normal(m, s), [[x1, x2]])` | `normal(mn, sn)` | `s` **known** |
+| `posterior(betadist(2, 2), binomial(10, p), 7)` | `betadist(9.0, 5.0)` | `betadist(a + k, b + n - k)` |
+| `posterior(gammadist(3, 1), poisson(l), [[2, 4]])` | `gammadist(9.0, 3.0)` | `gammadist(k + Σx, rate + n)` |
+| `posterior(normal(0, 1), normal(m, 2), [[1, 3]])` | `normal(0.66667, 0.8165)` | `s` **known**; precisions add, the mean is precision-weighted |
 
 ### Seeded sampling and PRBS
 
@@ -302,31 +314,31 @@ An answer that cannot be proved complete is not given: the call stays as written
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `integral(x^2, x)` | `(1/3) * x^3` | |
-| `integral(exp(x), x)` | `exp(x)` | |
-| `integral(sin(x), x)` | `-cos(x)` | |
+| `integral(x^2, x)` | `((x ^ 3.0) / 3.0)` | x³/3 |
+| `integral(exp(x), x)` | `(exp(x) / 1.0)` | eˣ |
+| `integral(sin(x), x)` | `((-1.0 * cos(x)) / 1.0)` | −cos x |
 | `integral(1/x, x)` | `ln(x)` | |
-| `integral(step(x), x)` | `x*step(x)` | |
-| `integral(tan(x), x)` | `-ln(cos(x))` | From the data-driven table |
-| `integral(k^x, x)` | `k^x / ln(k)` | Symbolic base free of `x` |
-| `integral(1/(a^2 + x^2), x)` | `atan(x/a) / a` | Symbolic parameter `a` |
-| `integral(x * exp(x^2), x)` | `exp(x^2)/2` | Non-linear u-substitution (u = x²) |
-| `integral(sin(x)^3 * cos(x), x)` | `sin(x)^4/4` | u = sin(x) |
-| `integral(tan(x)^3, x)` | `tan²/2 + ln(cos x)` | tan/sec/csc/cot power reduction |
+| `integral(step(x), x)` | `((x * step(x)) / 1.0)` | x·step(x) |
+| `integral(tan(x), x)` | `(-1.0 * ln(cos(x)))` | −ln(cos x), from the data-driven table |
+| `integral(k^x, x)` | `((k ^ x) / ln(k))` | Symbolic base free of `x` |
+| `integral(1/(a^2 + x^2), x)` | `(atan((x / a)) / a)` | Symbolic parameter `a` |
+| `integral(x * exp(x^2), x)` | `(exp((x ^ 2.0)) / 2.0)` | Non-linear u-substitution (u = x²) |
+| `integral(sin(x)^3 * cos(x), x)` | `((sin(x) ^ 4.0) / 4.0)` | u = sin(x) |
+| `integral(tan(x)^3, x)` | `(((tan(x) ^ 2.0) / 2.0) + ln(cos(x)))` | tan/sec/csc/cot power reduction |
 | `integral(1/((x-1)^2*(x-2)), x)` | | Full partial fractions, repeated root |
 | `integral(1/((x^2+1)*(x-1)), x)` | | Partial fractions, complex pair |
-| `integral(1/(4 - x^2)^0.5, x)` | `asin(x/2)` | Trigonometric substitution |
+| `integral(1/(4 - x^2)^0.5, x)` | `asin((x / 2.0))` | Trigonometric substitution |
 | `integral((4 - x^2)^1.5, x)` | | Any half-integer power of the radicand |
 | `integral(1/(x^2 + 1)^0.5, x)` | `asinh(x)` | Hyperbolic substitution |
 | `integral(1/(2 + cos(x)), x)` | | Weierstrass `t = tan(x/2)` |
 | `integral(sin(x)/x, x)` | `Si(x)` | Special integral functions |
 | `integral(exp(-x^2), x)` | `(0.88623 * erf(x))` | `√pi/2 · erf(x)` |
 | `integral(1/ln(x), x)` | `li(x)` | |
-| `integral(asin(x), x)` | `x*asin(x) + (1-x^2)^0.5` | From the data-driven table |
+| `integral(asin(x), x)` | `((x * asin(x)) + ((1.0 + (-1.0 * (x ^ 2.0))) ^ 0.5))` | x·asin x + √(1 − x²), from the data-driven table |
 | `integral(sin(2*x)*cos(5*x), x)` | | Product-to-sum |
-| `integral(1/(a^2 - x^2), x)` | `atanh(x/a)/a` | Symbolic parameter `a` |
-| `integral(1/(x^2 + a^2)^0.5, x)` | `asinh(x/a)` | |
-| `integral(x^a, x)` | `x^(a+1)/(a+1)` | Symbolic exponent |
+| `integral(1/(a^2 - x^2), x)` | `(atanh((x / a)) / a)` | Symbolic parameter `a` |
+| `integral(1/(x^2 + a^2)^0.5, x)` | `asinh((x / a))` | |
+| `integral(x^a, x)` | `((x ^ (a + 1.0)) / (a + 1.0))` | Symbolic exponent |
 | `integral(exp(a*x)*sin(b*x), x)` | | General cyclic pair |
 
 ### Vector calculus
@@ -335,15 +347,15 @@ A vector field is an n×1 matrix; the coordinate tuple is explicit and **ordered
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `grad(x^2*y, x, y)` | `[[2xy], [x^2]]` | Gradient (n x 1); a vector field given to `grad` stays symbolic |
-| `div([[x^2], [y^3]], x, y)` | `2x + 3y^2` | Divergence (scalar) |
-| `curl([[-y], [x], [0]], x, y, z)` | `[[0], [0], [2]]` | Curl (3-D only); outside three dimensions it stays symbolic |
-| `laplacian(x^3*y, x, y)` | `6xy` | = `div(grad(f))`; a vector field stays symbolic |
-| `jacobian([[x*y], [y^2]], x, y)` | `[[y, x], [0, 2y]]` | m x n; stays symbolic in a curvilinear system |
+| `grad(x^2*y, x, y)` | `[[((2.0 * x) * y)], [(x ^ 2.0)]]` | Gradient (n x 1), `[[2xy], [x²]]`; a vector field given to `grad` stays symbolic |
+| `div([[x^2], [y^3]], x, y)` | `((2.0 * x) + (3.0 * (y ^ 2.0)))` | Divergence (scalar), 2x + 3y² |
+| `curl([[-y], [x], [0]], x, y, z)` | `[[0.0], [0.0], [2.0]]` | Curl (3-D only); outside three dimensions it stays symbolic |
+| `laplacian(x^3*y, x, y)` | `((6.0 * x) * y)` | = `div(grad(f))`; a vector field stays symbolic |
+| `jacobian([[x*y], [y^2]], x, y)` | `[[y, x], [0.0, (2.0 * y)]]` | m x n; stays symbolic in a curvilinear system |
 | `hessian(x^2*y^3, x, y)` | | n x n, symmetric; a vector field, or a curvilinear system, stays symbolic |
-| `laplacian(1/r, r, t, p, spherical)` | `0` | The Newtonian potential is harmonic |
-| `div([[1/r], [0], [0]], r, t, z, cylindrical)` | `0` | The 2-D point source is source-free |
-| `grad(f, r, t, z, cylindrical)` | `[[df/dr], [(1/r)*df/dt], [df/dz]]` | |
+| `laplacian(1/r, r, t, p, spherical)` | `((((2.0 * (r * sin(t))) * (-1.0 / (r ^ 2.0))) + ((r * (r * sin(t))) * ((2.0 * r) / ((r ^ 2.0) ^ 2.0)))) / (r * (r * sin(t))))` | `0` at every point (the Newtonian potential is harmonic); `simplify` does no common-factor cancellation, so the quotient stays as printed |
+| `div([[1/r], [0], [0]], r, t, z, cylindrical)` | `(((1.0 / r) + (r * (-1.0 / (r ^ 2.0)))) / r)` | `0` at every point: the 2-D point source is source-free |
+| `grad(r^2*z, r, t, z, cylindrical)` | `[[((2.0 * r) * z)], [0.0], [(r ^ 2.0)]]` | `[[∂f/∂r], [(1/r)∂f/∂t], [∂f/∂z]]` |
 
 A component/coordinate count mismatch or a repeated coordinate also stays symbolic rather than
 being guessed. An optional trailing keyword selects the coordinate system:
@@ -379,7 +391,8 @@ legal there.
 | `limit(1/x, x, 0, +)` | `inf` | From the right |
 | `limit(1/x, x, 0, -)` | `-inf` | From the left |
 | `limit(atan(x), x, inf)` | `1.5708` | π/2 |
-| `limit((1 + 1/x)^x, x, inf)` | `2.71828` | e |
+| `limit((2*x^2 + 1)/(x^2 + 3), x, inf)` | `2.0` | Degree comparison of a rational function |
+| `limit((1 + 1/x)^x, x, inf)` | stays unevaluated | The numeric tier cannot certify `e` from samples at infinity: `(1 + 1/x)` loses its digits there |
 
 ### Sampling
 
@@ -425,8 +438,8 @@ legal there.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `solve(2*x + 1 = 5, x)` | `x = 2.0` | Linear |
-| `solve(x^2 = 4, x)` | `[[x = -2.0, x = 2.0]]` | Quadratic; in exact mode irrational roots are exact surds (`x^2 = 13` gives `±√13`) |
+| `solve(2*x + 1 = 5, x)` | `x := 2.0` | Linear.  `solve` **binds** its answer: `unset x` before solving for `x` again |
+| `solve(x^2 = 4, x)` | binds `x_1 := -2.0` and `x_2 := 2.0` | Quadratic; in exact mode irrational roots are exact surds (`x^2 = 13` gives `±√13`) |
 | `solve(sin(x) = 0, x)` | | Numeric bisection fallback |
 
 ### solve — inequalities
@@ -452,10 +465,10 @@ comparisons via `or`/`and`.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `solve(A * X = B, X)` | `X = inv(A) * B` | |
-| `solve(X * A = B, X)` | `X = B * inv(A)` | |
-| `solve(A * X * D = B, X)` | `X = inv(A) * B * inv(D)` | |
-| `solve(A * X + C = B, X)` | `X = inv(A) * (B - C)` | Affine |
+| `solve(A * X = B, X)` | X = A⁻¹B | With `A`, `B` (and `C`, `D`) bound to matrices; unbound, the names are read as numbers |
+| `solve(X * A = B, X)` | X = BA⁻¹ | |
+| `solve(A * X * D = B, X)` | X = A⁻¹BD⁻¹ | |
+| `solve(A * X + C = B, X)` | X = A⁻¹(B − C) | Affine |
 | `solve(A * X + X * B = C, X)` | | Sylvester equation (Kronecker vectorization; Lyapunov `A * X + X * transpose(A) = C` alike). Numeric: up to 400 vectorized unknowns. Exact matrices: solved over the rationals with an exact answer, up to 36 vectorized unknowns; past it the equation stays unevaluated |
 
 ### solveSystem — linear systems
@@ -482,7 +495,7 @@ full analytic extension.
 |---|---|---|
 | `domain(ln(x - 2), x)` | `(x > 2.0)` | |
 | `domain(asin(x), x)` | `((x >= -1.0) and (x <= 1.0))` | |
-| `domain(1/x, x)` | `(x != 0.0)` | |
+| `domain(1/x, x)` | `((x < 0.0) or (x > 0.0))` | x ≠ 0 |
 | `differentiable(ln(x), x)` | `(x > 0.0)` | Where the derivative exists |
 | `singularities(1/(x-1)^2, x)` | `[[1.0], [2.0]]` | Location over pole order |
 | `singularities(x^2, x)` | `false` | Provably none |
@@ -536,6 +549,7 @@ round-trip, while remaining usable as `255` everywhere.
 
 ### Symmetric ternary (an encoding, not a semantics)
 
+<!-- cheatsheet-setup: logic symmetric on -->
 | Syntax | Result | Notes |
 |---|---|---|
 | `logic symmetric on` | | Spell truth values as -1 / 0 / 1, related by `t = (s + 1) / 2`; the rule table is identical either way. `:save` persists the toggle but always writes the word spelling |
@@ -566,6 +580,7 @@ round-trip, while remaining usable as `255` everywhere.
 
 ### Custom membership curves
 
+<!-- cheatsheet-setup: bell := truth(1 / (1 + (x - 5)^2)) -->
 | Syntax | Result | Notes |
 |---|---|---|
 | `truth(1 / (1 + (x - 5)^2))` | | A Cauchy bell — a curve of your own: the four built-in shapes are a convenience, not a limit, and `truth(<expr>)` turns **any** scalar expression of one variable into a membership curve |
@@ -679,19 +694,19 @@ The shape decides: a row or a column is a vector, anything else a matrix.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `lu(A)` | `[[L, U, P]]` | `P·A = L·U`, partial pivoting; exact on exact `A`, singular included |
-| `qr(A)` | `[[Q, R]]` | `A = Q·R`, modified Gram-Schmidt; dependent columns: unevaluated, with a note |
-| `eigen(A)` | `[[λ₁, …, λₙ]]` | Eigenvalues only. `eigen`, `eig` and `jordan` list eigenvalues by real part ascending, then imaginary part — the order `tfpoles` answers in, so a conjugate pair comes `−im` first |
-| `eig(A)` | `[[V, D]]` | `A·V = V·D` (eigenvectors + diagonal); defective: unevaluated; `V`'s columns are permuted with `D` |
-| `jordan(A)` | `[[P, J]]` | `A = P·J·P⁻¹`; exact with blocks when exact, eigenvalues rational |
+| `lu(A)` | the row `[[L, U, P]]` | `P·A = L·U`, partial pivoting; exact on exact `A`, singular included |
+| `qr(A)` | the row `[[Q, R]]` | `A = Q·R`, modified Gram-Schmidt; dependent columns: unevaluated, with a note |
+| `eigen(A)` | the row `[[λ₁, …, λₙ]]` | Eigenvalues only. `eigen`, `eig` and `jordan` list eigenvalues by real part ascending, then imaginary part — the order `tfpoles` answers in, so a conjugate pair comes `−im` first |
+| `eig(A)` | the row `[[V, D]]` | `A·V = V·D` (eigenvectors + diagonal); defective: unevaluated; `V`'s columns are permuted with `D` |
+| `jordan(A)` | the row `[[P, J]]` | `A = P·J·P⁻¹`; exact with blocks when exact, eigenvalues rational |
 
 ### Matrix exponential — a single matrix, not a row
 
 | Syntax | Result | Notes |
 |---|---|---|
 | `expm(A)` | e^A | Scaling + squaring, degree-13 Padé. **Not** `A^n`: that is repeated multiplication, this is the exponential series. Works for **defective** matrices (a repeated eigenvalue with too few eigenvectors), where the eigen-decomposition route has no basis to use |
-| `expm(zeros(3, 3))` | `eye(3)` | |
-| `expm([[0, 1], [0, 0]])` | `[[1, 1], [0, 1]]` | Nilpotent: series terminates |
+| `expm(zeros(3, 3))` | `[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]` | `eye(3)` |
+| `expm([[0, 1], [0, 0]])` | `[[1.0, 1.0], [0.0, 1.0]]` | Nilpotent: series terminates |
 | `expm([[0, -t], [t, 0]])` | rotation by `t` | |
 
 ### Cholesky factor — a single matrix, not a row
@@ -699,20 +714,20 @@ The shape decides: a row or a column is a vector, anything else a matrix.
 | Syntax | Result | Notes |
 |---|---|---|
 | `chol(A)` | `L`, lower triangular, `A = L·Lᵀ` | Stays unevaluated unless `A` is square, symmetric and positive definite — the refusal *is* the convexity test. Tolerances are relative to the largest entry; exact input stays exact |
-| `chol([[4, 2], [2, 3]])` | `[[2, 0], [1, 1.41421]]` | |
+| `chol([[4, 2], [2, 3]])` | `[[2.0, 0.0], [1.0, 1.41421]]` | |
 | `chol([[1, 2], [2, 1]])` | stays `chol(...)` | Indefinite |
 
 ### Singular values
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `svd(A)` | `[[U, S, V]]` | `A = U·S·Vᵀ`, economy (U m×k, S k×k, V n×k). Exact input demotes to `Double`; past `max(m, n)·min(m, n)² = 10⁷` the call stays unevaluated |
+| `svd(A)` | the row `[[U, S, V]]` | `A = U·S·Vᵀ`, economy (U m×k, S k×k, V n×k). Exact input demotes to `Double`; past `max(m, n)·min(m, n)² = 10⁷` the call stays unevaluated |
 | `svd(A, full)` | U m×m, S m×n, V n×n | `full` is a slot word, not reserved |
 | `U, S, V := svd(A)` | | Tuple binding |
-| `rank([[1, 2], [2, 4]])` | `1` | `rank`, `pinv`, `nullspace` and `orth` count a singular value as zero at or below `0.5·10⁻ᵖ·σ_max` (`p` = precision), so rescaling `A` never changes the answer |
+| `rank([[1, 2], [2, 4]])` | `1.0` | `rank`, `pinv`, `nullspace` and `orth` count a singular value as zero at or below `0.5·10⁻ᵖ·σ_max` (`p` = precision), so rescaling `A` never changes the answer |
 | `rank(A, 0.01)` | | Tolerance relative to the largest singular value, in [0, 1) |
-| `pinv(A)` | `V·S⁺·Uᵀ` | = `inv(A)` for square non-singular `A` |
-| `cond([[1, 0], [0, 0.001]])` | `1000` | |
+| `pinv(A)` | V·S⁺·Uᵀ | = `inv(A)` for square non-singular `A` |
+| `cond([[1, 0], [0, 0.001]])` | `1000.0` | |
 | `cond([[1, 2], [2, 4]])` | `inf` | `cond` is `inf` only when `σ_min` is lost in rounding |
 | `nullspace(A)` / `nullspace(A, tol)` | n×(n − rank) | Orthonormal basis of {x : A·x = 0}; `false` if trivial |
 | `orth(A)` / `orth(A, tol)` | m×rank | Orthonormal basis of the range; `false` for the zero matrix |
@@ -740,10 +755,10 @@ The shape decides: a row or a column is a vector, anything else a matrix.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `laplace(1, t, s)` | `1/s` | |
-| `laplace(t^2, t, s)` | `2/s^3` | |
-| `laplace(sin(3*t), t, s)` | `3/(s^2+9)` | |
-| `laplace(exp(2*t)*cos(t), t, s)` | `(s-2)/((s-2)^2+1)` | First-shift |
+| `laplace(1, t, s)` | `(1.0 / s)` | |
+| `laplace(t^2, t, s)` | `(2.0 / (s ^ 3.0))` | |
+| `laplace(sin(3*t), t, s)` | `(3.0 / ((s ^ 2.0) + 9.0))` | |
+| `laplace(exp(2*t)*cos(t), t, s)` | `((s + -2.0) / (((s + -2.0) ^ 2.0) + 1.0))` | First-shift |
 | `laplace(t^3*exp(-t), t, s)` | | Derivative-of-transform rule |
 
 ### Fourier transform  `F{e(t)} = ∫ e(t)·e^(−iωt) dt` over the whole line
@@ -752,21 +767,21 @@ The shape decides: a row or a column is a vector, anything else a matrix.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `fourier(exp(-abs(t)), t, w)` | `2/(1 + w^2)` | |
+| `fourier(exp(-abs(t)), t, w)` | `(2.0 / (1.0 + (w ^ 2.0)))` | |
 | `fourier(step(t+1) - step(t-1), t, w)` | | The centred pulse, `2*sin(w)/w`: a pole that cancels in the whole transform is fine |
-| `fourier(step(t)*exp(-2*t), t, w)` | `1/(2 + i*w)` | |
-| `fourierCausal(exp(-2*t), t, w)` | `1/(2 + i*w)` | |
+| `fourier(step(t)*exp(-2*t), t, w)` | `(1.0 / (2.0 + (i * w)))` | |
+| `fourierCausal(exp(-2*t), t, w)` | `(1.0 / (2.0 + (i * w)))` | |
 | `fourier(1, t, w)` | unevaluated, with a note | A pole on the axis. Answered only when every pole of each Laplace part lies strictly left of the imaginary axis: `1`, `cos(t)` and `step(t)` need Dirac deltas, `exp(-t)` diverges as `t → −∞`, and a pole whose side depends on a free parameter cannot be placed; all stay unevaluated with a note saying why |
 
 ### Inverse Laplace transform  `L⁻¹{f(s)}`
 
 | Syntax | Result |
 |---|---|
-| `invlaplace(1/s, s, t)` | `1` |
+| `invlaplace(1/s, s, t)` | `1.0` |
 | `invlaplace(1/s^2, s, t)` | `t` |
-| `invlaplace(1/(s-3), s, t)` | `exp(3*t)` |
-| `invlaplace(2/(s^2+4), s, t)` | `sin(2*t)` |
-| `invlaplace(3/((s-2)^2+9), s, t)` | `exp(2*t)*sin(3*t)` |
+| `invlaplace(1/(s-3), s, t)` | `exp((3.0 * t))` |
+| `invlaplace(2/(s^2+4), s, t)` | `sin((2.0 * t))` |
+| `invlaplace(3/((s-2)^2+9), s, t)` | `(exp((2.0 * t)) * sin((3.0 * t)))` |
 
 ### z-transform  `X(z) = Σ(n≥0) x[n]·z⁻ⁿ`
 
@@ -774,15 +789,15 @@ The shape decides: a row or a column is a vector, anything else a matrix.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `ztrans(1, n, z)` | `z/(z-1)` | Constant **sequence**, not `1/z`: `Z{c} = c·z/(z−1)`, because the Laplace `L{c} = c/s` does not carry over — a constant sequence is `c` at every index |
-| `ztrans(2^n, n, z)` | `z/(z-2)` | |
-| `ztrans(n, n, z)` | `z/(z-1)^2` | |
-| `ztrans(n^2, n, z)` | `z*(z+1)/(z-1)^3` | |
-| `ztrans(n*2^n, n, z)` | `2*z/(z-2)^2` | |
-| `ztrans(sin(0.5*n), n, z)` | `z*sin(0.5)/(z^2-2*z*cos(0.5)+1)` | |
-| `invztrans(z/(z-2), z, n)` | `2^n` | Complex poles, the Kronecker delta and the bilateral transform are not supported and stay symbolic |
-| `invztrans(z/((z-1)*(z-2)), z, n)` | `2^n - 1` | |
-| `invztrans(z/(z-2)^2, z, n)` | `n*2^(n-1)` | |
+| `ztrans(1, n, z)` | `(1.0 * (z / (z + -1.0)))` | z/(z − 1).  Constant **sequence**, not `1/z`: `Z{c} = c·z/(z−1)`, because the Laplace `L{c} = c/s` does not carry over — a constant sequence is `c` at every index |
+| `ztrans(2^n, n, z)` | `(z / (z + -2.0))` | |
+| `ztrans(n, n, z)` | `((-1.0 * z) * (((z + -1.0) + (-1.0 * z)) / ((z + -1.0) ^ 2.0)))` | z/(z − 1)², from `Z{n·x[n]} = −z·dX/dz`, unsimplified |
+| `ztrans(n^2, n, z)` | `((-1.0 * z) * ((-1.0 * (((z + -1.0) + (-1.0 * z)) / ((z + -1.0) ^ 2.0))) + ((-1.0 * z) * ((-1.0 * (((z + -1.0) + (-1.0 * z)) * (2.0 * (z + -1.0)))) / (((z + -1.0) ^ 2.0) ^ 2.0)))))` | z(z + 1)/(z − 1)³ |
+| `ztrans(n*2^n, n, z)` | `((-1.0 * z) * (((z + -2.0) + (-1.0 * z)) / ((z + -2.0) ^ 2.0)))` | 2z/(z − 2)² |
+| `ztrans(sin(0.5*n), n, z)` | `((z * 0.47943) / (((z ^ 2.0) + (-2.0 * (z * 0.87758))) + 1.0))` | z·sin 0.5/(z² − 2z·cos 0.5 + 1) |
+| `invztrans(z/(z-2), z, n)` | `(2.0 ^ n)` | Complex poles, the Kronecker delta and the bilateral transform are not supported and stay symbolic |
+| `invztrans(z/((z-1)*(z-2)), z, n)` | `((2.0 ^ n) + -1.0)` | 2ⁿ − 1 |
+| `invztrans(z/(z-2)^2, z, n)` | `(binom(n, 1.0) * (2.0 ^ (n + -1.0)))` | n·2ⁿ⁻¹: a repeated pole of any order through `binom` |
 
 ### Discrete Fourier transform and convolution
 
@@ -883,9 +898,10 @@ First-order IVP  `y' = f(t, y)`,  `y(t₀) = y₀`,  returns `y(target)`.
 
 Linear **systems** `y' = A·y + b` with a column `y0` (`A` constant and square, `b` a column):
 
+<!-- cheatsheet-setup: A := [[0, 1], [0, 0]] -->
 | Syntax | Result | Notes |
 |---|---|---|
-| `ode([[0, 1], [-1, 0]] * y, y, t, 0, [[1], [0]], 1)` | `[[cos 1], [-sin 1]]` | `e^(A·τ)·y₀` by the augmented matrix exponential (the `c2dExact` kernel), so a defective or singular `A` is fine. Numeric only; a non-conforming shape stays symbolic |
+| `ode([[0, 1], [-1, 0]] * y, y, t, 0, [[1], [0]], 1)` | `[[0.5403], [-0.84147]]` | `[[cos 1], [−sin 1]]`: `e^(A·τ)·y₀` by the augmented matrix exponential (the `c2dExact` kernel), so a defective or singular `A` is fine. Numeric only; a non-conforming shape stays symbolic |
 | `A := [[0, 1], [0, 0]]` | | A bound `A` works the same |
 | `ode(A*y + [[0], [1]], y, t, 0, [[0], [0]], 2)` | `[[2.0], [2.0]]` | Singular `A` |
 
