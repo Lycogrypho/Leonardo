@@ -315,10 +315,10 @@ An answer that cannot be proved complete is not given: the call stays as written
 | Syntax | Result | Notes |
 |---|---|---|
 | `integral(x^2, x)` | `((x ^ 3.0) / 3.0)` | x³/3 |
-| `integral(exp(x), x)` | `(exp(x) / 1.0)` | eˣ |
-| `integral(sin(x), x)` | `((-1.0 * cos(x)) / 1.0)` | −cos x |
+| `integral(exp(x), x)` | `exp(x)` | eˣ |
+| `integral(sin(x), x)` | `(-1.0 * cos(x))` | −cos x |
 | `integral(1/x, x)` | `ln(x)` | |
-| `integral(step(x), x)` | `((x * step(x)) / 1.0)` | x·step(x) |
+| `integral(step(x), x)` | `(x * step(x))` | x·step(x) |
 | `integral(tan(x), x)` | `(-1.0 * ln(cos(x)))` | −ln(cos x), from the data-driven table |
 | `integral(k^x, x)` | `((k ^ x) / ln(k))` | Symbolic base free of `x` |
 | `integral(1/(a^2 + x^2), x)` | `(atan((x / a)) / a)` | Symbolic parameter `a` |
@@ -789,15 +789,15 @@ The shape decides: a row or a column is a vector, anything else a matrix.
 
 | Syntax | Result | Notes |
 |---|---|---|
-| `ztrans(1, n, z)` | `(1.0 * (z / (z + -1.0)))` | z/(z − 1).  Constant **sequence**, not `1/z`: `Z{c} = c·z/(z−1)`, because the Laplace `L{c} = c/s` does not carry over — a constant sequence is `c` at every index |
+| `ztrans(1, n, z)` | `(z / (z + -1.0))` | z/(z − 1).  Constant **sequence**, not `1/z`: `Z{c} = c·z/(z−1)`, because the Laplace `L{c} = c/s` does not carry over — a constant sequence is `c` at every index |
 | `ztrans(2^n, n, z)` | `(z / (z + -2.0))` | |
-| `ztrans(n, n, z)` | `((-1.0 * z) * (((z + -1.0) + (-1.0 * z)) / ((z + -1.0) ^ 2.0)))` | z/(z − 1)², from `Z{n·x[n]} = −z·dX/dz`, unsimplified |
-| `ztrans(n^2, n, z)` | `((-1.0 * z) * ((-1.0 * (((z + -1.0) + (-1.0 * z)) / ((z + -1.0) ^ 2.0))) + ((-1.0 * z) * ((-1.0 * (((z + -1.0) + (-1.0 * z)) * (2.0 * (z + -1.0)))) / (((z + -1.0) ^ 2.0) ^ 2.0)))))` | z(z + 1)/(z − 1)³ |
-| `ztrans(n*2^n, n, z)` | `((-1.0 * z) * (((z + -2.0) + (-1.0 * z)) / ((z + -2.0) ^ 2.0)))` | 2z/(z − 2)² |
+| `ztrans(n, n, z)` | `(z / ((z + -1.0) ^ 2.0))` | z/(z − 1)², from `Z{n·x[n]} = −z·dX/dz` |
+| `ztrans(n^2, n, z)` | `(((z ^ 2.0) + z) / ((z + -1.0) ^ 3.0))` | z(z + 1)/(z − 1)³ |
+| `ztrans(n*2^n, n, z)` | `((2.0 * z) / ((z + -2.0) ^ 2.0))` | 2z/(z − 2)² |
 | `ztrans(sin(0.5*n), n, z)` | `((z * 0.47943) / (((z ^ 2.0) + (-2.0 * (z * 0.87758))) + 1.0))` | z·sin 0.5/(z² − 2z·cos 0.5 + 1) |
 | `invztrans(z/(z-2), z, n)` | `(2.0 ^ n)` | Complex poles, the Kronecker delta and the bilateral transform are not supported and stay symbolic |
 | `invztrans(z/((z-1)*(z-2)), z, n)` | `((2.0 ^ n) + -1.0)` | 2ⁿ − 1 |
-| `invztrans(z/(z-2)^2, z, n)` | `(binom(n, 1.0) * (2.0 ^ (n + -1.0)))` | n·2ⁿ⁻¹: a repeated pole of any order through `binom` |
+| `invztrans(z/(z-2)^2, z, n)` | `(n * (2.0 ^ (n + -1.0)))` | n·2ⁿ⁻¹; a pole of order `j` ≥ 3 carries `binom(n, j − 1)` |
 
 ### Discrete Fourier transform and convolution
 

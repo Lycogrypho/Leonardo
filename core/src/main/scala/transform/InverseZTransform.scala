@@ -171,8 +171,10 @@ private def termToSequence(t: ZTerm, n: _Variable): _Expression =
     if t.power == 1 then n
     else Sum(n, _Number(-(t.power - 1)))
   val geometric = Power(_Number(t.root), exponent)
+  // C(n, 1) is n, written as such (F_0275): a double pole printed `binom(n, 1.0)`.
   val withBinom =
     if t.power == 1 then geometric
+    else if t.power == 2 then Product(n, geometric)
     else Product(Binom(n, _Number(t.power - 1)), geometric)
   if math.abs(t.coeff - 1.0) < 1e-12 then withBinom
   else Product(_Number(t.coeff), withBinom)

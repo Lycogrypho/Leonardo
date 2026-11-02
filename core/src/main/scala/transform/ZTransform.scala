@@ -67,8 +67,10 @@ private def zImpl(x: _Expression, n: _Variable, z: _Variable, nv: String)(using 
   x match
 
     // Z{c} = c*z/(z-1) for a sequence free of n -- NOT c/z; see the class comment.
+    // A unit constant is the step itself, not `1 * step` (F_0275).
     case _ if !dependsOn(x, n) =>
-      Product(x, Ratio(z, Sum(z, lit(-1))))
+      val step = Ratio(z, Sum(z, lit(-1)))
+      if isOneLiteral(x) then step else Product(x, step)
 
     // Linearity: Z{a + b} = Z{a} + Z{b}
     case Sum(a, b) =>
@@ -113,9 +115,37 @@ private def zImpl(x: _Expression, n: _Variable, z: _Variable, nv: String)(using 
         case Some((k, g)) =>
           val G = zImpl(g, n, z, nv)
           if G.isInstanceOf[_ZTransform] then _ZTransform(x, n, z)
-          else simplifyFully((1 to k).foldLeft(G)((acc, _) =>
-            Product(Product(lit(-1), z), derive(acc, z))))
+          else (1 to k).foldLeft(G)((acc, _) => minusZDerivative(acc, z))
         case None => _ZTransform(x, n, z)
+
+/** `-z · dG/dz`, the multiply-by-`n` operator, in the form a reader would write (F_0275).
+ *
+ *  It returned `derive`'s raw quotient, which `simplify` does not collect: `Z{n}` printed
+ *  `-z * (((z - 1) - z)/(z - 1)^2)`.  The operator is linear, so it is applied through sums and
+ *  constant factors, and a quotient `N/B^m` is differentiated as `(N'B - m·N·B')/B^(m+1)` rather
+ *  than by the general quotient rule, whose `B^(2m)` would leave a common factor of `B^(m-1)` that
+ *  nothing here cancels; the numerator is expanded, so `Z{n}` is `z/(z - 1)^2` and `Z{n^2}`
+ *  `(z^2 + z)/(z - 1)^3`.  Every table entry is such a quotient; anything else takes the general
+ *  path it always took.  The constants are the input's tier (F_0210), the derivative too.
+ */
+private def minusZDerivative(g: _Expression, z: _Variable)(using lit: Int => _Value): _Expression =
+  val exact = lit(1).isInstanceOf[_Rational]
+  def d(e: _Expression): _Expression = deriveInTier(e, z, exact)
+  def quotient(num: _Expression, base: _Expression, m: Int): _Expression =
+    val raw = Product(Product(lit(-1), z),
+      Sum(Product(d(num), base), Product(lit(-m), Product(num, d(base)))))
+    Ratio(expand(simplifyFully(raw)), Power(simplifyFully(base), lit(m + 1)))
+  g match
+    case Sum(a, b)                         => Sum(minusZDerivative(a, z), minusZDerivative(b, z))
+    case Product(c, f) if !dependsOn(c, z) => Product(c, minusZDerivative(f, z))
+    case Product(f, c) if !dependsOn(c, z) => Product(c, minusZDerivative(f, z))
+    case Ratio(f, c) if !dependsOn(c, z)   => Ratio(minusZDerivative(f, z), c)
+    // The rule never builds a power above `MaxZPowerN + 1`; a larger one takes the general path.
+    case Ratio(num, Power(base, _Number(k)))
+        if dependsOn(base, z) && k == math.floor(k) && k >= 1 && k <= MaxZPowerN + 1 =>
+      quotient(num, base, k.toInt)
+    case Ratio(num, base) if dependsOn(base, z) => quotient(num, base, 1)
+    case other => simplifyFully(Product(Product(lit(-1), z), d(other)))
 
 /** Returns `Some((k, g))` when `x = n^k * g` (either ordering), or `x = n^k` alone with
  *  `g = u[n]`.

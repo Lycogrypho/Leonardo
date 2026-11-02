@@ -76,7 +76,7 @@ def derive(e: _Expression, v: _Variable): _Expression =
 
 /** [[derive]] in a tier the caller decided (F_0171): the `_Derivative` node reads it from the body
  *  and the bound values of its free names, which `derive` itself, having no environment, cannot. */
-private[scalar] def deriveInTier(e: _Expression, v: _Variable, exact: Boolean): _Expression =
+private[leonardo] def deriveInTier(e: _Expression, v: _Variable, exact: Boolean): _Expression =
   deriveIn(e, v)(using Tier(exact))
 
 /** [[derive]] within a tier already decided by the outermost call. */

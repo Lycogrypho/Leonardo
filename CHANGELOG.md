@@ -23,6 +23,19 @@ Each section's body is published verbatim as that tag's GitHub Release, extracte
 `.github/workflows/release.yml`. **Write the section before tagging**, and keep the heading in
 the form `## <version>` or `## <version> - <date>` so the extractor finds it.
 
+## 3.8.4 — unreleased
+
+*Gathered for the next release; set its version and date before tagging.  Its number is decided at
+release time from MiMa's report.*
+
+**Answers that changed** — the same values, written as a reader would write them:
+
+- An integral over a unit slope is no longer divided by one: `integral(exp(x), x)` is `exp(x)` (it
+  was `(exp(x) / 1.0)`), likewise `sin`, `cos`, `step` and the `ln`/`atan`/`asin` forms.
+- `ztrans(1, n, z)` is `z/(z - 1)`, and the transforms of `n·x[n]` come back reduced:
+  `ztrans(n, n, z)` is `z/(z - 1)^2` and `ztrans(n^2, n, z)` `(z^2 + z)/(z - 1)^3`.
+- `invztrans` writes a double pole's `binom(n, 1)` as `n`.
+
 ## 3.8.3 — 2026-11-01
 
 **New in the library and at the prompt**

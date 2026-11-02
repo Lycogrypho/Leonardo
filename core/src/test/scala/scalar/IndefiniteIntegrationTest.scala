@@ -368,7 +368,7 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
   "integrate(step(x), x)" should "equal x*step(x)" in
   {
     val result = integrate(_Heaviside(x), x)
-    assert(result == Ratio(Product(x, _Heaviside(x)), _Number(1.0)),
+    assert(result == Product(x, _Heaviside(x)),   // no `/ 1` since F_0275
       s"got: $result")
   }
 
@@ -380,11 +380,11 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
       s"got: $result")
   }
 
-  "integrate(step(x+1), x)" should "equal (x+1)*step(x+1) / 1" in
+  "integrate(step(x+1), x)" should "equal (x+1)*step(x+1)" in
   {
     val xp1 = Sum(x, _Number(1))
     val result = integrate(_Heaviside(xp1), x)
-    assert(result == Ratio(Product(xp1, _Heaviside(xp1)), _Number(1.0)),
+    assert(result == Product(xp1, _Heaviside(xp1)),   // no `/ 1` since F_0275
       s"got: $result")
   }
 
@@ -411,4 +411,24 @@ class IndefiniteIntegrationTest extends AnyFlatSpec:
     val direct = integrate(Power(x, _Number(2)), x)
     import scalar.Syntax.integrate   // bring only the extension into local scope
     assert(Power(x, _Number(2)).integrate(x) == direct)
+  }
+
+  // --- F_0275: an answer does not carry its construction ---
+
+  "a primitive over a unit slope" should "not be divided by that slope (F_0275)" in
+  {
+    // The linear chain rule divided every primitive by its slope, so a slope of 1 printed
+    // `(exp(x) / 1.0)`; the data-driven table already skipped the division, the compiled arms
+    // did not.  The printed form is what the cheat sheet shows, so it is what is pinned.
+    def at(src: String, exact: Option[Int] = None): String =
+      integrate(Parser.parse(src, exact).get, x).toString
+    assert(at("exp(x)") == "exp(x)")
+    assert(at("sin(x)") == "(-1.0 * cos(x))")
+    assert(at("cos(x)") == "sin(x)")
+    assert(at("step(x)") == "(x * step(x))")
+    assert(at("1/(1 + x^2)") == "atan(x)")
+    assert(at("exp(x)", Some(30)) == "exp(x)")
+    // a slope other than one is still divided by
+    assert(at("exp(2*x)") == "(exp((2.0 * x)) / 2.0)")
+    assertAntiderivative(Parser.parse("exp(x) + sin(x) + cos(x)").get, -1.0, 0.5, 2.0)
   }

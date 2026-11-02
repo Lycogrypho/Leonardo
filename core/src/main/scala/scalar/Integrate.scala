@@ -58,6 +58,16 @@ private def scaled(a: _Value, k: Int)(using t: Tier): _Value =
     case Right(x) => x
     case Left(_)  => a
 
+/** `e / a`, or `e` itself when the slope is one (F_0275): the linear chain rule divides every
+ *  primitive by its slope, and a slope of `1` printed `(exp(x) / 1.0)`.  The data-driven table
+ *  already skipped that division; the compiled arms now do too. */
+private def overSlope(e: _Expression, a: _Value): _Expression =
+  if isOneLiteral(a) then e else Ratio(e, a)
+
+/** `c · e`, or `e` itself when the constant factor is a literal one (F_0275). */
+private def timesConst(c: _Expression, e: _Expression): _Expression =
+  if isOneLiteral(c) then e else Product(c, e)
+
 /** [[simplifyFully]] in the integrator's tier: a sub-expression such as `x*x` cannot tell. */
 private def simplifyT(e: _Expression)(using t: Tier): _Expression = simplifyFullyInTier(e, t.exact)
 
@@ -184,13 +194,13 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int)(using t: Tie
   // The EXACT exponent first (F_0171): `_Number(n)` is a widening extractor and would rebuild
   // `n + 1` as a Double.
   case Power(u, r: _Rational) => linearSlope(u, v) match
-    case Some(a) if r == _Rational(-1) => Ratio(Ln(u), a)
+    case Some(a) if r == _Rational(-1) => overSlope(Ln(u), a)
     case Some(a) =>
       val r1 = r.add(_Rational(1))
       Ratio(Power(u, r1), Product(a, r1).eval(EmptyEnv).fold(_ => Product(a, r1), identity))
     case None => _Integral(e, v)
   case Power(u, _Number(n)) => linearSlope(u, v) match
-    case Some(a) if n == -1.0 => Ratio(Ln(u), a)
+    case Some(a) if n == -1.0 => overSlope(Ln(u), a)
     case Some(a)              => Ratio(Power(u, _Number(n + 1)), Product(a, _Number(n + 1)).eval(EmptyEnv).fold(_ => Product(a, _Number(n + 1)), identity))
     case None                 => _Integral(e, v)
 
@@ -198,19 +208,19 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int)(using t: Tie
   // Both orderings of the denominator sum are matched (1+u^2 and u^2+1).
   case Ratio(a, Sum(_Number(1.0), Power(u, _Number(2.0)))) if !dependsOn(a, v) =>
     linearSlope(u, v) match
-      case Some(s) => Product(a, Ratio(Atan(u), s))
+      case Some(s) => timesConst(a, overSlope(Atan(u), s))
       case None    => _Integral(e, v)
 
   case Ratio(a, Sum(Power(u, _Number(2.0)), _Number(1.0))) if !dependsOn(a, v) =>
     linearSlope(u, v) match
-      case Some(s) => Product(a, Ratio(Atan(u), s))
+      case Some(s) => timesConst(a, overSlope(Atan(u), s))
       case None    => _Integral(e, v)
 
   // integral(a/sqrt(1 - u^2), v) = a*asin(u)/slope  (standard asin primitive; linear-arg chain rule)
   case Ratio(a, Power(Sum(_Number(1.0), Product(_Number(-1.0), Power(u, _Number(2.0)))), _Number(0.5)))
       if !dependsOn(a, v) =>
     linearSlope(u, v) match
-      case Some(s) => Product(a, Ratio(Asin(u), s))
+      case Some(s) => timesConst(a, overSlope(Asin(u), s))
       case None    => _Integral(e, v)
 
   // General rational function N(v)/D(v) (both polynomials in v): long division for
@@ -228,27 +238,27 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int)(using t: Tie
 
   // integral(c/u, v) = c*log(u)/a   (reciprocal written as a Ratio rather than Power(u, -1))
   case Ratio(a, u) if !dependsOn(a, v) => linearSlope(u, v) match
-    case Some(s) => Product(a, Ratio(Ln(u), s))
+    case Some(s) => timesConst(a, overSlope(Ln(u), s))
     case None    => _Integral(e, v)
 
   // exponential / trigonometric primitives over a linear argument u (slope a):
   case Exp(u) => linearSlope(u, v) match
-    case Some(a) => Ratio(Exp(u), a)
+    case Some(a) => overSlope(Exp(u), a)
     case None    => _Integral(e, v)
 
   case Sin(u) => linearSlope(u, v) match
-    case Some(a) => Ratio(Product(t.n(-1), Cos(u)), a)
+    case Some(a) => overSlope(Product(t.n(-1), Cos(u)), a)
     case None    => _Integral(e, v)
 
   case Cos(u) => linearSlope(u, v) match
-    case Some(a) => Ratio(Sin(u), a)
+    case Some(a) => overSlope(Sin(u), a)
     case None    => _Integral(e, v)
 
   // Heaviside step: ∫ step(u) dv = u·step(u) / a  (u = a·v + b linear, chain rule 1/a).
   // Verified by differentiation: d/dv [u·step(u)/a] = (du/dv)·step(u)/a + u·dirac(u)/a
   // and u·δ(u) = 0 in the distributional sense, leaving step(u).
   case _Heaviside(u) => linearSlope(u, v) match
-    case Some(a) => Ratio(Product(u, _Heaviside(u)), a)
+    case Some(a) => overSlope(Product(u, _Heaviside(u)), a)
     case None    => _Integral(e, v)
 
   // Integration by parts for a product of two v-dependent factors (the earlier

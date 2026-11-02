@@ -194,3 +194,34 @@ class ZTransformTest extends AnyFlatSpec:
     val e = _InverseZTransform(parse("exp(z)"), z, n)
     assert(e.eval(new Environment()) == Left(e))
   }
+
+  // --- F_0275: an answer does not carry its construction ---
+
+  "the z-transform's answers" should "be written in the reduced form a reader would write (F_0275)" in
+  {
+    // `Z{1}` was `1 * (z/(z - 1))`, and the multiply-by-n rule returned `derive`'s raw quotient,
+    // `-z * (((z - 1) - z)/(z - 1)^2)`.  It now differentiates `N/B^m` as `(N'B - m*N*B')/B^(m+1)`,
+    // so no common factor appears, and expands the numerator.
+    def zt(src: String, exact: Option[Int] = None): _Expression =
+      zTransformOf(Parser.parse(src, exact).get, n, z)
+    assert(zt("1").toString == "(z / (z + -1.0))")
+    assert(zt("n").toString == "(z / ((z + -1.0) ^ 2.0))")
+    assert(zt("n^2").toString == "(((z ^ 2.0) + z) / ((z + -1.0) ^ 3.0))")
+    assert(zt("n*2^n").toString == "((2.0 * z) / ((z + -2.0) ^ 2.0))")
+    // exact input (the tier is read from content, so the input must carry an exact value)
+    assert(zt("2*n", Some(30)).toString == "(2 * (z / ((z + -1) ^ 2)))")
+    // the values are unchanged
+    assertAgrees(zt("n^2"), parse("z*(z + 1)/(z - 1)^3"), z, zs)
+    assertAgrees(zt("n^3"), parse("z*(z^2 + 4*z + 1)/(z - 1)^4"), z, zs)
+    assertAgrees(zt("n*sin(0.5*n)"), parse("z*sin(0.5)*(z^2 - 1)/(z^2 - 2*z*cos(0.5) + 1)^2"), z, zs)
+    assertAgrees(zt("n*(2^n + 3)"), parse("2*z/(z - 2)^2 + 3*z/(z - 1)^2"), z, zs)
+    assertAgrees(zt("n*2^n/5"), parse("2*z/(5*(z - 2)^2)"), z, zs)
+  }
+
+  "invztrans of a double pole" should "write n, not binom(n, 1) (F_0275)" in
+  {
+    val x = inverseZTransformOf(parse("z/(z-2)^2"), z, n)
+    assert(x.toString == "(n * (2.0 ^ (n + -1.0)))", x.toString)
+    // a triple pole still needs its binomial
+    assert(inverseZTransformOf(parse("z/(z-2)^3"), z, n).toString.contains("binom(n, 2.0)"))
+  }
