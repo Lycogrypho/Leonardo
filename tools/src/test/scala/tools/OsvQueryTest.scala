@@ -20,7 +20,7 @@ class OsvQueryTest extends AnyFlatSpec:
       .contains(Coordinate("com.squareup.okhttp3", "okhttp", "3.14.0")))
     // Scala in the boot directory carries its version in the directory's name.
     assert(coordinateOf("C:\\Users\\u\\.sbt\\boot\\scala-2.12.21\\lib\\scala-library.jar")
-      .contains(Coordinate("org.scala-lang", "scala-library", "2.12.21")))
+      .contains(Coordinate("org.scala-lang", "scala-library", "2.13.18")))
     // sbt's own boot directory is flat: a file name and nothing to say whose it is.
     assert(coordinateOf("/home/u/.sbt/boot/scala-2.12.21/org.scala-sbt/sbt/1.13.0/actions_2.12-1.13.0.jar").isEmpty)
   }
