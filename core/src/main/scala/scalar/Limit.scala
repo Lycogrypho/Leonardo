@@ -33,6 +33,15 @@ private val MaxHopitalSteps = Limit.MaxHopitalSteps.default.toInt  // the defaul
  *  @return the limit value as a `_Number`, or the unchanged `_Limit` node when it cannot be determined
  */
 def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, env: Environment): _Expression =
+  // A decline is the call as written (F_0276): the tiers stop on whatever form they reached — a
+  // quotient L'Hôpital's rule differentiated, the point read as a `Double` — which the echo showed
+  // and `_Limit.eval` then evaluated again as a new limit.
+  limitTiers(e, v, point, dir, env) match
+    case _: _Limit => _Limit(e, v, point, dir)
+    case answer    => answer
+
+/** The tiers behind [[evalLimit]], which normalises a decline to the call as written. */
+private def limitTiers(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, env: Environment): _Expression =
   point.eval(env) match
     // An exact point is tried exactly first (F_0210): `limit(x^2, x, 1/3)` answered 0.11111.
     // Placed before the widening `_Number` arm, which would read the rational as a Double.
@@ -56,8 +65,10 @@ private def exactLimit(e: _Expression, v: _Variable, p: _Value, env: Environment
   val pd = p match { case _Number(d) => d; case _ => Double.NaN }
   if jumpsAt(e, v, pd, env) then None
   else at(e) match
-    // A surd answer too (F_0263): `limit(x^(1/2), x, 2)` answered `1.41421`.
-    case Some(r) if _Surd.isExact(r) => Some(r)
+    // A surd answer too (F_0263): `limit(x^(1/2), x, 2)` answered `1.41421`.  Only where the
+    // expression is continuous (F_0276): `sec(x) - tan(x)` at the exact reading of `pi/2` cancels two
+    // readings of size 1e43 and answered `-4.8E42`.
+    case Some(r @ _Number(rd)) if _Surd.isExact(r) && continuousAt(e, v, pd, rd, LimitDir.Both, env) => Some(r)
     case _ => e match
       case Ratio(num, den) if stepsLeft > 0 && zero(at(num)) && zero(at(den)) =>
         exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, env, stepsLeft - 1)
@@ -75,8 +86,10 @@ private def limitFinite(
 ): _Expression =
   // Tier 1: direct substitution — valid only where `e` is continuous at `p`, so not at a jump
   // (F_0192: `limit(step(x), x, 0, -)` read the value at 0, `1`, where the limit is `0`).
+  // Nor where the value disagrees with the values beside it (F_0276): `0/sin(pi)` is `0` because
+  // `sin(pi)` is `1.2e-16`, and `limit((x^3 - exp(x - 1))/sin(pi*x), x, 1)` answered `0` for `-2/pi`.
   numericAt(e, v, p, env) match
-    case Some(d) if !d.isNaN && !jumpsAt(e, v, p, env) => _Number(d)
+    case Some(d) if !d.isNaN && !jumpsAt(e, v, p, env) && continuousAt(e, v, p, d, dir, env) => _Number(d)
     case _ =>
       // Tier 2: special Ratio handling
       e match
@@ -100,47 +113,109 @@ private def jumpsAt(e: _Expression, v: _Variable, p: Double, env: Environment): 
   case _Heaviside(arg) if numericAt(arg, v, p, env).exists(_ == 0.0) => true
   case other                                                         => other.children.exists(jumpsAt(_, v, p, env))
 
-/** Handles `c / (something→0)`: returns `signN * sign(den near p) * ∞`, checking direction. */
+/** Whether `fp`, the value substitution gave at `p`, is the limit there (F_0276): on each side the
+ *  direction asks for, the samples at `ε` and `ε/1000` agree with it or approach it, the nearer one at
+ *  most half as far.
+ *
+ *  Substitution is right only where the expression is continuous, and nothing else checked it: `0/sin(π)`
+ *  is `0` because `sin(π)` is a reading of zero, `1/sin(π)` is `8.2E15`, and a step of L'Hôpital's rule
+ *  can meet `0 · undefined`, which `Product`'s zero short-circuit answers `0`.  Each of those disagrees
+ *  with every value beside it.  A side the expression is not defined on (a domain boundary) cannot
+ *  refute the value, so it is skipped.
+ *
+ *  @param e   the expression
+ *  @param v   the limit variable
+ *  @param p   the point
+ *  @param fp  the value at `p`
+ *  @param dir the sides to check
+ *  @param env the bindings
+ *  @return `false` when a side's samples neither agree with `fp` nor approach it
+ */
+private def continuousAt(e: _Expression, v: _Variable, p: Double, fp: Double, dir: LimitDir, env: Environment): Boolean =
+  val eps = math.min(math.max(1e-8, math.abs(p) * 1e-6), smallScale(e, v, env) * FeatureMargin)
+  def side(s: Double): Boolean =
+    (numericAt(e, v, p + s * eps, env), numericAt(e, v, p + s * eps * 1e-3, env)) match
+      case (Some(y1), Some(y2)) =>
+        y1.isFinite && y2.isFinite &&
+          (math.abs(y2 - fp) <= 1e-9 * math.max(math.abs(y2), math.abs(fp)) ||
+            math.abs(y2 - fp) <= 0.5 * math.abs(y1 - fp))
+      case _ => true
+  dir match
+    case LimitDir.FromRight => side(1.0)
+    case LimitDir.FromLeft  => side(-1.0)
+    case LimitDir.Both      => side(1.0) && side(-1.0)
+
+/** The sign of `den` just beside its zero at `p`, on the side `s` (`±1`), from the first of its
+ *  derivatives that does not vanish there (F_0276): of order `k`, the sign is the derivative's on the
+ *  right and `(−1)ᵏ` times it on the left.  `None` when a derivative does not evaluate or none of the first
+ *  four is non-zero. */
+private def signFromDerivatives(den: _Expression, v: _Variable, p: Double, s: Double, env: Environment): Option[Double] =
+  @annotation.tailrec
+  def go(d: _Expression, k: Int): Option[Double] =
+    if k > 4 then None
+    else
+      val dk = derive(d, v)
+      numericAt(dk, v, p, env) match
+        case Some(x) if !x.isFinite => None
+        case Some(x) if x == 0.0    => go(dk, k + 1)
+        case Some(x)                => Some(math.signum(x) * (if s < 0 && k % 2 == 1 then -1.0 else 1.0))
+        case None                   => None
+  go(den, 1)
+
+/** Handles `c / (something→0)`: returns `signN * sign(den near p) * ∞`, checking direction.
+ *
+ *  The sign comes from [[signFromDerivatives]], checked against a sample beside the point; a zero,
+ *  undecided or contradicted sign declines (F_0276).  A sample alone read `0` beside `−5` for
+ *  `r² + 10r + 25` (the terms cancel), and `−∞ · 0` printed `NaN`. */
 private def cOverZero(
   e: _Expression, den: _Expression, v: _Variable, p: Double,
   dir: LimitDir, env: Environment, signN: Double
 ): _Expression =
   val eps = math.min(math.max(1e-8, math.abs(p) * 1e-8), smallScale(e, v, env) * FeatureMargin)
-  def signedInf(sampleP: Double): _Expression =
-    numericAt(den, v, sampleP, env)
-      .map(d => _Number(signN * math.signum(d) * Double.PositiveInfinity))
-      .getOrElse(_Limit(e, v, _Number(p), dir))
+  def signBeside(s: Double): Option[Double] =
+    val sampled = numericAt(den, v, p + s * eps, env).map(math.signum).filter(x => x != 0.0 && !x.isNaN)
+    (signFromDerivatives(den, v, p, s, env), sampled) match
+      case (Some(d), Some(x)) if d != x => None
+      case (Some(d), _)                 => Some(d)
+      case (None, sx)                   => sx
+  def signedInf(sgn: Option[Double]): _Expression =
+    sgn.map(d => _Number(signN * d * Double.PositiveInfinity)).getOrElse(_Limit(e, v, _Number(p), dir))
   dir match
-    case LimitDir.FromRight => signedInf(p + eps)
-    case LimitDir.FromLeft  => signedInf(p - eps)
+    case LimitDir.FromRight => signedInf(signBeside(1.0))
+    case LimitDir.FromLeft  => signedInf(signBeside(-1.0))
     case LimitDir.Both =>
-      val ls = numericAt(den, v, p - eps, env).map(math.signum)
-      val rs = numericAt(den, v, p + eps, env).map(math.signum)
-      (ls, rs) match
+      (signBeside(-1.0), signBeside(1.0)) match
         case (Some(l), Some(r)) if l == r => _Number(signN * l * Double.PositiveInfinity)
         case _                            => _Limit(e, v, _Number(p), dir)   // sign flip → DNE
 
-/** Tier 4: evaluates at two points close to `p` from the requested direction.
- *  For one-sided limits, reports the average when the two samples converge.
+/** Tier 4: evaluates at three points close to `p` from the requested direction, at `10ε`, `ε` and
+ *  `ε/1000`.  For one-sided limits, reports the mean of the two nearest when all three agree.
  *  For two-sided limits, checks that the left and right estimates both converge
  *  and agree with each other; stays symbolic when any check fails.
+ *
+ *  **Three, not two** (F_0276): where the expression loses every digit near the point, the two nearest
+ *  samples collapse to the same constant and agree — `x^(-2) - (x^(-2) - 1)` is `0` at `10⁻⁸` and `10⁻¹¹`,
+ *  `(sin(x)/x)^(1/x^2)` is `1` — and the limit answered that constant.  At `10ε` the digits are still
+ *  there, so the collapse disagrees with it and the limit declines.
  */
 private def limitEpsilon(
   e: _Expression, v: _Variable, p: Double, dir: LimitDir, env: Environment
 ): _Expression =
   val eps = math.min(math.max(1e-8, math.abs(p) * 1e-6), smallScale(e, v, env) * FeatureMargin)
-  def estimate(x1: Double, x2: Double): Option[Double] =
-    (numericAt(e, v, x1, env), numericAt(e, v, x2, env)) match
-      case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite && converged(y1, y2, 1e-5) => Some((y1 + y2) / 2)
+  def estimate(s: Double): Option[Double] =
+    Seq(10.0, 1.0, 1e-3).map(k => numericAt(e, v, p + s * eps * k, env)) match
+      case Seq(Some(y0), Some(y1), Some(y2))
+          if Seq(y0, y1, y2).forall(_.isFinite) && converged(y0, y1, 1e-5) && converged(y1, y2, 1e-5) &&
+             converged(y0, y2, 1e-5) => Some((y1 + y2) / 2)
       case _ => None
   dir match
     case LimitDir.FromRight =>
-      estimate(p + eps, p + eps * 0.001).map(_Number(_)).getOrElse(_Limit(e, v, _Number(p), dir))
+      estimate(1.0).map(_Number(_)).getOrElse(_Limit(e, v, _Number(p), dir))
     case LimitDir.FromLeft  =>
-      estimate(p - eps, p - eps * 0.001).map(_Number(_)).getOrElse(_Limit(e, v, _Number(p), dir))
+      estimate(-1.0).map(_Number(_)).getOrElse(_Limit(e, v, _Number(p), dir))
     case LimitDir.Both =>
-      val rEst = estimate(p + eps, p + eps * 0.001)
-      val lEst = estimate(p - eps, p - eps * 0.001)
+      val rEst = estimate(1.0)
+      val lEst = estimate(-1.0)
       (lEst, rEst) match
         case (Some(l), Some(r)) if converged(l, r, 1e-5) =>
           _Number((l + r) / 2)
@@ -266,12 +341,19 @@ private def exactFinite(x: _Expression): Boolean = _Surd.isExact(x)
 private def numericInfFallback(e: _Expression, v: _Variable, p: Double, env: Environment): _Expression =
   val sign  = if p.isPosInfinity then 1 else -1
   val shift = math.min(math.max(1.0, largeScale(e, v, env) / FeatureMargin / 1e10), 1e290)
-  (numericAt(e, v, sign * 1e10 * shift, env), numericAt(e, v, sign * 1e15 * shift, env)) match
-    case (Some(y1), Some(y2)) if y1.isInfinite && y2.isInfinite && math.signum(y1) == math.signum(y2) =>
-      _Number(y1)
-    case (Some(y1), Some(y2)) if y1.isFinite && y2.isFinite && converged(y1, y2, 1e-6) =>
+  // A third sample at an incommensurate point (F_0276): `(-1)^(n - 1)` has the same parity at
+  // `1e10` and `1e15`, and answered `-1.0` for a limit that does not exist.
+  Seq(1e10, 1e10 * GoldenRatio, 1e15).map(x => numericAt(e, v, sign * x * shift, env)) match
+    case Seq(Some(y0), Some(y1), Some(y2))
+        if Seq(y0, y1, y2).forall(_.isInfinite) && Seq(y0, y1).forall(y => math.signum(y) == math.signum(y2)) =>
+      _Number(y2)
+    case Seq(Some(y0), Some(y1), Some(y2))
+        if Seq(y0, y1, y2).forall(_.isFinite) && converged(y0, y2, 1e-6) && converged(y1, y2, 1e-6) =>
       _Number(y2)
     case _ => _Limit(e, v, _Number(p), LimitDir.Both)
+
+/** The golden ratio, irrational, so a sample at `φ·10¹⁰` shares no period with one at `10¹⁰`. */
+private val GoldenRatio = (1 + math.sqrt(5)) / 2
 
 /** How far beyond a scale written in the expression the numeric tiers sample: six decades
  *  (F_0257).  `exp(-1e-20/x)` changes only below `x ≈ 10⁻²⁰`, so its limit at `0⁺` read `1.0` from

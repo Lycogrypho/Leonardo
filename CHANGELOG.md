@@ -35,6 +35,12 @@ release time from MiMa's report.*
 - `ztrans(1, n, z)` is `z/(z - 1)`, and the transforms of `n·x[n]` come back reduced:
   `ztrans(n, n, z)` is `z/(z - 1)^2` and `ztrans(n^2, n, z)` `(z^2 + z)/(z - 1)^3`.
 - `invztrans` writes a double pole's `binom(n, 1)` as `n`.
+- `limit` no longer prints a wrong value as an answer: `limit((x^3 - exp(x - 1))/sin(pi*x), x, 1)` is
+  `-0.63662` (it was `0`), `limit(r/(r^2 + 10*r + 25), r, -5)` is `-inf` (it was `NaN`), and
+  `limit(sec(x) - tan(x), x, pi/2, -)` is `0.0` in exact mode too.  Limits whose value was lost to
+  rounding or that do not exist now stay unevaluated instead of answering: `x^(-2) - (x^(-2) - 1)` and
+  `ln(sin(x)/x)/x^2` at `0`, `(sin(x)/x)^(1/x^2)`, `cos(x)^(1/x^2)`, `h^(1/3)/h` at `0+`, `1/sin(x)` at `pi`,
+  `tan(x)` at `pi/2`, `(-1)^(n - 1)` at `inf`.  A declined `limit` echoes the call as typed.
 
 ## 3.8.3 — 2026-11-01
 
