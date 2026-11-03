@@ -110,7 +110,8 @@ private[leonardo] def domainOf(e: _Expression, v: _Variable, kind: DomainKind,
  *  exactly where it is defined, but `x^(1/2)` loses the endpoint its derivative divides by.
  *  **Kinks** are excluded as points: a step is differentiable everywhere but where its argument
  *  is zero, a join where its two sides meet, a clamp at either bound — each contributes
- *  `NonZero` on that difference (F_0056). A step used to contribute `Never`, which emptied the
+ *  `NonZero` on that difference (F_0056).  An isolated excluded point where `f` is nonetheless
+ *  differentiable — `x·abs(x)` at `0` — is put back by [[withSmoothPoints]] (F_0278). A step used to contribute `Never`, which emptied the
  *  whole domain and answered `differentiable(step(x), x)` with `false`: a confident wrong answer
  *  for every `x` but one.
  *
@@ -120,9 +121,43 @@ private[leonardo] def domainOf(e: _Expression, v: _Variable, kind: DomainKind,
 private[leonardo] def differentiableDomainOf(e: _Expression, v: _Variable, kind: DomainKind,
                                              env: Environment): DomainSet =
   val kinks = kinkArgs(e).map(a => Constraint(a, Requirement.NonZero))
+  val de    = derive(e, v)
   val cs    = (collectConstraints(e, kind) ++
-               collectConstraints(derive(e, v), kind) ++ kinks).distinct
-  DomainSet(cs, resolveIntervals(cs, v, env))
+               collectConstraints(de, kind) ++ kinks).distinct
+  val is    = resolveIntervals(cs, v, env)
+  DomainSet(cs, if kind == DomainKind.Real then is.map(withSmoothPoints(_, e, de, v, env)) else is)
+
+/** `is` with each isolated excluded point `p` put back where `f` is in fact differentiable (F_0278).
+ *
+ *  A point is excluded because some formula — usually the derivative's `u·u′/abs(u)` or a quotient —
+ *  is undefined there, which says nothing about `f` itself: `x·abs(x)` has `f′(0) = 0`.  By the
+ *  mean value theorem, a function continuous at `p` and differentiable around it whose derivative has
+ *  a limit `L` at `p` has `f′(p) = L`.  So `p` returns when `f(p)` is the limit of `f` there, `f′` has a
+ *  finite two-sided limit, and the library's own `f′(p)` evaluates to that limit — the analysis
+ *  describes what the library computes.  Every doubt (no limit, no value, a disagreement) keeps the
+ *  exclusion: `abs(x)`, `step(x)` and `1/x` keep theirs.
+ */
+private def withSmoothPoints(is: Vector[Interval], e: _Expression, de: _Expression, v: _Variable,
+                             env: Environment): Vector[Interval] =
+  val gaps = is.sliding(2).collect {
+    case Vector(a, b) if a.hi == b.lo && !a.hiIncl && !b.loIncl => a.hi
+  }.toVector
+  val smooth = gaps.filter(p => smoothAt(e, de, v, p, env))
+  if smooth.isEmpty then is else merge(is ++ smooth.map(p => Interval(p, true, p, true)))
+
+/** Whether `e` is continuous at `p` and its derivative `de`, as the library computes it there, is the
+ *  derivative's two-sided limit (see [[withSmoothPoints]]).  The comparison is relative and has no
+ *  floor, so a value that only nears zero disagrees with an exact `0`: the doubt keeps the point out. */
+private def smoothAt(e: _Expression, de: _Expression, v: _Variable, p: Double, env: Environment): Boolean =
+  def limitAt(f: _Expression): Option[Double] =
+    evalLimit(f, v, _Number(p), LimitDir.Both, env) match
+      case _Number(d) if d.isFinite => Some(d)
+      case _                        => None
+  def agree(a: Double, b: Double): Boolean =
+    a == b || math.abs(a - b) <= 1e-6 * math.max(math.abs(a), math.abs(b))
+  (valueAt(e, v, p, env), limitAt(e), valueAt(de, v, p, env), limitAt(de)) match
+    case (Some(f), Some(lf), Some(d), Some(ld)) => agree(f, lf) && agree(d, ld)
+    case _                                      => false
 
 /** The first requirement `e` violates when `v` takes the value `x`, if any.
  *
@@ -214,9 +249,14 @@ private def own(e: _Expression, kind: DomainKind): Vector[Constraint] =
 
     // A fractional exponent is an even root over the reals; over the complex plane the
     // principal value exists for every base, so only the negative-integer case survives.
-    case Power(b, _Number(n)) if n != n.toInt =>
-      if real then Vector(Constraint(b, NonNegative)) else Vector.empty
-    case Power(b, _Number(n)) if n < 0        => Vector(Constraint(b, NonZero))
+    // The exponent is read as the constant it evaluates to (F_0278): `x^(2/3)` arrives as an
+    // unfolded `Ratio`, which a literal pattern missed, and `domain` answered the whole line
+    // where the library computes a complex value for every negative `x`.  A negative fractional
+    // exponent divides by the base, so the base must be positive, not merely non-negative.
+    case Power(b, ConstantExponent(n)) if n != n.toInt =>
+      if real then Vector(Constraint(b, if n < 0 then Positive else NonNegative))
+      else if n < 0 then Vector(Constraint(b, NonZero)) else Vector.empty
+    case Power(b, ConstantExponent(n)) if n < 0 => Vector(Constraint(b, NonZero))
 
     // The Asin convention: these stay symbolic on complex input, so over `Complex` the
     // library computes nothing at all and the honest report is an empty domain.
@@ -253,9 +293,28 @@ private def resolveIntervals(cs: Vector[Constraint], v: _Variable,
     if each.exists(_.isEmpty) then None
     else Some(each.flatten.foldLeft(Vector(Interval.All))(intersectSets))
 
-/** The real intervals on which one constraint holds. */
+/** An exponent free of every name, read as the real number it evaluates to. */
+private object ConstantExponent:
+  def unapply(k: _Expression): Option[Double] =
+    if k.freeVars.nonEmpty then None
+    else k.eval(new Environment()) match
+      case Right(_Number(d)) if d.isFinite => Some(d)
+      case _                               => None
+
+/** The real intervals on which one constraint holds.  `abs(g)` is read through `g` (F_0278):
+ *  `abs(g) != 0` and `abs(g) > 0` are `g != 0`, and `abs(g) >= 0` always holds — the kink of `abs`
+ *  never resolved to intervals before, so `differentiable(x*abs(x), x)` could not be examined. */
 private def intervalsFor(c: Constraint, v: _Variable,
                          env: Environment): Option[Vector[Interval]] =
+  import Requirement.*
+  c match
+    case Constraint(Abs(g), NonZero | Positive) => intervalsFor(Constraint(g, NonZero), v, env)
+    case Constraint(Abs(_), NonNegative)        => Some(Vector(Interval.All))
+    case _                                      => plainIntervalsFor(c, v, env)
+
+/** [[intervalsFor]] for an argument read as it stands. */
+private def plainIntervalsFor(c: Constraint, v: _Variable,
+                              env: Environment): Option[Vector[Interval]] =
   import Requirement.*
   c.req match
     case Never                                     => Some(Vector.empty)
@@ -281,9 +340,11 @@ private def polySatisfying(arg: _Expression, v: _Variable, env: Environment,
       val shifted = shiftBy(cs, -t)                       // roots of p(v) - t
       // Exact degree and roots at the polynomial's own scale (F_0121): through polyDegree's
       // absolute 1e-9 the tiny x² of ln(1e-12·x² + x + 1) was dropped, and with it a branch.
+      // Each square-free factor is root-found separately (F_0278, the 2.5 rule): a repeated root
+      // is scattered by the iteration, and the double roots of (1 - x²)² came back as 1 ± 5e-9.
       if degreeOf(shifted) < 1 then Vector.empty[Double]
-      else rootsAtScale(shifted).fold(Vector.empty[Double])(
-             _.collect { case _Number(d) if !d.isNaN => d })
+      else squareFreeFactors(shifted).flatMap((part, _) =>
+             rootsAtScale(part).fold(Vector.empty[Double])(_.collect { case _Number(d) if !d.isNaN => d }))
     }.sorted.distinct
 
     if cuts.isEmpty then

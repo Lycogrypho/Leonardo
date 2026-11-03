@@ -95,6 +95,39 @@ class DomainNodeTest extends AnyFlatSpec:
     assert(run("differentiable(ln(x), x)") == "(x > 0.0)")
   }
 
+  "differentiable(1/(1 - x^2), x)" should "exclude both poles exactly, as domain does (F_0278)" in
+  {
+    // The derivative's denominator (1 - x^2)^2 has double roots, which root-finding scattered to
+    // 1 ± 5e-9: the answer read `x <= 1` beside `x > 1`.
+    assert(run("differentiable(1/(1 - x^2), x)") == run("domain(1/(1 - x^2), x)"))
+    assert(run("domain(1/(1 - x^2)^2, x)") == run("domain(1/(1 - x^2), x)"))
+  }
+
+  "a kink smoothed by a vanishing factor" should "not be excluded (F_0278)" in
+  {
+    // x*abs(x) has f'(0) = 0, and the library computes it; abs(x) itself has no derivative at 0.
+    assert(run("differentiable(x*abs(x), x)") == "true")
+    assert(run("differentiable(abs(x), x)") == "((x < 0.0) or (x > 0.0))")
+    // A point outside the function's own domain is never re-included.
+    assert(run("differentiable(1/x, x)") == "((x < 0.0) or (x > 0.0))")
+    assert(run("differentiable(step(x), x)") == "((x < 0.0) or (x > 0.0))")
+  }
+
+  "a constant fractional exponent" should "restrict the base as a literal one does (F_0278)" in
+  {
+    // The library raises a negative base to 2/3 as the principal complex value, so the real
+    // domain is x >= 0 -- whether the exponent is typed folded or as a quotient.
+    assert(run("domain(x^(2/3), x)") == "(x >= 0.0)")
+    assert(run("domain(x^0.5, x)") == "(x >= 0.0)")
+    assert(run("differentiable(x^(2/3), x)") == "(x > 0.0)")
+    // A negative fractional exponent divides by the base: zero is out too.
+    assert(run("domain(x^(-1/3), x)") == "(x > 0.0)")
+    assert(run("domain(x^-0.5, x)") == "(x > 0.0)")
+    // Over the complex plane only the division by the base remains.
+    assert(run("domain(x^-0.5, x, complex)") == "((x < 0.0) or (x > 0.0))")
+    assert(run("domain(x^0.5, x, complex)") == "true")
+  }
+
   // ── singularities ──────────────────────────────────────────────────────────
 
   "singularities(1/(x-1), x)" should "report one simple pole" in

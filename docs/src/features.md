@@ -146,6 +146,11 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   root counting. The analysis deliberately describes **what the library computes**, not the
   analytic extension: exclusion sets that are infinite (`tan`, `Gamma`) stay symbolic rather
   than being truncated, and an optional third argument selects the real or complex reading.
+  So `domain(x^(2/3), x)` is `(x >= 0)`: the library raises a negative base to a fractional
+  power as the principal complex value, not the real root.  `differentiable` excludes a point
+  only where the function is not differentiable there: `differentiable(abs(x), x)` is `x != 0`,
+  while `differentiable(x*abs(x), x)` is `true`, since the derivative's limit at `0` is the
+  value the library computes there.
 
 - **Base conversion**: the literals `0b1011`, `0o17`, `0xff` and `0t1TT`
   ([balanced ternary](https://en.wikipedia.org/wiki/Balanced_ternary)), plus `tobase(n, b)`

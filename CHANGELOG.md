@@ -45,6 +45,10 @@ release time from MiMa's report.*
   is `-x^2/6 - x^4/180` (it was a series of `0/0` coefficients), exact in exact mode.  A pole or
   `ln(0)` at the centre (`maclaurin(1/x, x, 3)`) now declines with a note instead of answering a
   series of `1/0` terms.
+- `differentiable(1/(1 - x^2), x)` excludes `x = 1` again (it read `x <= 1`), and
+  `differentiable(x*abs(x), x)` is `true` (it was `abs(x) != 0`).  `domain(x^(2/3), x)` is `x >= 0`
+  (it was `true`, though the library answers a complex value for a negative `x`), and
+  `domain(x^(-1/3), x)` is `x > 0`.
 
 ## 3.8.3 — 2026-11-01
 
