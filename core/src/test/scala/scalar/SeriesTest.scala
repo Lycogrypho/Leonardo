@@ -580,3 +580,42 @@ class SeriesTest extends AnyFlatSpec:
     // The truncation error at 0.1 is ~4e-12 (the order-9 term), measured.
     assertClose(valueAt(s, 0.1), erf01 * math.exp(0.1), 1e-11)
   }
+
+  // --- F_0277 (LT L_0062): a quotient that vanishes into 0/0 at the centre ---
+
+  "a quotient with a removable singularity at the centre" should "expand, not answer 0/0 coefficients (F_0277)" in
+  {
+    // sin(x)/x = 1 - x^2/6 + x^4/120 - x^6/5040 ...; the first omitted term at 0.1 is 1.98e-10.
+    val sinc = taylorSeries(parse("sin(x)/x"), x, _Number(0), 5).getOrElse(fail("sin(x)/x declined"))
+    assertClose(valueAt(sinc, 0.1), math.sin(0.1) / 0.1, 3e-10, "sin(x)/x at 0.1:")
+    // A double zero: (1 - cos x)/x^2 = 1/2 - x^2/24 + x^4/720 - ...
+    val versine = taylorSeries(parse("(1 - cos(x))/x^2"), x, _Number(0), 4).getOrElse(fail("(1 - cos x)/x^2 declined"))
+    assertClose(valueAt(versine, 0.1), (1 - math.cos(0.1)) / 0.01, 1e-10, "(1 - cos x)/x^2 at 0.1:")
+    // LT's case: ln(sin(x)/x) = -x^2/6 - x^4/180 - x^6/2835 - ...
+    val lnSinc = taylorSeries(parse("ln(sin(x)/x)"), x, _Number(0), 4).getOrElse(fail("ln(sin(x)/x) declined"))
+    assertClose(valueAt(lnSinc, 0.1), math.log(math.sin(0.1) / 0.1), 1e-9, "ln(sin(x)/x) at 0.1:")
+    // About a centre other than zero: sin(x - 1)/(x - 1) about 1.
+    val shifted = taylorSeries(parse("sin(x - 1)/(x - 1)"), x, _Number(1), 5).getOrElse(fail("about 1 declined"))
+    assertClose(valueAt(shifted, 1.1), math.sin(0.1) / 0.1, 3e-10, "about 1:")
+  }
+
+  it should "stay exact on exact input" in
+  {
+    def exact(src: String): _Expression = Parser.parse(src, Some(30)).get
+    def value(src: String): _Value = exact(src).eval(env).fold(e => fail(s"$src: $e"), identity)
+    val series = exact("maclaurin(sin(x)/x, x, 4)").eval(env).toExpression
+    // The coefficients are 1, -1/6 and 1/120: exactly that polynomial at x = 1/2 is 1841/1920.
+    series.eval(env.withBinding("x", value("1/2"))) match
+      case Right(r: _Rational) => assert(r == value("1841/1920"), s"got $r")
+      case other               => fail(s"not an exact value: $other")
+  }
+
+  "a series with a coefficient undefined at the centre" should "be declined with a reason (F_0277)" in
+  {
+    // A pole, or a logarithm of zero: no Taylor series exists, and a series of 1/0 terms is not one.
+    for src <- Seq("1/x", "cos(x)/x", "ln(x)", "sin(x)/x^2") do
+      taylorDetailed(parse(src), x, _Number(0), 3) match
+        case Left(why)     => assert(why.contains("undefined at the centre"), s"$src: $why")
+        case Right(series) => fail(s"$src answered $series")
+      assert(parse(s"maclaurin($src, x, 3)").eval(env).isLeft, src)
+  }

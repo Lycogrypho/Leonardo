@@ -41,6 +41,10 @@ release time from MiMa's report.*
   rounding or that do not exist now stay unevaluated instead of answering: `x^(-2) - (x^(-2) - 1)` and
   `ln(sin(x)/x)/x^2` at `0`, `(sin(x)/x)^(1/x^2)`, `cos(x)^(1/x^2)`, `h^(1/3)/h` at `0+`, `1/sin(x)` at `pi`,
   `tan(x)` at `pi/2`, `(-1)^(n - 1)` at `inf`.  A declined `limit` echoes the call as typed.
+- `taylor`/`maclaurin` expand a quotient that is `0/0` at the centre: `maclaurin(ln(sin(x)/x), x, 4)`
+  is `-x^2/6 - x^4/180` (it was a series of `0/0` coefficients), exact in exact mode.  A pole or
+  `ln(0)` at the centre (`maclaurin(1/x, x, 3)`) now declines with a note instead of answering a
+  series of `1/0` terms.
 
 ## 3.8.3 — 2026-11-01
 

@@ -17,10 +17,12 @@ import core.*
  *  **Coverage** (Decision B): `+ − × ÷`, constant powers (`(1+u)^α`, integer or real `α`),
  *  `exp`/`ln`/`sin`/`cos`/`sinh`/`cosh` by their ODE recurrences, the reciprocal and quotient
  *  functions (`tan`, `sec`, `tanh`, …) as quotients of those, and the six inverse functions by
- *  **series integration** of their algebraic derivatives. Anything else — and a quotient or
- *  logarithm whose operand vanishes at the centre — gets **its own** series from the derivative
- *  path ([[seriesDerivatives]], budget included), so coverage never shrinks and a composite pays
- *  the exponential cost only on the part that needs it.
+ *  **series integration** of their algebraic derivatives. A quotient whose numerator vanishes at
+ *  the centre at least as often as its denominator is a removable singularity and is divided after
+ *  the common factor cancels (F_0277). Anything else — a pole, and a logarithm of zero — gets
+ *  **its own** series from the derivative path ([[seriesDerivatives]], budget included), so
+ *  coverage never shrinks and a composite pays the exponential cost only on the part that needs it;
+ *  a coefficient that is undefined there declines the series.
  */
 private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, exact: Boolean,
                                  maxNodes: Int):
@@ -97,15 +99,35 @@ private final class SeriesEngine(v: _Variable, centre: _Expression, order: Int, 
 
   private def minusHalf: _Expression = norm(Ratio(lit(-1), lit(2)))
 
-  /** `a/b` by series division; a denominator vanishing at the centre is the derivative path's. */
+  /** `a/b` by series division; a denominator vanishing at the centre goes to [[cancelled]]. */
   private def quotient(e: _Expression, a: _Expression, b: _Expression): Either[String, Series] =
     for
       sa <- of(a)
       sb <- of(b)
-      q  <- if isZeroLiteral(sb.head) then fallback(e)
-            else Right(recur(over(sa.head, sb.head))((k, q) =>
-              over(plus(sa(k), times(lit(-1), sum(1, k)(j => times(sb(j), q(k - j))))), sb.head)))
+      q  <- if isZeroLiteral(sb.head) then cancelled(e, a, b, sb) else Right(divide(sa, sb))
     yield q
+
+  /** Series division `sa/sb`, `sb₀ ≠ 0`, to this engine's order. */
+  private def divide(sa: Series, sb: Series): Series =
+    recur(over(sa.head, sb.head))((k, q) =>
+      over(plus(sa(k), times(lit(-1), sum(1, k)(j => times(sb(j), q(k - j))))), sb.head))
+
+  /** `a/b` where `b` vanishes at the centre to order `m` (F_0277): when `a` vanishes to at least
+   *  that order the singularity is removable, `(v − c)ᵐ` cancels, and both are expanded `m` orders
+   *  further so the shifted quotient keeps this engine's order — `sin(x)/x` is `1 − x²/6 + …`.
+   *  Otherwise (a pole, or a vanishing the coefficients cannot prove) the derivative path answers,
+   *  and its undefined coefficients are what [[powerSeriesIn]] declines.  The derivative path used
+   *  to take every such quotient and evaluated `0/0` at the centre. */
+  private def cancelled(e: _Expression, a: _Expression, b: _Expression, sb: Series): Either[String, Series] =
+    sb.indexWhere(c => !isZeroLiteral(c)) match
+      case -1 => fallback(e)
+      case m =>
+        val wider = SeriesEngine(v, centre, order + m, exact, maxNodes)
+        for
+          wa <- wider.of(a)
+          wb <- wider.of(b)
+          q  <- if wa.take(m).forall(isZeroLiteral) then Right(divide(wa.drop(m), wb.drop(m))) else fallback(e)
+        yield q
 
   /** `b^α` for a constant `α`: a natural power by repeated products (exact, and defined when
    *  `b` vanishes at the centre), otherwise the recurrence `b·p′ = α·b′·p`, which needs `b₀ ≠ 0`. */
@@ -179,7 +201,19 @@ private[scalar] def powerSeries(e: _Expression, v: _Variable, centre: _Expressio
                                 maxNodes: Int = MaxDerivativeNodes): Either[String, Vector[_Expression]] =
   powerSeriesIn(e, v, centre, order, maxNodes, _Rational.containsExact(e) || _Rational.containsExact(centre))
 
-/** [[powerSeries]] in a tier the caller decided (F_0171). */
+/** [[powerSeries]] in a tier the caller decided (F_0171).
+ *
+ *  **A coefficient with no free name that does not fold to a value is a failed computation, and
+ *  declines the series** (F_0277): `1/0`, `0/0` and `ln(0)` stay unevaluated rather than becoming
+ *  `NaN`, so without this check a pole at the centre came back as a series of `1/0` terms — an
+ *  answer only in form.  A coefficient with a free name (a parameter, a symbolic centre) is
+ *  symbolic by right and passes; the rule is CLAUDE.md's third Laurent trap, applied here.
+ */
 private[scalar] def powerSeriesIn(e: _Expression, v: _Variable, centre: _Expression, order: Int,
                                   maxNodes: Int, exact: Boolean): Either[String, Vector[_Expression]] =
-  SeriesEngine(v, centre, order, exact, maxNodes).of(e)
+  val env = new Environment()
+  SeriesEngine(v, centre, order, exact, maxNodes).of(e).flatMap { cs =>
+    cs.indexWhere(c => c.freeVars.isEmpty && c.eval(env).isLeft) match
+      case -1 => Right(cs)
+      case k  => Left(s"the coefficient of order $k is undefined at the centre $centre")
+  }
