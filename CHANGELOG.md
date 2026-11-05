@@ -127,6 +127,32 @@ release time from MiMa's report.*
 - `derive` of a root is written `(1/3)*h^(-2/3)`: an exponent free of the variable takes the power rule however
   it is typed (`derive(h^(1/3), h)` was `h^(1/3)*(0*ln(h) + (1/3)/h)`, which read `0` at `h = 0`).
 
+**New in the library** (additive, no prompt form; requested by an MPC application):
+
+- **Numeric MPC prediction matrices**: `mpcPrediction(A, B, C, Np, Nc, limits)` gives `Φ`, `Γ` as dense
+  matrices (the last move held past `Nc`, as `mpcMatrices`), and `mpcIncrementalPrediction` the
+  `Δu` form `Φ`, `Ψ`, `Θ`, with `y = Φ·x + Ψ·u(k−1) + Θ·Δu`.
+- **The MPC quadratic programme**: `mpcQp(prediction, Q, R, reference, x, uPrev, bounds, limits)`
+  assembles `H`, `f` and the constraint rows for input, rate and output bounds in either formulation,
+  output bounds optionally soft (one slack per output, linear and quadratic penalty), and `solve`
+  answers through `qpSolve`, the first move and the slacks unpacked.
+- **Offset-free MPC**: `augmentDisturbance(A, B, C, Bd, Cd, env)` and the helpers
+  `inputDisturbanceModel` / `outputDisturbanceModel` build the plant augmented with integrating
+  disturbances, declining a non-detectable augmentation; `disturbanceObserver` gives its Kalman gain
+  and `steadyStateTarget` the target `(x_s, u_s)` for a setpoint and a disturbance estimate, the closest
+  reachable one under input bounds.
+- **ARX order selection**: `arxOrderSelection(u, y, nas, nbs, nks, criterion, validation, env)` scores
+  a grid of `(na, nb, nk)` by AIC, BIC or FPE (always named), on a validation split if given, every
+  candidate on the same samples; an unexcited candidate is skipped and reported.  New budget:
+  `Limit.MaxArxOrderWork`.
+- **An uncertified derivative-free minimiser**: `minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)`
+  over an `Array[Double] => Double`, by pattern search (integer coordinates supported) or Nelder–Mead,
+  steps relative to each variable's scale, deterministic.  Its answer is an `UncertifiedMinimum`, never
+  a certified `MinimizeResult`.  New budget: `Limit.MaxDerivativeFreeEvaluations`.
+- `arx`, `arxMimo` and the `arx` prompt function fit long data much faster: the excitation test reads
+  the singular values off the triangular factor of a QR instead of the tall regressor matrix
+  (2000 samples, 16 coefficients: about 7 ms on the JVM, where the SVD took 0.13–0.8 s).
+
 ## 3.8.3 — 2026-11-01
 
 **New in the library and at the prompt**

@@ -390,6 +390,27 @@ A program calls `nlpSolve`, whose `NlpResult` carries the multipliers of both gr
 active inequalities; `qpSolve`'s `QpResult` now carries its multipliers too, which is what
 the SQP iteration reads.
 
+## Derivative-free minimisation (uncertified)
+
+Everything above answers only what it can certify. One function, for programs only, does not:
+`minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)` minimises a Scala callback
+`Array[Double] => Double` that has no formula and no gradient — a closed-loop simulation scoring a
+controller's tuning, say — and its answer says so by its **type**: an `UncertifiedMinimum`, never the
+`MinimizeResult` `minimize` returns.
+
+- `PatternSearch` (compass search) polls one step along each coordinate, moves on any decrease and
+  halves the steps when none helps. For a smooth objective the steps shrink to a stationary point;
+  for a non-smooth one there is no such promise. It accepts **integer coordinates**, whose step never
+  falls below 1.
+- `NelderMead` moves a simplex, each trial point projected into the bounds. It has no convergence
+  result at all, even on smooth convex functions, and takes no integer coordinates.
+
+Steps and the stopping tolerance are measured in each variable's own scale — its bound width, else
+`|x0|` — so rescaling a variable rescales the path exactly. The search is deterministic, counts its
+evaluations against `Limit.MaxDerivativeFreeEvaluations` (an exhausted budget is a `Left` carrying
+the best point so far), and is not designed for a noisy objective, on which both methods may stop
+early.
+
 ## Raising a cap
 
 Every solver here stops at a budget — a dimension, an iteration count, a coefficient's size —

@@ -236,6 +236,26 @@ moves beyond `Nc` set to zero, gives a different `Γ` for the same plant. A numb
 `1×1` matrix, as here; a name with no value yet is never guessed to be one. The matrices are
 built from ordinary products and the block-matrix words (`hcat`, `vcat`, `blkdiag`, `kron`,
 `submatrix` — see [Matrices](matrix.md)), so exact input gives exact `Φ` and `Γ`.
+### From a program: the MPC building blocks
+
+A controller running in a loop needs numbers, not expressions, so the library also offers the
+pieces of an MPC step as Scala functions (no prompt form):
+
+- `mpcPrediction(A, B, C, Np, Nc, limits)` gives `Φ` and `Γ` as dense matrices, in the convention
+  above; `mpcIncrementalPrediction` the `Δu` form `y = Φ·x + Ψ·u(k−1) + Θ·Δu`, in which the input
+  weight acts on the moves and a constant reference is tracked without offset.
+- `mpcQp(prediction, Q, R, reference, x, uPrev, bounds, limits)` assembles the quadratic programme
+  with bounds on `u`, `Δu` and `y`; output bounds may be **soft**, one slack per output with a
+  linear and a quadratic penalty, so a disturbance that makes them unreachable relaxes them instead
+  of leaving no answer. `solve(warm, env)` runs `qpSolve` and returns the first input, the moves and
+  the slacks.
+- `augmentDisturbance(A, B, C, Bd, Cd, env)` — or `inputDisturbanceModel` / `outputDisturbanceModel`
+  — adds integrating disturbances, declining an augmentation the outputs cannot observe (an output
+  disturbance on a plant with an integrator, say); `disturbanceObserver` gives its Kalman gain, and
+  `steadyStateTarget` the `(x_s, u_s)` that brings the outputs to the setpoint given the disturbance
+  estimate, or the closest reachable one under input bounds. Together they remove the steady-state
+  offset a mismatched model leaves.
+
 
 ## Identifying a model from data (ARX)
 
@@ -293,6 +313,14 @@ form**, `p·max(na, nb + nk − 1)` states. That realisation is **not minimal** 
 simple, simulates identically, and `controllable` / `observable` show what is redundant. In
 Scala the model is `arxMimo(u, y, na, nb, nk, env)`, an `ArxMimoModel` of blocks, which `arx2tf`
 and `arx2ss` also take.
+**Choosing the orders.** `arxOrderSelection(u, y, nas, nbs, nks, criterion, validation, env)` (Scala
+only) fits every `(na, nb, nk)` of a grid and ranks them by `AIC`, `BIC` or `FPE`, named by the
+caller; given validation data, the loss is measured there. Every candidate is scored on the same
+samples, so the losses compare; a candidate the data does not excite is skipped and listed with its
+reason; and an exact fit beats any other, the fewest coefficients winning a tie, so noise-free data
+from an ARX model returns its true orders. The grid is held to a work budget,
+`Limit.MaxArxOrderWork`.
+
 
 ## Simulating a discrete model
 

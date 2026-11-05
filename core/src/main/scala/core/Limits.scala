@@ -195,6 +195,22 @@ enum Limit(val default: Long):
    *  rounding first (< 0.05 s).  At a charge of 1 per tree sample the first took 2.1 / 22 s. */
   case MaxQuadratureEvaluations extends Limit(200000)
 
+  // ── identification (F_0301) ──
+
+  /** The work an ARX order search may spend (F_0301): the sum over the grid of each candidate's
+   *  `r·c²` for its `r×c` regressor matrix, checked before any fit.  Measured on 2000 samples and the
+   *  grid `0..8 × 1..8 × 0..2` (216 candidates, `3.6·10⁷`), JVM / Node: noisy data 0.9–4.0 / 3.3–3.8 s,
+   *  noise-free data (75 candidates exactly dependent) 0.5–0.7 / 2.3 s; so the cap, about half of
+   *  it, is ~2 s on Node. */
+  case MaxArxOrderWork extends Limit(20000000)
+
+  // ── optimize, continued (F_0302) ──
+
+  /** Objective evaluations `minimizeDerivativeFree` may spend (F_0302): a **count**, not a time, since
+   *  each evaluation is the caller's cost (a closed-loop simulation, say) and the method's own work per
+   *  evaluation is a few arithmetic operations per variable. */
+  case MaxDerivativeFreeEvaluations extends Limit(100000)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

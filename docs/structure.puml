@@ -1811,6 +1811,36 @@ package "control" {
           not definite, shapes, n > 200
     }
     "Riccati" ..> "Dlsim" : matrixOperand / modelRow
+
+    class "MpcNumeric" <<utility>> [[control.html]] {
+        __ F_0298: numeric prediction (library-only) __
+        mpcPrediction -> Phi, Gamma (last move held)
+        mpcIncrementalPrediction -> Phi, Psi, Theta
+          y = Phi x + Psi u(k-1) + Theta du
+        Left(MpcFailure)
+    }
+    class "MpcQp" <<utility>> [[control.html]] {
+        __ F_0299: the condensed MPC QP __
+        mpcQp(prediction, Q, R, r, x, uPrev, bounds)
+        u / du / y bounds; soft y: one slack per output,
+          rho1 s + rho2 s^2
+        solve(warm, env) -> first input, moves, slacks
+    }
+    class "Disturbance" <<utility>> [[control.html]] {
+        __ F_0300: offset-free MPC __
+        augmentDisturbance(A, B, C, Bd, Cd); input / output models
+        declines a non-detectable augmentation
+        disturbanceObserver (kalmanGain), steadyStateTarget
+    }
+    class "ArxOrder" <<utility>> [[control.html]] {
+        __ F_0301: ARX order selection __
+        arxOrderSelection(u, y, nas, nbs, nks, AIC | BIC | FPE)
+        same samples for every candidate; unexcited skipped
+        MaxArxOrderWork (measured)
+    }
+    "MpcQp" ..> "MpcNumeric" : prediction matrices
+    "Disturbance" ..> "Riccati" : kalmanGain
+    "ArxOrder" ..> "Arx" : arxMimo per candidate
 }
 "Riccati" ..> "_MatrixValue" : cholesky (definiteness), inverse
 "Linearize" ..> "_Jacobian" : the four blocks
@@ -1903,6 +1933,16 @@ package "optimize" <<Rectangle>> {
         Row(k) | Lower(i) | Upper(i)
     }
 
+    class "DerivativeFree" <<utility>> [[optimization.html]] {
+        __ F_0302: UNCERTIFIED, library-only __
+        minimizeDerivativeFree(f: Array[Double] => Double,
+          x0, lo, hi[, integer], method, env)
+        PatternSearch (integer coordinates) | NelderMead
+        steps relative to each variable's scale
+        Right(UncertifiedMinimum), never MinimizeResult
+        MaxDerivativeFreeEvaluations (a count)
+    }
+
     class "LeastSquares" <<utility>> [[optimization.html]] {
         lsqfit(r, params, p0, bounds, env)
         curveFit(model, t, tdata, ydata, params, p0, bounds, env)
@@ -1960,6 +2000,9 @@ package "optimize" <<Rectangle>> {
     "Nlp"         ..> "QP"           : SQP subproblems, multipliers
     "Nlp"         ..> "LeastSquares" : evaluator (compiled cells)
     "Nlp"         ..> "_Jacobian"    : one definition of the Jacobian
+    "MpcQp"       ..> "QP"           : qpSolve
+    "Disturbance" ..> "QP"           : steady-state target under bounds
+    "Disturbance" ..> "Svd"          : detectability, rank
     "LeastSquares" ..> "_Jacobian"  : one definition of the Jacobian
     "QP"          ..> "QpConstraint" : active set = warm start
     "QP"          ..> "_MatrixValue" : cholesky = convexity test
