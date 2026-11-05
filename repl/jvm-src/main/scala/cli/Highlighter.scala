@@ -103,7 +103,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
   // `truth` is both a command and a function, and is coloured as whichever position it holds.
   private val Commands       = Session.CommandWords
   private val LogicOps       = Set("and", "or", "not", "implies", "xor")
-  private val Constants      = Set("pi", "e", "i", "inf", "true", "false", "unknown")
+  private val Constants      = Set("pi", "e", "i", "inf", "true", "false", "unknown", "eulergamma", "goldenratio")
   private val CoordinateWords = Set("cartesian", "cylindrical", "spherical", "sphericalmaths")
   private val Functions =
     parser.Parser.ReservedWords -- (Commands - "truth") -- LogicOps -- Constants -- CoordinateWords - "consolidate"
@@ -161,6 +161,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
               // Greek function aliases: WordPat is ASCII-only, so these arrive here as
               // single characters rather than as word tokens.
               case c if GreekFunctions.contains(c) => cs.function
+              case 'π' | 'γ' | 'φ'                => cs.constant   // F_0289 constant glyphs
               case '+' | '-' | '*' | '/' | '^' => cs.operator
               // Relations share the equation style: =, == and the comparison operators.
               case '=' | '<' | '>' | '!'        => cs.equation

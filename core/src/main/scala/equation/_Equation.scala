@@ -26,7 +26,9 @@ private[equation] def compareSides(
     lhs: _Expression, rhs: _Expression, env: Environment
 )(wrap: (_Expression, _Expression) => _Expression): Either[_Expression, _Value] =
   val tolerance = 0.5 * math.pow(10, -env.precision)
-  (lhs.eval(env), rhs.eval(env)) match
+  // A relation needs numbers: a closed side holding a named constant is read at the working
+  // precision (F_0289), so `pi > 3` answers in exact mode, where `pi` stays a symbol.
+  (evalNumeric(lhs, env), evalNumeric(rhs, env)) match
     // Exact operands compare to the WORKING precision, not the display one (F_0177): in the
     // exact tier `1/3 == 0.33333` must stay false, but an irrational is a rational carried to
     // the working precision, so comparing exactly made `(2^(1/2))^2 == 2` false by 1.2e-41.
@@ -120,7 +122,7 @@ private[leonardo] def exactOrder(a: _Value, b: _Value, env: Environment): Option
  *  @return whether the working precision, rather than exact equality, made the sides equal
  */
 private[leonardo] def equalOnlyToWorkingPrecision(lhs: _Expression, rhs: _Expression, env: Environment): Boolean =
-  val (ra, rb) = (lhs.eval(env), rhs.eval(env))
+  val (ra, rb) = (evalNumeric(lhs, env), evalNumeric(rhs, env))
   val pairs: Option[Vector[(_Value, _Value)]] = (ra, rb) match
     case (Right(a: _Rational), Right(b: _Rational)) => Some(Vector((a, b)))
     case _ =>

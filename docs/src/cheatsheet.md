@@ -66,6 +66,7 @@ so above it.
 |---|---|
 | `x := 3.14` | Numeric binding (constant right-hand side) |
 | `f := sin(x) + x` | Symbolic definition (late-bound: follows redefinitions). When the formula already computes with the current bindings, the echo adds its value now on a second, indented line starting `=`; the definition stays late-bound |
+| `p(t) := t^3 - 2*t` | A definition with a parameter list: `p(2)`, `p(x + h)` apply it, the argument replacing `t` only; `q(u, v) := …` takes several, substituted at once. Bare `p` is the body, so `derive(p, t)` is the derivative (the partial one with several parameters). The body is applied when defined |
 | `h := 2*x = x + 1` | Named equation (pass to `solve`) |
 | `g := consolidate(f)` | Freeze the current value of `f` into `g` (not late-bound) |
 | `L, U, P := lu(A)` | Tuple binding from a 1×n decomposition result |
@@ -82,14 +83,21 @@ so above it.
 | `-x` | Unary minus |
 | `3sin(x)` / `3x` | Implicit multiplication |
 | `(expr)` | Grouping |
+| `(-8)^(1/3)` | A fractional power of a negative number is the **principal complex value**, `1 + 1.732i`, not the real cube root `-2` — in every tier: `limit(x^(1/3), x, -8)` and `integral(x^(1/3), x, -8, -1)` answer it too. `domain(x^(1/3), x)` is the *real* domain, `x >= 0`; for the real cube root of `x < 0` write `-(-x)^(1/3)` |
 | `√x` | Square root of the factor that follows: `√13`, `2√13` (= `2·√13`), `√(x + 1)`; `√13^2` is `(√13)^2`. The exact surd in exact mode, the `Double` root (as `13^0.5`) otherwise |
 
 ### Built-in constants
 
+The named constants are **symbols**: a formula, a definition and `:save` write `pi`, not `3.14159`.
+Outside exact mode each evaluates to its `Double`; in exact mode it stays symbolic (`pi/2` is
+`pi/2`, `sin(pi/6)` is `1/2`, `cos(pi/7)` is read at the working precision).
+
 | Token | Value |
 |---|---|
-| `pi` | π ≈ 3.14159 |
+| `pi`, `π` | π ≈ 3.14159 |
 | `e` | Euler's number ≈ 2.71828 |
+| `eulergamma`, `γ` | the Euler–Mascheroni constant ≈ 0.57722 (`gamma` stays a free name) |
+| `goldenratio`, `φ` | the golden ratio (1 + √5)/2 ≈ 1.61803, the exact surd in exact mode (`phi` stays a free name) |
 | `i` | Imaginary unit (√−1) |
 | `inf` | +∞ |
 | `-inf` | −∞ |
@@ -180,7 +188,7 @@ Under `exact on` the same functions answer over the integers and rationals:
 | `sum(binom(4, k), k, 0, 4)` | `16.0` | A Pascal row, added up |
 | `sum(k*x, k, 1, 3)` | `(((1.0 * x) + (2.0 * x)) + (3.0 * x))` | `x + 2x + 3x`: symbolic terms **expand** |
 | `sum(k, k, 1, 0)` | `0.0` | The empty sum; `product` gives 1 |
-| `sum(k, k, 1, n)` | | A free bound stays symbolic; the range is capped like `tabulate`'s, so a mistyped bound declines |
+| `sum(k, k, 1, n)` | | A free bound gives the closed form `n(n + 1)/2` for a polynomial summand (Faulhaber) and for a geometric one `c*r^k` with a numeric ratio other than 1, so `limit(sum((k/n)^2/n, k, 1, n), n, inf)` is `1/3`; anything else stays symbolic. Numeric bounds are capped like `tabulate`'s, so a mistyped bound declines |
 
 ---
 
@@ -371,7 +379,7 @@ The curvilinear systems are three-dimensional, and the coordinates are identifie
 **position, not by name** — call them whatever you like, but pass them in that order; the two
 spherical keywords therefore differ in argument *order*, not in naming.
 
-### Definite integration (Simpson's rule)
+### Definite integration
 
 The limits are ordinary **expressions**, so arithmetic, constants and other variables are all
 legal there.
@@ -392,7 +400,9 @@ legal there.
 | `limit(1/x, x, 0, -)` | `-inf` | From the left |
 | `limit(atan(x), x, inf)` | `1.5708` | π/2 |
 | `limit((2*x^2 + 1)/(x^2 + 3), x, inf)` | `2.0` | Degree comparison of a rational function |
-| `limit((1 + 1/x)^x, x, inf)` | stays unevaluated | The numeric tier cannot certify `e` from samples at infinity: `(1 + 1/x)` loses its digits there |
+| `limit((1 + 1/x)^x, x, inf)` | `2.71828` | `e`: the limit algebra reads it as `exp(x·ln(1 + 1/x))`, with `ln(1 + u) ~ u` (F_0286) |
+| `limit(n/2^n, n, inf)` | `0.0` | Growth classes at infinity: an exponential beats a power |
+| `limit(ln(t), t, 0, +)` | `-inf` | An infinite one-sided limit |
 
 ### Sampling
 

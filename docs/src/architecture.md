@@ -205,12 +205,12 @@ over them without domain-specific cases in the algorithm code.
 
 **Memoization** — `derive` and `simplify` cache results in a bounded
 `ConcurrentHashMap` (see `Memo.scala`). This is the biggest win for
-`simplifyFully`'s fixpoint loop and for `_DefIntegral`'s Simpson integration,
+`simplifyFully`'s fixpoint loop and for `_DefIntegral`'s numeric integration,
 which re-derives the same subexpressions hundreds of times per evaluation.
 
 **`compile` fast path** — `compile(e, v, env): Option[Double ⇒ Double]`
 translates an expression into a JVM closure when all nodes are compilable.
-Used by `_DefIntegral` (Simpson's rule) and `sample`; eliminates per-step
+Used by `_DefIntegral` (adaptive Simpson) and `sample`; eliminates per-step
 AST allocation and environment lookup. `compile(e, vars, env)` and `compileMatrix(m, vars, env)`
 are the multi-variable forms over a positional `Array[Double]` (F_0058), built from the **same
 table** rather than a second one, so a function added to it reaches all three.

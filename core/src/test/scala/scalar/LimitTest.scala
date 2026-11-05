@@ -174,9 +174,13 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
 
   // ─────────────────────────── symbolic cases ──────────────────────────────────
 
-  it should "stay symbolic when the limit point is an unbound variable" in:
+  it should "answer generically at a symbolic point, noting what it assumed (F_0286)" in:
+    // It stayed unevaluated until F_0286; the owner's decision is the generic answer with its
+    // conditions noted: sin(a)/a, assuming a != 0.
     val r = parse("limit(sin(x)/x, x, a)").eval(env).toExpression
-    assert(r.isInstanceOf[_Limit], s"expected symbolic _Limit, got $r")
+    assert(r == Ratio(Sin(_Variable("a")), _Variable("a")), s"got $r")
+    assert(limitConditions(Ratio(Sin(_Variable("x")), _Variable("x")), _Variable("x"), _Variable("a"),
+                           LimitDir.Both, env) == List("a != 0"))
 
   it should "stay symbolic for oscillating sin(x) at +inf" in:
     val r = parse("limit(sin(x), x, inf)").eval(env).toExpression
@@ -258,9 +262,10 @@ class LimitTest extends AnyFlatSpec with BeforeAndAfter:
     // exp(-1e-20/x) changes only below x = 1e-20: it read 1.0 from samples at 1e-8.
     approx("limit(exp(-1e-20/x), x, 0, +)", 0.0, 0.0)
     approx("limit(exp(-1/x), x, 0, +)", 0.0, 0.0)            // its unit twin, unchanged
-    // 1/(1 + 1e-20/x) tends to 0 like x: two samples cannot certify a limit 0 (F_0211), but it
-    // must no longer answer the 1.0 the samples above the feature showed.
-    assert(unanswered("limit(1/(1 + 1e-20/x), x, 0, +)"))
+    // 1/(1 + 1e-20/x) tends to 0 like x: two samples cannot certify a limit 0 (F_0211) and it must
+    // never answer the 1.0 the samples above the feature showed; the limit algebra (F_0286) now
+    // answers it, 1/(1 + ∞) = 0.
+    approx("limit(1/(1 + 1e-20/x), x, 0, +)", 0.0, 0.0)
 
   it should "see a sign change of the denominator below the default step (F_0257)" in:
     // x(x - 1e-10) is negative on (0, 1e-10) and positive left of 0: no two-sided limit.

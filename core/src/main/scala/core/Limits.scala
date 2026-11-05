@@ -183,6 +183,18 @@ enum Limit(val default: Long):
    *  0.03 / 0.15 s.  An integer's denominator is one bit, so integers are held by size alone. */
   case MaxExactReductionWork extends Limit(4294967296L)
 
+  // ── the definite integral (F_0281) ──
+
+  /** Integrand evaluations a definite integral's adaptive Simpson may spend before it declines
+   *  (F_0281): a pole the domain analysis cannot see (`sec(x)^2` across `π/2`) never certifies, and
+   *  this is what stops it, shared by every integral nested in the outermost one and spent by both
+   *  certifying runs.  A tree-evaluated sample is charged 40 and a nested integral's setup 200
+   *  (`scalar.QuadratureWork`).  Measured at the cap, JVM / Node, the slowest declines: an expensive
+   *  tree-evaluated integrand (a 50-term `sum` per sample) 0.46 / 0.67 s, compiled `abs(sin(1000x))`
+   *  over `[0, 100]` 0.40 / 0.11 s, a nested integral 0.02 / 0.06 s; a pole stops at its panels'
+   *  rounding first (< 0.05 s).  At a charge of 1 per tree sample the first took 2.1 / 22 s. */
+  case MaxQuadratureEvaluations extends Limit(200000)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

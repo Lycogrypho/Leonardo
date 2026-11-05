@@ -16,10 +16,10 @@ class DomainNoteTest extends AnyFlatSpec:
 
   "a limit outside the domain" should "explain itself instead of echoing back silently" in
   {
-    val out = session.execute("limit(ln(x), x, -1)")
+    // `asin` has no value past 1 in this library (F_0297: `ln(x)` at -1 is the principal `i*pi` now).
+    val out = session.execute("limit(asin(x), x, 2)")
     assert(out.contains("note:"), s"expected a diagnostic, got: $out")
-    assert(out.contains("undefined at x = -1"), s"expected the offending point, got: $out")
-    assert(out.contains("> 0"), s"expected the violated requirement, got: $out")
+    assert(out.contains("outside its real domain at x = 2"), s"expected the offending point, got: $out")
   }
 
   "a limit inside the domain" should "carry no note" in
@@ -37,7 +37,9 @@ class DomainNoteTest extends AnyFlatSpec:
 
   "a definite integral crossing a pole" should "explain the bound" in
   {
-    val out = session.execute("integral(1 / x, x, 0, 1)")
+    // integral(1/x, x, 0, 1) now diverges to inf by its antiderivative's limit (F_0288); exp(x)/x at a
+    // bound of 0 stays unevaluated (Ei has no limit the algebra reads there) and still explains why.
+    val out = session.execute("integral(exp(x) / x, x, 0, 1)")
     assert(out.contains("note:"), s"expected a diagnostic, got: $out")
     assert(out.contains("!= 0"), s"expected the non-zero requirement, got: $out")
   }

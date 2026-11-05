@@ -92,14 +92,45 @@ private def scalarRoots(eq: _Equation, v: _Variable, env: Environment): List[_Eq
   val minusOne   = _Rational.literalLike(-1, eq)
   val difference = Sum(eq.lhs, Product(minusOne, eq.rhs))
 
-  val roots: List[_Expression] = collect(difference, v) match
+  def bound(roots: List[_Expression]): List[_Equation] = roots.map(r => _Equation(v, r.eval(env).toExpression))
+  collect(difference, v) match
     case Some(cs) if cs.size == 1 => Nil   // constant in v: nothing to solve for
     case Some(cs) if cs.size == 2 =>
-      List(simplifyFully(Ratio(Product(minusOne, cs(0)), cs(1))))
-    case Some(cs) if cs.size == 3 => quadraticRoots(cs(0), cs(1), cs(2), env)
-    case _                        => numericRoots(difference, v, env)
+      bound(List(simplifyFully(Ratio(Product(minusOne, cs(0)), cs(1)))))
+    case Some(cs) if cs.size == 3 => bound(quadraticRoots(cs(0), cs(1), cs(2), env))
+    // An invertible function of the unknown, inverted (F_0295), before the numeric scan, which
+    // looks only in [-100, 100]: `exp(-t/1000) = 1/2` has its root at 693.
+    case _ => inverted(eq, v, env).getOrElse(bound(numericRoots(difference, v, env)))
 
-  roots.map(r => _Equation(v, r.eval(env).toExpression))
+/** `f(w) = c` solved by inverting `f` where it is `exp`, `ln`, `log_b` or `b^w` for a constant base,
+ *  after peeling the constant terms and factors around it; the inner equation goes back through the
+ *  tiers.  `None` when no function was inverted, so every other equation is untouched; `Some(Nil)`
+ *  when the inverted value has no real preimage (`exp(t) = -1`).
+ *
+ *  @param eq  the equation
+ *  @param v   the unknown
+ *  @param env bindings and precision
+ *  @return the roots, or `None`
+ */
+private def inverted(eq: _Equation, v: _Variable, env: Environment): Option[List[_Equation]] =
+  val minusOne = _Rational.literalLike(-1, eq)
+  def positive(c: _Expression): Option[Boolean] = evalNumeric(c, env) match
+    case Right(_Number(d)) if d.isFinite => Some(d > 0)
+    case _                               => None
+  def peel(u: _Expression, c: _Expression, inverted: Boolean): Option[List[_Equation]] = u match
+    case Sum(a, b) if !dependsOn(a, v)     => peel(b, Sum(c, Product(minusOne, a)), inverted)
+    case Sum(a, b) if !dependsOn(b, v)     => peel(a, Sum(c, Product(minusOne, b)), inverted)
+    case Product(a, b) if !dependsOn(a, v) => peel(b, Ratio(c, a), inverted)
+    case Product(a, b) if !dependsOn(b, v) => peel(a, Ratio(c, b), inverted)
+    case Ratio(a, b) if !dependsOn(b, v)   => peel(a, Product(c, b), inverted)
+    case Exp(w) => positive(c).flatMap(ok => if ok then peel(w, Ln(c), true) else Some(Nil))
+    case Ln(w)  => peel(w, Exp(c), true)
+    case LogBase(w, b) if !dependsOn(b, v) => peel(w, Power(b, c), true)
+    case Power(b, w) if !dependsOn(b, v) && positive(b).contains(true) =>
+      positive(c).flatMap(ok => if ok then peel(w, Ratio(Ln(c), Ln(b)), true) else Some(Nil))
+    case other if inverted => Some(scalarRoots(_Equation(other, c), v, env))
+    case _                 => None
+  sideWith(v, eq).flatMap((u, c) => peel(u, c, false))
 
 /** Solves for a scalar `v` inside a matrix equation by element-wise decomposition.
  *
@@ -562,18 +593,78 @@ private def exactQuadraticRoots(a0: _Rational, a1: _Rational, a2: _Rational): Op
       order  <- _Surd.subtract(r1, r2).flatMap(_Surd.signum)
     yield if order <= 0 then List(r1, r2) else List(r2, r1)
 
-/** Sign-change scan over `[SearchLo, SearchHi]` followed by bisection; up to `MaxNumericRoots` roots. */
+/** The roots of `f` the numeric scan finds, up to `MaxNumericRoots`, **the ones nearest 0**, in
+ *  ascending order (F_0282).  The scan used to stop at the first eight from `-100`, so
+ *  `solve(tan(x) = 0, x)` bound eight roots near `-90` and never `0`, a partial list read as complete;
+ *  [[partialRootsNote]] now says when the list is partial. */
 private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_Expression] =
+  numericScan(f, v, env).toList
+    .sortBy(r => (math.abs(r), r)).take(env.limits.count(Limit.MaxNumericRoots)).sorted
+    .map(_Number(_))
+
+/** Why the roots `solve` lists are not all of them, or `None` when they are (F_0282, the owner's
+ *  decision): a **periodic** equation — every occurrence of `v` inside `sin`/`cos`/`tan`/`sec`/`csc`/
+ *  `cot` of linear arguments sharing one slope — has infinitely many, a root plus any multiple of the
+ *  period; and a scan that found more roots in `[-100, 100]` than it keeps lists only the nearest.
+ *  The closed tiers (linear, quadratic) answer every root and are never noted.
+ *
+ *  @param eq  the equation
+ *  @param v   the unknown
+ *  @param env bindings and the root budget
+ *  @return the note, or `None`
+ */
+private[leonardo] def partialRootsNote(eq: _Equation, v: _Variable, env: Environment): Option[String] =
+  val difference = Sum(eq.lhs, Product(_Number(-1), eq.rhs))
+  val kept       = env.limits(Limit.MaxNumericRoots)
+  collect(difference, v) match
+    case Some(cs) if cs.size <= 3 => None
+    case _ => periodOf(difference, v, env) match
+      case Some(p) =>
+        Some(s"the equation is periodic in ${v.variable} with period ${_Number(p).display(env.precision)}: " +
+             s"these are the roots nearest 0, and each plus any multiple of the period is one too")
+      case None =>
+        val found = numericScan(difference, v, env).size
+        Option.when(found > kept)(s"only the $kept roots nearest 0 of the $found found in [-100, 100] are listed")
+
+/** The period of `f` in `v` when `v` occurs only inside circular functions of linear arguments with
+ *  one slope `a`: `π/|a|` when they are all `tan`/`cot`, else `2π/|a|`. */
+private def periodOf(f: _Expression, v: _Variable, env: Environment): Option[Double] =
+  // The slope of each circular function's argument, and whether it has period π; `None` when `v`
+  // occurs anywhere else.
+  def slopes(e: _Expression): Option[List[(Double, Boolean)]] =
+    if !dependsOn(e, v) then Some(Nil)
+    else
+      def linear(u: _Expression, halfTurn: Boolean): Option[List[(Double, Boolean)]] =
+        collect(u, v).filter(_.size == 2).flatMap(cs => cs(1).eval(env).toOption).collect {
+          case _Number(a) if a != 0 && a.isFinite => List((math.abs(a), halfTurn))
+        }
+      e match
+        case Sin(u) => linear(u, false)
+        case Cos(u) => linear(u, false)
+        case Sec(u) => linear(u, false)
+        case Csc(u) => linear(u, false)
+        case Tg(u)  => linear(u, true)
+        case Cot(u) => linear(u, true)
+        case _: Sum | _: Product | _: Ratio => sequence(e.children.map(slopes)).map(_.flatten)
+        case Power(b, k) if !dependsOn(k, v) => slopes(b)
+        case _ => None
+  slopes(f).filter(_.nonEmpty).flatMap { ss =>
+    val a = ss.head._1
+    Option.when(ss.forall((s, _) => math.abs(s - a) <= 1e-12 * a))(
+      (if ss.forall(_._2) then math.Pi else 2 * math.Pi) / a)
+  }
+
+/** Every root of `f` in `[SearchLo, SearchHi]`: a sign-change scan, each bracket refined by bisection. */
+private def numericScan(f: _Expression, v: _Variable, env: Environment): Vector[Double] =
   compile(f, v, env) match
-    case None     => Nil
+    case None     => Vector.empty
     case Some(fn) =>
       val step  = (SearchHi - SearchLo) / SearchSamples
       val found = scala.collection.mutable.ListBuffer[Double]()
       var a  = SearchLo
       var fa = fn(a)
       var i  = 0
-      val maxRoots = env.limits(Limit.MaxNumericRoots)
-      while i < SearchSamples && found.size < maxRoots do
+      while i < SearchSamples do
         val b  = a + step
         val fb = fn(b)
         if fa == 0.0 then
@@ -595,7 +686,7 @@ private def numericRoots(f: _Expression, v: _Variable, env: Environment): List[_
           val fr = math.abs(fn(r))
           if fr <= math.min(math.abs(fa), math.abs(fb)) then found += r
         a = b; fa = fb; i += 1
-      found.toList.map(_Number(_))
+      found.toVector
 
 /** Bisection refinement: narrows `[lo, hi]` around a sign change for `BisectIterations` steps. */
 @annotation.tailrec

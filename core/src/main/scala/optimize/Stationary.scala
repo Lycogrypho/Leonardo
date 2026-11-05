@@ -140,8 +140,8 @@ private[optimize] def numericHessian(f: _Expression, vars: Vector[_Variable],
  *  definition of the Hessian in the library. */
 private[optimize] def hessianCells(f: _Expression, vars: Vector[_Variable],
                                    env: Environment): Option[Vector[_Expression]] =
-  _Hessian(f, vars).eval(env) match
-    case Left(_Matrix(_, _, cells)) => Some(cells)
+  _Hessian(f, vars).unevaluated(env) match
+    case Some(_Matrix(_, _, cells)) => Some(cells)
     case _                          => None
 
 /** The real eigenvalues of a symmetric matrix; `None` when the iteration fails or a pair is

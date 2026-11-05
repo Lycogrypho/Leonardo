@@ -77,7 +77,8 @@ case class _Comparison(lhs: _Expression, op: CompareOp, rhs: _Expression) extend
     // Each side is evaluated once and the results shared: an `integral` or `ode` side was
     // evaluated three times here, by the interval test, the ordering and the fallback (F_0108).
     case _ =>
-      val (l, r) = (lhs.eval(env), rhs.eval(env))
+      // A closed side holding a named constant is read at the working precision (F_0289).
+      val (l, r) = (evalNumeric(lhs, env), evalNumeric(rhs, env))
       intervalOrder(op, l, r, env).getOrElse(
         orderingOf(l, r, env) match
           case Some(c) => Right(_Bool(holds(op, c)))
@@ -125,7 +126,7 @@ case class _Comparison(lhs: _Expression, op: CompareOp, rhs: _Expression) extend
  */
 private[equation] def ordering(lhs: _Expression, rhs: _Expression,
                                env: Environment): Option[Int] =
-  orderingOf(lhs.eval(env), rhs.eval(env), env)
+  orderingOf(evalNumeric(lhs, env), evalNumeric(rhs, env), env)
 
 /** [[ordering]] of two sides already evaluated, so a caller that has them evaluates nothing twice. */
 private[equation] def orderingOf(l: Either[_Expression, _Value], r: Either[_Expression, _Value],

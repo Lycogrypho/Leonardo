@@ -215,8 +215,8 @@ private final case class LpProblem(f: Vector[Q], a: Option[(Vector[Vector[Q]], V
 private final case class Solved(x: Vector[Q], objective: Q, pivots: Int, active: Vector[QpConstraint]):
   def result(exact: Boolean): LpResult =
     def value(q: Q): _Value =
-      if exact then _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt).getOrElse(_Number(q.toDouble))
-      else _Number(q.toDouble)
+      if exact then _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt).getOrElse(_Number(spireToDouble(q)))
+      else _Number(spireToDouble(q))
     LpResult(x.map(value), value(objective), pivots, active)
 
 

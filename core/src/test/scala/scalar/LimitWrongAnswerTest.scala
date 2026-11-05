@@ -24,6 +24,11 @@ class LimitWrongAnswerTest extends AnyFlatSpec:
     parsed.get.eval(env).toExpression match
       case _Number(d)  => Some(d)
       case _: _Limit   => None
+      // Since F_0289 an exact answer may keep `pi` (`-2/pi`): read it as the number it is.
+      case other if other.freeVars.isEmpty && containsConstant(other) =>
+        evalNumeric(other, env) match
+          case Right(_Number(d)) => Some(d)
+          case r                 => fail(s"$src: $other did not read as a number: $r")
       case other       => fail(s"$src: neither a number nor an unevaluated limit: $other")
 
   /** `src` answers `truth` (within a relative `1e-6`, or the same infinity) or stays unevaluated. */
@@ -80,8 +85,9 @@ class LimitWrongAnswerTest extends AnyFlatSpec:
 
   "a declined limit" should "be the call as written, not the form the tiers stopped on (F_0276)" in {
     // The decline echoed L'Hopital's differentiated quotient, and its point as `0.0` in exact mode.
+    // (Shown on h^(1/3)/h until F_0286's algebra answered it, inf; sin(1/h) has no limit at 0+.)
     for exact <- Seq(None, Some(30)) do
-      val call = Parser.parse("limit(h^(1/3)/h, h, 0, +)", exact).get
+      val call = Parser.parse("limit(sin(1/h), h, 0, +)", exact).get
       assert(call.eval(env) == Left(call), s"exact = $exact")
   }
 

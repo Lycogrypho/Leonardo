@@ -126,14 +126,14 @@ private def divisors(n: BigInt): Option[List[BigInt]] =
 private[leonardo] def qRationalRoots(p: QPoly): List[Q] =
   val lcm   = p.foldLeft(BigInt(1))((l, c) => { val d = c.denominator.toBigInt; l / l.gcd(d) * d })
   val ints  = p.map(c => (c * Q(lcm)).numerator.toBigInt)
-  rootsOfSquareFree(p.map(_.toDouble)) match
+  rootsOfSquareFree(p.map(spireToDouble)) match
     case None => Nil
     case Some(parts) =>
       val reals = parts.filter(realAmong(parts, 1e-6)).map(_._1)
       divisors(ints.last).fold(Nil) { qs =>
         reals.flatMap { x =>
           qs.map(q => Q(BigInt(math.round(x * q.toDouble)), q)).filter(c => qEval(p, c).isZero)
-            .minByOption(c => math.abs(c.toDouble - x))
+            .minByOption(c => math.abs(spireToDouble(c) - x))
         }.distinct.toList
       }
 
@@ -151,7 +151,7 @@ private def qLeadInteger(p: QPoly): BigInt =
  *  exact division leaves no remainder. */
 private def qQuadraticFactor(poly: QPoly): Option[QPoly] =
   for
-    parts <- rootsOfSquareFree(poly.map(_.toDouble))
+    parts <- rootsOfSquareFree(poly.map(spireToDouble))
     dens  <- divisors(qLeadInteger(poly))
     found <- {
       val pairs = for i <- parts.indices; j <- parts.indices if i < j yield (parts(i), parts(j))
@@ -225,7 +225,7 @@ private def qSolve(m: Vector[Vector[Q]], b: Vector[Q]): Option[Vector[Q]] =
   Option.when(ok)(Vector.tabulate(n)(i => aug(i)(n)))
 
 /** An exact rational as an expression. */
-private def qe(q: Q): _Expression = _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt).getOrElse(_Number(q.toDouble))
+private def qe(q: Q): _Expression = _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt).getOrElse(_Number(spireToDouble(q)))
 
 /** `k·e`, folding `0` and `1`. */
 private def qTimes(k: Q, e: _Expression): Option[_Expression] =
@@ -260,7 +260,7 @@ private[leonardo] def exactPolynomialRoots(e: _Expression, v: _Variable): Option
         val rest     = rational.foldLeft(f)((g, r) => qDivMod(g, Vector(-r, Q.one))._1)
         val others   =
           if qDeg(rest) < 1 then Some(Vector.empty[_Expression])
-          else rootsOfSquareFree(rest.map(_.toDouble)).map(rs => realParts(rs).map(x => _Number(x): _Expression))
+          else rootsOfSquareFree(rest.map(spireToDouble)).map(rs => realParts(rs).map(x => _Number(x): _Expression))
         others.map(rational.map(qe).toVector ++ _)
       }
       sequence(parts).map(_.flatten.toVector.distinct)

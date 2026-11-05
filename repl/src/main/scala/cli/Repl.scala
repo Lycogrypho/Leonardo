@@ -93,6 +93,9 @@ final class Session:
   private var workingPrecision: Int = Environment.DefaultWorkingPrecision
   private var bindings: Map[String, _Value] = Map()
   private var definitions: Map[String, _Expression] = Map()
+  // The parameter lists of the definitions declared `f(x, y) := …` (F_0294): `f(e)` is then an
+  // application, rewritten in the text before parsing; a definition with no list keeps `f(e)` a product.
+  private var parameters: Map[String, List[String]] = Map()
   // Announce every newly-seen free variable (issue F_0030). Off by default, because a free
   // variable is the NORMAL case in a CAS -- `derive(x^2, x)` is supposed to have one -- so
   // narrating them all is chatty. The companion diagnostic, a name used as a function, is
@@ -112,9 +115,12 @@ final class Session:
   def currentColorScheme: String = colorSchemeName
 
   /** Builds a fresh `Environment` from the current precision and numeric bindings. */
-  private def env: Environment = new Environment(precision, bindings, symmetricLogic, semantics, workingPrecision)
+  private def env: Environment =
+    new Environment(precision, bindings, symmetricLogic, semantics, workingPrecision, Limits.Default, exactMode)
 
-  private val emptyEnv = new Environment()
+  /** The default settings with no bindings, in the session's exact mode (F_0273): an assignment
+   *  folds its right-hand side here, and under `exact on` that must build exact constants too. */
+  private def emptyEnv: Environment = new Environment().withExactMode(exactMode)
 
   /** The session's settings with **no variable bindings** (issue F_0034).
    *
@@ -124,9 +130,12 @@ final class Session:
    *  fold them.
    */
   private def unboundEnv: Environment =
-    new Environment(precision, Map.empty, symmetricLogic, semantics, workingPrecision)
+    new Environment(precision, Map.empty, symmetricLogic, semantics, workingPrecision, Limits.Default, exactMode)
 
   private val assignment      = """([a-zA-Z][a-zA-Z0-9_]*)\s*:=(.+)""".r
+  // "f(x, y) := body" -- a definition with a parameter list (F_0294)
+  private val functionDefinition =
+    """([a-zA-Z][a-zA-Z0-9_]*)\(\s*([a-zA-Z][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]*)*)\s*\)\s*:=(.+)""".r
   private val multiAssignment = """([a-zA-Z][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]*)+)\s*:=(.+)""".r
   // "name := consolidate(expr)" — freeze the simplified + evaluated result into `name`
   // consolidate(...) is NOT a grammar function; it is recognised here on the
@@ -248,6 +257,7 @@ final class Session:
       .filterNot(m => m.start > 0 && Session.isNameChar(line.charAt(m.start - 1)))
       .map(_.group(1))
       .filterNot(Parser.ReservedWords.contains)
+      .filterNot(parameters.contains)          // an application (F_0294), not a mistaken call
       .filterNot(announced.contains)
       .distinct
       .toList
@@ -329,6 +339,7 @@ final class Session:
     // broader `assignment` pattern for this input, so `name` is validated by the time we
     // get here. consolidate freezes; plain `:=` (below) stays late-bound.
     case consolidation(name, inner) => withParsed(inner)(consolidate(name, _))
+    case functionDefinition(name, params, rhs) => defineFunction(name, params.split(",").map(_.trim).toList, rhs)
     case multiAssignment(namesStr, rhs) =>
       withParsed(rhs)(multiAssign(namesStr.split(",").map(_.trim).toList, _))
     case assignment(name, rhs)  => withParsed(rhs)(assign(name, _))
@@ -452,7 +463,11 @@ final class Session:
                          defFmt: _Expression => String,
                          keep: _Expression => Boolean = _ => true): List[String] =
     bindings.toList.sortBy(_._1).collect { case (k, v) if keep(v) => s"$k := ${bindFmt(v)}" } ++
-    definitions.toList.sortBy(_._1).collect { case (k, e) if keep(e) => s"$k := ${defFmt(e)}" }
+    definitions.toList.sortBy(_._1).collect { case (k, e) if keep(e) => s"${signature(k)} := ${defFmt(e)}" }
+
+  /** A definition's name with its parameter list, `f(x, y)`, or the bare name (F_0294). */
+  private def signature(name: String): String =
+    parameters.get(name).fold(name)(ps => s"$name(${ps.mkString(", ")})")
 
   /** Every session setting as a `(command, argument)` pair, in the order a script must
    *  replay them.
@@ -570,7 +585,55 @@ final class Session:
    *  @param f     the caller's own step, itself allowed to fail with a message
    *  @return `f`'s result, or the message explaining why there is none
    */
-  private def parsed[A](input: String)(f: _Expression => Either[String, A]): Either[String, A] =
+  private def parsed[A](text: String)(f: _Expression => Either[String, A]): Either[String, A] =
+    applyFunctions(text).flatMap(input => parsedApplied(input)(f))
+
+  /** Rewrites every application `f(a, …)` of a definition declared with parameters (F_0294) into
+   *  its body with the arguments substituted, bracketed, innermost first — in the **text**, since the
+   *  grammar reads `f(a)` as the product `f·a` and keeps no trace of the call.  Each argument is parsed
+   *  on its own and substituted **simultaneously**, through fresh names, so `g(y, x)` swaps rather than
+   *  collapsing; the result is written back losslessly ([[serialized]]).  A wrong argument count is
+   *  refused by name; an unbalanced bracket is left for the parser to report.
+   *
+   *  @param text the input
+   *  @return the input with every application expanded, or why one could not be
+   */
+  private def applyFunctions(text: String): Either[String, String] =
+    if parameters.isEmpty then Right(text)
+    else
+      Session.CallSyntax.findAllMatchIn(text)
+        .find(m => parameters.contains(m.group(1)) && !(m.start > 0 && Session.isNameChar(text.charAt(m.start - 1))))
+        .flatMap(m => Session.closingBracket(text, m.end).map(close => (m.group(1), m.start, m.end, close))) match
+        case None => Right(text)
+        case Some((name, start, open, close)) =>
+          val params = parameters(name)
+          val args   = Session.topLevelArguments(text.substring(open, close))
+          if args.sizeIs != params.size then
+            val noun = if params.sizeIs == 1 then "argument" else "arguments"
+            Left(s"'$name' takes ${params.size} $noun, ${args.size} given")
+          else
+            core.sequence(args.map(a => applyFunctions(a).flatMap(parseArgument(name, _)).toOption)) match
+              case None        => Left(s"parse error in an argument of '$name'")
+              case Some(exprs) =>
+                val applied = substituteParameters(definitions(name), params, exprs)
+                applyFunctions(text.take(start) + "(" + serialized(applied).toString + ")" + text.drop(close + 1))
+
+  /** One argument of an application, parsed in the session's mode. */
+  private def parseArgument(name: String, text: String): Either[String, _Expression] =
+    scala.util.Try(Parser.parse(text, exactPrecision)).toOption.filter(_.successful).map(_.get)
+      .toRight(s"parse error in an argument of '$name'")
+
+  /** `body` with each parameter replaced by its argument at once: renamed to fresh names first, so
+   *  an argument naming another parameter (`g(y, x)`) is not substituted again. */
+  private def substituteParameters(body: _Expression, params: List[String], args: List[_Expression]): _Expression =
+    val taken = body.freeVars ++ args.flatMap(_.freeVars) ++ params
+    val fresh = params.foldLeft(List.empty[_Variable])((acc, _) =>
+      acc :+ freshVar(taken ++ acc.map(_.variable), "__arg"))
+    val renamed = substitute(body, params.zip(fresh).toMap)
+    substitute(renamed, fresh.map(_.variable).zip(args).toMap)
+
+  /** [[parsed]] on a line whose applications are already expanded. */
+  private def parsedApplied[A](input: String)(f: _Expression => Either[String, A]): Either[String, A] =
     scala.util.Try(Parser.parse(input, exactPrecision)).fold(
       e => Left(s"parse error: ${e.getMessage}"),
       result =>
@@ -848,7 +911,8 @@ final class Session:
    *  byte-identical to the scalar-only pipeline.
    */
   private def simplifyPipeline(e: _Expression): _Expression =
-    val out = simplify(prepared(e))
+    // Like terms, the Pythagorean pair and common factors (F_0292), after the structural pass.
+    val out = scalar.simplifyAlgebraic(simplify(prepared(e)))
     if containsConnective(out) then simplifyLogicFully(out, simplifyFully, symmetricLogic, semantics)
     else out
 
@@ -1001,11 +1065,30 @@ final class Session:
         ds    <- matrix.decimalLeaves(answer) if ds.nonEmpty
         k     <- matrix.rationalizeDigits(ds)
         exact <- matrix.rationalizeExpr(answer, k).toOption
+        // Not when rationalizing gives back the input (F_0293): the answer was the call echoed with
+        // decimals the library itself invented, and the offer would only restate the question.
+        if exact != e
       yield (k, exact)
     // The bare call's default digits are these since F_0240, so the offer names no digits.
-    offered.fold("") { (_, exact) =>
+    offered.fold(decimalNote(e, result)) { (_, exact) =>
       s"\n  note: the decimals look exact; if they are, rationalize(...) gives ${formatExpression(exact.eval(env).toExpression, false)}"
     }
+
+  /** Says that an answer under `exact on` is a decimal approximation (F_0273, the owner's decision):
+   *  a path with no exact method (`limit`'s numeric tiers, RK4, `pade`, `eig`) answers in `Double`, and
+   *  the flag's promise is that this is never silent.  Not for an answer that is the call echoed back,
+   *  nor while a script replays; the `rationalize` offer, when it fires, says the same and replaces it. */
+  private def decimalNote(e: _Expression, result: Either[_Expression, _Value]): String =
+    // A `_Number` here is a Double (the exact values are its siblings, not its subclasses), and a
+    // complex value or a dense matrix holds Doubles too.
+    def hasDecimal(x: _Expression): Boolean = x match
+      // An infinity is the answer itself, not a reading of one (F_0293: `limit(x^2, x, inf)` is `inf`).
+      case n: _Number if n.d.isInfinite              => false
+      case _: _Number | _: _Complex | _: _MatrixValue => true
+      case other                                       => other.children.exists(hasDecimal)
+    val answer  = result.toExpression
+    val decimal = exactMode && !replaying && !containsSolve(e) && answer != e && hasDecimal(answer)
+    if decimal then "\n  note: a decimal approximation — no exact method answers this here" else ""
 
   /** Classifies the points `stationary` found, or says why `minimize` declined (F_0010) or a
    *  vector ODE integration did (F_0051).
@@ -1020,6 +1103,15 @@ final class Session:
   private def optimizeNote(e: _Expression, result: Either[_Expression, _Value], env: Environment): String =
     val text = (e, result) match
       case (s: _Stationary, Left(points: _Matrix)) => classification(s, points)
+      // F_0282: a periodic equation, or a scan that found more roots than it keeps, says the list is
+      // partial.  Only when solve answered: an unsolved equation has no list to qualify.
+      case (s: _Solve, Left(r)) if r != s => s.eq match
+        case q: _Equation => equation.partialRootsNote(q, s.v, env)
+        case _            => None
+      // F_0286, the owner's decision: a generic limit says what it assumed.
+      case (l: _Limit, r) if r != Left(l) =>
+        val conditions = limitConditions(l.e, l.v, l.point, l.dir, env)
+        Option.when(conditions.nonEmpty)(s"assuming ${conditions.mkString(", ")}")
       case (m: _Minimize, Left(_)) =>
         m.detailed(env).left.toOption.map(why => s"minimize declined: ${describeFailure(why)}")
       // F_0051: the vector ODE tier explains a decline the same way.
@@ -1315,7 +1407,9 @@ final class Session:
                               violatedAt(f, v, d, env).map(c => (d, c))
                             case _ => None)
             .headOption
-            .map { (d, c) => s"$f is undefined at ${v.variable} = $d — ${c.arg} ${describe(c.req)} ($what)" }
+            // "outside its real domain", not "undefined" (F_0297): a fractional power or a logarithm of a
+            // negative number has a principal complex value; the requirement is the real domain's.
+            .map { (d, c) => s"$f is outside its real domain at ${v.variable} = $d — ${c.arg} ${describe(c.req)} ($what)" }
 
     e match
       case l: _Limit       => check(l.e, l.v, List(l.point), "limit point")
@@ -1340,8 +1434,43 @@ final class Session:
    *  substitution removed `f` from the body, and `q`, `simplify` and `samples` answered 0.  A binder
    *  that cannot be resolved is left as it was — the line as typed already reported why. */
   private def expandedDefinitions(e: _Expression): _Expression =
-    val s = substitute(e, definitions)
+    val s = expandDifferentiatingFirst(e, Set.empty)
     resolveDerivativeBinders(s).getOrElse(s)
+
+  /** The definitions substituted into `e`, except that a derivative or vector operator whose variable
+   *  names a definition is **taken first** (F_0280, the owner's decision): its body is expanded with
+   *  those variables withheld, and when one of them still appears the operator is computed there and
+   *  only then are the variables substituted.  With `x := cos(t)`, `y := sin(t)`, `derive(x^2 + y^2, x)`
+   *  is `2x` = `2cos(t)` — substituting first made it the derivative of `cos²t + sin²t` in a variable it
+   *  no longer held, a silent `0`, and `grad` the zero vector.  A body in which the variable does not
+   *  appear (`derive(g, f)`, `g := sin(x)^2`, `f := sin(x)`) is left for the chain rule
+   *  ([[resolveDerivativeBinders]], F_0185), which differentiating first would turn into `0`.
+   *  Otherwise exactly `substitute`: a name already being expanded is not expanded again.
+   *
+   *  @param e        the expression
+   *  @param withheld definitions not to substitute (the variables of an enclosing operator)
+   *  @return the expanded expression
+   */
+  private def expandDifferentiatingFirst(e: _Expression, withheld: Set[String]): _Expression =
+    def loop(e: _Expression, held: Set[String], seen: Set[String]): _Expression = e match
+      case _Variable(n) if definitions.contains(n) && !held(n) && !seen(n) =>
+        loop(definitions(n), held, seen + n)
+      case d: _Derivative if definitions.contains(d.v.variable) && !held(d.v.variable) =>
+        val body = loop(d.e, held + d.v.variable, seen)
+        if dependsOn(body, d.v) then loop(derive(body, d.v), held, seen) else _Derivative(body, d.v)
+      case op: vector._VectorOperator if op.coords.exists(c => definitions.contains(c.variable) && !held(c.variable)) =>
+        val vars = op.coords.collect { case c if definitions.contains(c.variable) => c.variable }.toSet
+        val body = loop(op.e, held ++ vars, seen)
+        if vars.exists(n => dependsOn(body, _Variable(n))) then
+          loop(op.rebuild(List(body)).eval(emptyEnv).toExpression, held, seen)
+        else op.rebuild(List(body))
+      case other => other.rebuild(other.children.map(loop(_, held, seen)))
+    loop(e, withheld, Set.empty)
+
+  /** Whether `v` still appears in `body` once every other definition is expanded: the case
+   *  [[expandDifferentiatingFirst]] takes, which the chain rule must leave alone. */
+  private def appearsWhenHeld(body: _Expression, v: _Variable): Boolean =
+    dependsOn(expandDifferentiatingFirst(body, Set(v.variable)), v)
 
   /** Carry out matrix algebra before simplify/expand: scalar Sum/Product/Ratio nodes
    *  whose operands are matrix-shaped — a matrix literal, a matrix operation node, or
@@ -1388,6 +1517,9 @@ final class Session:
    *  @return `Right(rewritten)` on success; `Left(message)` when a binder cannot be resolved
    */
   private def resolveDerivativeBinders(e: _Expression): Either[String, _Expression] = e match
+    // A body in which the binder appears is differentiated first (F_0280): leave it as written.
+    case _Derivative(body, v) if definitions.contains(v.variable) && appearsWhenHeld(body, v) =>
+      resolveDerivativeBinders(body).map(b => _Derivative(b, v))
     case _Derivative(body, v) if definitions.contains(v.variable) =>
       resolveDerivativeBinders(body).flatMap { b =>
         val fbody = substitute(definitions(v.variable), definitions)
@@ -1429,6 +1561,31 @@ final class Session:
    *  @param rhs  the right-hand side expression (raw, not yet substituted)
    *  @return the display string `"name := value"` or an error message
    */
+  /** `name(p₁, …) := body` (F_0294, the owner's decision): a definition whose `name(e, …)` is an
+   *  application.  The body is stored as an ordinary definition, so bare `name` keeps meaning the
+   *  body, late-bound; the parameter list goes beside it.  The names are checked as an assignment's
+   *  are, and a parameter may not repeat or be the function's own name.
+   *
+   *  @param name   the function's name
+   *  @param params its parameters, in order
+   *  @param rhs    the body's text
+   *  @return the echo, or why the definition is refused
+   */
+  private def defineFunction(name: String, params: List[String], rhs: String): String =
+    val reserved = (n: String) => Session.ReservedConstants.contains(n) || Parser.ReservedWords.contains(n)
+    if reserved(name) then s"cannot assign to '$name': it is a reserved word"
+    else params.find(reserved) match
+      case Some(p)                                   => s"cannot use '$p' as a parameter: it is a reserved word"
+      case None if params.distinct.sizeIs != params.size => s"a parameter of '$name' is named twice"
+      case None if params.contains(name)             => s"'$name' cannot be its own parameter"
+      case None => withParsed(rhs) { body =>
+        introduce(List(name))
+        definitions = definitions + (name -> body)
+        bindings    = bindings - name
+        parameters  = parameters + (name -> params)
+        s"${signature(name)} := ${plain(body)}"
+      }
+
   private def assign(name: String, rhs: _Expression): String =
     // Before the binding lands, or `isNewName` would already see it (issue F_0030). The name
     // an assignment creates appears in no expression, so `parsed` cannot have collected it.
@@ -2042,6 +2199,7 @@ final class Session:
     if bindings.contains(name) || definitions.contains(name) then
       bindings = bindings - name
       definitions = definitions - name
+      parameters = parameters - name
       s"$name unset"
     else s"$name is not set"
 
@@ -2053,7 +2211,7 @@ final class Session:
 /** Companion object: constants and IO helpers shared across the REPL entry point. */
 object Session:
   /** Names the parser always resolves as constants; assignment to them is rejected. */
-  val ReservedConstants: Set[String] = Set("pi", "e")
+  val ReservedConstants: Set[String] = Set("pi", "e", "eulergamma", "goldenratio")
 
   /** The words a line opens with to give a command rather than an expression (F_0213): what the
    *  highlighter colours as a command, kept beside the `dispatch` that reads them.  Every one is
@@ -2110,6 +2268,32 @@ object Session:
    *  character before `start` itself, which is exact on both platforms.
    */
   val CallSyntax: scala.util.matching.Regex = """([a-zA-Z][a-zA-Z0-9_]*)\(""".r
+
+  /** The index of the `)` closing the bracket opened just before `from`, or `None` when it never
+   *  closes (F_0294); square brackets nest inside, so a matrix argument is one argument. */
+  private[cli] def closingBracket(text: String, from: Int): Option[Int] =
+    @annotation.tailrec
+    def go(i: Int, depth: Int): Option[Int] =
+      if i >= text.length then None
+      else text.charAt(i) match
+        case '(' | '['                => go(i + 1, depth + 1)
+        case ')' | ']' if depth == 0  => Option.when(text.charAt(i) == ')')(i)
+        case ')' | ']'                => go(i + 1, depth - 1)
+        case _                        => go(i + 1, depth)
+    go(from, 0)
+
+  /** The comma-separated arguments of a call's inside, split at depth zero only (F_0294). */
+  private[cli] def topLevelArguments(inside: String): List[String] =
+    if inside.trim.isEmpty then Nil
+    else
+      val (parts, last, _) = inside.foldLeft((List.empty[String], new StringBuilder, 0)) {
+        case ((acc, cur, d), c) => c match
+          case '(' | '['     => (acc, cur.append(c), d + 1)
+          case ')' | ']'     => (acc, cur.append(c), d - 1)
+          case ',' if d == 0 => (acc :+ cur.toString.trim, new StringBuilder, d)
+          case _             => (acc, cur.append(c), d)
+      }
+      parts :+ last.toString.trim
 
   /** Whether `ch` can appear inside an identifier — the grammar's own shape, underscore
    *  included.
@@ -2227,6 +2411,8 @@ object Session:
          |Constant RHS -> numeric value; RHS with free variables -> late-bound definition.
          |  x := 3.001          bind a numeric value
          |  f := sin(x) + x     define a function (late-bound: redefining f updates g := f^2)
+         |  p(t) := t^3 - 2*t   a function with a parameter list: p(2), p(x + h), p(t^2)
+         |  q(u, v) := u - v    several parameters, substituted at once: q(v, u) swaps them
          |  h := x^2 = 4        bind a named equation (pass to solve(h, x))
          |  L, U, P := lu(A)    bind multiple names to elements of a 1xn result (any decomposition)""".stripMargin,
     "=" ->
@@ -2470,9 +2656,11 @@ object Session:
          |  solve(h, x)                h is a named equation""".stripMargin,
     "derive" ->
       """|Differentiate an expression with respect to a variable or a defined function.
-         |Chain rule applies when the binder is a definition.
+         |A variable bound to a formula is differentiated first, then substituted:
+         |with x := cos(t), derive(x^2, x) is 2*cos(t).  When it does not appear in the
+         |expression, the chain rule applies over the definition's one free variable.
          |  derive(sin(x), x)           -> cos(x)
-         |  derive(g, f)                chain rule when f := sin(x)""".stripMargin,
+         |  derive(g, f)                chain rule when f := sin(x), g := sin(x)^2""".stripMargin,
     "integral" ->
       """|Indefinite symbolic integration via a rule table.
          |  integral(x^2, x)            -> ((1.0 / 3.0) * (x ^ 3.0))""".stripMargin,

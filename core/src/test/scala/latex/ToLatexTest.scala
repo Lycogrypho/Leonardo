@@ -143,7 +143,10 @@ class ToLatexTest extends AnyFlatSpec:
 
   "a unit fraction exponent" should "become an n-th root" in
   {
-    assert(tex("x^(1/3)") == "\\sqrt[3]{x}")
+    // An odd root only of a base that cannot be negative (F_0297): `\sqrt[3]{x}` reads as the real
+    // cube root, and `x^(1/3)` at a negative `x` is the principal complex value.
+    assert(tex("x^(1/3)") == "x^{\\frac{1.0}{3.0}}")
+    assert(tex("(x^2 + 1)^(1/3)") == "\\sqrt[3]{x^{2.0} + 1.0}")
     assert(tex("x^(1/4)") == "\\sqrt[4]{x}")
     // Not a unit fraction: 2/3 is a genuine power and must stay one.
     assert(tex("x^(2/3)") == "x^{\\frac{2.0}{3.0}}")
@@ -364,11 +367,13 @@ class ToLatexTest extends AnyFlatSpec:
     assert(tex("pix")      == "pix")
   }
 
-  "the constant pi" should "be unrecoverable, and that is a parser fact not a renderer gap" in
+  "the named constants" should "render as their symbols (F_0289)" in
   {
-    // `pi` is folded to a Double at PARSE time -- it never reaches the renderer as a symbol,
-    // so \pi cannot be produced. Pinned so the absence reads as known rather than as a bug.
-    assert(tex("pi").startsWith("3.14"), s"expected a folded number, got: ${tex("pi")}")
+    // `pi` was folded to a Double at parse time until F_0289; it is a symbol now.
+    assert(tex("pi") == "\\pi")
+    assert(tex("e") == "e")
+    assert(tex("eulergamma") == "\\gamma")
+    assert(tex("goldenratio") == "\\varphi")
   }
 
   "a node with no rule yet" should "fall back to escaped source rather than to broken LaTeX" in

@@ -157,13 +157,15 @@ class IntegrationTest extends AnyFlatSpec:
 
   // --- NaN/Infinite guard: unbounded integrands must stay symbolic ---
 
-  // Fast path (compiled closure): 1/x is compilable; at x=0 produces Infinity.
-  // The existing fast-path guard catches this — regression test.
-  "∫ 1/x dx from 0 to 1 (fast path, unbounded at 0)" should "stay symbolic" in
+  // ∫₀¹ dx/x diverges.  The guard here was against numeric overflow — a sum carrying an Infinity
+  // sample answering a meaningless number.  Since F_0288 it is answered by the antiderivative's
+  // limits, ln x → −∞ at 0⁺, so the integral is +∞: the divergence it has, never a finite number.
+  "∫ 1/x dx from 0 to 1 (unbounded at 0)" should "diverge to inf, never answer a finite number" in
   {
     _DefIntegral(Ratio(_Number(1), x), x, _Number(0), _Number(1)).eval(env) match
-      case Left(_)  => succeed
-      case Right(v) => fail(s"expected symbolic but got $v")
+      case Right(_Number(d)) => assert(d == Double.PositiveInfinity, s"$d")
+      case Left(_)           => succeed
+      case Right(v)          => fail(s"expected inf but got $v")
   }
 
   // Fallback path (non-compiled): _Derivative nodes are not compilable, so the

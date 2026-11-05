@@ -49,6 +49,19 @@ val GuardDigits: Int = 10
 def toReal(r: _Rational): Real =
   Real(SpireRational(r.num, r.den))
 
+/** A spire rational as the nearest `Double`, read through [[_Rational.toDouble]] (F_0283).
+ *
+ *  **Never spire's own `Rational.toDouble`**: it misrounds a rational whose numerator and denominator
+ *  are wide — `0.4999999999999999875` with a 124-bit numerator over a 126-bit denominator came back
+ *  `0.25` — which is what read `√(10³² + 10¹⁶) − 10¹⁶` as `0.25`, and very likely F_0244's
+ *  misrounded surd, there blamed on `Real.toDouble`.  Every exact kernel that hands a spire result
+ *  to a `Double` goes through here.
+ *  @param q the rational
+ *  @return the nearest `Double` (to `_Rational.toDouble`'s 17 significant digits)
+ */
+private[leonardo] def spireToDouble(q: SpireRational): Double =
+  _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt).fold(Double.NaN)(_.toDouble)
+
 /** How many decades below one a reading looks for a small nonzero value before it settles for
  *  the decimal places alone (F_0271).
  *
@@ -132,7 +145,20 @@ def exactSqrt(r: _Rational, digits: Int): Option[_Rational] =
  */
 def exactPow(b: _Rational, e: _Rational, digits: Int): Option[_Rational] =
   if b.signum <= 0 then None
-  else fromReal(toReal(b).fpow(SpireRational(e.num, e.den)), digits)
+  else
+    val r = SpireRational(e.num, e.den)
+    // A root of high degree as exp(r·ln b) (F_0284): spire's fpow takes the q-th root, whose cost
+    // grows with q, so an exponent typed as a long decimal (1.00001 is 100001/100000) ran for
+    // minutes; exp and ln at the working precision cost the same for any q.
+    if r.denominator <= MaxDirectRootDegree then fromReal(toReal(b).fpow(r), digits)
+    else fromReal(Real.exp(Real(r) * Real.log(toReal(b))), digits)
+
+/** The highest root degree [[exactPow]] takes directly; above it, `exp(r·ln b)` (F_0284).  Measured on
+ *  Node, `2^((q + 1)/q)` at 30 digits: `fpow` 2–9 ms up to `q = 8`, 5 ms at 16, 15 ms at 64, 99 ms at
+ *  256, 1.55 s at 1000 (`2^(1.00001)` took 38.6 s on the JVM); `exp`/`ln` 3–7 ms at every `q` past 3
+ *  (14 ms at 10⁴).  The two agree at 30 digits where both run.  At or below the crossover the direct
+ *  root is kept, which reads a perfect power exactly (`8^(1/3)` is `2`). */
+private val MaxDirectRootDegree: Int = 16
 
 /** `pi` as an exact rational at `digits` decimal places.
  *
@@ -147,3 +173,30 @@ def piAt(digits: Int): Option[_Rational] = fromReal(Real.pi, digits)
  *  @param digits the working precision in decimal digits
  */
 def eAt(digits: Int): Option[_Rational] = fromReal(Real.e, digits)
+
+/** The Euler–Mascheroni constant `γ` as an exact rational at `digits` decimal places (F_0289).
+ *
+ *  spire has no `γ`, so it is computed by the Brent–McMillan algorithm in fixed point: with
+ *  `A₀ = −ln n`, `B₀ = 1`, `Bₖ = Bₖ₋₁·n²/k²`, `Aₖ = (Aₖ₋₁·n²/k + Bₖ)/k`, `γ ≈ ΣAₖ/ΣBₖ` with an
+ *  error near `π·e^(−4n)`, so `n` is chosen from the digits asked and the sums run until the terms
+ *  vanish in the guard digits.
+ *
+ *  @param digits the working precision in decimal digits
+ */
+def eulerGammaAt(digits: Int): Option[_Rational] =
+  val guard = 12
+  val scale = BigInt(10).pow(digits + guard)
+  val n     = math.ceil((digits + guard) * math.log(10) / 4).toLong.max(2)
+  val n2    = BigInt(n) * n
+  // ln n in the same fixed point, from spire at the guarded precision
+  val lnN   = Real.log(Real(n)).toRational(Real.digitsToBits(digits + 2 * guard))
+  val lnFix = lnN.numerator.toBigInt * scale / lnN.denominator.toBigInt
+  @annotation.tailrec
+  def sum(k: Long, a: BigInt, b: BigInt, u: BigInt, v: BigInt): (BigInt, BigInt) =
+    if a == 0 && b == 0 then (u, v)
+    else
+      val bk = b * n2 / (BigInt(k) * k)
+      val ak = (a * n2 / k + bk) / k
+      sum(k + 1, ak, bk, u + ak, v + bk)
+  val (u, v) = sum(1, -lnFix, scale, -lnFix, scale)
+  fromReal(Real(spire.math.Rational(u, v)), digits)

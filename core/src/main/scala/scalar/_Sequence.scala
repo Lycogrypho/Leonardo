@@ -264,6 +264,10 @@ case class _Reduction(kind: ReduceKind, e: _Expression, v: _Variable,
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     indexRange(lo, hi, env) match
+      // A bound that is not a number: a sum of a closing family in closed form (F_0291).  Numeric
+      // bounds that are refused (not whole, past the cap) stay refused.
+      case None if kind == ReduceKind.Sum && !numericBounds(env) =>
+        closedSum(e, v, lo, hi, env).fold(Left(this))(_.eval(env))
       case None                  => Left(this)
       case Some((l, h)) if l > h => Right(identity)
       case Some((l, h))          =>
@@ -289,6 +293,12 @@ case class _Reduction(kind: ReduceKind, e: _Expression, v: _Variable,
         case (l, h) if l <= h && eval(env) == Left(this) =>
           s"a symbolic ${kind.word} of ${h - l + 1} terms would be deeper than the limit of $MaxExpressionDepth"
       })
+
+  /** Whether both bounds fold to numbers here. */
+  private def numericBounds(env: Environment): Boolean =
+    (lo.eval(env), hi.eval(env)) match
+      case (Right(_Number(_)), Right(_Number(_))) => true
+      case _                                      => false
 
   /** The two terms combined -- the one place this kind's operator is named. */
   private def combine(a: _Expression, b: _Expression): _Expression = kind match

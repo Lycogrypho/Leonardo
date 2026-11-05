@@ -168,7 +168,8 @@ class LatexModeTest extends AnyFlatSpec:
     // rendering -- so there is nothing for a formula to replace without losing it.
     val s = session
     s.execute("latex on")
-    val out = s.execute("limit(ln(x), x, -1)")
+    // `asin` past 1, not `ln` at -1, which is the principal `i*pi` since F_0297.
+    val out = s.execute("limit(asin(x), x, 2)")
     assert(out.contains("note:"), s"expected a domain note, got: $out")
     assert(s.lastLatex.isEmpty, "a formula must not replace text carrying a domain note")
   }

@@ -3,7 +3,7 @@ package vector
 
 import core.*
 import scalar.*
-import matrix._Matrix
+import matrix.{_Matrix, MatScale}
 
 
 /** The coordinate system a vector operator is evaluated in.
@@ -64,19 +64,29 @@ sealed trait _VectorOperator extends _Expression:
    *  system cannot describe this tuple — cylindrical and spherical are three-dimensional, and
    *  a request in any other arity is refused rather than answered in the wrong geometry.
    */
-  protected def scaleFactors: Option[Vector[_Expression]] = system match
-    case CoordinateSystem.Cartesian   => Some(Vector.fill(coords.size)(_Number(1)))
-    // (r, θ, z): only the azimuthal arc scales, by r
-    case CoordinateSystem.Cylindrical =>
-      Option.when(coords.sizeIs == 3)(Vector(_Number(1), coords(0), _Number(1)))
-    // (r, θ, φ), θ polar: the azimuthal arc scales by r·sin θ
-    case CoordinateSystem.Spherical   =>
-      Option.when(coords.sizeIs == 3)(
-        Vector(_Number(1), coords(0), Product(coords(0), Sin(coords(1)))))
-    // (r, θ, φ), θ azimuthal and φ polar — the same geometry, last two exchanged
-    case CoordinateSystem.SphericalMaths =>
-      Option.when(coords.sizeIs == 3)(
-        Vector(_Number(1), Product(coords(0), Sin(coords(2))), coords(0)))
+  protected def scaleFactors: Option[Vector[_Expression]] = scaleFactorsIn(false)
+
+  /** [[scaleFactors]] with the unit factors in the computation's tier (F_0273): a `Double` `1`
+   *  dividing a component demoted an exact field, `div([[x], [y], [z]], x, y, z)` answering `3.0`. */
+  protected def scaleFactorsIn(exact: Boolean): Option[Vector[_Expression]] =
+    val one: _Expression = if exact then _Rational(1) else _Number(1)
+    system match
+      case CoordinateSystem.Cartesian   => Some(Vector.fill(coords.size)(one))
+      // (r, θ, z): only the azimuthal arc scales, by r
+      case CoordinateSystem.Cylindrical =>
+        Option.when(coords.sizeIs == 3)(Vector(one, coords(0), one))
+      // (r, θ, φ), θ polar: the azimuthal arc scales by r·sin θ
+      case CoordinateSystem.Spherical   =>
+        Option.when(coords.sizeIs == 3)(
+          Vector(one, coords(0), Product(coords(0), Sin(coords(1)))))
+      // (r, θ, φ), θ azimuthal and φ polar — the same geometry, last two exchanged
+      case CoordinateSystem.SphericalMaths =>
+        Option.when(coords.sizeIs == 3)(
+          Vector(one, Product(coords(0), Sin(coords(2))), coords(0)))
+
+  /** Whether this operator computes in the exact tier: its field, the bound values of its names,
+   *  or the session's exact mode (F_0273, through `containsExactIn`). */
+  protected def exactIn(env: Environment): Boolean = _Rational.containsExactIn(e, env)
 
   /** True when the request is one this tier can answer at all: a coordinate tuple with no
    *  repeats, in an arity the coordinate system supports.  `grad(f, x, x)` names no basis and
@@ -86,11 +96,11 @@ sealed trait _VectorOperator extends _Expression:
 
   /** The scale factors, or an empty vector when the request is ill-posed (guarded by
    *  [[wellPosed]] at every use site). */
-  protected def h: Vector[_Expression] = scaleFactors.getOrElse(Vector.empty)
+  protected def hIn(using exact: Boolean): Vector[_Expression] = scaleFactorsIn(exact).getOrElse(Vector.empty)
 
   /** The Jacobian factor `h₁·h₂·…`, the volume element's coefficient. */
-  protected def jacobianFactor: _Expression =
-    if h.isEmpty then _Number(1) else h.reduce(Product.apply)
+  protected def jacobianFactorIn(using exact: Boolean): _Expression =
+    if hIn.isEmpty then (if exact then _Rational(1) else _Number(1)) else hIn.reduce(Product.apply)
 
   /** Orientation of the ordered basis: `+1` right-handed, `-1` left-handed.
    *
@@ -123,21 +133,64 @@ sealed trait _VectorOperator extends _Expression:
     x match
       case m: _Matrix if m.cols == 1 => Some(m.elems)
       case _: _Matrix                => None      // a row vector is not a field
+      // A nested operator as built, never evaluated (F_0285): `div(grad(f, x, y), x, y)` with `x`
+      // bound would otherwise differentiate cells the binding had already folded.
+      case op: _VectorOperator => op.unevaluated(env) match
+        case Some(m: _Matrix) if m.cols == 1 => Some(m.elems)
+        case _                               => None
+      // A literal column scaled by a scalar (F_0293): `[[x], [y], [z]]/r` is the field `(x/r, y/r, z/r)`,
+      // read cell by cell before anything is evaluated, for the reason a literal is.
+      case Ratio(m: _Matrix, d) if m.cols == 1 && !d.isInstanceOf[_MatrixShaped] && !d.isInstanceOf[_MatrixValue] =>
+        Some(m.elems.map(Ratio(_, d)))
+      case MatScale(k, m: _Matrix) if m.cols == 1 && !k.isInstanceOf[_MatrixShaped] && !k.isInstanceOf[_MatrixValue] =>
+        Some(m.elems.map(Product(k, _)))
       case _ => x.eval(env).toExpression match
         case m: _Matrix if m.cols == 1      => Some(m.elems)
         case v: _MatrixValue if v.cols == 1 => Some(_Matrix.fromValue(v).elems)
         case _                              => None
 
   /** Builds a column vector from its components, simplified. */
-  protected def column(cs: Vector[_Expression]): _Matrix =
-    _Matrix(cs.size, 1, cs.map(simplifyFully))
+  protected def columnIn(cs: Vector[_Expression])(using exact: Boolean): _Matrix =
+    _Matrix(cs.size, 1, cs.map(simplifyFullyInTier(_, exact)))
 
-  /** `∂x/∂coords(i)`, simplified. */
-  protected def d(x: _Expression, i: Int): _Expression = simplifyFully(derive(x, coords(i)))
+  /** `∂x/∂coords(i)`, simplified, in the operator's tier (F_0273). */
+  protected def dIn(x: _Expression, i: Int)(using exact: Boolean): _Expression =
+    simplifyFullyInTier(deriveInTier(x, coords(i), exact), exact)
 
   /** Sums a list of terms, folding to `0` when empty. */
-  protected def total(terms: Vector[_Expression]): _Expression =
-    if terms.isEmpty then _Number(0) else simplifyFully(terms.reduce(Sum.apply))
+  protected def totalIn(terms: Vector[_Expression])(using exact: Boolean): _Expression =
+    if terms.isEmpty then (if exact then _Rational(0) else _Number(0))
+    else simplifyFullyInTier(terms.reduce(Sum.apply), exact)
+
+  /** The operator's result as built, before it is evaluated in the environment (F_0285): the
+   *  derivatives with the coordinates free.  The library's own callers (`linearize`, `stationary`,
+   *  `nlp`, `lsqfit`) read it cell by cell and put in their own point, so a session binding of a
+   *  coordinate's name must not fold it first.
+   *
+   *  @param env bindings, read for a field held in a variable and for the tier
+   *  @return the built result, or `None` when the operator declines
+   */
+  private[leonardo] def unevaluated(env: Environment): Option[_Expression] = None
+
+  /** [[unevaluated]] evaluated in `env` (F_0285): a bound coordinate folds, so `hessian(f, x, y)`
+   *  with `x` and `y` bound is the matrix `det` and `eigen` of it see.  The node itself when the
+   *  operator declines. */
+  protected def evaluatedIn(env: Environment): Either[_Expression, _Value] =
+    unevaluated(env).fold(Left(this))(_.eval(env))
+
+  // The published signatures, in the Double tier (F_0273 renamed the tier-aware ones `…In`):
+  // protected members of a sealed trait, so no outside code reaches them, but MiMa counts them.
+
+  /** [[hIn]] in the `Double` tier. */
+  protected def h: Vector[_Expression] = hIn(using false)
+  /** [[jacobianFactorIn]] in the `Double` tier. */
+  protected def jacobianFactor: _Expression = jacobianFactorIn(using false)
+  /** [[columnIn]] in the `Double` tier. @param cs the components */
+  protected def column(cs: Vector[_Expression]): _Matrix = columnIn(cs)(using false)
+  /** [[dIn]] in the `Double` tier. @param x the field @param i the coordinate's index */
+  protected def d(x: _Expression, i: Int): _Expression = dIn(x, i)(using false)
+  /** [[totalIn]] in the `Double` tier. @param terms the terms */
+  protected def total(terms: Vector[_Expression]): _Expression = totalIn(terms)(using false)
 
 
 /** `grad(f, x, y, …)` — the gradient of a scalar field, as an n×1 column vector.
@@ -151,12 +204,15 @@ case class _Grad(e: _Expression, coords: Vector[_Variable],
   override protected def opName: String = "grad"
   override def rebuild(c: List[_Expression]): _Expression = _Grad(c.head, coords, system)
 
-  override def eval(env: Environment): Either[_Expression, _Value] =
+  override def eval(env: Environment): Either[_Expression, _Value] = evaluatedIn(env)
+
+  override private[leonardo] def unevaluated(env: Environment): Option[_Expression] =
     // A vector argument is refused, as `laplacian` refuses one: the gradient of a vector field
     // is not the component-wise gradient outside Cartesian coordinates (F_0191).
-    if !wellPosed || componentsOf(e, env).isDefined then Left(this)
+    given Boolean = exactIn(env)
+    if !wellPosed || componentsOf(e, env).isDefined then None
     // component i is (1/hᵢ)·∂f/∂qᵢ — the h = 1 case is the plain partial derivative
-    else Left(column(coords.indices.toVector.map(i => Ratio(d(e, i), h(i)))))
+    else Some(columnIn(coords.indices.toVector.map(i => Ratio(dIn(e, i), hIn(i)))))
 
 
 /** `div(F, x, y, …)` — the divergence of a vector field, a **scalar**.
@@ -173,20 +229,19 @@ case class _Div(e: _Expression, coords: Vector[_Variable],
   override protected def opName: String = "div"
   override def rebuild(c: List[_Expression]): _Expression = _Div(c.head, coords, system)
 
-  override def eval(env: Environment): Either[_Expression, _Value] =
-    val result =
-      for
+  override def eval(env: Environment): Either[_Expression, _Value] = evaluatedIn(env)
+
+  override private[leonardo] def unevaluated(env: Environment): Option[_Expression] =
+    given exact: Boolean = exactIn(env)
+    for
         comps <- Option.when(wellPosed)(()).flatMap(_ => componentsOf(e, env))
         if comps.sizeIs == coords.size
         // (1/J)·Σᵢ ∂/∂qᵢ (J/hᵢ · Fᵢ) with J = h₁h₂…; the h = 1 case is Σᵢ ∂Fᵢ/∂qᵢ.
         // The whole product is differentiated, so the scale factors' own variation counts —
         // that is what makes 1/r divergence-free in cylindrical coordinates.
-        j = jacobianFactor
-      yield simplifyFully(
-        Ratio(total(comps.indices.toVector.map(i => d(Product(Ratio(j, h(i)), comps(i)), i))), j))
-    result.fold(Left(this))(r => r.eval(env) match
-      case Right(v) => Right(v)
-      case Left(x)  => Left(x))
+        j = jacobianFactorIn
+    yield simplifyFullyInTier(
+        Ratio(totalIn(comps.indices.toVector.map(i => dIn(Product(Ratio(j, hIn(i)), comps(i)), i))), j), exact)
 
 
 /** `curl(F, x, y, z)` — the curl of a 3-D vector field, as a 3×1 column vector.
@@ -206,13 +261,15 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
   override protected def opName: String = "curl"
   override def rebuild(c: List[_Expression]): _Expression = _Curl(c.head, coords, system)
 
-  override def eval(env: Environment): Either[_Expression, _Value] =
-    val result =
-      for
+  override def eval(env: Environment): Either[_Expression, _Value] = evaluatedIn(env)
+
+  override private[leonardo] def unevaluated(env: Environment): Option[_Expression] =
+    given Boolean = exactIn(env)
+    for
         _     <- Option.when(wellPosed && coords.sizeIs == 3)(())
         comps <- componentsOf(e, env)
         if comps.sizeIs == 3
-      yield
+    yield
         // component i is (1/hⱼhₖ)·[∂(hₖFₖ)/∂qⱼ − ∂(hⱼFⱼ)/∂qₖ] over the cyclic (i, j, k);
         // the h = 1 case is (∂F₃/∂x₂ − ∂F₂/∂x₃, ∂F₁/∂x₃ − ∂F₃/∂x₁, ∂F₂/∂x₁ − ∂F₁/∂x₂).
         // The formula assumes a RIGHT-handed ordering, so a left-handed system negates it
@@ -222,12 +279,11 @@ case class _Curl(e: _Expression, coords: Vector[_Variable],
         val neg = _Rational.literalLike(-1, e, env)
         val raw = Vector.tabulate(3) { i =>
           val (j, k) = ((i + 1) % 3, (i + 2) % 3)
-          Ratio(Sum(d(Product(h(k), comps(k)), j),
-                    Product(neg, d(Product(h(j), comps(j)), k))),
-                Product(h(j), h(k)))
+          Ratio(Sum(dIn(Product(hIn(k), comps(k)), j),
+                    Product(neg, dIn(Product(hIn(j), comps(j)), k))),
+                Product(hIn(j), hIn(k)))
         }
-        column(if handedness == 1 then raw else raw.map(Product(neg, _)))
-    result.fold(Left(this))(Left(_))
+        columnIn(if handedness == 1 then raw else raw.map(Product(neg, _)))
 
 
 /** `laplacian(f, x, y, …)` — the Laplacian of a scalar field, a **scalar**.
@@ -253,9 +309,13 @@ case class _Laplacian(e: _Expression, coords: Vector[_Variable],
   override protected def opName: String = "laplacian"
   override def rebuild(c: List[_Expression]): _Expression = _Laplacian(c.head, coords, system)
 
-  override def eval(env: Environment): Either[_Expression, _Value] =
-    if !wellPosed || componentsOf(e, env).isDefined then Left(this)
-    else _Div(_Grad(e, coords, system), coords, system).eval(env)
+  override def eval(env: Environment): Either[_Expression, _Value] = evaluatedIn(env)
+
+  // The gradient as built, handed to `div` as a literal column: evaluated first, a bound
+  // coordinate would fold its cells and `div` would differentiate constants (F_0285).
+  override private[leonardo] def unevaluated(env: Environment): Option[_Expression] =
+    if !wellPosed || componentsOf(e, env).isDefined then None
+    else _Grad(e, coords, system).unevaluated(env).flatMap(g => _Div(g, coords, system).unevaluated(env))
 
 
 /** `jacobian(F, x, y, …)` — the m×n matrix of first partials, `Jᵢⱼ = ∂Fᵢ/∂xⱼ`.
@@ -274,14 +334,15 @@ case class _Jacobian(e: _Expression, coords: Vector[_Variable],
   override protected def opName: String = "jacobian"
   override def rebuild(c: List[_Expression]): _Expression = _Jacobian(c.head, coords, system)
 
-  override def eval(env: Environment): Either[_Expression, _Value] =
-    val result =
-      for
-        _     <- Option.when(wellPosed && system == CoordinateSystem.Cartesian)(())
-        comps <- componentsOf(e, env)
-      yield _Matrix(comps.size, coords.size,
-                    for f <- comps; j <- coords.indices.toVector yield d(f, j))
-    result.fold(Left(this))(Left(_))
+  override def eval(env: Environment): Either[_Expression, _Value] = evaluatedIn(env)
+
+  override private[leonardo] def unevaluated(env: Environment): Option[_Expression] =
+    given Boolean = exactIn(env)
+    for
+      _     <- Option.when(wellPosed && system == CoordinateSystem.Cartesian)(())
+      comps <- componentsOf(e, env)
+    yield _Matrix(comps.size, coords.size,
+                  for f <- comps; j <- coords.indices.toVector yield dIn(f, j))
 
 
 /** `hessian(f, x, y, …)` — the n×n matrix of second partials, `Hᵢⱼ = ∂²f/∂xᵢ∂xⱼ`.
@@ -303,10 +364,13 @@ case class _Hessian(e: _Expression, coords: Vector[_Variable],
   override protected def opName: String = "hessian"
   override def rebuild(c: List[_Expression]): _Expression = _Hessian(c.head, coords, system)
 
-  override def eval(env: Environment): Either[_Expression, _Value] =
-    if !wellPosed || system != CoordinateSystem.Cartesian || componentsOf(e, env).isDefined then Left(this)
+  override def eval(env: Environment): Either[_Expression, _Value] = evaluatedIn(env)
+
+  override private[leonardo] def unevaluated(env: Environment): Option[_Expression] =
+    if !wellPosed || system != CoordinateSystem.Cartesian || componentsOf(e, env).isDefined then None
     else
-      val n = coords.size
-      Left(_Matrix(n, n,
+      val n     = coords.size
+      val exact = exactIn(env)
+      Some(_Matrix(n, n,
                    for i <- coords.indices.toVector; j <- coords.indices.toVector
-                   yield simplifyFully(derive(e, coords(i), coords(j)))))
+                   yield simplifyFullyInTier(deriveInTier(deriveInTier(e, coords(i), exact), coords(j), exact), exact)))

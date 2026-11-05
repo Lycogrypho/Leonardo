@@ -123,6 +123,7 @@ def derive(e: _Expression, v1: _Variable, v2: _Variable, rest: _Variable*): _Exp
 private def deriveImpl(e: _Expression, v: _Variable)(using t: Tier): _Expression = e match
   case _Number(_)           => t.n(0)
   case _: _Complex          => t.n(0)    // a complex constant, like any number
+  case _: _Constant         => t.n(0)    // a named constant (F_0289)
   case x: _Variable         => if x.variable == v.variable then t.n(1) else t.n(0)
   case Sum(a, b)            => dadd(deriveIn(a, v), deriveIn(b, v))
   case Product(a, b)        => dadd(dmul(deriveIn(a, v), b), dmul(a, deriveIn(b, v)))
@@ -141,6 +142,14 @@ private def deriveImpl(e: _Expression, v: _Variable)(using t: Tier): _Expression
   // mathematically undefined (sign of b unknown); stay symbolic rather than emit log(0).
   case Power(_Number(0.0), b) =>
     if !dependsOn(b, v) then t.n(0) else _Derivative(e, v)
+  // e^u is exp(u) (F_0289): the general rule would leave a factor ln(e).
+  case Power(c @ _Constant(ConstantKind.E, _), b) => dmul(Power(c, b), deriveIn(b, v))
+  // Any exponent free of v takes the constant-power rule (F_0296), however it is written: an
+  // unfolded `1/3` reached the general rule below, `u^k*(0*ln u + k*u'/u)`, which at u = 0 is
+  // `0 * undefined` and was read as 0 by Product's zero short-circuit.
+  case Power(a, b) if !dependsOn(b, v) =>
+    val k = simplifyFullyInTier(b, t.exact)
+    dmul(dmul(k, dpow(a, simplifyFullyInTier(Sum(k, t.n(-1)), t.exact))), deriveIn(a, v))
   // General power rule: a^b * (b' * ln(a) + b * a' / a)
   case Power(a, b)          => dmul(
                                  Power(a, b),

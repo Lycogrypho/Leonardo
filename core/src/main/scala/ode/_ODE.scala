@@ -66,7 +66,7 @@ case class _ODE(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
    *  the REPL appends as a note. */
   def vectorDetail(env: Environment): Option[Either[OdeFailure, Vector[Double]]] =
     columnState(y0, env).map { y =>
-      (t0.eval(env), target.eval(env)) match
+      (evalNumeric(t0, env), evalNumeric(target, env)) match
         case (Right(_Number(a)), Right(_Number(b))) =>
           odeCertified(rhs, OdeState.Whole(depVar), indepVar, a, y, b, env)
         case _ => Left(OdeFailure.InvalidInput("t0 and the target must be numbers"))
@@ -77,7 +77,8 @@ case class _ODE(rhs: _Expression, depVar: _Variable, indepVar: _Variable,
     solveODESymbolic(rhs, depVar, indepVar, t0, y0, target, env) match
       case Some(sol) => sol.eval(env)     // numeric when it folds, symbolic closed form otherwise
       case None =>
-        (t0.eval(env), y0.eval(env), target.eval(env)) match
+        // The numeric tier needs numbers: a named constant is read at the working precision (F_0289).
+        (evalNumeric(t0, env), evalNumeric(y0, env), evalNumeric(target, env)) match
           case (Right(_Number(a)), Right(_Number(y)), Right(_Number(b))) =>
             solveODE(rhs, depVar, indepVar, a, y, b, env) match
               case Some(result) => Right(_Number(result))

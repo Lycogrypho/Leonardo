@@ -77,3 +77,11 @@ class SolveReplTest extends AnyFlatSpec:
     // No concrete solution set -- stays as the unsolved node (not a matrix of fake roots)
     assert(!out.startsWith("[["), s"expected no solution matrix but got: $out")
   }
+
+  "a periodic equation" should "bind the roots nearest 0 and note the list is partial (F_0282)" in
+  {
+    val s = Session()
+    val out = s.execute("solve(tan(x) = 0, x)")
+    assert(out.contains("x_1 := ") && out.contains("note:") && out.contains("periodic"), out)
+    assert((1 to 8).exists(k => s.execute(s"x_$k").toDouble.abs < 1e-6), out)   // 0 is among them
+  }

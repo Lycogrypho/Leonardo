@@ -173,9 +173,19 @@ class ExactModeTest extends AnyFlatSpec:
     assert(r(-1, 3).display(5) == "-1/3")
   }
 
+  /** pi's reading at the working precision: a long rational.  Since F_0289 `pi` itself stays a
+   *  symbol in exact mode, so the reading is taken directly. */
+  private def piReading: _Rational = piAt(Digits).getOrElse(fail("pi did not read"))
+
+  "pi in exact mode" should "stay symbolic, its reading the working-precision rational (F_0289)" in
+  {
+    assert(exact("pi") == Left(_Constant(ConstantKind.Pi, exact = true)))
+    assert(_Constant(ConstantKind.Pi).reading(new Environment(workingPrecision = Digits).withExactMode(true)) == piReading)
+  }
+
   it should "fall back to a decimal once the fraction stops being readable" in
   {
-    val pi = rational("pi")
+    val pi = piReading
     assert(pi.display(5) == "3.14159", s"got ${pi.display(5)}")
     assert(pi.display(2) == "3.14")
   }
@@ -183,7 +193,7 @@ class ExactModeTest extends AnyFlatSpec:
   "serialization" should "always write the exact fraction, whatever display chose" in
   {
     // The split that makes the display rule safe: a value shown rounded still round-trips.
-    val pi = rational("pi")
+    val pi = piReading
     assert(pi.exact.contains("/"), s"pi must serialize as a fraction, got ${pi.exact}")
     assert(pi.display(5) == "3.14159", "...while still displaying readably")
     assert(r(2, 6).exact == "1/3", "reduced, so the gcd policy never leaks into a script")
@@ -192,7 +202,7 @@ class ExactModeTest extends AnyFlatSpec:
 
   it should "round-trip an exact value through its serialized form" in
   {
-    val pi = rational("pi")
+    val pi = piReading
     Parser.parse(pi.exact, Some(Digits)) match
       case Parser.Success(e, _) => assert(e.eval(env) == Right(pi))
       case other                => fail(s"serialized form did not re-parse: $other")

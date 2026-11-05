@@ -49,11 +49,15 @@ class LimitsPhaseCTest extends AnyFlatSpec:
   }
 
   "a limit" should "take no more L'Hôpital steps than the environment allows" in {
-    // three steps to cos(x)/6; stopped after one, the remaining (1 - cos x)/(3x^2) is left to
-    // the perturbation tier, whose cancellation cannot land on 1/6 exactly
+    // three steps to cos(x)/6.  Stopped after one, the remaining (1 - cos x)/(3x^2) was left to the
+    // perturbation tier, whose cancellation could not land on 1/6 exactly; since F_0286 the limit
+    // algebra answers what the step-limited tiers leave, from the Taylor series — no L'Hôpital step,
+    // and its own L'Hôpital fallback reads the same budget.
     val e = parse("(x - sin(x))/x^3")
     assert(scalar.evalLimit(e, x, _Number(0), scalar.LimitDir.Both, env) == _Number(1.0 / 6))
-    assert(scalar.evalLimit(e, x, _Number(0), scalar.LimitDir.Both, with1(Limit.MaxHopitalSteps, 1)) != _Number(1.0 / 6))
+    scalar.evalLimit(e, x, _Number(0), scalar.LimitDir.Both, with1(Limit.MaxHopitalSteps, 1)) match
+      case _Number(d) => assert(math.abs(d - 1.0 / 6) <= 1e-12, s"$d")
+      case other      => fail(s"declined: $other")
   }
 
   "solve's numeric tier" should "keep no more roots than the environment allows" in {

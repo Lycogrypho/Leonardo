@@ -65,22 +65,38 @@ object Environment:
  *  @param workingPrecision decimal digits an irrational is approximated to before exact
  *                        arithmetic continues.  Read by `eval` wherever a
  *                        [[_Rational]] meets an operation that is not closed over the
- *                        rationals.  Note this is *not* the exact-mode switch: whether a
- *                        value is exact is carried by its own type, so the only component
- *                        that has to be told is the parser, which decides what a literal
- *                        becomes.  That flag lives in `cli.Session` beside `pretty`; an
- *                        `Environment.exact` field would be read by nothing.
+ *                        rationals.  Not the exact-mode switch: that is [[exactMode]].
  *  @param limits         the work and size budgets every call evaluated here runs under
  *                        ([[Limits]], F_0124); each defaults to the value the library has
  *                        always used. A library caller raises one with [[withLimit]]; the REPL
  *                        and the browser keep the defaults.
+ *  @param exactMode      the session's exact mode (F_0273, the owner's decision): when set, every
+ *                        constant a pass invents is built exact, whatever its input contains
+ *                        (`_Rational.containsExactIn`).  Whether a *value* is exact is still
+ *                        carried by its own type; this reaches the passes that work on letters
+ *                        alone — `derive(atan(x), x)` has no exact value to read a tier from, so
+ *                        until then it built `1.0/(1.0 + x^2.0)` under `exact on`.  Defaults to
+ *                        `false`, under which every path is byte-identical.
  */
 class Environment(val precision: Int = Environment.DefaultPrecision,
                   private val variables: Map[String, _Value] = Map(),
                   val symmetricLogic: Boolean = false,
                   val semantics: LogicSemantics = LogicSemantics.MinMax,
                   val workingPrecision: Int = Environment.DefaultWorkingPrecision,
-                  val limits: Limits = Limits.Default):
+                  val limits: Limits = Limits.Default,
+                  val exactMode: Boolean = false):
+
+  /** The published six-argument constructor, kept so that adding [[exactMode]] is binary-compatible
+   *  (MiMa, F_0273), as the five-argument one was for [[limits]].
+   *  @param precision        see the class
+   *  @param variables        see the class
+   *  @param symmetricLogic   see the class
+   *  @param semantics        see the class
+   *  @param workingPrecision see the class
+   *  @param limits           see the class */
+  def this(precision: Int, variables: Map[String, _Value], symmetricLogic: Boolean, semantics: LogicSemantics,
+           workingPrecision: Int, limits: Limits) =
+    this(precision, variables, symmetricLogic, semantics, workingPrecision, limits, false)
 
   /** The published five-argument constructor, kept so that adding [[limits]] is binary-compatible
    *  (MiMa): an existing caller compiled against it still links, with the default limits.
@@ -91,13 +107,19 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
    *  @param workingPrecision see the class */
   def this(precision: Int, variables: Map[String, _Value], symmetricLogic: Boolean, semantics: LogicSemantics,
            workingPrecision: Int) =
-    this(precision, variables, symmetricLogic, semantics, workingPrecision, Limits.Default)
+    this(precision, variables, symmetricLogic, semantics, workingPrecision, Limits.Default, false)
 
   /** This environment with every budget taken from `next`.
    *  @param next the limits
    *  @return the same bindings and settings under `next` */
   def withLimits(next: Limits): Environment =
-    new Environment(precision, variables, symmetricLogic, semantics, workingPrecision, next)
+    new Environment(precision, variables, symmetricLogic, semantics, workingPrecision, next, exactMode)
+
+  /** This environment in or out of exact mode (F_0273).
+   *  @param on whether the passes build exact constants
+   *  @return the same bindings and settings with [[exactMode]] at `on` */
+  def withExactMode(on: Boolean): Environment =
+    new Environment(precision, variables, symmetricLogic, semantics, workingPrecision, limits, on)
 
   /** This environment with one budget set (F_0124): `env.withLimit(Limit.MaxQpVariables, 2000)`.
    *  @param limit the budget
@@ -130,4 +152,4 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
    *  @param value    the concrete value to associate
    */
   def withBinding(variable: String, value: _Value): Environment =
-    new Environment(precision, variables + (variable -> value), symmetricLogic, semantics, workingPrecision, limits)
+    new Environment(precision, variables + (variable -> value), symmetricLogic, semantics, workingPrecision, limits, exactMode)

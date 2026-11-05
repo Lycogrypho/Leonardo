@@ -132,8 +132,8 @@ private def domainCheck(components: Vector[(String, _Expression)], coords: Vecto
 /** The `∂field/∂vars` block evaluated at the point, named `label` in a refusal. */
 private def jacobianAt(field: Vector[_Expression], vars: Vector[_Variable], label: String,
                        point: Map[String, _Expression], env: Environment): Either[LinearizeFailure, _Expression] =
-  _Jacobian(_Matrix(field.size, 1, field), vars).eval(env) match
-    case Left(j: _Matrix) => valuesAt(j.elems.grouped(j.cols).toVector, label, point, env, rowLabels = false)
+  _Jacobian(_Matrix(field.size, 1, field), vars).unevaluated(env) match
+    case Some(j: _Matrix) => valuesAt(j.elems.grouped(j.cols).toVector, label, point, env, rowLabels = false)
     case _                => Left(LinearizeFailure.NotReal(s"$label (no Jacobian)"))
 
 /** A grid of expressions evaluated at the point: a dense matrix when every entry is a number,

@@ -68,11 +68,13 @@ class ReductionTest extends AnyFlatSpec:
     assert(collected.contains("6"), s"x + 2x + 3x should collect to 6x; got $collected")
   }
 
-  "a free bound" should "stay symbolic rather than guess" in
+  "a free bound" should "close a polynomial sum and leave anything else symbolic (F_0291)" in
   {
+    // It stayed symbolic until F_0291; a polynomial summand now has Faulhaber's closed form.
     val out = evalOf("sum(k, k, 1, n)")
     assert(out.isLeft, out)
-    assert(out.toExpression.toString == "sum(k, k, 1.0, n)", out.toExpression.toString)
+    assert(out.toExpression.eval(new Environment().withBinding("n", _Number(10))) == Right(_Number(55)))
+    assert(evalOf("sum(1/k, k, 1, n)").toExpression.toString == "sum((1.0 / k), k, 1.0, n)")
   }
 
   it should "be refused past the term cap, the MaxTabulateTerms rule" in

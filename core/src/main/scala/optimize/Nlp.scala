@@ -291,7 +291,7 @@ private object NlpSystem:
     else
       def jacobian(cells: Vector[_Expression]): Option[Vector[_Expression]] =
         if cells.isEmpty then Some(Vector.empty)
-        else gridCells(_Jacobian(_Matrix(cells.size, 1, cells), fresh).eval(env).toExpression, cells.size, n)
+        else _Jacobian(_Matrix(cells.size, 1, cells), fresh).unevaluated(env).flatMap(gridCells(_, cells.size, n))
       val derived = for
         grad <- jacobian(Vector(fr))
         jg   <- jacobian(gr)

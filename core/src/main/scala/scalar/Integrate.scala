@@ -35,7 +35,7 @@ import scala.annotation.tailrec
 
 /** Shared empty environment used by [[linearSlope]] and [[constValue]] to fold
  *  constant-only expressions without allocating a throwaway instance per call. */
-private val EmptyEnv = new Environment()
+private[scalar] val EmptyEnv = new Environment()
 
 /** Returns the slope `a` when `u` is linear in `v` (i.e. `d(u)/dv` folds to a nonzero
  *  constant); `None` for non-linear or constant `u`.
@@ -92,7 +92,7 @@ def integrate(e: _Expression, v: _Variable): _Expression =
  *  the integrator invents is built in it, so an exact integrand integrates exactly; an integrand
  *  with no exact value gets the `Double` constants it always had. */
 private[scalar] def integrateInTier(e: _Expression, v: _Variable, exact: Boolean): _Expression =
-  resolve(e, v, 0)(using Tier(exact))
+  integrateFull(e, v, 0)(using Tier(exact))
 
 /** Resolves `∫ e dv` through the full pipeline: the compiled tiers first, then — only when
  *  they give up — the data-driven table and the u-substitution driver.
@@ -130,7 +130,34 @@ private def resolve(e: _Expression, v: _Variable, subDepth: Int)(using t: Tier):
         // original, so it only adds answers.
         .orElse(if es != e then integrateByTrigSub(es, v) else None)
         .orElse(integrateByWeierstrass(e, v))
+        .orElse(withoutConstants(e, v, subDepth))
         .getOrElse(compiled)
+
+/** `∫ c·f = c·∫ f` for the constant factors of a product or of either side of a quotient (F_0287),
+ *  the rest through the whole pipeline.  The compiled arms peel a constant only from a product of
+ *  two or a quotient's denominator, so `0.25/cosh(w)^2` — what the hyperbolic substitution leaves
+ *  for `1/(x² + 4)^(3/2)` — never reached the table's `sech²`.  Terminates: the rest has no
+ *  constant factor left to peel.
+ *
+ *  @return the antiderivative, or `None` when there is no constant to peel or the rest stays open */
+private def withoutConstants(e: _Expression, v: _Variable, subDepth: Int)(using t: Tier): Option[_Expression] =
+  def flat(x: _Expression): List[_Expression] = x match
+    case Product(a, b) => flat(a) ++ flat(b)
+    case other         => List(other)
+  def product(fs: List[_Expression]): _Expression = fs.reduceLeftOption(Product(_, _)).getOrElse(t.n(1))
+  val (num, den)   = e match
+    case Ratio(a, b) => (a, b)
+    case _           => (e, t.n(1))
+  val (cn, rn) = flat(num).filterNot(isOneLiteral).partition(f => !dependsOn(f, v))
+  val (cd, rd) = flat(den).filterNot(isOneLiteral).partition(f => !dependsOn(f, v))
+  if cn.isEmpty && cd.isEmpty then None
+  else
+    val rest = if rd.isEmpty then product(rn) else Ratio(product(rn), product(rd))
+    val r    = resolve(rest, v, subDepth)
+    Option.when(!containsIntegral(r)) {
+      val c = if cd.isEmpty then product(cn) else Ratio(product(cn), product(cd))
+      timesConst(c, r)
+    }
 
 /** Rule-table implementation of [[integrate]], threading the parts-recursion `depth`.
  *

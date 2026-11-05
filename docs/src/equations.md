@@ -93,12 +93,18 @@ Parser.parse("solve(x^2 + 1 = 0, x)").get.eval(env)
 
 Transcendental and higher-degree equations fall back to a sign-change scan over
 `[-100, 100]` followed by the
-[bisection method](https://en.wikipedia.org/wiki/Bisection_method) (up to 8 roots):
+[bisection method](https://en.wikipedia.org/wiki/Bisection_method), keeping the 8 roots
+**nearest 0**, in ascending order:
 
 ```scala mdoc
-// sin(x) = 0.5  — first root in [-100, 100]
+// sin(x) = 0.5  — the roots nearest 0: π/6, 5π/6, …
 Parser.parse("solve(sin(x) = 0.5, x)").get.eval(env)
 ```
+
+Such a list is never all of them, and at the prompt `solve` says so: a periodic equation (the
+unknown only inside `sin`/`cos`/`tan`/… of linear arguments with one slope) gets a note naming its
+period, and any other equation with more roots in the scan than were kept gets a note saying how
+many were found.
 
 ### Matrix equations (scalar unknown)
 

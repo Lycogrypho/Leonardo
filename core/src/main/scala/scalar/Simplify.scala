@@ -167,6 +167,8 @@ private def simplifyImpl(e: _Expression)(using t: Tier): _Expression = e match
     simplifyIn(a) match
       case _Number(d) if d == 1.0 => t.n(0)
       case Exp(x)                 => x             // ln(exp(x)) = x
+      case _Constant(ConstantKind.E, _) => t.n(1)    // ln(e) = 1 (F_0289)
+      case Power(_Constant(ConstantKind.E, _), x) => x
       case x                      => Ln(x)
 
   case LogBase(a, b) =>
@@ -178,16 +180,22 @@ private def simplifyImpl(e: _Expression)(using t: Tier): _Expression = e match
   case Sin(a) =>
     simplifyIn(a) match
       case _Number(d) if d == 0.0 => t.n(0)
+      case x if piTwelfths(x).flatMap(sinAtTwelfths).isDefined =>
+        inTier(piTwelfths(x).flatMap(sinAtTwelfths))   // sin(kπ/6), sin(kπ/4) (F_0289)
       case x                      => Sin(x)
 
   case Cos(a) =>
     simplifyIn(a) match
       case _Number(d) if d == 0.0 => t.n(1)
+      case x if piTwelfths(x).flatMap(u => sinAtTwelfths(u + 6)).isDefined =>
+        inTier(piTwelfths(x).flatMap(u => sinAtTwelfths(u + 6)))
       case x                      => Cos(x)
 
   case Tg(a) =>
     simplifyIn(a) match
       case _Number(d) if d == 0.0 => t.n(0)
+      case x if piTwelfths(x).flatMap(tanAtTwelfths).isDefined =>
+        inTier(piTwelfths(x).flatMap(tanAtTwelfths))
       case x                      => Tg(x)
 
   case Asin(a) =>
@@ -293,7 +301,7 @@ def simplifyFully(e: _Expression): _Expression = simplifyFullyInTier(e, _Rationa
  *  @param exact whether the constants the rules invent are built exact
  *  @return the fully simplified expression
  */
-private[scalar] def simplifyFullyInTier(e: _Expression, exact: Boolean): _Expression =
+private[leonardo] def simplifyFullyInTier(e: _Expression, exact: Boolean): _Expression =
   // One tier for the whole fixpoint, decided from the input: a pass may fold the last exact
   // value away, and the next must not then switch to inventing Double constants.
   given Tier = Tier(exact)
@@ -302,3 +310,10 @@ private[scalar] def simplifyFullyInTier(e: _Expression, exact: Boolean): _Expres
     val s = simplifyIn(x)
     if s == x then x else loop(s)
   loop(e)
+
+/** An exact table value (F_0289) in the simplification's tier: itself when exact, its `Double`
+ *  otherwise.  Only reached through a guard that found the value, so the default is unreachable. */
+private def inTier(v: Option[_Value])(using t: Tier): _Expression = v match
+  case Some(x) if t.exact => x
+  case Some(_Number(d))   => _Number(d)
+  case _                  => t.n(0)

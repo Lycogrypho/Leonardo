@@ -201,7 +201,20 @@ abstract class _Function extends _Expression:
       case Right(c: _Complex)      => complex(c).toRight(rebuild(List(c)))
       case Left(m: _MatrixShaped)  => mapMatrixExpr(m, env)
       case Right(i: _Interval)     => intervalImage(i, env)
+      // F_0289: a closed expression holding a named constant (`pi/6` in exact mode) -- the node's
+      // exact value where it knows one, else the argument read at the working precision.
+      case Left(c) if c.freeVars.isEmpty && containsConstant(c) =>
+        constantValue(c).getOrElse(rebuild(List(foldConstants(c, env))).eval(env))
       case other                   => Left(rebuild(List(other.toExpression)))
+
+  /** The exact value of this function at a closed expression holding a named constant (F_0289):
+   *  `sin(pi/6)` is `1/2`, and `tan(pi/2)` is `Left`, undefined rather than a huge reading.  Empty by
+   *  default, so the argument is read at the working precision.  A hook, like [[surdKernel]], so the
+   *  published signature of [[evalUnary]] is unchanged.
+   *  @param arg the argument, closed and holding a constant
+   *  @return the exact answer, or `None` to read the argument at the working precision
+   */
+  protected def constantValue(arg: _Expression): Option[Either[_Expression, _Value]] = None
 
   /** The value of this function at an exact surd, for a node closed over the surds (F_0231):
    *  `abs` is, since a surd's sign is decided exactly.  Empty by default, so every other node reads
@@ -288,6 +301,12 @@ case class Ln(e: _Expression) extends _Function with NamedFunction:
     // value, so a negative one leaves the dense matrix unevaluated, as before.
     evalUnary(e, env)(x => realFinite(log(x)).orElse(_Complex.logc(_Number(x))), _Complex.logc)
 
+  /** `ln(e) = 1` and `ln(e^q) = q` for a rational `q` (F_0289). */
+  override protected def constantValue(arg: _Expression): Option[Either[_Expression, _Value]] = arg match
+    case _Constant(ConstantKind.E, _)                     => Some(Right(_Rational(1)))
+    case Power(_Constant(ConstantKind.E, _), q: _Rational) => Some(Right(q))
+    case _                                                => None
+
 
 /** The general-base logarithm `log(e, base)`.
  *
@@ -373,6 +392,9 @@ case class Sin(e: _Expression) extends _Function with NamedFunction:
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(sin(x)), _Complex.sinc)
 
+  override protected def constantValue(arg: _Expression): Option[Either[_Expression, _Value]] =
+    piTwelfths(arg).flatMap(sinAtTwelfths).map(Right(_))
+
 
 /** The cosine function `cos(e)`.
  *
@@ -391,6 +413,9 @@ case class Cos(e: _Expression) extends _Function with NamedFunction:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(cos(x)), _Complex.cosc)
+
+  override protected def constantValue(arg: _Expression): Option[Either[_Expression, _Value]] =
+    piTwelfths(arg).flatMap(t => sinAtTwelfths(t + 6)).map(Right(_))
 
 
 /** The tangent function `tan(e)` (also parsed as `tg(e)`).
@@ -413,6 +438,10 @@ case class Tg(e: _Expression) extends _Function with NamedFunction:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(tan(x)), _Complex.tanc)
+
+  /** At an odd multiple of `pi/2` tan is undefined, and stays so rather than reading a huge value. */
+  override protected def constantValue(arg: _Expression): Option[Either[_Expression, _Value]] =
+    piTwelfths(arg).flatMap(t => if Math.floorMod(t, 12) == 6 then Some(Left(this)) else tanAtTwelfths(t).map(Right(_)))
 
 
 /** The arcsine function `asin(e)`.
@@ -490,12 +519,35 @@ private def acoshD(x: Double): Double = math.log(x + math.sqrt(x * x - 1.0))
 /** `atanh(x) = ½·ln((1 + x)/(1 − x))`, real only for `|x| < 1`. */
 private def atanhD(x: Double): Double = 0.5 * math.log((1.0 + x) / (1.0 - x))
 
+// The exact kernels of the twelve (F_0279): written from spire's `exp`, `log`, `sin`, `cos` and
+// `sqrt`, so in exact mode they carry the working precision like `cos` and `ln` do.  Without them
+// they fell back to the 15-digit `Double` path, and `sec(1)^2 == 1/cos(1)^2` compared a 15-digit
+// reading with a 30-digit one and answered `false`.  A pole or an out-of-domain argument is `None`,
+// which falls through to the `Double` path and its refusal; a rational zero is built exact.
+
+/** `(e^x, e^−x)` of an exact argument. */
+private def expPair(r: _Rational): (Real, Real) =
+  val y = Real.exp(toReal(r))
+  (y, y.reciprocal)
+
+private def sinhR(r: _Rational): Real = { val (p, m) = expPair(r); (p - m) / Real(2) }
+private def coshR(r: _Rational): Real = { val (p, m) = expPair(r); (p + m) / Real(2) }
+
+/** `ln(x + √(x² + s))`, the logarithmic form of `asinh` (`s = 1`) and `acosh` (`s = −1`). */
+private def logRootR(r: _Rational, s: Int): Real =
+  val x = toReal(r)
+  Real.log(x + (x * x + Real(s)).sqrt)
+
 
 /** The hyperbolic sine `sinh(e)`.  Entire; accepts `_MatrixValue` and `_Complex` arguments. */
 case class Sinh(e: _Expression) extends _Function with NamedFunction:
   override def name: String = "sinh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sinh(c.head)
+
+  /** Entire; its rational zero is built exact (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(if r.isZero then Real.zero else sinhR(r)))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(math.sinh(x)), _Complex.sinhc)
@@ -507,6 +559,10 @@ case class Cosh(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Cosh(c.head)
 
+  /** Entire (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(if r.isZero then Real.one else coshR(r)))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(math.cosh(x)), _Complex.coshc)
 
@@ -516,6 +572,10 @@ case class Tanh(e: _Expression) extends _Function with NamedFunction:
   override def name: String = "tanh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Tanh(c.head)
+
+  /** Entire; `(e^2x − 1)/(e^2x + 1)` (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(if r.isZero then Real.zero else { val y = Real.exp(toReal(r) * Real(2)); (y - Real.one) / (y + Real.one) }))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(math.tanh(x)), _Complex.tanhc)
@@ -528,6 +588,12 @@ case class Asinh(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Asinh(c.head)
 
+  /** Defined on the whole line (F_0279); for a negative argument as `−asinh(−x)`, which avoids
+   *  the cancellation in `x + √(x² + 1)`. */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(if r.isZero then Real.zero
+                   else if r.signum < 0 then -logRootR(r.negate, 1) else logRootR(r, 1)))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(asinhD(x)))
 
@@ -538,6 +604,10 @@ case class Acosh(e: _Expression) extends _Function with NamedFunction:
   override def name: String = "acosh"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Acosh(c.head)
+
+  /** Real only for `x ≥ 1` (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r == _Rational.One then Some(Real.zero) else if r > _Rational.One then Some(logRootR(r, -1)) else None)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realNotNaN(acoshD(x)))
@@ -550,6 +620,14 @@ case class Atanh(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Atanh(c.head)
 
+  /** Real only for `|x| < 1` (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.isZero then Some(Real.zero)
+              else if r.abs < _Rational.One then
+                val x = toReal(r)
+                Some(Real.log((Real.one + x) / (Real.one - x)) / Real(2))
+              else None)
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(atanhD(x)))
 
@@ -560,6 +638,10 @@ case class Sec(e: _Expression) extends _Function with NamedFunction:
   override def name: String = "sec"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sec(c.head)
+
+  /** `1/cos`; a rational argument never lands on a pole (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(if r.isZero then Real.one else Real.cos(toReal(r)).reciprocal))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(1.0 / cos(x)), _Complex.secc)
@@ -572,6 +654,10 @@ case class Csc(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Csc(c.head)
 
+  /** `1/sin`; its one rational pole is `0` (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.isZero then None else Some(Real.sin(toReal(r)).reciprocal))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(1.0 / sin(x)), _Complex.cscc)
 
@@ -582,6 +668,10 @@ case class Cot(e: _Expression) extends _Function with NamedFunction:
   override def name: String = "cot"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Cot(c.head)
+
+  /** `cos/sin`; its one rational pole is `0` (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.isZero then None else { val x = toReal(r); Some(Real.cos(x) / Real.sin(x)) })
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(cos(x) / sin(x)), _Complex.cotc)
@@ -594,6 +684,10 @@ case class Sech(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Sech(c.head)
 
+  /** `1/cosh`, entire (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => Some(if r.isZero then Real.one else coshR(r).reciprocal))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realAny(1.0 / math.cosh(x)), _Complex.sechc)
 
@@ -605,6 +699,10 @@ case class Csch(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Csch(c.head)
 
+  /** `1/sinh`; its one pole is `0` (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.isZero then None else Some(sinhR(r).reciprocal))
+
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(1.0 / math.sinh(x)), _Complex.cschc)
 
@@ -615,6 +713,10 @@ case class Coth(e: _Expression) extends _Function with NamedFunction:
   override def name: String = "coth"
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Coth(c.head)
+
+  /** `cosh/sinh`; its one pole is `0` (F_0279). */
+  override protected def exactKernel: Option[_Rational => Option[Real]] =
+    Some(r => if r.isZero then None else Some(coshR(r) / sinhR(r)))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     evalUnary(e, env)(x => realFinite(math.cosh(x) / math.sinh(x)), _Complex.cothc)

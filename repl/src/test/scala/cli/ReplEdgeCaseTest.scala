@@ -17,6 +17,37 @@ class ReplEdgeCaseTest extends AnyFlatSpec:
     assert(t.execute("samples derive(g, f) x 0.5 0.6 2").startsWith("0.5\t0.95885"))
   }
 
+  "a definition built by a vector operator" should "see later bindings of its coordinates (F_0285)" in {
+    // LT L_0067: H, det(H) and eigen(H) disagreed, H keeping x and y after both were bound.
+    val s = new Session()
+    List("f := x^2*y + y^3", "H := hessian(f, x, y)", "x := 1", "y := 1").foreach(s.execute)
+    assert(s.execute("H") == "[[2.0, 2.0], [2.0, 6.0]]")
+    assert(s.execute("det(H)") == "8.0")
+    val eig = s.execute("eigen(H)")
+    assert(eig.startsWith("[[") && !eig.contains("eigen"), eig)
+  }
+
+  "a derivative in a name bound to a formula" should "differentiate first, then substitute (F_0280)" in {
+    // LT L_0067: x, y bound to formulas in t; d/dx of x^2 + y^2 is 2x = 2cos(t), never a silent 0.
+    val s = new Session()
+    List("x := cos(t)", "y := sin(t)", "z := t").foreach(s.execute)
+    val symbolic = s.execute("derive(x^2 + y^2, x)")
+    assert(symbolic.contains("cos(t)") && !symbolic.startsWith("0"), symbolic)
+    s.execute("q := derive(x^2, x)")
+    s.execute("t := 0.3")
+    assert(s.execute("derive(x^2 + y^2, x)") == "1.91067")       // 2cos(0.3)
+    assert(s.execute("grad(x^2 + y^2 - z^2, x, y, z)") == "[[1.91067], [0.59104], [-0.6]]")
+    assert(s.execute("q") == "1.91067")                          // a stored definition too
+    assert(s.execute("simplify derive(x^2 + y^2, x)") != "0.0")
+  }
+
+  it should "keep the chain rule when the variable does not appear (F_0185)" in {
+    // g mentions only x: differentiating first would give 0, the chain rule gives dg/df.
+    val s = new Session()
+    List("f := sin(x)", "g := sin(x)^2", "x := 0.5").foreach(s.execute)
+    assert(s.execute("derive(g, f)") == "0.95885")                // 2sin(0.5)
+  }
+
   ":save" should "write infinities, distributions and negative based values so they reload (F_0186)" in {
     val s = new Session()
     List("lb := [[-inf], [0]]", "d := normal(0, 1e-20)", "n := tobase(-255, 16)").foreach(s.execute)

@@ -108,7 +108,11 @@ object ToLatex:
     // delimits for itself -- the same argument \frac makes -- so `(a+b)^0.5` comes out as
     // `\sqrt{a + b}` rather than `\sqrt{\left(a + b\right)}`.
     case Power(a, Root(2))      => (s"\\sqrt{${at(a, Grouped)}}", Atomic)
-    case Power(a, Root(degree)) => (s"\\sqrt[$degree]{${at(a, Grouped)}}", Atomic)
+    // An odd root only of a base that cannot be negative (F_0297): `\sqrt[3]{x}` reads as the real
+    // cube root, while `x^(1/3)` at a negative `x` is the principal complex value here, so a base of
+    // unknown sign keeps its exponent.  An even root has no real value there either way.
+    case Power(a, Root(degree)) if degree % 2 == 0 || scalar.isNonNegative(a, new Environment()) =>
+      (s"\\sqrt[$degree]{${at(a, Grouped)}}", Atomic)
 
     // The exponent is braced, hence Grouped and never parenthesised; the base must be Atomic,
     // which brackets `(a+b)^2`, `(2x)^2` and `(a/b)^2` while leaving `x^2` alone.  A power
@@ -176,6 +180,15 @@ object ToLatex:
       (s"\\log_{${at(b, Grouped)}}\\left(${at(e, Grouped)}\\right)", Atomic)
 
     case v: _Variable => (greek(v.variable), Atomic)
+
+    // F_0289: the constants are symbols now, so `\pi` is producible from a parsed expression.
+    case c: _Constant =>
+      val symbol = c.kind match
+        case ConstantKind.Pi          => "\\pi"
+        case ConstantKind.E           => "e"
+        case ConstantKind.EulerGamma  => "\\gamma"
+        case ConstantKind.GoldenRatio => "\\varphi"
+      (symbol, Atomic)
 
     // An exact rational stays a FRACTION.  Showing 1/3 as 0.33333 would discard precisely
     // what the exact tier exists to preserve, and `display` is allowed to fall back to a

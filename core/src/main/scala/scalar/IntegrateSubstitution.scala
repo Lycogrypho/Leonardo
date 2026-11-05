@@ -52,7 +52,15 @@ private def productOf(fs: List[_Expression])(using t: Tier): _Expression =
  *  @param den the denominator expression
  *  @return the simplified, factor-cancelled quotient `num / den`
  */
-private def cancelRatio(num: _Expression, den: _Expression)(using t: Tier): _Expression =
+private def cancelRatio(num: _Expression, den: _Expression)(using t: Tier): _Expression = (num, den) match
+  // A quotient on either side is lifted first (F_0287): `g' = 1/x` for `g = ln(x)` is a `Ratio`,
+  // whose `x` the factor lists below would otherwise never see beside the integrand's `x`.
+  case (_, Ratio(a, b)) => cancelRatio(Product(num, b), a)
+  case (Ratio(a, b), _) => cancelRatio(a, Product(den, b))
+  case _                => cancelFactors(num, den)
+
+/** [[cancelRatio]] once neither side is a quotient. */
+private def cancelFactors(num: _Expression, den: _Expression)(using t: Tier): _Expression =
   def isOne(f: _Expression): Boolean = isOneLiteral(f)
   val numF = flattenFactors(num).map(simplifyT).filterNot(isOne)
   val denF = scala.collection.mutable.ListBuffer(flattenFactors(den).map(simplifyT).filterNot(isOne)*)

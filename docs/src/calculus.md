@@ -107,6 +107,22 @@ by `g'`, and integrates in `g` only when the quotient is free of `x`.
 integrate(Product(x, Exp(Power(x, _Number(2.0)))), x).toString
 ```
 
+When every rule declines, the integrand is put into a standard form and tried again term by
+term: constants are folded and moved out of a denominator, powers of one base are merged
+(`2*x*x^(1/2)` is `2·x^(3/2)`), a reciprocal power is read as a negative one (`1/x^(3/2)`)
+and a polynomial power is expanded. The textbook substitutions follow: `ln(u)` times a
+function by parts (`ln(x)/x^2`), `sin(x)^m*cos(x)^n` with one odd power by `w = cos(x)` or
+`sin(x)`, `sin(x)*cos(x)` as `sin(2x)/2`, `u = a*x + b` for a polynomial times a power of
+`a*x + b` (`x*(1 - x)^(1/2)`), `w = x^2` for `x^3*(1 + x^2)^(1/2)`, `x = u^q` for
+fractional powers (`x^(1/2)/(x^2 + x)`), `x = e^u` for `cos(ln(x))`, and
+`exp(a*x)*sin(b*x)` / `cos` in closed form for any numeric slopes. None of this runs
+for an integral that already closed, so no earlier answer changes.
+
+The logarithm in an antiderivative is written `ln(u)`, not `ln|u|`: `integral(80/(16 - x^2), x)`
+contains `ln(x - 4)`, which is complex on `(-4, 4)`. That is a correct antiderivative (it
+differs from the real one by a constant), and a definite integral through it is real, since
+the imaginary parts cancel.
+
 Radical integrands close by
 **[trigonometric](https://en.wikipedia.org/wiki/Trigonometric_substitution) /
 [hyperbolic](https://en.wikipedia.org/wiki/Hyperbolic_substitution) substitution**;
@@ -200,10 +216,21 @@ two spherical keywords differ in argument *order*, not in naming.  Exchanging th
 coordinates flips the handedness of the basis, so `curl`, a pseudo-vector, carries the
 matching sign; the two conventions agree on the curl of the same physical field.
 
-## Definite integration (Simpson's rule)
+## Definite integration
 
-`_DefIntegral(e, v, lo, hi)` computes the definite integral numerically using composite
-[Simpson's rule](https://en.wikipedia.org/wiki/Simpson%27s_rule).
+`_DefIntegral(e, v, lo, hi)` answers `F(hi) − F(lo)` when the indefinite integral closes and its
+antiderivative is smooth across the whole interval (exact in exact mode), and otherwise integrates
+numerically by certified
+[adaptive Simpson](https://en.wikipedia.org/wiki/Adaptive_Simpson%27s_method), to five digits
+beyond the display precision.  An integral across a pole, or one that does not settle within its
+evaluation budget, stays unevaluated rather than answering a wrong number:
+`integral(1/(x - 2), x, 0, 3)` and `integral(sec(x)^2, x, -pi, pi)` decline.
+
+**An improper integral** — an infinite limit, or an endpoint the integrand is undefined at — is
+`lim F(b) − lim F(a)` when the antiderivative closes and is smooth across the open interval:
+`integral(exp(-x), x, 0, inf)` is `1`, `integral(exp(-x^2), x, -inf, inf)` is `√π`, `integral(ln(x), x,
+0, 1)` is `-1`, and `integral(1/x, x, 1, inf)` is `inf`, the divergence it has.  `∞ − ∞`, or an
+antiderivative with no limit at an end (`integral(sin(x), x, 0, inf)`), stays unevaluated.
 
 The limits are **children**, not binders: only `v` is bound, so a limit may be any expression
 and may name other variables.  That is what gives iterated integration with variable limits
@@ -211,8 +238,8 @@ and may name other variables.  That is what gives iterated integration with vari
 occurrence of the outer variable, bound per sample by the outer pass.  In the grammar the
 limits are full expressions too, so `integral(sin(x), x, 0, 2*pi)` is written as it reads.
 
-It uses a compiled `Double ⇒ Double` closure when the integrand is free of unresolvable
-nodes — no per-step allocation:
+The numeric path uses a compiled `Double ⇒ Double` closure when the integrand is free of
+unresolvable nodes — no per-step allocation:
 
 ```scala mdoc
 // ∫₀¹ x² dx = 1/3

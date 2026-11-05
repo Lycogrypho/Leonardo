@@ -55,7 +55,7 @@ Full detail for every entry below is in the [feature reference](https://lycogryp
 <details>
 <summary><i>Expression parsing</i></summary>
 
-A recursive-descent parser over `scala-parser-combinators`, with implicit multiplication (`3sin(a)`), unary minus in any operand position, multi-character names, and the constants `pi`, `e`, `i` and `inf`.
+A recursive-descent parser over `scala-parser-combinators`, with implicit multiplication (`3sin(a)`), unary minus in any operand position, multi-character names, and the constants `pi`, `e`, `eulergamma`, `goldenratio`, `i` and `inf` (the named ones kept as symbols).
 
 </details>
 </li>
@@ -154,7 +154,7 @@ Each domain is a package that imports `core`, the shared foundation, while `core
 <details>
 <summary><i>Scalar algebra and calculus</i></summary>
 
-Differentiation, definite integration by Simpson's rule, and indefinite integration through a layered engine:
+Differentiation, definite integration (by the antiderivative where it is smooth on the interval, otherwise certified adaptive Simpson), and indefinite integration through a layered engine:
 
 - a rule table of ~64 verified entries
 - integration by parts

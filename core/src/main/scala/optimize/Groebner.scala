@@ -97,7 +97,7 @@ def groebnerBasis(eqs: List[_Expression], unknowns: List[_Variable],
 private[optimize] def withoutRounding(e: _Expression, names: Vector[String]): _Expression =
   GPoly.withMagnitude(e, names) match
     case Some((p, mag)) =>
-      val kept = p.terms.filter((m, c) => c.abs.toDouble > RoundingLevel * mag.terms.getOrElse(m, Q.zero).toDouble)
+      val kept = p.terms.filter((m, c) => spireToDouble(c.abs) > RoundingLevel * spireToDouble(mag.terms.getOrElse(m, Q.zero)))
       if kept.size == p.terms.size then e
       else GPoly(kept).toExpression(names.toList.map(_Variable(_)), exact = false)
     case None => e
@@ -140,8 +140,8 @@ private final case class GPoly(terms: Map[Mono, Q]):
    *  constant — a coefficient, an exponent — built in the input's tier (the numeric tier rule). */
   def toExpression(unknowns: List[_Variable], exact: Boolean): _Expression =
     def number(q: Q): _Expression =
-      if exact then _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt).getOrElse(_Number(q.toDouble))
-      else _Number(q.toDouble)
+      if exact then _Rational.of(q.numerator.toBigInt, q.denominator.toBigInt).getOrElse(_Number(spireToDouble(q)))
+      else _Number(spireToDouble(q))
     def integer(k: Int): _Expression = if exact then _Rational(k) else _Number(k)
     val sorted = terms.toList.sortBy(_._1)(using summon[Ordering[Mono]].reverse)
     val parts = sorted.map { (m, c) =>

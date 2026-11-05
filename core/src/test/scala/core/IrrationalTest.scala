@@ -128,12 +128,21 @@ class IrrationalTest extends AnyFlatSpec:
   "pi and e" should "be computed rather than read off a Double" in
   {
     // Tier 1 approximated these from math.Pi / math.E, so they could never exceed 15 places.
-    val pi = rational("pi", 40)
+    // Since F_0289 the constants stay symbols in exact mode, and this is their reading.
+    def reading(k: ConstantKind): _Rational =
+      _Constant(k).reading(new Environment(workingPrecision = 40).withExactMode(true)) match
+        case r: _Rational => r
+        case other        => fail(s"$k read as $other")
+    val pi = reading(ConstantKind.Pi)
     assert((pi.toBigDecimal(45) - BigDecimal("3.14159265358979323846264338327950288419716939937510")).abs
              < BigDecimal("1e-38"), s"pi @40 = ${pi.toBigDecimal(45)}")
-    val e = rational("e", 40)
+    val e = reading(ConstantKind.E)
     assert((e.toBigDecimal(45) - BigDecimal("2.71828182845904523536028747135266249775724709369995")).abs
              < BigDecimal("1e-38"), s"e @40 = ${e.toBigDecimal(45)}")
+    // F_0289: the Euler-Mascheroni constant, by Brent-McMillan
+    val g = reading(ConstantKind.EulerGamma)
+    assert((g.toBigDecimal(45) - BigDecimal("0.57721566490153286060651209008240243104215933593992")).abs
+             < BigDecimal("1e-38"), s"gamma @40 = ${g.toBigDecimal(45)}")
   }
 
   "a fractional power" should "reach the working precision too" in
@@ -280,4 +289,24 @@ class IrrationalTest extends AnyFlatSpec:
   {
     // Past MaxReadingDecades the search settles for the places alone.
     assert(rational(s"exp(-${3 * MaxReadingDecades})", 30).isZero)
+  }
+
+  // F_0284 (LT L_0073): a power whose exponent is a long decimal was a 10⁶-th root at the working
+  // precision, ~20× slower per digit (2^(1.00001) took 38.6 s).
+  "a power with a long decimal exponent" should "answer promptly and agree with the Double (F_0284)" in {
+    for (src, want) <- Seq("2^(1.000001)" -> math.pow(2, 1.000001), "3^(2.0000001)" -> math.pow(3, 2.0000001),
+                           "(7/5)^(0.333333333)" -> math.pow(1.4, 0.333333333)) do
+      val t0 = System.nanoTime
+      val r  = rational(src, 30)
+      val s  = (System.nanoTime - t0) / 1e9
+      assert(math.abs(r.toDouble - want) <= 1e-14 * want, s"$src: ${r.toDouble} vs $want")
+      assert(s < 2, s"$src took $s s")
+    // a root of small degree keeps its exact reading
+    assert(rational("8^(1/3)", 30) == _Rational(2))
+    // LT's case, a sum of such powers: it answers (or the exact budget declines it) promptly.
+    val t0 = System.nanoTime
+    val s  = at("sum(1/k^(1.000001), k, 1, 100)", 30)
+    val dt = (System.nanoTime - t0) / 1e9
+    info(f"sum of 100 terms: $dt%.2f s, ${s.isRight}")
+    assert(dt < 8, s"took $dt s")
   }

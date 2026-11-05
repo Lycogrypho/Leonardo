@@ -213,7 +213,8 @@ private[scalar] def powerSeriesIn(e: _Expression, v: _Variable, centre: _Express
                                   maxNodes: Int, exact: Boolean): Either[String, Vector[_Expression]] =
   val env = new Environment()
   SeriesEngine(v, centre, order, exact, maxNodes).of(e).flatMap { cs =>
-    cs.indexWhere(c => c.freeVars.isEmpty && c.eval(env).isLeft) match
+    // A named constant is a value, not a failure (F_0289): `pi` stays a symbol in exact mode.
+    cs.indexWhere(c => c.freeVars.isEmpty && evalNumeric(c, env).isLeft) match
       case -1 => Right(cs)
       case k  => Left(s"the coefficient of order $k is undefined at the centre $centre")
   }

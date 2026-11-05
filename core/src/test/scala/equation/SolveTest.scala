@@ -233,3 +233,31 @@ class SolveTest extends AnyFlatSpec:
   {
     assert(num(solve(parseEq("x^2 + 5 * x = 0"), x)) == List(-5.0, 0.0))
   }
+
+  // --- F_0282 (LT L_0072): a periodic equation's roots are the ones nearest 0, and say so ---
+
+  "a periodic equation" should "answer the roots nearest 0, not the first from -100 (F_0282)" in
+  {
+    val env = new Environment()
+    val tanRoots = num(solve(parseEq("tan(x) = 0"), x))
+    assert(tanRoots.size == 8 && tanRoots.exists(r => math.abs(r) < 1e-9), s"$tanRoots")
+    assert(tanRoots.forall(r => math.abs(r) <= 4 * math.Pi + 1e-6), s"$tanRoots")
+    assert(tanRoots == tanRoots.sorted, "ascending")
+    val sinRoots = num(solve(parseEq("sin(x) = 1/2^(1/2)"), x))
+    assert(sinRoots.exists(r => math.abs(r - math.Pi / 4) < 1e-9), s"$sinRoots")
+    partialRootsNote(parseEq("sin(x) = 1/2^(1/2)"), x, env) match
+      case Some(note) => assert(note.contains("periodic") && note.contains("6.28319"), note)
+      case None       => fail("no note on a periodic equation")
+    assert(partialRootsNote(parseEq("tan(3*x) = 1"), x, env).exists(_.contains("1.0472")))   // π/3
+  }
+
+  it should "say nothing for an equation with finitely many roots" in
+  {
+    val env = new Environment()
+    assert(partialRootsNote(parseEq("x^3 - x = 0"), x, env).isEmpty)
+    assert(partialRootsNote(parseEq("exp(x) = 2"), x, env).isEmpty)
+    // not periodic, but more roots in the scan than are kept: still partial
+    partialRootsNote(parseEq("sin(x^2) = 0"), x, env) match
+      case Some(note) => assert(note.contains("nearest 0"), note)
+      case None       => fail("no note on a partial list")
+  }

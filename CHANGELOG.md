@@ -49,6 +49,83 @@ release time from MiMa's report.*
   `differentiable(x*abs(x), x)` is `true` (it was `abs(x) != 0`).  `domain(x^(2/3), x)` is `x >= 0`
   (it was `true`, though the library answers a complex value for a negative `x`), and
   `domain(x^(-1/3), x)` is `x > 0`.
+- In exact mode the hyperbolic and reciprocal functions (`sinh` … `atanh`, `sec`, `csc`, `cot`, `sech`,
+  `csch`, `coth`) carry the working precision, so identities through them compare equal:
+  `sec(1)^2 == 1/cos(1)^2` and `acosh(2) == ln(2 + 3^(1/2))` are `true` (they were `false`).
+- A derivative in a variable bound to a formula is taken before the formula is substituted: with
+  `x := cos(t)`, `y := sin(t)`, `derive(x^2 + y^2, x)` is `2*cos(t)` and `grad(x^2 + y^2, x, y)` is
+  `[[2*cos(t)], [2*sin(t)]]` (both were `0`).  When the variable does not appear in the expression the
+  chain rule still applies; `derive(h, h)` for a definition `h` is `1`, where it was refused.
+- The definite integral no longer answers across a pole or with a wrong number over a long range:
+  `integral(1/(x - 2), x, 0, 3)` and `integral(sec(x)^2, x, -pi, pi)` stay unevaluated (they were
+  `2.32985` and `2.2E30`), `integral(1/x^2, x, 1, 10000)` is `0.9999` (it was `3.49848`) and
+  `integral(cos(x), x, 0, 1000)` is `sin(1000)`.  Where the antiderivative is smooth on the interval
+  the answer is `F(b) - F(a)`, exact in exact mode (`integral(x^2, x, 0, 1)` is `1/3`); otherwise a
+  certified adaptive quadrature answers to the precision asked, or declines.  New budget:
+  `Limit.MaxQuadratureEvaluations`.
+- `solve` of a transcendental equation keeps the roots nearest 0: `solve(tan(x) = 0, x)` binds `0`, `±π`,
+  … (it bound eight roots near `-90`).  A periodic equation, or one with more roots than are listed, now
+  carries a note saying the list is partial.
+- An exact surd whose terms nearly cancel reads back right: `(10^32 + 10^16)^(1/2) - 10^16` in exact mode
+  is `0.5` (it was `0.25`).  The cause was spire's `Rational.toDouble`, which misrounds a wide rational;
+  the exact linear programming and Gröbner answers read through it too and are corrected with it.
+- `exact on` reaches every constant a computation invents: `derive(atan(x), x)` is `(1 / (1 + (x ^ 2)))`,
+  `integral(y, y)` `((y ^ 2) / 2)`, `div([[x], [y], [z]], x, y, z)` `3` and an iterated integral with a
+  variable limit exact (all were decimals).  An answer that is still a decimal under `exact on` says so
+  in a note.  A definite integral with a symbolic limit now answers `F(b) - F(a)` when the antiderivative
+  is smooth on the whole line.  New, additive: `Environment.exactMode`, `withExactMode`.
+- In exact mode a power with a long decimal exponent answers promptly: `2^(1.00001)` took 38.6 s and
+  `sum(1/k^(1.000001), k, 1, 1000)` never returned; a sum of 100 such terms now takes about a second.
+- **New: a definition with a parameter list**, `f(x) := x^3 - 2*x`, is applied by `f(2)`, `f(x + h)` or
+  `(f(b) - f(a))/(b - a)`; `g(x, y) := …` takes several.  A definition without a list is unchanged:
+  `f(2)` stays a product, with the note that says so.  `:save` writes the list.
+- `limit` answers what sampling cannot certify: a free parameter (`limit(((x + h)^2 - x^2)/h, h, 0)` is
+  `2x`), growth at infinity (`n/2^n` is `0`, `(1 + 2/x)^x` is `e^2`, `x^2 - 3x + 4` is `inf`), infinite one-sided
+  limits (`ln(t)` at `0+` is `-inf`) and the cases F_0276 had to decline (`(sin(x)/x)^(1/x^2)` at `0` is
+  `e^(-1/6)`).  A generic answer notes what it assumed: `limit(x/(x - a), x, 2)` assumes `2 - a != 0`.
+- Improper integrals answer by the limits of their antiderivative: `integral(exp(-x), x, 0, inf)` is `1`,
+  `integral(exp(-x^2), x, -inf, inf)` is `sqrt(pi)`, `integral(ln(x), x, 0, 1)` is `-1`; a divergent one
+  answers its infinity (`integral(1/x, x, 0, 1)` is `inf`, where it stayed unevaluated).
+- `integral` closes the standard forms it left unevaluated: `1/(7*x^(1/2))`, `2*x*x^(1/2)`, `1/x^(3/2)`,
+  `(x^2 - 2*x + 2)^2`, `exp(-x)*sin(x)`, `exp(x/2)*cos(2*x)`, `ln(x)/x^2`, `1/(x*ln(x)^2)`,
+  `x*(1 - x)^(1/2)`, `x^3*(1 + x^2)^(1/2)`, `1/(x^2 + 4)^(3/2)`, `1/(x^2*(9 + x^2)^(1/2))`,
+  `x^(1/2)/(x^2 + x)`, `sin(x)^5*cos(x)^8`, `x*sin(x)*cos(x)` and `cos(ln(x))`, exact in exact mode where
+  the answer is algebraic.  Only integrals that stayed unevaluated are affected.
+- A vector operator sees later bindings of its coordinates: after `H := hessian(f, x, y)`, `x := 1` and
+  `y := 1`, `H` is `[[2.0, 2.0], [2.0, 6.0]]` and `eigen(H)` answers, as `det(H)` already did (`H` kept `x`
+  and `y`).  `grad`, `curl` and `jacobian` alike; `div(grad(f, x, y), x, y)` still differentiates first.
+- **`pi` and `e` are symbols now**, and two constants are new: `eulergamma` (`γ`) and `goldenratio` (`φ`).  A
+  formula, a definition echo and `:save` write `pi` (`g := sin(pi*y/2)` echoed `sin(((3.14159 * y) / 2))`).
+  Outside exact mode every value is what it was.  In exact mode `pi/2` stays `pi/2`, `sin(pi/6)` is `1/2`,
+  `cos(pi/2)` is `0` (it was `2.0670E-43`), `tabulate(sin(k*pi), k, 1, 4)` is `[[0, 0, 0, 0]]`, `tan(pi/2)`
+  stays undefined, `goldenratio` is the exact `1/2 + √5/2`, and where no exact rule applies (`cos(pi/7)`,
+  `pi > 3`) the constant is read at the working precision as before.  LaTeX renders `\pi`.  New, additive:
+  `core._Constant`, `ConstantKind`, `foldConstants`, `evalNumeric`, `eulerGammaAt`, `Parser.namedConstant`.
+  `gamma` and `phi` stay free variable names.
+- A `sum` with a symbolic bound closes for a polynomial or geometric summand: `sum(k, k, 1, n)` is
+  `n^2/2 + n/2`, `sum(2^k, k, 0, n)` is `2^(n + 1) - 1`, and `limit(sum((k/n)^2/n, k, 1, n), n, inf)` is `1/3`
+  (all stayed as written).  Other summands, and `product`, stay unevaluated.
+- `simplify` collects like terms, applies `sin(u)^2 + cos(u)^2 = 1` and cancels a common factor:
+  `simplify cos(t)^2 + sin(t)^2` is `1.0`, `simplify det(jacobian([[r*cos(t)], [r*sin(t)]], r, t))` is `r`,
+  `simplify ((x + h)^2 - x^2)/h` has no `/h`, the spherical `div([[r], [0], [0]], r, t, p, spherical)` is `3.0`.
+  A `derive` answer gets the same: `derive(sin(x)^2 + cos(x)^2, x)` is `0.0`.  Nothing else changes form.
+- `solve` inverts `exp`, `ln`, `log` and a power of a constant base around the unknown, so a root outside the
+  numeric scan is found: `solve(exp(-t/1000) = 1/2, t)` is `693.14718` (it stayed unevaluated), and
+  `solve(exp(t) = -1, t)` has no root.  A polynomial inequality of any degree is answered by its sign chart:
+  `solve(x^2*(2*x - 9) < 0, x)` is `x < 0 or (x > 0 and x < 4.5)`, and `<=`/`>=` include the roots.
+- `solve` answers an inequality on an absolute value: `solve(abs(x - 1) < 1/20, x)` is the band
+  `0.95 < x < 1.05`, `abs(u) > c` the two tails, `abs(u) < abs(w)` by squaring; a negative bound decides it
+  outright, a bound of unknown sign stays unevaluated.
+- Fewer empty notes in exact mode: an infinite answer (`limit(x^2, x, inf)`) is no longer called "a decimal
+  approximation", and the `rationalize` offer is not made when it would only restate an unevaluated call.
+  `div([[x], [y], [z]]/r, x, y, z)` and `div(2*[[x], [y], [z]], x, y, z)` read the scaled column as a field.
+- A fractional power of a negative number is the principal complex value in every tier, as it already was
+  for evaluation: `limit(x^(1/3), x, -8)` is `1 + 1.732i` and `integral(x^(1/3), x, -8, -1)` its integral (both
+  stayed unevaluated with a note calling `-8` undefined), `limit(ln(x), x, -1)` is `i*pi`.  The note now says
+  "outside its real domain".  LaTeX keeps `x^{1/3}` unless the base cannot be negative, since `\sqrt[3]{x}`
+  reads as the real root.
+- `derive` of a root is written `(1/3)*h^(-2/3)`: an exponent free of the variable takes the power rule however
+  it is typed (`derive(h^(1/3), h)` was `h^(1/3)*(0*ln(h) + (1/3)/h)`, which read `0` at `h = 0`).
 
 ## 3.8.3 — 2026-11-01
 

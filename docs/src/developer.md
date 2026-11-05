@@ -697,13 +697,24 @@ composed with `&&`.  `nonZero` reads as *not provably zero*, so a symbolic param
 while a literal `0` is refused; the `aᵛ` numeric guard additionally requires `> 0` and `≠ 1`
 so the rule never emits a `1/0`-shaped result.
 
-### Definite integration (Simpson's rule)
+### Definite integration
 
-`_DefIntegral.eval` uses composite Simpson's rule:
-[Wikipedia — Simpson's rule](https://en.wikipedia.org/wiki/Simpson%27s_rule)
+`_DefIntegral.eval` tries, in order (F_0281):
 
-The fast path compiles the integrand to a `Double => Double` JVM closure via
-`Compile.compile` (one JVM allocation per evaluation, not one tree walk).
+1. **The fundamental theorem** — when `integrate` closes and the antiderivative `F` is
+   differentiable on the open interval (`differentiableDomainOf(F)` covers it) and continuous at
+   both ends, `F(b) − F(a)`; exact on exact input.
+2. **A domain check** — when the integrand's real domain resolves to intervals and `[a, b]` is not
+   inside one (a pole, a gap), the integral declines.
+3. **Certified adaptive Simpson** —
+   [Wikipedia — adaptive Simpson's method](https://en.wikipedia.org/wiki/Adaptive_Simpson%27s_method),
+   each panel refined until it agrees with its halves to `10⁻⁽ᵖ⁺⁵⁾` of `∫|f|` (floored at
+   `10⁻¹³`), run from two incommensurate grids (32 and 43 panels) that must agree — a local
+   estimate is blind to an oscillation every panel aliases alike — and held to
+   `Limit.MaxQuadratureEvaluations`, shared with every integral nested inside.
+
+The numeric path compiles the integrand to a `Double => Double` closure via `Compile.compile`
+where it can (a tree-evaluated sample is charged 40 evaluations).
 
 ### Limit computation (`Limit.scala`)
 
@@ -713,8 +724,10 @@ Four-tier engine, most specific first:
 2. **L'Hôpital's rule** — for 0/0 or ∞/∞ forms, differentiate numerator and denominator
    (up to 5 times).  [Wikipedia — L'Hôpital's rule](https://en.wikipedia.org/wiki/L%27H%C3%B4pital%27s_rule)
 3. **Structural rules at ±∞** — polynomial degree comparison, `exp`/`ln`/`atan` shapes.
-4. **Epsilon perturbation** — sample at `point ± ε` and `point ± 0.001ε`; agree within a
-   relative tolerance of 1e-5.  For two-sided limits both flanks must agree with each other
+4. **Epsilon perturbation** — sample at `point ± 10ε`, `point ± ε` and `point ± 0.001ε`, all three
+   agreeing within a relative tolerance of 1e-5 (three since F_0276: where every digit is lost the
+   two nearest collapse to one constant and agree).  Direct substitution, tier 1, is accepted only
+   where the samples beside the point agree with it or approach it.  For two-sided limits both flanks must agree with each other
    as well.  `ε` is capped six decades below the smallest scale written in the expression,
    and the samples at ±∞ start beyond its largest one (F_0257): where a numeric tier samples
    is a claim about the units, and a fixed `ε` steps over a feature narrower than itself.
@@ -729,7 +742,7 @@ fixed rule set.
 
 Traverses the AST once and emits a Scala closure `Double => Double`.  Returns `None` for
 any node shape it cannot compile.  Used as the O(1)-per-sample fast path inside
-Simpson's rule and `sample`.
+the definite integral's adaptive Simpson and `sample`.
 
 ### Normalization (`Normalize.scala`)
 

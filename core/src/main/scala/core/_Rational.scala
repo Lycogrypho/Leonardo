@@ -202,7 +202,9 @@ object _Rational:
    *  @return `true` when `e` or the value bound to one of its free names is exact
    */
   def containsExactIn(e: _Expression, env: Environment): Boolean =
-    containsExact(e) || e.freeVars.exists(name => env.get(name).exists(containsExact))
+    // The session's exact mode (F_0273) decides for every env-aware pass: a letters-only input has
+    // no exact value to read a tier from, and under `exact on` it must still get exact constants.
+    env.exactMode || containsExact(e) || e.freeVars.exists(name => env.get(name).exists(containsExact))
 
   /** [[literalLike]] judged by [[containsExactIn]]: an integer constant in the tier `like` has once
    *  evaluated in `env`.

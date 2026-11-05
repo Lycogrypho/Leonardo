@@ -284,13 +284,15 @@ final class _Surd private (val a: _Rational, val b: _Rational, val d: BigInt) ex
    *
    *  **Never spire's `Real.toDouble`** (F_0244): it misrounded a surd with a large radicand and a
    *  tiny coefficient, so `norm([[√2], [√2]])` read as `1.0`, and it lost relative precision on a
-   *  value small only after cancellation (`√(10⁶⁰ + 1) − 10³⁰`).  The value is read instead as a
+   *  value small only after cancellation (`√(10⁶⁰ + 1) − 10³⁰`).  **Nor spire's `Rational.toDouble`**
+   *  (F_0283): the rational reading is converted through [[spireToDouble]], since spire's own read
+   *  `0.4999999999999999875` at 128 bits as `0.25`.  The value is read instead as a
    *  rational at absolute precision `2⁻ᵇ` with `b` doubling until it carries 64 significant bits;
    *  that ends, because a surd is never zero (`√d` is irrational), and a value below the smallest
    *  subnormal stops the loop as `0.0` with its sign. */
   def toDouble: Double = _Surd.toReal(this).fold(Double.NaN) { r =>
     Iterator.iterate(128)(_ * 2).takeWhile(_ <= 4096).map(bits => (bits, r.toRational(bits)))
-      .collectFirst { case (bits, q) if q.abs * SpireRational(BigInt(2).pow(bits - 64)) >= 1 => q.toDouble }
+      .collectFirst { case (bits, q) if q.abs * SpireRational(BigInt(2).pow(bits - 64)) >= 1 => spireToDouble(q) }
       .getOrElse(if _Surd.signum(this).exists(_ < 0) then -0.0 else 0.0)   // the sign the comment promises (F_0264)
   }
 

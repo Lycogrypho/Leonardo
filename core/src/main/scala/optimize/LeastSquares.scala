@@ -231,7 +231,7 @@ private def residualSystem(r: _Expression, params: Vector[_Variable], env: Envir
       if names.nonEmpty then Left(LsqFailure.InvalidInput(s"the residual has free names that are not parameters: ${names.toList.sorted.mkString(", ")}"))
       else
         val (m, n) = (cells.size, params.size)
-        gridCells(_Jacobian(_Matrix(m, 1, cells), fresh).eval(env).toExpression, m, n) match
+        _Jacobian(_Matrix(m, 1, cells), fresh).unevaluated(env).flatMap(gridCells(_, m, n)) match
           case None => Left(LsqFailure.NotEvaluable)
           case Some(jac) =>
             Right(Residual(m, n, evaluator(cells, fresh, env), evaluator(jac, fresh, env),
@@ -245,7 +245,7 @@ private def curveSystem(model: _Expression, t: _Variable, tdata: Vector[Double],
   val renamed = substitute(model, all.map(_.variable).zip(fresh).toMap)
   val names   = unbound(Vector(renamed), fresh, env)
   if names.nonEmpty then Left(LsqFailure.InvalidInput(s"the model has free names that are neither t nor a parameter: ${names.toList.sorted.mkString(", ")}"))
-  else gridCells(_Jacobian(_Matrix(1, 1, Vector(renamed)), fresh.tail).eval(env).toExpression, 1, params.size) match
+  else _Jacobian(_Matrix(1, 1, Vector(renamed)), fresh.tail).unevaluated(env).flatMap(gridCells(_, 1, params.size)) match
     case None => Left(LsqFailure.NotEvaluable)
     case Some(grad) =>
       val (m, n) = (tdata.size, params.size)

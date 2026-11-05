@@ -245,9 +245,13 @@ class ReplSessionTest extends AnyFlatSpec:
   {
     val s = session
     s.execute("h := x + y")
-    val out = s.execute("derive(h, h)")
+    s.execute("g := x*y")
+    // g does not mention h, so only the chain rule could answer, and h has two free variables.
+    val out = s.execute("derive(g, h)")
     assert(out.contains("cannot derive with respect to 'h'"))
     assert(out.contains("(x, y)"))
+    // h itself mentions h: differentiated first (F_0280), dh/dh is 1. It was refused until then.
+    assert(s.execute("derive(h, h)") == "1.0")
   }
 
   "call syntax on a defined name" should "fail with a hint about the bare name" in
@@ -453,16 +457,18 @@ class ReplSessionTest extends AnyFlatSpec:
   {
     val s = session
     s.execute("f := pi * x")
-    // `3.14159` is what `toString` produced and is exactly what must not appear.
-    assert(s.script.contains("3.141592653589793"),
-           s"expected pi at full precision in the script, got:\n${s.script}")
+    // `3.14159` is what `toString` produced and is exactly what must not appear.  Since F_0289
+    // the constant is a symbol and is written by name, which loses nothing at all.
+    assert(s.script.contains("pi * x") && !s.script.contains("3.14159"),
+           s"expected pi by name in the script, got:\n${s.script}")
   }
 
   "a definition carrying a long exact rational" should "keep its exactness, not become a decimal" in
   {
     val original = session
     original.execute("exact on")
-    original.execute("f := pi * x")
+    // A long exact rational (F_0289: `pi` is a symbol now, so it no longer serves as one).
+    original.execute("f := 31415926535897932/10000000000000001 * x")
     // `_Rational.toString` falls back to a decimal past MaxDisplayDigits, which is the worse
     // half of F_0046: the definition lost exactness, not merely digits.
     assert(original.script.contains("/"),
@@ -890,8 +896,9 @@ class ReplSessionTest extends AnyFlatSpec:
   {
     val s = session
     s.execute("exact on")
-    // Exact, but a 30-digit-over-30-digit fraction tells the reader nothing.
-    assert(s.execute("pi") == "3.14159")
+    // Exact, but a 30-digit-over-30-digit fraction tells the reader nothing.  `exp(1)`, not `pi`,
+    // which is a symbol since F_0289.
+    assert(s.execute("exp(1)") == "2.71828")
   }
 
   it should "accept a working precision and keep it separate from display precision" in
@@ -936,7 +943,7 @@ class ReplSessionTest extends AnyFlatSpec:
     val s = session
     assert(s.execute(s"exact precision ${Session.MaxWorkingPrecision}") == s"exact precision = ${Session.MaxWorkingPrecision}")
     s.execute("exact on")
-    assert(s.execute("pi") == "3.14159")
+    assert(s.execute("exp(1)") == "2.71828")
   }
 
   it should "bound a working precision arriving from a script, which is how a link carries one" in
@@ -960,8 +967,8 @@ class ReplSessionTest extends AnyFlatSpec:
   {
     val s = session
     s.execute("exact on")
-    s.execute("p := pi")
-    assert(s.execute("p") == "3.14159", "displays readably")
+    s.execute("p := exp(1)")
+    assert(s.execute("p") == "2.71828", "displays readably")
     val saved = s.script
     assert(saved.linesIterator.exists(l => l.startsWith("p := ") && l.contains("/")),
            s"the saved script must carry the exact fraction:\n$saved")

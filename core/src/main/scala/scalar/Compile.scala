@@ -154,6 +154,7 @@ private inline def ternary(a: _Expression, b: _Expression, c: _Expression,
 /** The compilation table: `leaves` says how each variable is read, `env` supplies the rest. */
 private def kernel(e: _Expression, leaves: Map[String, Kernel], env: Environment): Option[Kernel] = e match
   case _Number(d)    => Some(ConstK(d))
+  case c: _Constant  => Some(ConstK(c.kind.value))   // F_0289: a closure is a Double reading
   case _: _Complex   => None    // a complex value has no Double closure
   case _Variable(n)  => leaves.get(n).orElse(env.get(n).collect { case _Number(d) => ConstK(d) })
   case Sum(a, b)     => arith(a, b, leaves, env)(_ + _)

@@ -38,6 +38,42 @@ import logic.{And, Or}
  */
 private[equation] def solveInequality(c: _Comparison, v: _Variable,
                                       env: Environment): Option[_Expression] =
+  absTier(c, v, env).orElse(polynomialOrRational(c, v, env))
+
+/** An absolute value of the unknown against a bound (F_0290): `abs(u) < c` is `-c < u < c`,
+ *  `abs(u) > c` is `u < -c or u > c`, `abs(u) < abs(w)` is `u^2 < w^2`; the parts are solved through the
+ *  `and`/`or` path.  `c`'s sign must be decided (`scalar.sign`), or the tier declines: below zero
+ *  `abs(u) < c` holds nowhere and `abs(u) > c` everywhere. */
+private def absTier(c: _Comparison, v: _Variable, env: Environment): Option[_Expression] =
+  val minusOne = _Rational.literalLike(-1, c)
+  def neg(x: _Expression): _Expression = Product(minusOne, x)
+  def solved(e: _Expression): Option[_Expression] = _Solve(e, v).eval(env).toExpression match
+    case _: _Solve => None
+    case other     => Some(other)
+  val shape: Option[(Abs, _Expression, CompareOp)] = (c.lhs, c.rhs) match
+    case (a: Abs, b) => Some((a, b, c.op))
+    case (b, a: Abs) => Some((a, b, flip(c.op)))
+    case _           => None
+  shape.flatMap { (absSide, bound, op) => bound match
+    case Abs(w) =>
+      solved(_Comparison(Power(absSide.e, _Rational.literalLike(2, c)), op, Power(w, _Rational.literalLike(2, c))))
+    case b if !dependsOn(b, v) =>
+      val u = absSide.e
+      sign(b, env).flatMap { s =>
+        op match
+          case CompareOp.Lt => if s <= 0 then Some(_Bool(false)) else solved(And(_Comparison(u, CompareOp.Gt, neg(b)), _Comparison(u, CompareOp.Lt, b)))
+          case CompareOp.Le => if s < 0 then Some(_Bool(false))
+                               else if s == 0 then solved(_Equation(u, b))
+                               else solved(And(_Comparison(u, CompareOp.Ge, neg(b)), _Comparison(u, CompareOp.Le, b)))
+          case CompareOp.Gt => if s < 0 then Some(_Bool(true)) else solved(Or(_Comparison(u, CompareOp.Lt, neg(b)), _Comparison(u, CompareOp.Gt, b)))
+          case CompareOp.Ge => if s <= 0 then Some(_Bool(true)) else solved(Or(_Comparison(u, CompareOp.Le, neg(b)), _Comparison(u, CompareOp.Ge, b)))
+          case CompareOp.Ne => None
+      }
+    case _ => None
+  }
+
+/** The polynomial and rational tiers. */
+private def polynomialOrRational(c: _Comparison, v: _Variable, env: Environment): Option[_Expression] =
   // The -1 must join the comparison's own tier, or an exactly-stated inequality is demoted
   // through float contagion before the solver runs (the numeric-tier rule).
   val minusOne   = _Rational.literalLike(-1, c)
@@ -57,7 +93,54 @@ private def polynomialTier(cs: Vector[_Expression], op: CompareOp,
     case 1 => constantTier(cs(0), op, env)
     case 2 => linearTier(cs(0), cs(1), op, v, env)
     case 3 => quadraticTier(cs(0), cs(1), cs(2), op, v, env)
-    case _ => None
+    case _ => higherDegreeTier(cs, op, v, env)
+
+/** A polynomial of degree three or more with numeric coefficients, by its sign chart (F_0295):
+ *  `x^2*(2x - 9) < 0` is `x < 0 or 0 < x < 9/2`.  The distinct real roots come from each
+ *  square-free factor separately (the 2.5 rule: a repeated root is scattered by the iteration).
+ *  **A polynomial has no poles**, so a non-strict relation is answered too: its set is the
+ *  satisfied open intervals with every root added, read as runs (an isolated root is `v = r`). */
+private def higherDegreeTier(cs: Vector[_Expression], op: CompareOp,
+                             v: _Variable, env: Environment): Option[_Expression] =
+  for
+    coeffs <- sequence(cs.toList.map(foldReal(_, env))).map(_.toVector)
+    if degreeOf(coeffs) >= 3
+    zeros   = squareFreeFactors(coeffs).flatMap((part, _) =>
+                rootsAtScale(part).fold(Vector.empty[Double])(_.collect { case _Number(d) if !d.isNaN => d }))
+                .sorted.distinct
+    one     = Vector(1.0)
+    result <-
+      if zeros.isEmpty then
+        Some(_Bool(holdsAt(coeffs, one, 0.0, op)))
+      else if op == CompareOp.Le || op == CompareOp.Ge then Some(closedRuns(coeffs, zeros, op, v))
+      else signChart(coeffs, one, zeros, Vector.empty, op, v)
+  yield result
+
+/** The set where a polynomial `<=`/`>=` 0 holds: the line ordered as `I0, r1, I1, ..., rm, Im`, every
+ *  root `rj` in it, each open interval in it when the strict relation holds there; each maximal run
+ *  rendered as one relation. */
+private def closedRuns(coeffs: Vector[Double], zeros: Vector[Double], op: CompareOp, v: _Variable): _Expression =
+  val strict  = if op == CompareOp.Le then CompareOp.Lt else CompareOp.Gt
+  val samples = sampleBetween(zeros)
+  // elements: interval i is (2i), root j (1-based) is (2j - 1)
+  val in = Vector.tabulate(2 * zeros.size + 1)(k => k % 2 == 1 || holdsAt(coeffs, Vector(1.0), samples(k / 2), strict))
+  val runs = in.indices.foldLeft(List.empty[(Int, Int)]) { (acc, k) =>
+    if !in(k) then acc
+    else acc match
+      case (s, e) :: rest if e == k - 1 => (s, k) :: rest
+      case _                            => (k, k) :: acc
+  }.reverse
+  def lower(s: Int): Option[_Expression] = Option.when(s != 0)(_Comparison(v, CompareOp.Ge, _Number(zeros((s - 1) / 2))))
+  def upper(e: Int): Option[_Expression] = Option.when(e != in.size - 1)(_Comparison(v, CompareOp.Le, _Number(zeros((e - 1) / 2))))
+  val pieces = runs.map { (s, e) =>
+    if s == e && s % 2 == 1 then _Equation(v, _Number(zeros((s - 1) / 2)))
+    else (lower(s), upper(e)) match
+      case (Some(l), Some(u)) => And(l, u)
+      case (Some(l), None)    => l
+      case (None, Some(u))    => u
+      case (None, None)       => _Bool(true)
+  }
+  pieces.reduceLeftOption[_Expression](Or(_, _)).getOrElse(_Bool(false))
 
 /** `v` does not occur, so the relation is a constant truth: `2 < 3` is `true`. */
 private def constantTier(c0: _Expression, op: CompareOp, env: Environment): Option[_Expression] =

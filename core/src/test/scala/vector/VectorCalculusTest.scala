@@ -30,10 +30,12 @@ class VectorCalculusTest extends AnyFlatSpec:
   /** Evaluates and returns the resulting expression (matrix results stay `Left`). */
   private def evaluated(src: String): _Expression = parse(src).eval(env).toExpression
 
-  /** Every cell of an evaluated matrix result, at the given point. */
+  /** Every cell of an evaluated matrix result, at the given point.  Since F_0285 the operator
+   *  folds a bound coordinate itself, so the result is a dense matrix where every cell reduces. */
   private def cellsAt(src: String, at: (String, Double)*): Vector[Double] =
     val en = new Environment(variables = at.map((n, d) => n -> _Number(d)).toMap)
     parse(src).eval(en).toExpression match
+      case m: _MatrixValue => m.toVector
       case m: _Matrix =>
         m.elems.map(_.eval(en) match
           case Right(_Number(d)) => d

@@ -50,7 +50,7 @@ d.eval(env)
 |--------|------------|
 | **Parsing** | Recursive descent; implicit multiplication, multi-character names, right-associative `^` |
 | **Algebra** | `+` `-` `*` `/` `^`; `sin cos tan asin acos atan exp log`; `pi` `e` `i` |
-| **Calculus** | Symbolic differentiation, indefinite integration (rule table), definite integration (Simpson's rule) |
+| **Calculus** | Symbolic differentiation, indefinite integration (rule table), definite integration (antiderivative or certified adaptive quadrature) |
 | **Simplification** | Single-pass structural reduction; fixpoint `simplifyFully` |
 | **Matrices** | Symbolic `_Matrix` + dense `_MatrixValue`; arithmetic, `det`, `inv`, the decompositions (`lu`, `qr`, `eig`, `jordan`, `chol`, `svd`), block matrices, `norm`, `dot`, `cross`, `trace`, `rank`, `pinv` |
 | **Equations** | `_Equation` relation; `solve` (linear exact, quadratic, numeric bisection, inequalities, matrix unknowns); `solveSystem`, with more equations than unknowns solved when consistent |

@@ -69,6 +69,27 @@ refuses no longer echo alike; the definition itself stays late-bound.  In exact 
 assigned with no name in its formula, such as `A := [[1, 2], [3, 4]]`, echoes the matrix rather
 than the formula.
 
+### Applying a definition: `f(t) := …`
+
+A definition written with a **parameter list** can be applied to an argument, the way calculus
+writes `f(a)` and `f(x + h)`:
+
+```scala mdoc
+s.execute("p(t) := t^3 - 2*t")
+s.execute("p(2)")
+s.execute("(p(2.5) - p(2))/0.5")
+```
+
+The argument replaces the parameter and nothing else: a binding of the same name elsewhere in the
+session does not leak in, and with several parameters, `q(u, v) := u - v`, `q(v, u)` swaps them.  Bare
+`p` still means the body, so `derive(p, t)` is the ordinary derivative, and with several parameters
+the **partial** one, the others held; `derive(p(t^2), t)` applies first, so the chain rule comes for
+free.  A definition without a parameter list keeps `f(2)` a product, with the note that says so.
+
+A body is applied when the definition is made: `r(t) := p(t) + 1` takes `p`'s body as it is then,
+so redefining `p` later does not change `r` — unlike a definition without parameters, which is
+late-bound.
+
 ### Freezing a result: `consolidate`
 
 `name := consolidate(expr)` is the opposite of a late-bound definition: the expression is
@@ -93,9 +114,9 @@ folded in.
 
 ### Differentiating with respect to a definition
 
-A derivative with respect to a *defined* name applies the chain rule over the definition's
-single free variable, `dg/df = (dg/dt) / (df/dt)`; a definition with several free variables is
-refused with a message:
+A derivative with respect to a *defined* name is taken **before** the name is substituted,
+whenever the name appears in the expression: `u` is treated as a coordinate of its own, and its
+formula goes in afterwards.
 
 ```scala mdoc
 c.execute("u := t^2")
@@ -103,9 +124,20 @@ c.execute("w := u^3")
 c.execute("derive(w, u)")
 ```
 
-The answer is written in the free variable `t`: `3(t²)² · 2t / 2t`, which is `3u²`.
-`simplify` does not cancel the common factor `2t`, so the quotient stays as the chain rule
-builds it.
+The answer is `3u²`, written in `t` once `u` is substituted.  Differentiating after the
+substitution would have taken the derivative of `t⁶` in a variable it no longer holds.
+
+When the name does **not** appear — the expression is written in `t` alone — the chain rule
+applies over the definition's single free variable, `dg/du = (dg/dt) / (du/dt)`; a definition with
+several free variables is refused with a message:
+
+```scala mdoc
+c.execute("v := t^6")
+c.execute("derive(v, u)")
+```
+
+That is `6t⁵ / 2t`, which is `3t⁴`, the same `3u²`; `simplify` does not cancel the common factor
+`2t`, so the quotient stays as the chain rule builds it.
 
 ## Equations
 
@@ -258,6 +290,13 @@ roots stay exact surds (`√13`, typed back with `√`).
 Mixing an exact value with an inexact one gives an inexact result.  That is deliberate:
 absorbing the `Double` would be lossless, but it would dress representation error up as an
 exact answer.
+
+**The mode reaches every constant a computation invents**, not only the numbers you type:
+`derive(atan(x), x)` is `(1 / (1 + (x ^ 2)))` and `div([[x], [y], [z]], x, y, z)` is `3`, although
+nothing in them was exact to begin with.  **An answer that is still a decimal says so** — a path
+with no exact method (`pade`, `eig`, a numeric limit or ODE) carries the note *a decimal
+approximation — no exact method answers this here*, so `exact on` never answers in decimals
+silently.
 
 **The way back is `rationalize(x[, digits])`**, and only when you ask for it: every decimal of
 `x` becomes the nearest fraction good for `digits` digits.  Left out, `digits` is the fewest
@@ -602,6 +641,7 @@ Use `help <command>` for any REPL keyword, or bare `help` for the full listing.
 |-------|---------|
 | `x := 3` | Bind value |
 | `f := sin(x)` | Define function |
+| `f(t) := t^2` then `f(3)` | Define a function with a parameter list; `f(e)` applies it |
 | `h := lhs = rhs` | Bind equation |
 | `g := consolidate(expr)` | Freeze the current value/simplified form (not late-bound) |
 | `L, U, P := lu(A)` | Tuple binding from a 1×n decomposition result |

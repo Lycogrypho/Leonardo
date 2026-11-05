@@ -273,14 +273,29 @@ class ParserTest extends AnyFlatSpec:
 
   // --- built-in constants (item 8) ---
 
-  "pi" should "parse as _Number(math.Pi)" in
+  // F_0289: the constants are symbols, evaluating to their Double outside exact mode.
+  "pi" should "parse as the symbolic constant and evaluate to math.Pi" in
   {
-    assert(parse("pi") == _Number(math.Pi))
+    assert(parse("pi") == _Constant(ConstantKind.Pi))
+    assert(parse("pi").eval(new Environment()) == Right(_Number(math.Pi)))
   }
 
-  "e" should "parse as _Number(math.E)" in
+  "e" should "parse as the symbolic constant and evaluate to math.E" in
   {
-    assert(parse("e") == _Number(math.E))
+    assert(parse("e") == _Constant(ConstantKind.E))
+    assert(parse("e").eval(new Environment()) == Right(_Number(math.E)))
+  }
+
+  "the new constants and the glyphs" should "parse as the symbolic constants (F_0289)" in
+  {
+    assert(parse("eulergamma") == _Constant(ConstantKind.EulerGamma))
+    assert(parse("goldenratio") == _Constant(ConstantKind.GoldenRatio))
+    assert(parse("π") == _Constant(ConstantKind.Pi))
+    assert(parse("γ") == _Constant(ConstantKind.EulerGamma))
+    assert(parse("φ") == _Constant(ConstantKind.GoldenRatio))
+    assert(parse("2π") == Product(_Number(2), _Constant(ConstantKind.Pi)))
+    assert(parse("gamma") == _Variable("gamma"))
+    assert(parse("phi") == _Variable("phi"))
   }
 
   "sin(pi)" should "evaluate to zero" in
@@ -291,7 +306,7 @@ class ParserTest extends AnyFlatSpec:
 
   "pi * 2" should "parse as Product of pi-constant and 2" in
   {
-    assert(parse("pi * 2") == Product(_Number(math.Pi), _Number(2)))
+    assert(parse("pi * 2") == Product(_Constant(ConstantKind.Pi), _Number(2)))
   }
 
   "exp(1)" should "still parse as Exp (not e followed by xp(1))" in
@@ -309,9 +324,9 @@ class ParserTest extends AnyFlatSpec:
     assert(parse("euler") == _Variable("euler"))
   }
 
-  "e^2" should "parse as Power(_Number(math.E), _Number(2))" in
+  "e^2" should "parse as Power(e, _Number(2))" in
   {
-    assert(parse("e^2") == Power(_Number(math.E), _Number(2)))
+    assert(parse("e^2") == Power(_Constant(ConstantKind.E), _Number(2)))
   }
 
   // --- tan as alias for tg (item 9) ---

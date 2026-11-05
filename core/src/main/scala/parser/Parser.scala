@@ -185,6 +185,10 @@ object Parser extends JavaTokenParsers:
                                                          // would otherwise swallow them as
                                                          // a further coordinate
     "pi", "e", "i", "inf", "true", "false", "unknown",   // constants (inf = +inf; true/false/unknown = truth values)
+    "eulergamma", "goldenratio",                          // F_0289: spelled out, since gamma and phi
+                                                         // are free variable names (phi the
+                                                         // spherical coordinate); the glyphs γ, φ
+                                                         // need no entry, the variable regex being ASCII
     "simplify", "expand", "eval", "env", "vars", "precision",
     "unset", "samples", "colors", "pretty", "latex", "names", "exact", "truth3", "logic", "help", "quit", "exit", // REPL commands
     // `consolidate` is a REPL word like the rest of this line -- recognised by Session's
@@ -1171,7 +1175,20 @@ object Parser extends JavaTokenParsers:
     }
 
   /** A bare value: number, constant, or variable. */
-  lazy val value:    Parser[_Expression] = basedLiteral | number | constant | variable
+  lazy val value:    Parser[_Expression] = basedLiteral | number | namedConstant | constant | variable
+
+  /** The named constants as symbols (F_0289): `pi`, `e`, `eulergamma`, `goldenratio` and the glyphs
+   *  `π`, `γ`, `φ`, each a [[core._Constant]].  Tried before [[constant]], whose `pi` and `e` arms
+   *  are therefore no longer reached; it keeps them, and its `_Value` type, because it is a public
+   *  member of a published module.  In exact mode the node is marked exact, so it stays symbolic
+   *  even under an environment that does not say exact mode — a library caller's exact parse.
+   */
+  lazy val namedConstant: Parser[_Expression] =
+    """(eulergamma|goldenratio|pi|e)(?![a-zA-Z0-9_])""".r ^^ namedNode |
+    """[πγφ]""".r                                         ^^ namedNode
+
+  private def namedNode(word: String): _Expression =
+    _Constant.named(word).fold[_Expression](_Variable(word))(k => _Constant(k, exactPrecision.get().isDefined))
 
   /** A based integer literal: `0b1011`, `0o17`, `0xff`, and `0t1T0` for balanced ternary.
    *

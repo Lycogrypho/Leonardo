@@ -75,3 +75,33 @@ class ExactEqualityTest extends AnyFlatSpec:
     assert(!check("1/2", "2/4"))
     assert(!check("1/3", "0.33333"))
   }
+
+  // F_0279 (LT L_0066): the hyperbolic and reciprocal functions had no exact kernel, so in exact mode
+  // they were read at 15 digits beside a 30-digit cos, ln or exp, and the 30-digit comparison told
+  // two equal values apart.
+  "an identity through sec, cosh or acosh" should "hold in exact mode (F_0279)" in {
+    val atOne = env.withBinding("x", _Rational(1))
+    assert(truth("sec(x)^2 == 1/cos(x)^2", atOne))
+    assert(truth("derive(tan(x), x) == sec(x)^2", atOne))
+    assert(truth("acosh(2) == ln(2 + 3^(1/2))"))
+    assert(truth("cosh(1) == (exp(1) + exp(-1))/2"))
+    assert(truth("tanh(1/3) == sinh(1/3)/cosh(1/3)"))
+    assert(truth("csc(2) == 1/sin(2)"))
+    assert(truth("cot(2) == cos(2)/sin(2)"))
+    assert(truth("asinh(1/2) == ln(1/2 + (5/4)^(1/2))"))
+    assert(truth("atanh(1/2) == ln(3)/2"))
+    assert(truth("sech(1) == 1/cosh(1)"))
+    assert(truth("csch(1) == 1/sinh(1)"))
+    assert(truth("coth(1) == cosh(1)/sinh(1)"))
+    // ... and a value that differs in the 20th digit still differs.
+    assert(!truth("cosh(1) == cosh(1) + 10^(-20)"))
+  }
+
+  it should "keep the exact zeros and refuse the poles" in {
+    for s <- Seq("sinh(0)", "tanh(0)", "asinh(0)", "atanh(0)", "acosh(1)") do
+      eval(s) match
+        case Right(r: _Rational) => assert(r.isZero, s"$s = $r")
+        case other               => fail(s"$s: $other")
+    for s <- Seq("csch(0)", "coth(0)", "csc(0)", "cot(0)", "atanh(1)", "acosh(1/2)") do
+      assert(eval(s).isLeft, s)
+  }

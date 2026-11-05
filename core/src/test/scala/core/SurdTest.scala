@@ -145,6 +145,22 @@ class SurdTest extends AnyFlatSpec:
     assert(math.abs(asDouble(s) - want) <= 1e-12 * want, s"${asDouble(s)} vs $want")
   }
 
+  // F_0283 (LT L_0073): a surd whose terms cancel read back wrong: √(10³² + 10¹⁶) − 10¹⁶ is
+  // 0.5 − 1/(8·10¹⁶) + … and its toDouble was 0.25.
+  "a surd whose terms cancel" should "read back to its true value (F_0283)" in {
+    for k <- 14 to 18 do
+      val ten = BigInt(10).pow(k)
+      val v   = get(_Surd.of(_Rational(-ten), _Rational(1), ten * ten + ten))
+      val truth = 0.5 - 1.0 / (8 * math.pow(10, k))
+      v match
+        case s: _Surd => assert(math.abs(s.toDouble - truth) <= 1e-15, s"k = $k: ${s.toDouble}")
+        case other    => fail(s"not a surd: $other")
+      // The exact reading at 40 digits: (0.5 - v)·8·10ᵏ is 1 - 1/(2·10ᵏ) + …, so within 10⁻¹⁰ of 1.
+      val q = get(_Surd.exactOf(v, 40))
+      val scaled = _Rational(1).divide(_Rational(2)).map(h => h.subtract(q).multiply(_Rational(8 * ten)))
+      assert(math.abs(get(scaled).toDouble - 1.0) <= 1e-10, s"k = $k: ${get(scaled).toDouble}")
+  }
+
 
 /** `10^k` as a spire rational, for the agreement bound. */
 private object SpireRationalHelper:

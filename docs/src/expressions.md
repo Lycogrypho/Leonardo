@@ -40,6 +40,13 @@ def eval(env: Environment): Either[_Expression, _Value]
 undefined at the point — `1/0` and `ln(0)` stay symbolic rather than throwing or producing
 an infinity.
 
+**A fractional power of a negative number is the principal complex value**: `(-8)^(1/3)` is
+`1 + 1.732i`, `e^(ln(-8)/3)`, not the real cube root `-2`, and an odd denominator makes no
+exception.  Every tier follows it — evaluation, series, `limit` and the definite integral — while
+`domain` reports where the value is *real* (`x >= 0` for `x^(1/3)`).  The real cube root of a
+negative `x` is written `-(-x)^(1/3)`.  For the same reason a LaTeX rendering keeps `x^{1/3}`
+unless the base cannot be negative, since `\sqrt[3]{x}` reads as the real root.
+
 ```scala mdoc:silent
 val x = _Variable("x")
 val y = _Variable("y")

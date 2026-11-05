@@ -37,9 +37,11 @@ class CurvilinearTest extends AnyFlatSpec:
       case Right(_Number(d)) => d
       case other             => fail(s"'$src' did not fold to a number: $other")
 
+  /** Since F_0285 the operator folds the bound coordinates itself: a dense matrix comes back. */
   private def cellsAt(src: String, at: Seq[(String, Double)] = point): Vector[Double] =
     val en = envAt(at)
     parse(src).eval(en).toExpression match
+      case m: _MatrixValue => m.toVector
       case m: _Matrix =>
         m.elems.map(_.eval(en) match
           case Right(_Number(d)) => d

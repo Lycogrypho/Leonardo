@@ -37,7 +37,9 @@ def evalLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir, e
   // quotient L'Hôpital's rule differentiated, the point read as a `Double` — which the echo showed
   // and `_Limit.eval` then evaluated again as a new limit.
   limitTiers(e, v, point, dir, env) match
-    case _: _Limit => _Limit(e, v, point, dir)
+    // F_0286: the limit algebra answers what every sampling tier declined — a free parameter, growth
+    // at infinity, an infinite one-sided limit.  Consulted last, so no earlier answer changes.
+    case _: _Limit => limitAlgebra(e, v, point, dir, env).fold(_Limit(e, v, point, dir))(_._1)
     case answer    => answer
 
 /** The tiers behind [[evalLimit]], which normalises a decline to the call as written. */
@@ -48,10 +50,10 @@ private def limitTiers(e: _Expression, v: _Variable, point: _Expression, dir: Li
     // A surd point too (F_0263): `limit(x^2, x, 2^(1/2))` answered `2.0`.
     case Right(r @ _Number(d)) if _Surd.isExact(r) =>
       exactLimit(e, v, r, env, env.limits.count(Limit.MaxHopitalSteps))
-        .getOrElse(limitFinite(e, v, d, dir, env, env.limits.count(Limit.MaxHopitalSteps)))
+        .getOrElse(orComplex(limitFinite(e, v, d, dir, env, env.limits.count(Limit.MaxHopitalSteps)), e, v, d, dir, env))
     case Right(_Number(p)) =>
       if p.isInfinite then limitInfinity(e, v, p, env)
-      else limitFinite(e, v, p, dir, env, env.limits.count(Limit.MaxHopitalSteps))
+      else orComplex(limitFinite(e, v, p, dir, env, env.limits.count(Limit.MaxHopitalSteps)), e, v, p, dir, env)
     case _ => _Limit(e, v, point, dir)   // symbolic point — stay symbolic
 
 /** The limit at an exact point, exactly, or `None` to leave it to the `Double` tiers (F_0210):
@@ -73,6 +75,35 @@ private def exactLimit(e: _Expression, v: _Variable, p: _Value, env: Environment
       case Ratio(num, den) if stepsLeft > 0 && zero(at(num)) && zero(at(den)) =>
         exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, env, stepsLeft - 1)
       case _ => None
+
+/** The principal complex value at `p` when the real tiers declined (F_0297, the owner's decision):
+ *  `x^(1/3)` at `-8` is `1 + 1.732i`, the value `Power` computes there, and is the limit when the samples
+ *  beside `p` approach it as [[continuousAt]] asks of a real value.  Only a genuinely complex value: a
+ *  real one the real tiers declined stays declined. */
+private def orComplex(real: _Expression, e: _Expression, v: _Variable, p: Double, dir: LimitDir,
+                      env: Environment): _Expression = real match
+  case declined: _Limit =>
+    def at(x: Double): Option[(Double, Double)] =
+      e.eval(env.withBinding(v.variable, _Number(x))) match
+        case Right(c: _Complex) => _Complex.parts(c).filter((a, b) => a.isFinite && b.isFinite)
+        case Right(_Number(d)) if d.isFinite => Some((d, 0.0))
+        case _ => None
+    def dist(a: (Double, Double), b: (Double, Double)): Double = math.hypot(a._1 - b._1, a._2 - b._2)
+    e.eval(env.withBinding(v.variable, _Number(p))) match
+      case Right(c: _Complex) if !jumpsAt(e, v, p, env) =>
+        _Complex.parts(c).filter((a, b) => a.isFinite && b.isFinite).filter { fp =>
+          val eps = math.max(1e-8, math.abs(p) * 1e-6)
+          def side(s: Double): Boolean = (at(p + s * eps), at(p + s * eps * 1e-3)) match
+            case (Some(y1), Some(y2)) =>
+              dist(y2, fp) <= 1e-9 * math.hypot(fp._1, fp._2) || dist(y2, fp) <= 0.5 * dist(y1, fp)
+            case _ => false
+          dir match
+            case LimitDir.FromRight => side(1.0)
+            case LimitDir.FromLeft  => side(-1.0)
+            case LimitDir.Both      => side(1.0) && side(-1.0)
+        }.fold[_Expression](declined)(_ => c)
+      case _ => declined
+  case answer => answer
 
 /** Evaluates `e` with `v` bound to `p`; returns `Some(d)` iff the result is a concrete `_Number`. */
 private def numericAt(e: _Expression, v: _Variable, p: Double, env: Environment): Option[Double] =
