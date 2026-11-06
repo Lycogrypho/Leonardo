@@ -119,6 +119,46 @@ def rlsUpdate(theta: _Expression, p: _Expression, phi: _Expression, y: _Expressi
     result       <- inTier(n, m, th ++ pv ++ fv ++ yv :+ lam, env)
   yield result
 
+/** Why the numeric [[rlsUpdate]] declined (F_0308, APAC L_0010). */
+enum RlsFailure:
+  /** The forgetting factor is not in `(0, 1]`. */
+  case LambdaOutOfRange(lambda: Double)
+  /** The operands' shapes do not agree; `detail` says how. */
+  case ShapeMismatch(detail: String)
+  /** An operand or the result holds a non-finite number. */
+  case NotFinite
+  /** `λ + φᵀPφ` is not positive, so `P` is no covariance. */
+  case NonPositiveDenominator(value: Double)
+
+/** One recursive-least-squares update over numbers (F_0308, APAC L_0010): the dense counterpart of the
+ *  expression form, for a controller updating each cycle, with the reason a decline carries.  It runs
+ *  the same `Double` step the expression form runs on dense operands, so the two agree bit for bit.
+ *
+ *  @param theta  the estimate, `n×m`
+ *  @param p      the covariance, `n×n`
+ *  @param phi    the regressor, `n×1`
+ *  @param y      the observation, `m×1`
+ *  @param lambda the forgetting factor, in `(0, 1]`
+ *  @return `(theta', P')`, or why not
+ */
+def rlsUpdate(theta: _MatrixValue, p: _MatrixValue, phi: _MatrixValue, y: _MatrixValue,
+              lambda: Double): Either[RlsFailure, (_MatrixValue, _MatrixValue)] =
+  import RlsFailure.*
+  val (n, m) = (theta.rows, theta.cols)
+  def rows(a: _MatrixValue) = Vector.tabulate(a.rows)(i => Vector.tabulate(a.cols)(a(i, _)))
+  if !(lambda > 0 && lambda <= 1) then Left(LambdaOutOfRange(lambda))
+  else if p.rows != n || p.cols != n then Left(ShapeMismatch(s"P must be ${n}x$n, not ${p.rows}x${p.cols}"))
+  else if phi.rows != n || phi.cols != 1 then Left(ShapeMismatch(s"phi must be ${n}x1, not ${phi.rows}x${phi.cols}"))
+  else if y.rows != m || y.cols != 1 then Left(ShapeMismatch(s"y must be ${m}x1, not ${y.rows}x${y.cols}"))
+  else if !(theta.isFinite && p.isFinite && phi.isFinite && y.isFinite) then Left(NotFinite)
+  else
+    val f = phi.toVector
+    val d = lambda + (0 until n).map(i => f(i) * (0 until n).map(j => p(i, j) * f(j)).sum).sum
+    rlsStep(DoubleField, rows(theta), rows(p), f, y.toVector, lambda) match
+      case None => Left(NonPositiveDenominator(d))
+      case Some((t1, p1)) if !(t1.flatten ++ p1.flatten).forall(_.isFinite) => Left(NotFinite)
+      case Some((t1, p1)) => Right((_MatrixValue(n, m, t1.flatten.toArray), _MatrixValue(n, n, p1.flatten.toArray)))
+
 /** Runs the update in the rational field when every value is exact, in `Double` otherwise.
  *  `values` is theta, P, phi, y (row-major) and λ, in that order. */
 private def inTier(n: Int, m: Int, values: Vector[_Value], env: Environment): Option[(_Expression, _Expression)] =

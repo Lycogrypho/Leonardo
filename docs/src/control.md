@@ -255,6 +255,15 @@ pieces of an MPC step as Scala functions (no prompt form):
   `steadyStateTarget` the `(x_s, u_s)` that brings the outputs to the setpoint given the disturbance
   estimate, or the closest reachable one under input bounds. Together they remove the steady-state
   offset a mismatched model leaves.
+- `mpcQp` also takes an `MpcWeights` record: a weight per step or one for all, a **terminal cost** on
+  `x(k+Np)` (its prediction from `mpcTerminalPrediction`) and, in the absolute form, an **input target**
+  `u_s`. Without `u_s` the absolute form's `R` pulls every input towards zero, so a plant that needs a
+  non-zero steady input is tracked with an offset. The stage cost already counts `y(k+Np)`, so the
+  terminal weight that turns an unconstrained MPC into the LQR law is `P − CᵀQC`, `P` from `dlqr`.
+- `arx2nmss(model, nk)` realises an ARX model with the **measured** state `[y(k), …, u(k−1), …]`, and
+  `arx2nmssIncremental` the same in increments with `y(k)` appended, so a controller on either needs no
+  observer; `minreal(A, B, C, D, env)` reduces any realisation to the states that reach its
+  input-output map.
 
 
 ## Identifying a model from data (ARX)
@@ -319,7 +328,8 @@ caller; given validation data, the loss is measured there. Every candidate is sc
 samples, so the losses compare; a candidate the data does not excite is skipped and listed with its
 reason; and an exact fit beats any other, the fewest coefficients winning a tie, so noise-free data
 from an ARX model returns its true orders. The grid is held to a work budget,
-`Limit.MaxArxOrderWork`.
+`Limit.MaxArxOrderWork`. A recursive estimate updated each cycle is `rlsUpdate` over numbers, which
+answers with the reason when it declines.
 
 
 ## Simulating a discrete model

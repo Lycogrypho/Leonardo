@@ -1755,6 +1755,7 @@ package "control" {
         arxMimo -> ArxMimoModel; blocks STACKED at the prompt
         arx2tf: A(z)^-1 B(z), p x m (cofactors, p <= 6)
         arx2ss: block observer form, NOT minimal
+        arx2nmss / arx2nmssIncremental: measured state (F_0306)
         declines: too short, not excited (svd rank)
     }
     "Arx" ..> "StateSpace" : stateSpace row
@@ -1825,6 +1826,8 @@ package "control" {
         u / du / y bounds; soft y: one slack per output,
           rho1 s + rho2 s^2
         solve(warm, env) -> first input, moves, slacks
+        F_0304/5: MpcWeights (per-step Q, R; terminal P on
+          x(k+Np), mpcTerminalPrediction; input target u_s)
     }
     class "Disturbance" <<utility>> [[control.html]] {
         __ F_0300: offset-free MPC __
@@ -1841,6 +1844,11 @@ package "control" {
     "MpcQp" ..> "MpcNumeric" : prediction matrices
     "Disturbance" ..> "Riccati" : kalmanGain
     "ArxOrder" ..> "Arx" : arxMimo per candidate
+    class "Minreal" <<utility>> [[control.html]] {
+        __ F_0307: Kalman decomposition __
+        minreal(A, B, C, D, env) -> MinimalRealisation
+        certified by the Markov parameters
+    }
 }
 "Riccati" ..> "_MatrixValue" : cholesky (definiteness), inverse
 "Linearize" ..> "_Jacobian" : the four blocks
@@ -2003,6 +2011,7 @@ package "optimize" <<Rectangle>> {
     "MpcQp"       ..> "QP"           : qpSolve
     "Disturbance" ..> "QP"           : steady-state target under bounds
     "Disturbance" ..> "Svd"          : detectability, rank
+    "Minreal"     ..> "Svd"          : controllable / observable subspaces
     "LeastSquares" ..> "_Jacobian"  : one definition of the Jacobian
     "QP"          ..> "QpConstraint" : active set = warm start
     "QP"          ..> "_MatrixValue" : cholesky = convexity test

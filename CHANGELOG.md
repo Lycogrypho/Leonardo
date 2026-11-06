@@ -145,6 +145,16 @@ release time from MiMa's report.*
   a grid of `(na, nb, nk)` by AIC, BIC or FPE (always named), on a validation split if given, every
   candidate on the same samples; an unexcited candidate is skipped and reported.  New budget:
   `Limit.MaxArxOrderWork`.
+- **MPC weights** (overload `mpcQp(prediction, MpcWeights(…), …)`): per-step output and move weights, a
+  terminal cost on `x(k+Np)` (`mpcTerminalPrediction`, `MpcTerminal`) — with `P − CᵀQC`, `P` from `dlqr`,
+  the unconstrained MPC is the LQR law — and an input target `u_s` for the absolute form, whose `R`
+  otherwise pulls the inputs to zero and offsets tracking.
+- **NMSS realisations of an ARX model** with a measured state, `arx2nmss` and `arx2nmssIncremental`
+  (input `Δu`, an integrator on every output), so an MPC on them needs no observer; and **`minreal`**,
+  which reduces any realisation to its controllable and observable part, certified by its Markov
+  parameters.
+- **Numeric recursive least squares**: `rlsUpdate` over `_MatrixValue`/`Double`, answering
+  `Either[RlsFailure, …]` with the reason, bit for bit the expression form's numbers.
 - **An uncertified derivative-free minimiser**: `minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)`
   over an `Array[Double] => Double`, by pattern search (integer coordinates supported) or Nelder–Mead,
   steps relative to each variable's scale, deterministic.  Its answer is an `UncertifiedMinimum`, never

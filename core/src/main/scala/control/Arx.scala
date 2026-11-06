@@ -308,6 +308,79 @@ def arx2ss(model: ArxMimoModel, nk: Int): Either[ArxFailure, (_MatrixValue, _Mat
       Right((am, bm, cm, n0))
   }
 
+/** The non-minimal state-space (NMSS) realisation of a MIMO ARX model (F_0306, APAC L_0009), whose
+ *  state is **measured**: `x(k) = [y(k), y(k−1), …, y(k−nᵧ+1), u(k−1), …, u(k−nᵤ)]` with
+ *  `nᵧ = max(na, 1)` and `nᵤ = nk + nb − 2`, exactly the past the recursion reads (Wang and Young's
+ *  count; an older input never enters it).  `C` reads `y(k)` off the state and `D = 0`, so a controller
+ *  on this model needs no observer.  **`nk = 0` declines**: `y(k+1)` would then depend on `u(k+1)`, which
+ *  no state at time `k` can hold.
+ *
+ *  @param model the identified model
+ *  @param nk    the input delay, `≥ 1`
+ *  @return `(A, B, C, D)`, `p·nᵧ + m·nᵤ` states, or the reason
+ */
+def arx2nmss(model: ArxMimoModel, nk: Int): Either[ArxFailure, (_MatrixValue, _MatrixValue, _MatrixValue, _MatrixValue)] =
+  nmssCore(model, nk).map { core =>
+    val ns = core.a.rows
+    val cm = _MatrixValue(core.p, ns, Array.tabulate(core.p * ns)(idx => if idx % ns == idx / ns then 1.0 else 0.0))
+    (core.a, core.b, cm, _MatrixValue(core.p, core.m, new Array[Double](core.p * core.m)))
+  }
+
+/** The incremental NMSS realisation (F_0306): the input is `Δu(k)` and the state
+ *  `[Δy(k), …, Δy(k−nᵧ+1), Δu(k−1), …, Δu(k−nᵤ), y(k)]` — Wang and Young's incremental form with the
+ *  output appended, so `y(k+1) = y(k) + Δy(k+1)` is a row of the model and `C` reads `y(k)` directly.
+ *  Stated because the literature carries several incremental forms; this one has an integrator on
+ *  every output, which is what makes a controller on it offset-free.  `nk = 0` declines as in
+ *  [[arx2nmss]].
+ *
+ *  @param model the identified model
+ *  @param nk    the input delay, `≥ 1`
+ *  @return `(A, B, C, D)`, `p·nᵧ + m·nᵤ + p` states, or the reason
+ */
+def arx2nmssIncremental(model: ArxMimoModel, nk: Int)
+    : Either[ArxFailure, (_MatrixValue, _MatrixValue, _MatrixValue, _MatrixValue)] =
+  nmssCore(model, nk).map { core =>
+    val (nd, p, m) = (core.a.rows, core.p, core.m)
+    val ns = nd + p
+    // the last block row is the first one plus y(k): y(k+1) = y(k) + Δy(k+1)
+    val am = _MatrixValue(ns, ns, Array.tabulate(ns * ns) { idx =>
+      val (r, c) = (idx / ns, idx % ns)
+      if r < nd then (if c < nd then core.a(r, c) else 0.0)
+      else if c < nd then core.a(r - nd, c)
+      else if c - nd == r - nd then 1.0
+      else 0.0
+    })
+    val bm = _MatrixValue(ns, m, Array.tabulate(ns * m)(idx =>
+      val r = idx / m
+      if r < nd then core.b(r, idx % m) else core.b(r - nd, idx % m)))
+    val cm = _MatrixValue(p, ns, Array.tabulate(p * ns)(idx => if idx % ns == nd + idx / ns then 1.0 else 0.0))
+    (am, bm, cm, _MatrixValue(p, m, new Array[Double](p * m)))
+  }
+
+/** The NMSS state matrix and input matrix over the measured past, before the output is chosen. */
+private final case class NmssCore(a: _MatrixValue, b: _MatrixValue, p: Int, m: Int)
+
+private def nmssCore(model: ArxMimoModel, nk: Int): Either[ArxFailure, NmssCore] =
+  checkMimo(model, nk).flatMap { (p, m, nb) =>
+    if nk < 1 then Left(InvalidOrders("nk must be >= 1 for an NMSS realisation: with nk = 0, y(k+1) depends on u(k+1)"))
+    else
+      val ny = math.max(model.a.size, 1)
+      val nu = nk + nb - 2
+      val ns = p * ny + m * nu
+      val uAt = p * ny                       // the first u block's column
+      val am = new Array[Double](ns * ns)
+      // y(k+1) = Σ Aᵢ y(k+1−i) + Σ N_lag u(k+1−lag): u(k−1−j) has lag j + 2
+      for i <- 0 until ny; mi <- mimoA(model, i + 1); r <- 0 until p; c <- 0 until p do am(r * ns + i * p + c) = mi(r, c)
+      for j <- 0 until nu; nj <- mimoN(model, nk, j + 2); r <- 0 until p; c <- 0 until m do am(r * ns + uAt + j * m + c) = nj(r, c)
+      // shifts: y(k−i) <- y(k−i+1), u(k−1−j) <- u(k−j)
+      for i <- 1 until ny; r <- 0 until p do am((i * p + r) * ns + (i - 1) * p + r) = 1.0
+      for j <- 1 until nu; r <- 0 until m do am((uAt + j * m + r) * ns + uAt + (j - 1) * m + r) = 1.0
+      val bm = new Array[Double](ns * m)
+      for n1 <- mimoN(model, nk, 1); r <- 0 until p; c <- 0 until m do bm(r * m + c) = n1(r, c)
+      if nu > 0 then for r <- 0 until m do bm((uAt + r) * m + r) = 1.0
+      Right(NmssCore(_MatrixValue(ns, ns, am), _MatrixValue(ns, m, bm), p, m))
+  }
+
 /** `Aᵢ` for `i` in `1 .. na`, else `None` (a zero block). */
 private def mimoA(model: ArxMimoModel, i: Int): Option[_MatrixValue] =
   Option.when(i >= 1 && i <= model.a.size)(model.a(i - 1))
