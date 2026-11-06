@@ -63,6 +63,24 @@ class MinrealTest extends AnyFlatSpec:
     sameResponse((a, b, c), r)
   }
 
+  it should "certify a nilpotent plant, whose A^k vanishes exactly (F_0311)" in {
+    // a 3-state shift chain: A^3 = 0, so later Markov parameters are exactly 0 while the reduced
+    // realisation's, rotated by its basis, are rounding-sized -- the comparison must not divide by 0
+    val a = m(3, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+    val (b, c) = (m(3, 1, 0.3, -0.2, 1), m(1, 3, 1, 0.5, 0))
+    val r = ok(minreal(a, b, c, m(1, 1, 0), env))
+    assert(r.order <= 3)
+    sameResponse((a, b, c), r)
+  }
+
+  it should "reduce the NMSS of an FIR model, a nilpotent realisation (F_0311)" in {
+    // y[k] = u[k-1] + 0.5 u[k-2] - 0.2 u[k-3]: no autoregressive part
+    val fir = ArxMimoModel(Vector.empty, Vector(m(1, 1, 1.0), m(1, 1, 0.5), m(1, 1, -0.2)))
+    val (a, b, c, d) = arx2nmss(fir, 1).fold(e => fail(e.toString), identity)
+    val r = ok(minreal(a, b, c, d, env))
+    sameResponse((a, b, c), r)
+  }
+
   it should "decline a realisation whose transfer function is D alone, and malformed input" in {
     val r = minreal(a2, m(2, 1, 0.0, 0.0), c2, m(1, 1, 1.0), env)
     assert(r.left.exists(_ == MinrealFailure.NoState))

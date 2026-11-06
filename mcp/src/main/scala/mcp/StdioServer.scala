@@ -12,7 +12,7 @@ import scala.io.Source
 import scala.jdk.CollectionConverters.*
 
 
-/** The Model Context Protocol wiring (F_0126): [[it.grypho.scala.leonardo.mcp.Tools]] and two resources served over a transport,
+/** The Model Context Protocol wiring (F_0126): the `Tools` catalogue and two resources served over a transport,
  *  through the official Java SDK. */
 object StdioServer:
 
@@ -42,16 +42,18 @@ object StdioServer:
     case "" => "unknown"
     case v  => v
 
-  /** A tool's JSON schema: an object of string properties. */
-  private def schemaOf(t: ToolDef): McpSchema.JsonSchema =
+  /** A tool's JSON schema, an object of string properties, as the plain map the SDK serialises (its
+   *  `JsonSchema` record is deprecated in 2.1.0). */
+  private def schemaOf(t: ToolDef): java.util.Map[String, Object] =
     val props: java.util.Map[String, Object] = t.params.map(p =>
       p.name -> (Map[String, Object]("type" -> "string", "description" -> p.description).asJava: Object)).toMap.asJava
-    McpSchema.JsonSchema("object", props, t.params.filter(_.required).map(_.name).asJava,
-                         java.lang.Boolean.FALSE, java.util.Map.of(), java.util.Map.of())
+    Map[String, Object]("type" -> "object", "properties" -> props,
+                        "required" -> t.params.filter(_.required).map(_.name).asJava,
+                        "additionalProperties" -> java.lang.Boolean.FALSE).asJava
 
   private def toolSpec(t: ToolDef, worker: SessionWorker): McpServerFeatures.SyncToolSpecification =
     McpServerFeatures.SyncToolSpecification.builder()
-      .tool(McpSchema.Tool.builder().name(t.name).description(t.description).inputSchema(schemaOf(t)).build())
+      .tool(McpSchema.Tool.builder(t.name, schemaOf(t)).description(t.description).build())
       .callHandler { (_, request) =>
         val args = Option(request.arguments()).fold(Map.empty[String, String])(
           _.asScala.toMap.flatMap((k, v) => Option(v).map(x => k -> x.toString)))
@@ -65,8 +67,9 @@ object StdioServer:
   private def resourceSpec(uri: String, name: String, mime: String, description: String,
                            text: () => String): McpServerFeatures.SyncResourceSpecification =
     McpServerFeatures.SyncResourceSpecification(
-      McpSchema.Resource.builder().uri(uri).name(name).mimeType(mime).description(description).build(),
-      (_, _) => McpSchema.ReadResourceResult(java.util.List.of(McpSchema.TextResourceContents(uri, mime, text()))))
+      McpSchema.Resource.builder(uri, name).mimeType(mime).description(description).build(),
+      (_, _) => McpSchema.ReadResourceResult.builder(java.util.List.of(
+        McpSchema.TextResourceContents.builder(uri, text()).mimeType(mime).build())).build())
 
   /** The server over a transport, its tools and resources on `worker`'s session.
    *  @param transport the transport
@@ -87,6 +90,33 @@ object StdioServer:
           () => worker.run(_.script).fold(why => s"# unavailable: $why", identity)))
       .build()
 
+  /** Serves over the given streams until the client closes `in` (F_0310), then closes the server.
+   *
+   *  The transport reads `in` on its own thread, so the end of the input is observed by wrapping it:
+   *  the first read that returns end-of-stream releases the wait.  Without it the process outlived its
+   *  client — `main` waited on a latch nothing released — and a client that only closes the pipe left
+   *  one stray JVM per session.
+   *
+   *  @param in     the client's messages
+   *  @param out    the server's messages
+   *  @param worker the session behind its timeout */
+  def runUntilClosed(in: java.io.InputStream, out: java.io.OutputStream, worker: SessionWorker): Unit =
+    val closed = CountDownLatch(1)
+    val watched = new java.io.FilterInputStream(in):
+      private def seen(n: Int): Int =
+        if n < 0 then closed.countDown()
+        n
+      override def read(): Int = seen(super.read())
+      override def read(b: Array[Byte], off: Int, len: Int): Int =
+        try seen(super.read(b, off, len))
+        catch
+          case e: java.io.IOException =>
+            closed.countDown()
+            throw e
+    val server = serve(StdioServerTransportProvider(McpJsonDefaults.getMapper(), watched, out), worker)
+    try closed.await()
+    finally server.closeGracefully()
+
   /** Reads `--timeout <seconds>` from the command line.
    *  @param args the arguments
    *  @return the timeout, or why the arguments are not understood */
@@ -105,6 +135,5 @@ object StdioServer:
       System.err.println(why)
       sys.exit(2)
     case Right(timeout) =>
-      val server = StdioServer.serve(StdioServerTransportProvider(McpJsonDefaults.getMapper()), SessionWorker(timeout))
-      sys.addShutdownHook(server.closeGracefully())
-      CountDownLatch(1).await()
+      StdioServer.runUntilClosed(System.in, System.out, SessionWorker(timeout))
+      sys.exit(0)

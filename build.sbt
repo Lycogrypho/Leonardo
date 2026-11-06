@@ -526,6 +526,16 @@ lazy val mcp = (project in file("mcp"))
       "org.slf4j"                   % "slf4j-simple" % "2.0.16",
       "org.scalatest"              %% "scalatest"    % "3.2.20" % Test
     ),
+    // F_0309 (audit 2026-11-06): the SDK 2.1.0 resolves Jackson 3.1.4, which carries nine advisories
+    // (GHSA-cxp5-3px4-pw24, GHSA-q4xh-88c3-wmh7, GHSA-wv8q-qhhj-9h54, GHSA-7hhh-6rmp-j9qf and
+    // GHSA-p6pp-m3f8-5c89 high: parsing DoS, reachable since the server parses its client's JSON).  All
+    // are fixed on the 3.1 line by 3.1.7; 3.1.8 is what the SDK's own main branch uses.  F_0253's
+    // pattern: REMOVE these once the SDK itself depends on Jackson >= 3.1.7, or they pin an old version.
+    dependencyOverrides ++= Seq(
+      "tools.jackson.core"       % "jackson-core"            % "3.1.8",
+      "tools.jackson.core"       % "jackson-databind"        % "3.1.8",
+      "tools.jackson.dataformat" % "jackson-dataformat-yaml" % "3.1.8"
+    ),
     Compile / mainClass := Some("it.grypho.scala.leonardo.mcp.leonardoMcp"),
     // The grammar resource (the cheat sheet) and the version, bundled at build time.
     Compile / resourceGenerators += Def.task {

@@ -56,6 +56,22 @@ class StdioServerTest extends AnyFlatSpec:
       pool.shutdownNow()
   }
 
+  "runUntilClosed" should "return once the client closes the server's input (F_0310)" in {
+    val toServer  = PipedOutputStream()
+    val serverIn  = PipedInputStream(toServer, 1 << 16)
+    val serverOut = java.io.ByteArrayOutputStream()
+    val done = java.util.concurrent.CountDownLatch(1)
+    val runner = Thread(() => { StdioServer.runUntilClosed(serverIn, serverOut, SessionWorker(30.seconds)); done.countDown() })
+    runner.setDaemon(true)
+    runner.start()
+    val send = PrintStream(toServer, true, UTF_8)
+    send.println("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"eof","version":"0"}}}""")
+    Thread.sleep(500)
+    assert(done.getCount == 1, "returned before its input closed")
+    send.close()
+    assert(done.await(10, TimeUnit.SECONDS), "still running 10 s after its input closed")
+  }
+
   "--timeout" should "be read in seconds and refuse anything else" in {
     assert(StdioServer.timeoutOf(Seq()) == Right(StdioServer.DefaultTimeout))
     assert(StdioServer.timeoutOf(Seq("--timeout", "2.5")) == Right(2500.millis))

@@ -80,21 +80,25 @@ def minreal(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue,
       _  <- markovAgree(a, b, c, a2, b2, c2, env)
     yield MinimalRealisation(a2, b2, c2, d, a2.rows)
 
-/** The Markov parameters of the two realisations agree, each against the size of its own terms. */
+/** The Markov parameters of the two realisations agree, against the largest term of either sequence.
+ *
+ *  **One scale for the whole sequence, not one per term** (F_0311): a term's own scale
+ *  `‖C‖‖Aᵏ‖‖B‖` is exactly 0 once `Aᵏ = 0` (a nilpotent plant — a deadbeat one, the NMSS of an FIR
+ *  model), while the reduced realisation, rotated by its orthonormal basis, leaves a rounding-level
+ *  term there, and the per-term ratio was `∞`: a correct answer declined.  The largest term of either
+ *  sequence is units-safe and is zero only for a system with no response, which [[minreal]] has already
+ *  answered `NoState`. */
 private def markovAgree(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, ar: _MatrixValue, br: _MatrixValue,
                       cr: _MatrixValue, env: Environment): Either[MinrealFailure, Unit] =
   def fro(x: _MatrixValue) = math.sqrt(x.toVector.map(v => v * v).sum)
   val count = a.rows + ar.rows
   val tol   = 0.5 * math.pow(10, -env.precision)
-  val (cn, bn) = (fro(c), fro(b))
-  var (ak, akr) = (_MatrixValue.identity(a.rows), _MatrixValue.identity(ar.rows))
-  var worst = 0.0
-  for _ <- 0 until count do
+  val powers  = Iterator.iterate(_MatrixValue.identity(a.rows))(_.multiply(a)).take(count).toVector
+  val powersR = Iterator.iterate(_MatrixValue.identity(ar.rows))(_.multiply(ar)).take(count).toVector
+  val scale = math.max(powers.map(fro(c) * fro(_) * fro(b)).max, powersR.map(fro(cr) * fro(_) * fro(br)).max)
+  val worstDiff = powers.zip(powersR).map { (ak, akr) =>
     val (mk, mr) = (c.multiply(ak).multiply(b), cr.multiply(akr).multiply(br))
-    val scale = cn * fro(ak) * bn
-    val diff  = math.sqrt(mk.toVector.zip(mr.toVector).map((x, y) => (x - y) * (x - y)).sum)
-    if scale > 0 then worst = math.max(worst, diff / scale)
-    else if diff > 0 then worst = Double.PositiveInfinity
-    ak = ak.multiply(a)
-    akr = akr.multiply(ar)
+    math.sqrt(mk.toVector.zip(mr.toVector).map((x, y) => (x - y) * (x - y)).sum)
+  }.max
+  val worst = if scale > 0 then worstDiff / scale else if worstDiff > 0 then Double.PositiveInfinity else 0.0
   Either.cond(worst <= tol, (), MinrealFailure.Uncertified(worst))
