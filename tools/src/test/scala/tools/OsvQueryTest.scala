@@ -26,7 +26,7 @@ class OsvQueryTest extends AnyFlatSpec:
   }
 
   "coordinates" should "identify a flat jar by its name in a cache, and keep the jars nothing identifies" in {
-    val boot  = "/home/u/.sbt/boot/scala-2.12.21/org.scala-sbt/sbt/1.13.0/"
+    val boot  = "/home/u/.sbt/boot/scala-2.12.21/org.scala-sbt/sbt/1.13.1/"
     val cache = Map("actions_2.12-1.13.0.jar" ->
       "/home/u/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-sbt/actions_2.12/1.13.0/actions_2.12-1.13.0.jar")
     val (cs, unmatched) = coordinates(
@@ -34,7 +34,7 @@ class OsvQueryTest extends AnyFlatSpec:
           Coursier + "com\\google\\guava\\guava\\33.4.8-jre\\guava-33.4.8-jre.jar"),
       cache.get)
     assert(cs == Vector(Coordinate("com.google.guava", "guava", "33.4.8-jre"),
-                        Coordinate("org.scala-sbt", "actions_2.12", "1.13.0")))
+                        Coordinate("org.scala-sbt", "actions_2.12", "1.13.1")))
     assert(unmatched == Vector(boot + "mystery.jar"))
   }
 
