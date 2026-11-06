@@ -145,6 +145,21 @@ class SvdTest extends AnyFlatSpec:
       assert(number(s"rank(${literalOf(a)})") == k.toDouble, s"rank-$k ${n}x$n, seed $seed")
   }
 
+  it should "decompose a long tall matrix at the cost of its work, full rank or not (F_0303)" in
+  {
+    // Completing U used to build an m x m table of residuals whether or not U needed completing:
+    // 20000 x 20 asked for 3.2 GB.  The work, max(m, n)·min(m, n)², is 8·10⁶, inside MaxSvdWork.
+    val full = random(20000, 20, 41)
+    val deficient = random(20000, 12, 42).multiply(random(12, 20, 43))   // rank 12
+    for a <- Seq(full, deficient) do
+      val t0 = System.nanoTime()
+      val r  = a.svd
+      val ms = (System.nanoTime() - t0) / 1e6
+      assert(r.isDefined)
+      assert(ms < 8000, s"${a.rows}x${a.cols}: $ms ms")
+    assert(number(s"rank(${literalOf(random(30, 4, 44).multiply(random(4, 6, 45)))})") == 4.0)
+  }
+
   it should "handle repeated singular values, the zero matrix and a single entry" in
   {
     val c = math.cos(0.7)

@@ -416,10 +416,16 @@ object _MatrixValue:
    *  failed; with 20 directions spread over 40 dimensions the residuals average `√0.5`, the pass
    *  ran out of candidates, and `svd` of a rank-20 40×40 matrix declined (F_0117).
    *  `None` only when even the best residual is below half its guaranteed size: `base` was not
-   *  orthonormal. */
+   *  orthonormal.
+   *
+   *  **The residuals are never formed** (F_0303): against orthonormal columns `q`, the squared
+   *  residual of `eᵢ` is `1 − Σ qᵢ²`, so the pivot costs `O(dim)` per column taken and only the chosen
+   *  vector is built.  The first version orthogonalised all `dim` unit vectors up front, an
+   *  `O(dim²)` table and `O(dim²·k)` work even when nothing needed completing: `svd` of a
+   *  1983×16 matrix spent 0.13–0.44 s there on the JVM, and 20000×20 asked for 3.2 GB. */
   private[leonardo] def completeBasis(base: Vector[Array[Double]], dim: Int, want: Int): Option[Vector[Array[Double]]] =
     // `while` loops over arrays, not folds over ranges: a fold boxes per step, which Node pays
-    // for heavily (the QP precedent); the residuals are updated in place, O(dim²) per column.
+    // for heavily (the QP precedent).
     def dot(a: Array[Double], b: Array[Double]): Double =
       var s = 0.0
       var i = 0
@@ -428,29 +434,38 @@ object _MatrixValue:
     def subtract(x: Array[Double], q: Array[Double], c: Double): Unit =
       var i = 0
       while i < dim do { x(i) -= c * q(i); i += 1 }
-    def orthogonalised(e: Array[Double], against: Vector[Array[Double]]): Array[Double] =
-      val x = e.clone
+    def orthogonalised(i: Int, against: Vector[Array[Double]]): Array[Double] =
+      val x = new Array[Double](dim)
+      x(i) = 1.0
       for _ <- 1 to 2; q <- against do subtract(x, q, dot(q, x))
       x
-    val residual = Array.tabulate(dim)(i => orthogonalised(Array.tabulate(dim)(r => if r == i then 1.0 else 0.0), base))
-    val used     = Array.fill(dim)(false)
-    var acc      = base
-    var stuck    = false
-    while acc.size < want && !stuck do
-      val candidates = (0 until dim).filterNot(used)
-      if candidates.isEmpty then stuck = true
-      else
-        val best = candidates.maxBy(i => dot(residual(i), residual(i)))
+    if base.size >= want then Some(base.take(want))
+    else
+      // residual2(i) = ‖eᵢ − Σ q·qᵢ‖² = 1 − Σ qᵢ², kept up to date as columns are added
+      val residual2 = Array.fill(dim)(1.0)
+      def account(q: Array[Double]): Unit =
+        var i = 0
+        while i < dim do { residual2(i) -= q(i) * q(i); i += 1 }
+      base.foreach(account)
+      val used  = Array.fill(dim)(false)
+      var acc   = base
+      var stuck = false
+      while acc.size < want && !stuck do
+        var best = -1
+        var i = 0
+        while i < dim do
+          if !used(i) && (best < 0 || residual2(i) > residual2(best)) then best = i
+          i += 1
         val need = 0.5 * math.sqrt((dim - acc.size).toDouble / dim)
-        if math.sqrt(dot(residual(best), residual(best))) < need then stuck = true
+        if best < 0 || math.sqrt(math.max(residual2(best), 0.0)) < need then stuck = true
         else
-          val x    = orthogonalised(residual(best), acc)
+          val x    = orthogonalised(best, acc)
           val norm = math.sqrt(dot(x, x))
           val q    = x.map(_ / norm)
           used(best) = true
           acc = acc :+ q
-          candidates.foreach(i => if i != best then subtract(residual(i), q, dot(q, residual(i))))
-    Option.when(acc.size >= want)(acc.take(want))
+          account(q)
+      Option.when(acc.size >= want)(acc.take(want))
 
   /** Whether `U·diag(σ)·Vᵀ` reconstructs `a` and `U`, `V` are orthonormal, all relative to `‖a‖`. */
   private[core] def svdCertified(a: _MatrixValue, u: _MatrixValue, s: Vector[Double], v: _MatrixValue): Boolean =

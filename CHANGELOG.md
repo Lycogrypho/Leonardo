@@ -152,6 +152,10 @@ release time from MiMa's report.*
 - `arx`, `arxMimo` and the `arx` prompt function fit long data much faster: the excitation test reads
   the singular values off the triangular factor of a QR instead of the tall regressor matrix
   (2000 samples, 16 coefficients: about 7 ms on the JVM, where the SVD took 0.13–0.8 s).
+- `svd` of a tall matrix costs what its size says, and with it `rank`, `pinv`, `cond`, `nullspace`,
+  `orth` and `lsqfit`'s identifiability test: completing `U` no longer builds an `m×m` table, so
+  `svd` of a 1983×16 matrix takes about 6 ms on the JVM (it took 0.13–0.44 s), and a 20000×20 one
+  answers where it ran out of memory.
 
 ## 3.8.3 — 2026-11-01
 
