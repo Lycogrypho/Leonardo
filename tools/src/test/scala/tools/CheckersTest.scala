@@ -311,7 +311,7 @@ class CheckersTest extends AnyFlatSpec:
     // holding Terminal.scala and DoubleRender.scala -- were never scanned at all. The 2.8
     // damage spread by copy-paste between files; an unscanned tree is where the next paste
     // lands.
-    for tree <- List("core/jvm-src", "core/js-src", "repl/jvm-src", "repl/js-src") do
+    for tree <- List("core/jvm-src", "core/js-src", "repl/jvm-src", "repl/js-src", "mcp/src") do
       val path = Paths.get(tree)
       assert(Files.GuardedRoots.contains(path), s"$tree is a source tree and must be guarded")
       assert(Files.walk(path, Files.TextExtensions).nonEmpty, s"$tree should hold sources")

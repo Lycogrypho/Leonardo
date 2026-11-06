@@ -26,6 +26,8 @@ on:
       - "repl/src/main/**"
       - "repl/jvm-src/main/**"
       - "repl/js-src/main/**"
+      # The MCP server (F_0126): its Scaladoc is part of the combined API reference.
+      - "mcp/src/main/**"
       # The browser REPL is deployed from here too (F_0003 phase 4).
       - "web/**"
       - "build.sbt"
@@ -56,7 +58,7 @@ jobs:
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "25"
           cache: sbt
 
       - name: Set up sbt

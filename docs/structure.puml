@@ -2462,6 +2462,7 @@ package "cli" <<Rectangle>> {
         - definitions: Map
         + execute(line: String): String
         + lastLatex: Option[String]
+        + lastResult: Option[_Expression] -- F_0126
         + currentColorScheme: String
         + settings: List[(String, String)]
         + script: String
@@ -2551,6 +2552,38 @@ package "cli" <<Rectangle>> {
 "Session" ..> "Svg"         : figure()
 "AsciiMath" ..> "Parser"    : ReservedWords whitelist
 "Session" ..> "ToLatex"     : latex on -> lastLatex (a SECOND channel;\nthe printed text is unchanged)
+
+' ===================================================
+' MODULE: mcp   (F_0126; the separate `it.grypho:leonardo-mcp` artifact, JVM only)
+' ===================================================
+package "mcp" <<Rectangle>> {
+    class "Tools" <<utility>> [[mcp.html]] {
+        __ each tool assembles ONE REPL line __
+        evaluate, simplify, derive, integrate, solve, limit, scala_value
+        + call(name, args, worker): ToolAnswer
+    }
+    class "SessionWorker" <<utility>> [[mcp.html]] {
+        __ one Session behind a wall-clock timeout __
+        + run(f, within): Either[String, A]
+        timed out: abandoned, restored from :save
+    }
+    class "StdioServer" <<utility>> [[mcp.html]] {
+        __ the MCP Java SDK wiring __
+        + serve(transport, worker): McpSyncServer
+        resources: leonardo://grammar, leonardo://session/script
+        leonardoMcp: --timeout <seconds>; logs to stderr
+    }
+    class "ToScala" <<utility>> [[mcp.html]] {
+        __ Decision D: Scala source for a result __
+        + apply(value): Either[String, String]
+        generic over the case classes; round trip on
+          the cheat sheet (a generated test source)
+    }
+    "StdioServer" ..> "Tools"         : tool specifications
+    "Tools" ..> "SessionWorker"       : runs each line
+    "Tools" ..> "ToScala"             : scala_value
+}
+"SessionWorker" --> "Session"     : one per connection
 
 legend right
   |=  Colour  |= Category |

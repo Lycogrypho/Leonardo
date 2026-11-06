@@ -44,6 +44,8 @@ object Files:
     // The library and the REPL: shared sources and BOTH platform trees (F_0003).
     "core/src", "core/jvm-src", "core/js-src",
     "repl/src", "repl/jvm-src", "repl/js-src",
+    // The MCP server (F_0126), the third published module.
+    "mcp/src",
     // The browser front end, and the guards themselves — a guard must be clean of its own rules.
     "web/src", "tools/src",
     // The build definition. `project/` holds .sbt and .scala the compiler never sees as part

@@ -77,6 +77,8 @@ final class Session:
   // never stale: a caller that rendered the previous result beside this command's text would
   // be showing two different answers at once.
   private var latexOut: Option[String] = None
+  /** The expression behind [[lastResult]]. */
+  private var resultOut: Option[_Expression] = None
   // Symmetric ternary display/parse encoding: {-1, 0, 1} instead of
   // {false, unknown, true}. Off by default so the word alphabet is unchanged; an
   // *encoding* toggle only -- the min-max rule table is the same either way.
@@ -178,6 +180,7 @@ final class Session:
     // Cleared FIRST, so the channel describes this command or nothing at all. Every arm that
     // produces an expression fills it again through `withLatex`.
     latexOut   = None
+    resultOut  = None
     introduced = Nil
     val trimmed = line.trim
     val out     = dispatch(trimmed)
@@ -198,6 +201,16 @@ final class Session:
    *  end that cannot typeset is unaffected and one that can chooses per result.
    */
   def lastLatex: Option[String] = latexOut
+
+  /** The expression the last line [[execute]] ran answered with, or `None` (F_0126).
+   *
+   *  Filled by the same commands as [[lastLatex]] — bare evaluation, `simplify`, `expand` — through the
+   *  same wrapper, so the text, the LaTeX and the value cannot drift; unlike the LaTeX it survives a
+   *  note, since the value is still the answer.  The MCP server renders it as Scala source.
+   *
+   *  @return the result, or `None` after a command that produced no expression
+   */
+  def lastResult: Option[_Expression] = resultOut
 
   /** The diagnostics for the line just executed (issue F_0030).
    *
@@ -557,7 +570,8 @@ final class Session:
           .filter(_.nonEmpty)
           .mkString("\n")
       finally replaying = false
-    latexOut = None
+    latexOut  = None
+    resultOut = None
     out
 
   /** Parses `input`, then calls `f` on the resulting expression inside a `NonFatal` guard.
@@ -688,6 +702,7 @@ final class Session:
    *  @return `text`
    */
   private def withLatex(e: _Expression)(text: String): String =
+    resultOut = Some(e)
     if latexMode then latexOut = scala.util.Try(ToLatex(e)).toOption
     text
 

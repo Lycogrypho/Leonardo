@@ -52,7 +52,7 @@ jobs:
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "25"
           cache: sbt
 
       - name: Set up sbt
@@ -108,7 +108,7 @@ jobs:
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "25"
           cache: sbt
 
       - name: Set up sbt
@@ -160,13 +160,18 @@ jobs:
         # pages.yml deploys to /app, so the downloadable bundle and the live one cannot drift.
         # The zip holds ONE top-level directory, so unpacking it into a web root produces a
         # named folder rather than scattering index.html and vendor/ into the current one.
+        #
+        # The MCP server's runnable jar (F_0126) is built in the same sbt run, by `mcp/assembly`, and
+        # attached beside the app: one self-contained `leonardo-mcp-<version>.jar`.  The Scala version
+        # in the output path is globbed, never written (CheckScalaVersion).
         env:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          sbt app
+          sbt app mcp/assembly
           cp -r web/target/app "leonardo-app-$VERSION"
           zip -r -q "leonardo-app-$VERSION.zip" "leonardo-app-$VERSION"
+          cp mcp/target/scala-*/"leonardo-mcp-$VERSION.jar" .
 
       - name: Attach the browser REPL to the Release
         # A failed upload leaves the Release standing and the run red, which is visible and
@@ -176,5 +181,6 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release upload "$VERSION" "leonardo-app-$VERSION.zip" --clobber
+          gh release upload "$VERSION" "leonardo-app-$VERSION.zip" "leonardo-mcp-$VERSION.jar" --clobber
           echo "attached leonardo-app-$VERSION.zip ($(stat -c%s "leonardo-app-$VERSION.zip") bytes)"
+          echo "attached leonardo-mcp-$VERSION.jar ($(stat -c%s "leonardo-mcp-$VERSION.jar") bytes)"

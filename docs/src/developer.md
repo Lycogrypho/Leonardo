@@ -1516,7 +1516,7 @@ Key build file sections:
 | Section | Purpose |
 |---|---|
 | `ThisBuild / scalacOptions` | `-explain`, `-deprecation`, `-feature`, `-Wconf:src=.*package\\.scala:silent`.  `ThisBuild`-scoped so both modules get them; a bare `scalacOptions ++=` would reach the root aggregate only |
-| `lazy val core` | The library — everything but `cli`.  Publishes as `it.grypho:leonardo`.  Depends on `scala-parser-combinators` 2.4.0 and `spire` 0.18.0 |
+| `lazy val core` | The library — everything but `cli`.  Publishes as `it.grypho:leonardo`.  Depends on `scala-parser-combinators` 2.5.0 and `spire` 0.18.0; compiled for the JDK 25 floor |
 | `lazy val replModule` | The REPL — the `cli` package and `Main.scala`.  Publishes as `it.grypho:leonardo-repl`.  The only module that depends on `jline` |
 | `lazy val docs` | Runs mdoc; `publish / skip := true`.  Separate because `MdocPlugin` adds `org.scalameta:mdoc` to the enabled project's `libraryDependencies`, from where it reaches the published POM |
 | `lazy val tools` | The repository's own guards (F_0027); `publish / skip := true`, not aggregated, and **forked** — a guard's answer is its exit code, and `sys.exit` in sbt's own JVM would end the session mid-`checks` |

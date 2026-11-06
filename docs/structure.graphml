@@ -3050,6 +3050,7 @@ no rule -&gt; \\mathrm{escaped toString}</data>
 - definitions: Map
 + execute(line: String): String
 + lastLatex: Option[String]
++ lastResult: Option[_Expression] -- F_0126
 + currentColorScheme: String
 + settings: List[(String, String)]
 + script: String
@@ -3149,6 +3150,48 @@ words derived from Parser.ReservedWords and Session.CommandWords (F_0213)</data>
         <data key="n_members">JLine line editing + history
 syntax highlighting wired
 drives the pure Session.step</data>
+    </node>
+    <node id="n285">
+        <data key="n_label">Tools</data>
+        <data key="n_package">mcp</data>
+        <data key="n_kind">class</data>
+        <data key="n_stereotype">utility</data>
+        <data key="n_url">mcp.html</data>
+        <data key="n_members">__ each tool assembles ONE REPL line __
+evaluate, simplify, derive, integrate, solve, limit, scala_value
++ call(name, args, worker): ToolAnswer</data>
+    </node>
+    <node id="n286">
+        <data key="n_label">SessionWorker</data>
+        <data key="n_package">mcp</data>
+        <data key="n_kind">class</data>
+        <data key="n_stereotype">utility</data>
+        <data key="n_url">mcp.html</data>
+        <data key="n_members">__ one Session behind a wall-clock timeout __
++ run(f, within): Either[String, A]
+timed out: abandoned, restored from :save</data>
+    </node>
+    <node id="n287">
+        <data key="n_label">StdioServer</data>
+        <data key="n_package">mcp</data>
+        <data key="n_kind">class</data>
+        <data key="n_stereotype">utility</data>
+        <data key="n_url">mcp.html</data>
+        <data key="n_members">__ the MCP Java SDK wiring __
++ serve(transport, worker): McpSyncServer
+resources: leonardo://grammar, leonardo://session/script
+leonardoMcp: --timeout &lt;seconds&gt;; logs to stderr</data>
+    </node>
+    <node id="n288">
+        <data key="n_label">ToScala</data>
+        <data key="n_package">mcp</data>
+        <data key="n_kind">class</data>
+        <data key="n_stereotype">utility</data>
+        <data key="n_url">mcp.html</data>
+        <data key="n_members">__ Decision D: Scala source for a result __
++ apply(value): Either[String, String]
+generic over the case classes; round trip on
+the cheat sheet (a generated test source)</data>
     </node>
     <edge id="e0" source="n1" target="n0">
         <data key="e_relation">inheritance</data>
@@ -4824,6 +4867,22 @@ drives the pure Session.step</data>
     <edge id="e464" source="n276" target="n275">
         <data key="e_relation">dependency</data>
         <data key="e_label">latex on -&gt; lastLatex (a SECOND channel;\nthe printed text is unchanged)</data>
+    </edge>
+    <edge id="e465" source="n287" target="n285">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">tool specifications</data>
+    </edge>
+    <edge id="e466" source="n285" target="n286">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">runs each line</data>
+    </edge>
+    <edge id="e467" source="n285" target="n288">
+        <data key="e_relation">dependency</data>
+        <data key="e_label">scala_value</data>
+    </edge>
+    <edge id="e468" source="n286" target="n276">
+        <data key="e_relation">association</data>
+        <data key="e_label">one per connection</data>
     </edge>
   </graph>
 </graphml>

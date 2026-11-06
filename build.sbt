@@ -85,6 +85,15 @@ ThisBuild / developers := List(
 // with the bump pending; the 3.8.2 release branch caught it up to 3.8.1, and this is 3.8.2.
 lazy val mimaBaseline = "3.8.2"
 
+// The JDK every published module requires (F_0126 Decision A, the owner's choice of 2026-11-06): ONE
+// floor for leonardo, leonardo-repl and leonardo-mcp, emitted with `-release` so the class files say so
+// (major 69) and the JDK API used is checked against it.  It was Java 8 (major 52) until F_0126, which
+// is why scala-parser-combinators was pinned at 2.4.0 (F_0025).  Raising it is a break MiMa cannot see
+// -- a class-file version is not a signature -- so it costs at least a minor release, and
+// `ClassFileVersionTest` in each published module pins the emitted version.
+lazy val JdkFloor = 25
+lazy val jdkFloorOptions = Seq("-release", JdkFloor.toString)
+
 // ThisBuild, not bare: a bare `scalacOptions ++=` in build.sbt applies to the ROOT project
 // only, so after the module split the repl module would silently compile without -explain,
 // -deprecation or the package.scala warning suppression.
@@ -146,7 +155,7 @@ lazy val root = (project in file("."))
   .enablePlugins(ScalaUnidocPlugin)
   // The JS projects are aggregated so `sbt test` covers them; they are filtered out of unidoc
   // below, since they compile the same shared sources as their JVM twins.
-  .aggregate(core.jvm, core.js, replModule.jvm, replModule.js)
+  .aggregate(core.jvm, core.js, replModule.jvm, replModule.js, mcp)
   .settings(
     name           := "Leonardo",
     // Nothing to publish from the aggregate: the artifacts are core's and replModule's. An
@@ -302,7 +311,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     name             := "Leonardo",
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
 
-    libraryDependencies += "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.4.0",
+    libraryDependencies += "org.scala-lang.modules" %%% "scala-parser-combinators" % "2.5.0",
     libraryDependencies += "org.typelevel"          %%% "spire"                    % "0.18.0",
     libraryDependencies += "org.scalatest"          %%% "scalatest"                % "3.2.20" % Test
   )
@@ -314,6 +323,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     // JVM-only suites: what Node cannot run at all, such as real threads (F_0058's
     // concurrency check on compiled closures). replModule has had the same directory since F_0003.
     Test    / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm-src" / "test" / "scala",
+    scalacOptions ++= jdkFloorOptions,
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo" % mimaBaseline),
@@ -451,6 +461,7 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
     // dependency a browser cannot have, and the module boundary that made the 5.2 artifact
     // split worthwhile is the same one that makes this work.
     libraryDependencies += "org.jline" % "jline" % "3.30.17",
+    scalacOptions ++= jdkFloorOptions,
 
     // Binary compatibility against the previous release (issue 2.9).
     mimaPreviousArtifacts := Set("it.grypho" %% "leonardo-repl" % mimaBaseline),
@@ -497,6 +508,68 @@ lazy val replModule = crossProject(JVMPlatform, JSPlatform)
  *  served structurally here rather than by its guard) and a stale sibling directory cannot be
  *  picked up instead.
  */
+// ── The MCP server, the third published module (F_0126) ───────────────────────────────────
+// Leonardo as a tool an LLM client calls through the Model Context Protocol, over one REPL Session.
+// The REPL split's isolation rule applies a second time: the MCP SDK and its JSON / reactive stack
+// (Jackson 3, Reactor, a JSON-schema validator, slf4j) live HERE and nowhere else, so neither
+// `leonardo` nor `leonardo-repl` resolves them -- checked on the generated POMs, not the settings.
+// JVM only: the SDK is a Java library.  Logging goes to STDERR (slf4j-simple's default), because
+// STDOUT is the protocol channel of the stdio transport and one stray line there breaks the client.
+lazy val mcp = (project in file("mcp"))
+  .dependsOn(replModule.jvm)
+  .settings(
+    name             := "leonardo-mcp",
+    idePackagePrefix := Some("it.grypho.scala.leonardo"),
+    scalacOptions   ++= jdkFloorOptions,
+    libraryDependencies ++= Seq(
+      "io.modelcontextprotocol.sdk" % "mcp"          % "2.1.0",
+      "org.slf4j"                   % "slf4j-simple" % "2.0.16",
+      "org.scalatest"              %% "scalatest"    % "3.2.20" % Test
+    ),
+    Compile / mainClass := Some("it.grypho.scala.leonardo.mcp.leonardoMcp"),
+    // The grammar resource (the cheat sheet) and the version, bundled at build time.
+    Compile / resourceGenerators += Def.task {
+      val dir   = (Compile / resourceManaged).value / "leonardo-mcp"
+      val sheet = dir / "cheatsheet.md"
+      IO.copyFile((ThisBuild / baseDirectory).value / "docs" / "src" / "cheatsheet.md", sheet)
+      val ver = dir / "version.txt"
+      IO.write(ver, version.value)
+      Seq(sheet, ver)
+    }.taskValue,
+    // ToScala's round trip (Decision D): the corpus is rendered by the compiled main code and written as
+    // a TEST SOURCE, so the compiler checks every rendering and the suite checks it equals the original.
+    Test / sourceGenerators += Def.task {
+      val out = (Test / sourceManaged).value / "mcp" / "GeneratedRoundTrip.scala"
+      val sheet = (ThisBuild / baseDirectory).value / "docs" / "src" / "cheatsheet.md"
+      (Compile / runner).value.run("it.grypho.scala.leonardo.mcp.ScalaRoundTrip",
+        (Compile / fullClasspath).value.files, Seq(sheet.getPath, out.getPath), streams.value.log).get
+      Seq(out)
+    }.taskValue,
+    // No baseline until the first release that ships it.
+    mimaPreviousArtifacts := Set.empty,
+    mimaFailOnNoPrevious  := false,
+
+    // The runnable jar (sbt-assembly): `java -jar leonardo-mcp-<version>.jar`.  The SDK finds its JSON
+    // mapper and schema validator through java.util.ServiceLoader, so META-INF/services files are
+    // CONCATENATED, never deduplicated -- one lost provider file and the server fails at start-up.
+    // The licence and notice files of the bundled libraries are kept beside each other.
+    assembly / assemblyJarName := s"leonardo-mcp-${version.value}.jar",
+    assembly / mainClass       := Some("it.grypho.scala.leonardo.mcp.leonardoMcp"),
+    assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "services", _*)                         => MergeStrategy.concat
+      case PathList("META-INF", "versions", _*)                         => MergeStrategy.first
+      case PathList("META-INF", f) if f.toLowerCase.endsWith(".sf") ||
+                                     f.toLowerCase.endsWith(".dsa") ||
+                                     f.toLowerCase.endsWith(".rsa")    => MergeStrategy.discard
+      case PathList("META-INF", "MANIFEST.MF")                          => MergeStrategy.discard
+      case PathList("META-INF", f) if f.toUpperCase.startsWith("LICENSE") ||
+                                     f.toUpperCase.startsWith("NOTICE") => MergeStrategy.rename
+      case "module-info.class"                                          => MergeStrategy.discard
+      case PathList("META-INF", "versions", _, "module-info.class")     => MergeStrategy.discard
+      case x => (assembly / assemblyMergeStrategy).value(x)
+    }
+  )
+
 lazy val app = taskKey[File]("Assembles the browser REPL into web/target/app: index.html, main.js, Banner.svg, vendor/.")
 
 lazy val web = (project in file("web"))
@@ -629,7 +702,20 @@ addCommandAlias("checks",
   ";tools/runMain it.grypho.scala.leonardo.tools.docLinks" +
   ";tools/runMain it.grypho.scala.leonardo.tools.csp" +
   ";tools/runMain it.grypho.scala.leonardo.tools.reservedWords" +
-  ";tools/runMain it.grypho.scala.leonardo.tools.graphml --check")
+  ";tools/runMain it.grypho.scala.leonardo.tools.graphml --check" +
+  ";checkPomIsolation")
+
+// The isolation rule, checked where it matters -- on the GENERATED POMs, not on the settings (5.2's
+// rule for JLine, applied again by F_0126): a consumer of `leonardo` or `leonardo-repl` must never
+// resolve the MCP SDK or the JSON / reactive stack it brings.
+lazy val checkPomIsolation = taskKey[Unit]("Fails if the library's or the REPL's POM names the MCP server's dependencies")
+checkPomIsolation := {
+  val forbidden = Seq("modelcontextprotocol", "jackson", "reactor", "slf4j", "networknt")
+  val poms = Seq((core.jvm / makePom).value, (replModule.jvm / makePom).value)
+  val found = for { pom <- poms; word <- forbidden if IO.read(pom).contains(word) } yield s"${pom.getName}: $word"
+  if (found.nonEmpty) sys.error(s"the MCP server's stack leaked into a published POM: ${found.mkString(", ")}")
+  streams.value.log.info(s"POM isolation: ${poms.map(_.getName).mkString(", ")} name none of ${forbidden.mkString(", ")}")
+}
 
 // The architecture diagram as GraphML for Gephi (F_0097), committed beside it as
 // docs/structure.graphml. Run after editing docs/structure.puml, beside `sbt puml`; the

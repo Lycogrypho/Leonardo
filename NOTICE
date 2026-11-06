@@ -16,11 +16,19 @@ limitations under the License.
 --------------------------------------------------------------------------------
 
 Third-party dependencies are resolved at build time and are NOT redistributed
-within this repository, so their notices are not reproduced here. For reference,
-Leonardo depends on:
+within this repository, so their notices are not reproduced here. The one
+binary that bundles them, the MCP server's runnable jar attached to each GitHub
+Release (leonardo-mcp-<version>.jar), carries each library's own licence and
+notice files under META-INF. For reference, Leonardo depends on:
 
   - scala-parser-combinators (Apache License 2.0)
   - JLine                    (BSD 3-Clause) -- REPL module only
+  - MCP Java SDK             (MIT License) -- MCP server module only, with:
+      Jackson                (Apache License 2.0)
+      Reactor Core, Reactive Streams (Apache License 2.0 / MIT-0)
+      networknt json-schema-validator (Apache License 2.0), its ethlo itu
+                             and snakeyaml-engine (Apache License 2.0)
+      SLF4J API and slf4j-simple (MIT License)
   - spire                    (MIT License)
   - ScalaTest                (Apache License 2.0) -- test scope only
 

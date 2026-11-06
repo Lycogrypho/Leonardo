@@ -47,3 +47,10 @@ addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.9.2")
 // Check https://mvnrepository.com/artifact/org.scala-js/sbt-scalajs for the latest.
 addSbtPlugin("org.scala-js"       % "sbt-scalajs"                % "1.22.0")
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject"   % "1.4.0")
+
+// The MCP server's runnable jar (F_0126, the owner's choice of 2026-11-06 over a zip of jars from a
+// task of our own): `sbt mcp/assembly` writes one self-contained `leonardo-mcp-<version>.jar`, attached
+// to each GitHub Release by release.yml.  It enters the meta-build that signs releases, so it is checked
+// by `sbt osvPlugins` before each tag like every other plugin here; build-only, in no published POM.
+// Check https://mvnrepository.com/artifact/com.eed3si9n/sbt-assembly for the latest.
+addSbtPlugin("com.eed3si9n"       % "sbt-assembly"               % "2.5.0")

@@ -340,6 +340,11 @@ To simply *try* the REPL, nothing needs to be cloned, built or added to a projec
 cs launch it.grypho:leonardo-repl_3:3.8.3 -M it.grypho.scala.leonardo.cli.repl
 ```
 
+**From the next release, every module requires JDK 25**, and a third artifact, `leonardo-mcp`, makes
+Leonardo a tool an AI assistant can call through the Model Context Protocol: Claude Desktop, Claude Code
+and other MCP clients delegate symbolic and certified numeric work to it. A runnable jar is attached to
+each GitHub Release; see the [MCP page](https://lycogrypho.github.io/Leonardo/mcp.html).
+
 ### First steps in code
 
 The REPL is a convenience; the library is the deliverable. Parse a string into an expression

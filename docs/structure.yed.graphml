@@ -5119,7 +5119,7 @@ Root     : x^0.5 / x^(1/2) / _Rational</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/repl.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="332.0" width="580.0" x="0.0" y="0.0"/>
+              <y:Geometry height="348.0" width="580.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">Session</y:NodeLabel>
@@ -5129,6 +5129,7 @@ Root     : x^0.5 / x^(1/2) / _Rational</y:MethodLabel>
 - bindings: Map
 - definitions: Map
 + lastLatex: Option[String]
++ lastResult: Option[_Expression] -- F_0126
 + currentColorScheme: String
 + script: String
 -- companion --
@@ -5279,6 +5280,89 @@ words derived from Parser.ReservedWords and Session.CommandWords (F_0213)</y:Met
 syntax highlighting wired
 drives the pure Session.step</y:AttributeLabel>
                 <y:MethodLabel></y:MethodLabel>
+              </y:UML>
+            </y:UMLClassNode>
+          </data>
+        </node>
+      </graph>
+    </node>
+    <node id="n17" yfiles.foldertype="group">
+      <data key="d0">
+        <y:ProxyAutoBoundsNode>
+          <y:Realizers active="0">
+            <y:GroupNode>
+              <y:Fill color="#F4F4FF" transparent="false"/>
+              <y:BorderStyle color="#7777AA" type="line" width="1.0"/>
+              <y:NodeLabel modelName="internal" modelPosition="t">mcp</y:NodeLabel>
+              <y:Shape type="rectangle"/>
+              <y:State closed="false"/>
+            </y:GroupNode>
+          </y:Realizers>
+        </y:ProxyAutoBoundsNode>
+      </data>
+      <graph edgedefault="directed" id="n17:">
+        <node id="n17::n0">
+          <data key="d1">https://lycogrypho.github.io/Leonardo/mcp.html</data>
+          <data key="d0">
+            <y:UMLClassNode>
+              <y:Geometry height="108.0" width="532.0" x="0.0" y="0.0"/>
+              <y:Fill color="#E1ECFB" transparent="false"/>
+              <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
+              <y:NodeLabel modelName="internal" modelPosition="c">Tools</y:NodeLabel>
+              <y:UML stereotype="utility">
+                <y:AttributeLabel>-- each tool assembles ONE REPL line --
+evaluate, simplify, derive, integrate, solve, limit, scala_value</y:AttributeLabel>
+                <y:MethodLabel>+ call(name, args, worker): ToolAnswer</y:MethodLabel>
+              </y:UML>
+            </y:UMLClassNode>
+          </data>
+        </node>
+        <node id="n17::n1">
+          <data key="d1">https://lycogrypho.github.io/Leonardo/mcp.html</data>
+          <data key="d0">
+            <y:UMLClassNode>
+              <y:Geometry height="108.0" width="380.0" x="0.0" y="0.0"/>
+              <y:Fill color="#E1ECFB" transparent="false"/>
+              <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
+              <y:NodeLabel modelName="internal" modelPosition="c">SessionWorker</y:NodeLabel>
+              <y:UML stereotype="utility">
+                <y:AttributeLabel>-- one Session behind a wall-clock timeout --
+timed out: abandoned, restored from :save</y:AttributeLabel>
+                <y:MethodLabel>+ run(f, within): Either[String, A]</y:MethodLabel>
+              </y:UML>
+            </y:UMLClassNode>
+          </data>
+        </node>
+        <node id="n17::n2">
+          <data key="d1">https://lycogrypho.github.io/Leonardo/mcp.html</data>
+          <data key="d0">
+            <y:UMLClassNode>
+              <y:Geometry height="124.0" width="468.0" x="0.0" y="0.0"/>
+              <y:Fill color="#E1ECFB" transparent="false"/>
+              <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
+              <y:NodeLabel modelName="internal" modelPosition="c">StdioServer</y:NodeLabel>
+              <y:UML stereotype="utility">
+                <y:AttributeLabel>-- the MCP Java SDK wiring --
+resources: leonardo://grammar, leonardo://session/script
+leonardoMcp: --timeout &lt;seconds&gt;; logs to stderr</y:AttributeLabel>
+                <y:MethodLabel>+ serve(transport, worker): McpSyncServer</y:MethodLabel>
+              </y:UML>
+            </y:UMLClassNode>
+          </data>
+        </node>
+        <node id="n17::n3">
+          <data key="d1">https://lycogrypho.github.io/Leonardo/mcp.html</data>
+          <data key="d0">
+            <y:UMLClassNode>
+              <y:Geometry height="124.0" width="372.0" x="0.0" y="0.0"/>
+              <y:Fill color="#E1ECFB" transparent="false"/>
+              <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
+              <y:NodeLabel modelName="internal" modelPosition="c">ToScala</y:NodeLabel>
+              <y:UML stereotype="utility">
+                <y:AttributeLabel>-- Decision D: Scala source for a result --
+generic over the case classes; round trip on</y:AttributeLabel>
+                <y:MethodLabel>+ apply(value): Either[String, String]
+the cheat sheet (a generated test source)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -9282,6 +9366,42 @@ drives the pure Session.step</y:AttributeLabel>
           <y:LineStyle color="#444466" type="dashed" width="1.0"/>
           <y:Arrows source="none" target="plain"/>
           <y:EdgeLabel>latex on -&gt; lastLatex (a SECOND channel;\nthe printed text is unchanged)</y:EdgeLabel>
+        </y:PolyLineEdge>
+      </data>
+    </edge>
+    <edge id="e465" source="n17::n2" target="n17::n0">
+      <data key="d3">
+        <y:PolyLineEdge>
+          <y:LineStyle color="#444466" type="dashed" width="1.0"/>
+          <y:Arrows source="none" target="plain"/>
+          <y:EdgeLabel>tool specifications</y:EdgeLabel>
+        </y:PolyLineEdge>
+      </data>
+    </edge>
+    <edge id="e466" source="n17::n0" target="n17::n1">
+      <data key="d3">
+        <y:PolyLineEdge>
+          <y:LineStyle color="#444466" type="dashed" width="1.0"/>
+          <y:Arrows source="none" target="plain"/>
+          <y:EdgeLabel>runs each line</y:EdgeLabel>
+        </y:PolyLineEdge>
+      </data>
+    </edge>
+    <edge id="e467" source="n17::n0" target="n17::n3">
+      <data key="d3">
+        <y:PolyLineEdge>
+          <y:LineStyle color="#444466" type="dashed" width="1.0"/>
+          <y:Arrows source="none" target="plain"/>
+          <y:EdgeLabel>scala_value</y:EdgeLabel>
+        </y:PolyLineEdge>
+      </data>
+    </edge>
+    <edge id="e468" source="n17::n1" target="n16::n0">
+      <data key="d3">
+        <y:PolyLineEdge>
+          <y:LineStyle color="#444466" type="line" width="1.0"/>
+          <y:Arrows source="none" target="plain"/>
+          <y:EdgeLabel>one per connection</y:EdgeLabel>
         </y:PolyLineEdge>
       </data>
     </edge>
