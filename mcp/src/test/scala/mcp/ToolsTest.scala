@@ -76,6 +76,35 @@ class ToolsTest extends AnyFlatSpec:
     assert(first(call(w, "evaluate", "line" -> "a")) == "5.0")
   }
 
+  /** A busy loop, which ignores interruption as a real computation does. */
+  private def busy(seconds: Double): Unit =
+    val end = System.nanoTime() + (seconds * 1e9).toLong
+    while System.nanoTime() < end do ()
+
+  it should "refuse new requests while too many abandoned computations still run (F_0312)" in {
+    val w = SessionWorker(30.seconds, maxAbandoned = 2)
+    assert(w.run(_.execute("1 + 1")).isRight) // warm, so a restore is quick beside the loops
+    // long enough that neither ends while the other times out and its restore runs
+    assert(w.run(_ => busy(8.0), 50.millis).left.exists(_.contains("timed out")))
+    assert(w.run(_ => busy(8.0), 50.millis).left.exists(_.contains("timed out")))
+    assert(w.abandonedRunning == 2, s"abandoned still running: ${w.abandonedRunning}")
+    val refused = w.run(_.execute("1 + 1"))
+    assert(refused.left.exists(_.contains("2 abandoned computations")), refused.toString)
+    // accepted again once one of them ends, whenever that is
+    val deadline = System.nanoTime() + 20_000_000_000L
+    while w.abandonedRunning >= 2 && System.nanoTime() < deadline do Thread.sleep(100)
+    assert(w.run(_.execute("1 + 1")).exists(_.startsWith("2.0")))
+  }
+
+  it should "start an empty session when the restore itself times out (F_0312)" in {
+    val w = SessionWorker(500.millis)
+    assert(w.run(_.execute("a := 5")).isRight)
+    w.beforeRestore = () => busy(3.0)
+    val out = w.run(_ => busy(3.0))
+    assert(out.left.exists(_.contains("starts empty")), out.toString)
+    assert(first(call(w, "evaluate", "line" -> "a")) == "a")
+  }
+
   it should "serve the session's script" in {
     val w = worker()
     call(w, "evaluate", "line" -> "r := 2")

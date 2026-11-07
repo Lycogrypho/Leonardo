@@ -60,20 +60,13 @@ def minreal(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue,
     val tol = rankTolerance(env)
     def basis(mat: _MatrixValue): Either[MinrealFailure, Option[_MatrixValue]] =
       subspaceBasis(mat, Subspace.Range, tol, env.limits).toRight(TooLarge)
-    // [B, AB, …, A^(n-1)B], n x (n·m)
-    def krylov(aa: _MatrixValue, bb: _MatrixValue): _MatrixValue =
-      val cols = (0 until aa.rows).scanLeft(bb)((x, _) => aa.multiply(x)).take(aa.rows)
-      _MatrixValue(aa.rows, aa.rows * bb.cols,
-        Array.tabulate(aa.rows * aa.rows * bb.cols)(idx =>
-          val (r, col) = (idx / (aa.rows * bb.cols), idx % (aa.rows * bb.cols))
-          cols(col / bb.cols)(r, col % bb.cols)))
     for
-      uc <- basis(krylov(a, b)).flatMap(_.toRight(NoState))
+      uc <- basis(Dense.krylov(a, b)).flatMap(_.toRight(NoState))
       a1  = uc.transpose.multiply(a).multiply(uc)
       b1  = uc.transpose.multiply(b)
       c1  = c.multiply(uc)
       // the observable part: the range of O₁ᵀ = [C₁ᵀ, A₁ᵀC₁ᵀ, …]
-      vo <- basis(krylov(a1.transpose, c1.transpose)).flatMap(_.toRight(NoState))
+      vo <- basis(Dense.krylov(a1.transpose, c1.transpose)).flatMap(_.toRight(NoState))
       a2  = vo.transpose.multiply(a1).multiply(vo)
       b2  = vo.transpose.multiply(b1)
       c2  = c1.multiply(vo)

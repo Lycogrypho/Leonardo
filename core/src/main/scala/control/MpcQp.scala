@@ -206,8 +206,8 @@ def mpcQp(prediction: MpcPredictionMatrices, weights: MpcWeights, reference: Vec
     // c0 = Φx + Ψu(k−1), the free response
     val c0 = Vector.tabulate(rowsY)(i =>
       (0 until n).map(j => phi(i, j) * x(j)).sum + psi.fold(0.0)(ps => (0 until m).map(j => ps(i, j) * uPrev(j)).sum))
-    val qBar = blockDiagonal(Vector.tabulate(np)(i => weights.q(if weights.q.size == 1 then 0 else i)))
-    val rBar = blockDiagonal(Vector.tabulate(nc)(j => weights.r(if weights.r.size == 1 then 0 else j)))
+    val qBar = Dense.blockDiagonal(Vector.tabulate(np)(i => weights.q(if weights.q.size == 1 then 0 else i)))
+    val rBar = Dense.blockDiagonal(Vector.tabulate(nc)(j => weights.r(if weights.r.size == 1 then 0 else j)))
     val gtq  = g.transpose.multiply(qBar)
     val target = weights.inputTarget.map(v => if v.size == nz then v else Vector.fill(nc)(v).flatten)
     // the terminal cost: x(k+Np) = d0 + Gx·Z
@@ -222,7 +222,7 @@ def mpcQp(prediction: MpcPredictionMatrices, weights: MpcWeights, reference: Vec
     val hz0  = gtq.multiply(g).add(rBar)
     val hz   = term.fold(hz0)((ht, _) => hz0.add(ht)).scale(2.0)
     val fz0  = gtq.multiply(_MatrixValue(rowsY, 1, c0.zip(ref).map(_ - _).toArray)).toVector
-    val fz1  = target.fold(fz0)(us => fz0.zip(mulVec(rBar, us)).map(_ - _))
+    val fz1  = target.fold(fz0)(us => fz0.zip(Dense.times(rBar, us)).map(_ - _))
     val fz   = term.fold(fz1)((_, ft) => fz1.zip(ft).map(_ + _)).map(2.0 * _)
     val size = nz + ns
     val hData = Array.tabulate(size * size) { idx =>
@@ -272,16 +272,3 @@ def mpcQp(prediction: MpcPredictionMatrices, weights: MpcWeights, reference: Vec
 private def forms(prediction: MpcPredictionMatrices): (_MatrixValue, Option[_MatrixValue]) = prediction match
   case MpcPrediction(_, gamma)                => (gamma, None)
   case MpcIncrementalPrediction(_, ps, theta) => (theta, Some(ps))
-
-/** The block diagonal of square blocks. */
-private def blockDiagonal(blocks: Vector[_MatrixValue]): _MatrixValue =
-  val size = blocks.map(_.rows).sum
-  val out  = new Array[Double](size * size)
-  var off  = 0
-  for blk <- blocks do
-    for i <- 0 until blk.rows; j <- 0 until blk.cols do out((off + i) * size + off + j) = blk(i, j)
-    off += blk.rows
-  _MatrixValue(size, size, out)
-
-private def mulVec(mv: _MatrixValue, v: Vector[Double]): Vector[Double] =
-  Vector.tabulate(mv.rows)(i => (0 until mv.cols).map(j => mv(i, j) * v(j)).sum)

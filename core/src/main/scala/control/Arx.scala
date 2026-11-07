@@ -491,46 +491,11 @@ private def layout(us: Vector[Vector[Double]], ys: Vector[Vector[Double]], na: I
  *  rank-deficient matrix — the very case a decline must report the rank of.  An `R` whose SVD does
  *  not answer takes the SVD of `X`. */
 private def excited(x: _MatrixValue, env: Environment): Either[ArxFailure, Unit] =
-  triangularFactor(x).svd(env.limits) match
+  Dense.householderR(x).svd(env.limits) match
     case Some((_, sigma, _)) =>
       val rk = numericalRank(sigma, rankTolerance(env))
       Either.cond(rk == x.cols, (), NotExcited(rk, x.cols))
     case None => excitedBySvd(x, env)
-
-/** The `c×c` upper triangular `R` of `X = Q·R` by Householder reflections, for `X` with at least
- *  as many rows as columns; it never declines (a zero column leaves a zero row). */
-private def triangularFactor(x: _MatrixValue): _MatrixValue =
-  val (m, n) = (x.rows, x.cols)
-  val a = Array.tabulate(m * n)(idx => x(idx / n, idx % n))
-  val v = new Array[Double](m)
-  var k = 0
-  while k < n do
-    var big = 0.0
-    var i = k
-    while i < m do { big = math.max(big, math.abs(a(i * n + k))); i += 1 }
-    if big > 0.0 then
-      var ss = 0.0
-      i = k
-      // v is the column scaled by its largest entry, so no square overflows or underflows
-      while i < m do { val t = a(i * n + k) / big; v(i) = t; ss += t * t; i += 1 }
-      val norm  = math.sqrt(ss)
-      val alpha = if v(k) > 0.0 then -norm else norm
-      v(k) -= alpha
-      var vv = 0.0
-      i = k
-      while i < m do { vv += v(i) * v(i); i += 1 }
-      if vv > 0.0 then
-        var j = k
-        while j < n do
-          var s = 0.0
-          i = k
-          while i < m do { s += v(i) * a(i * n + j); i += 1 }
-          val f = 2.0 * s / vv
-          i = k
-          while i < m do { a(i * n + j) -= f * v(i); i += 1 }
-          j += 1
-    k += 1
-  _MatrixValue(n, n, Array.tabulate(n * n)(idx => if idx % n >= idx / n then a(idx) else 0.0))
 
 /** [[excited]] by the SVD of `X` itself, the reported rank's source. */
 private def excitedBySvd(x: _MatrixValue, env: Environment): Either[ArxFailure, Unit] =

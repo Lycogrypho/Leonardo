@@ -60,13 +60,13 @@ def augmentDisturbance(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, bd: _M
   else if nd > p then Left(MpcFailure.NotDetectable(s"$nd disturbances cannot be told apart through $p outputs"))
   else
     pairDetectable(a, c, env).flatMap { _ =>
-      val m1 = blockMatrix(Vector(Vector(a.add(_MatrixValue.identity(n).scale(-1.0)), bd), Vector(c, cd)))
+      val m1 = Dense.blocks(Vector(Vector(a.add(_MatrixValue.identity(n).scale(-1.0)), bd), Vector(c, cd)))
       fullColumnRank(m1, env).flatMap { full =>
         if !full then Left(MpcFailure.NotDetectable("[[A - I, Bd], [C, Cd]] does not have full column rank"))
         else
-          val aAug = blockMatrix(Vector(Vector(a, bd), Vector(zeroBlock(nd, n), _MatrixValue.identity(nd))))
-          val bAug = blockMatrix(Vector(Vector(b), Vector(zeroBlock(nd, m))))
-          Right(DisturbanceModel(aAug, bAug, blockMatrix(Vector(Vector(c, cd))), n, nd))
+          val aAug = Dense.blocks(Vector(Vector(a, bd), Vector(Dense.zeros(nd, n), _MatrixValue.identity(nd))))
+          val bAug = Dense.blocks(Vector(Vector(b), Vector(Dense.zeros(nd, m))))
+          Right(DisturbanceModel(aAug, bAug, Dense.blocks(Vector(Vector(c, cd))), n, nd))
       }
     }
 
@@ -77,7 +77,7 @@ def augmentDisturbance(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, bd: _M
  *  @param env the precision and budgets
  *  @return the augmented model, or why not */
 def inputDisturbanceModel(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, env: Environment): Either[MpcFailure, DisturbanceModel] =
-  augmentDisturbance(a, b, c, b, zeroBlock(c.rows, b.cols), env)
+  augmentDisturbance(a, b, c, b, Dense.zeros(c.rows, b.cols), env)
 
 /** The output-disturbance model (F_0300): `Bd = 0`, `Cd = I`, one disturbance per output.
  *  @param a   the state matrix
@@ -86,7 +86,7 @@ def inputDisturbanceModel(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, env
  *  @param env the precision and budgets
  *  @return the augmented model, or why not */
 def outputDisturbanceModel(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, env: Environment): Either[MpcFailure, DisturbanceModel] =
-  augmentDisturbance(a, b, c, zeroBlock(a.rows, c.rows), _MatrixValue.identity(c.rows), env)
+  augmentDisturbance(a, b, c, Dense.zeros(a.rows, c.rows), _MatrixValue.identity(c.rows), env)
 
 /** The steady-state Kalman gain of the augmented model (F_0300), through [[kalmanGain]].
  *  @param model the augmented model
@@ -129,8 +129,8 @@ def steadyStateTarget(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, bd: _Ma
     bad(s"the input bounds need $m entries each, lower below upper")
   else if !(Seq(a, b, c, bd, cd).forall(_.isFinite) && (r ++ d).forall(_.isFinite)) then bad("every entry must be finite")
   else
-    val bdd = mulVector(bd, d)
-    val cdd = mulVector(cd, d)
+    val bdd = Dense.times(bd, d)
+    val cdd = Dense.times(cd, d)
     val tol = 0.5 * math.pow(10, -env.precision)
     def inBounds(u: Vector[Double]) = uBounds.forall((lo, hi) => u.indices.forall(k => lo(k) <= u(k) && u(k) <= hi(k)))
     def reachedAt(x: Vector[Double]): Boolean =
@@ -139,18 +139,18 @@ def steadyStateTarget(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, bd: _Ma
         math.abs((0 until n).map(j => c(i, j) * x(j)).sum + cdd(i) - r(i)) <= tol * math.max(terms, Double.MinPositiveValue)
       }
     val iMinusA = _MatrixValue.identity(n).add(a.scale(-1.0))
-    val e = blockMatrix(Vector(Vector(iMinusA.scale(-1.0), b), Vector(c, zeroBlock(p, m))))
+    val e = Dense.blocks(Vector(Vector(iMinusA.scale(-1.0), b), Vector(c, Dense.zeros(p, m))))
     val rhs = bdd.map(-_) ++ r.zip(cdd).map(_ - _)
-    val direct = Option.when(n + p == n + m)(e.inverse).flatten.map(inv => mulVector(inv, rhs))
+    val direct = Option.when(n + p == n + m)(e.inverse).flatten.map(inv => Dense.times(inv, rhs))
       .filter(w => inBounds(w.drop(n)))
     direct match
       case Some(w) => Right(SteadyStateTarget(w.take(n), w.drop(n), reachedAt(w.take(n))))
       case None =>
         // min ‖C·x + Cd·d − r‖² = wᵀ[[CᵀC, 0], [0, 0]]w + 2(Cd·d − r)ᵀC·x + const
         val ctc = c.transpose.multiply(c).scale(2.0)
-        val h   = blockMatrix(Vector(Vector(ctc, zeroBlock(n, m)), Vector(zeroBlock(m, n), zeroBlock(m, m))))
-        val f   = mulVector(c.transpose, cdd.zip(r).map(_ - _)).map(2.0 * _) ++ Vector.fill(m)(0.0)
-        val eq  = (blockMatrix(Vector(Vector(iMinusA.scale(-1.0), b))), bdd.map(-_))
+        val h   = Dense.blocks(Vector(Vector(ctc, Dense.zeros(n, m)), Vector(Dense.zeros(m, n), Dense.zeros(m, m))))
+        val f   = Dense.times(c.transpose, cdd.zip(r).map(_ - _)).map(2.0 * _) ++ Vector.fill(m)(0.0)
+        val eq  = (Dense.blocks(Vector(Vector(iMinusA.scale(-1.0), b))), bdd.map(-_))
         val lb  = Vector.fill(n)(Double.NegativeInfinity) ++ uBounds.fold(Vector.fill(m)(Double.NegativeInfinity))(_._1)
         val ub  = Vector.fill(n)(Double.PositiveInfinity) ++ uBounds.fold(Vector.fill(m)(Double.PositiveInfinity))(_._2)
         qpSolve(h, f, None, Some(eq), lb, ub, Set.empty, env).left.map(MpcFailure.Qp(_)).map { s =>
@@ -161,7 +161,7 @@ def steadyStateTarget(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, bd: _Ma
 /** `(A, C)` detectable: the unobservable part of `A` strictly inside the unit circle. */
 private def pairDetectable(a: _MatrixValue, c: _MatrixValue, env: Environment): Either[MpcFailure, Unit] =
   val n = a.rows
-  val obs = blockMatrix((0 until n).scanLeft(c)((ck, _) => ck.multiply(a)).take(n).map(Vector(_)).toVector)
+  val obs = Dense.blocks((0 until n).scanLeft(c)((ck, _) => ck.multiply(a)).take(n).map(Vector(_)).toVector)
   subspaceBasis(obs, Subspace.Null, rankTolerance(env), env.limits) match
     case None          => Left(MpcFailure.InvalidInput("the observability matrix could not be decomposed"))
     case Some(None)    => Right(())                                     // observable
@@ -179,22 +179,3 @@ private def fullColumnRank(mat: _MatrixValue, env: Environment): Either[MpcFailu
   else mat.svd(env.limits) match
     case Some((_, sigma, _)) => Right(numericalRank(sigma, rankTolerance(env)) == mat.cols)
     case None                => Left(MpcFailure.InvalidInput("the rank test could not be computed"))
-
-private def zeroBlock(rows: Int, cols: Int): _MatrixValue = _MatrixValue(rows, cols, new Array[Double](rows * cols))
-
-private def mulVector(mv: _MatrixValue, v: Vector[Double]): Vector[Double] =
-  Vector.tabulate(mv.rows)(i => (0 until mv.cols).map(j => mv(i, j) * v(j)).sum)
-
-/** A block matrix from rows of blocks with conforming shapes; a zero-width block is not allowed. */
-private def blockMatrix(rows: Vector[Vector[_MatrixValue]]): _MatrixValue =
-  val width  = rows.head.map(_.cols).sum
-  val height = rows.map(_.head.rows).sum
-  val out    = new Array[Double](height * width)
-  var r0 = 0
-  for blockRow <- rows do
-    var c0 = 0
-    for blk <- blockRow do
-      for i <- 0 until blk.rows; j <- 0 until blk.cols do out((r0 + i) * width + c0 + j) = blk(i, j)
-      c0 += blk.cols
-    r0 += blockRow.head.rows
-  _MatrixValue(height, width, out)
