@@ -30,14 +30,14 @@ def stateSpace(a: _Expression, b: _Expression, c: _Expression, d: _Expression): 
 private def denseOf(e: _Expression): Option[_MatrixValue] =
   _MatrixValue.ofEvaluated(e.eval(new Environment()))
 
-/** Controllability matrix `[B, A*B, A^2*B, …, A^(n-1)*B]`, joined by the shared block assembly
- *  (F_0055) — the private concatenation this file used to carry was a second definition of
- *  `hcat`.  `None` only past `matrix.MaxMatrixCells`, at its **default**: `controllable` and
- *  `observable` are published without an `Environment` (F_0124), and the cap binds only past
- *  `n²·m = 10⁶`, far beyond the plants the Riccati family accepts. */
+/** Controllability matrix `[B, A*B, A^2*B, …, A^(n-1)*B]`: `Dense.krylov`, the one definition of it
+ *  (F_0318 — this file built it a second time through the block assembly, after F_0055 had removed
+ *  the private concatenation it carried as a second definition of `hcat`), under a cell cap.  `None`
+ *  only past `matrix.MaxMatrixCells`, at its **default**: `controllable` and `observable` are
+ *  published without an `Environment` (F_0124), and the cap binds only past `n²·m = 10⁶`, far
+ *  beyond the plants the Riccati family accepts.  Callers check `A` square and `B` conforming. */
 private def ctrbOf(a: _MatrixValue, b: _MatrixValue, maxCells: Long = MaxMatrixCells): Option[_MatrixValue] =
-  val blocks = (1 until a.rows).foldLeft(Vector(b))((acc, _) => acc :+ a.multiply(acc.last))
-  assembleBlocks(Vector(blocks.map(_Matrix.fromValue)), maxCells).flatMap(matrix.denseOf)
+  Option.when(a.rows.toLong * a.rows * b.cols <= maxCells)(Dense.krylov(a, b))
 
 /** Full row rank test, by QR of the transpose.
  *

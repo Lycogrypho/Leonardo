@@ -2,6 +2,8 @@ package it.grypho.scala.leonardo
 package mcp
 
 import org.scalatest.flatspec.AnyFlatSpec
+
+import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import scala.concurrent.duration.*
 
 class ToolsTest extends AnyFlatSpec:
@@ -67,42 +69,86 @@ class ToolsTest extends AnyFlatSpec:
   }
 
   "the session worker" should "answer a timed-out request at once and keep the session's state" in {
-    val w = worker()
-    assert(!call(w, "evaluate", "line" -> "a := 5").isError)
-    val t0 = System.nanoTime()
-    val slow = w.run(_.execute("integral(abs(sin(1000*x)), x, 0, 100)"), 50.millis)
-    assert(slow.left.exists(_.contains("timed out")), slow.toString)
-    assert((System.nanoTime() - t0) / 1e9 < 5.0)
-    assert(first(call(w, "evaluate", "line" -> "a")) == "5.0")
+    val w  = worker()
+    val go = CountDownLatch(1)   // F_0317: a quadrature that a warm JVM declined inside the limit was the "slow" line
+    try
+      assert(!call(w, "evaluate", "line" -> "a := 5").isError)
+      val t0   = System.nanoTime()
+      val slow = w.run(_ => blockOn(go), 200.millis)
+      assert(slow.left.exists(_.contains("the request was abandoned")), slow.toString)
+      assert((System.nanoTime() - t0) / 1e9 < 5.0)
+      assert(first(call(w, "evaluate", "line" -> "a")) == "5.0")
+    finally go.countDown()
   }
 
-  /** A busy loop, which ignores interruption as a real computation does. */
-  private def busy(seconds: Double): Unit =
-    val end = System.nanoTime() + (seconds * 1e9).toLong
-    while System.nanoTime() < end do ()
+  /** A computation that runs until `go` is released, ignoring interruption as a real computation does
+   *  (F_0317: the test decides when it ends, not the clock). */
+  private def blockOn(go: CountDownLatch): Unit =
+    var released = false
+    while !released do
+      try { go.await(); released = true }
+      catch case _: InterruptedException => ()
+
+  /** Until every abandoned worker of `w` has ended, at most `seconds`. */
+  private def drained(w: SessionWorker, seconds: Int = 10): Boolean =
+    val deadline = System.nanoTime() + seconds * 1_000_000_000L
+    while w.abandonedRunning > 0 && System.nanoTime() < deadline do Thread.sleep(10)
+    w.abandonedRunning == 0
 
   it should "refuse new requests while too many abandoned computations still run (F_0312)" in {
-    val w = SessionWorker(30.seconds, maxAbandoned = 2)
-    assert(w.run(_.execute("1 + 1")).isRight) // warm, so a restore is quick beside the loops
-    // long enough that neither ends while the other times out and its restore runs
-    assert(w.run(_ => busy(8.0), 50.millis).left.exists(_.contains("timed out")))
-    assert(w.run(_ => busy(8.0), 50.millis).left.exists(_.contains("timed out")))
-    assert(w.abandonedRunning == 2, s"abandoned still running: ${w.abandonedRunning}")
-    val refused = w.run(_.execute("1 + 1"))
-    assert(refused.left.exists(_.contains("2 abandoned computations")), refused.toString)
-    // accepted again once one of them ends, whenever that is
-    val deadline = System.nanoTime() + 20_000_000_000L
-    while w.abandonedRunning >= 2 && System.nanoTime() < deadline do Thread.sleep(100)
+    val w  = SessionWorker(30.seconds, maxAbandoned = 2)
+    val go = CountDownLatch(1)
+    try
+      // half a second, not 50 ms: under a full run's load a stall before the lock exceeded 50 ms, and the
+      // "timed out waiting" refusal (F_0316) abandons nothing -- which is why the assertion names the abandonment
+      assert(w.run(_ => blockOn(go), 500.millis).left.exists(_.contains("the request was abandoned")))
+      assert(w.run(_ => blockOn(go), 500.millis).left.exists(_.contains("the request was abandoned")))
+      assert(w.abandonedRunning == 2, s"abandoned still running: ${w.abandonedRunning}")
+      val refused = w.run(_.execute("1 + 1"))
+      assert(refused.left.exists(_.contains("2 abandoned computations")), refused.toString)
+    finally go.countDown()
+    assert(drained(w), "the released computations did not end")
     assert(w.run(_.execute("1 + 1")).exists(_.startsWith("2.0")))
   }
 
   it should "start an empty session when the restore itself times out (F_0312)" in {
-    val w = SessionWorker(500.millis)
+    val hold = CountDownLatch(1)
+    val w    = SessionWorker(500.millis, onRestore = () => blockOn(hold))
+    try
+      assert(w.run(_.execute("a := 5")).isRight)
+      val out = w.run(_ => blockOn(hold))
+      assert(out.left.exists(s => s.contains("timed out as well") && s.contains("starts empty")), out.toString)
+      // the empty session was built on the caller's thread, so no restore is pending
+      assert(first(call(w, "evaluate", "line" -> "a")) == "a")
+    finally hold.countDown()
+  }
+
+  it should "name a restore that fails rather than call it a timeout (F_0315)" in {
+    val w = SessionWorker(30.seconds, onRestore = () => throw IllegalStateException("boom"))
     assert(w.run(_.execute("a := 5")).isRight)
-    w.beforeRestore = () => busy(3.0)
-    val out = w.run(_ => busy(3.0))
-    assert(out.left.exists(_.contains("starts empty")), out.toString)
+    val out = w.run(_ => throw RuntimeException("x"))
+    assert(out.left.exists(s => s.contains("the request failed (RuntimeException)") &&
+                                s.contains("failed as well (IllegalStateException)") &&
+                                s.contains("starts empty") && !s.contains("timed out")), out.toString)
     assert(first(call(w, "evaluate", "line" -> "a")) == "a")
+  }
+
+  it should "count a request's limit from its arrival, not from its turn at the session (F_0316)" in {
+    val w       = SessionWorker(30.seconds)
+    val go      = CountDownLatch(1)
+    val entered = CountDownLatch(1)
+    val pool    = Executors.newSingleThreadExecutor()
+    try
+      val first = pool.submit(() => w.run(_ => { entered.countDown(); blockOn(go) }, 1.second))
+      assert(entered.await(10, TimeUnit.SECONDS), "the first request never reached the session")
+      // queued behind the first, which holds the session for its second and then its restore
+      val queued = w.run(_.execute("1 + 1"), 300.millis)
+      assert(queued.left.exists(s => s.contains("waiting for the session") && s.contains("nothing was started")), queued.toString)
+      assert(first.get(20, TimeUnit.SECONDS).left.exists(_.contains("the request was abandoned")))
+      assert(w.abandonedRunning == 1, "the queued request must not have been abandoned")
+    finally
+      go.countDown()
+      pool.shutdownNow()
   }
 
   it should "serve the session's script" in {

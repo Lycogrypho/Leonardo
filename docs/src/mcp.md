@@ -72,4 +72,9 @@ part gives its LaTeX.
 **Limits.** Every request runs under the library's work budgets and a wall-clock timeout. A request
 that times out is answered at once with an error and the session continues from its state before
 that request; the abandoned computation runs on in the background until its budget stops it, since a
-computation cannot be interrupted.
+computation cannot be interrupted.  While four abandoned computations are still running, a new
+request is refused at once with that reason and accepted again as soon as one finishes; if restoring
+the session itself does not finish within the timeout, the session starts empty, and the error says so.
+Requests are answered one at a time; one that arrives while another is being answered waits its turn,
+and its limit counts from its arrival, so if the limit passes while it waits it is refused without
+being started.

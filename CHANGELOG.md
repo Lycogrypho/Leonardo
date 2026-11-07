@@ -41,7 +41,8 @@ Protocol — Claude Desktop, Claude Code and others — can call Leonardo's REPL
 on a per-connection session, the typed tools `simplify`, `derive`, `integrate`, `solve`, `limit`, and
 `scala_value`, which returns a result as Scala source constructing it.  The grammar and the session's
 script are served as resources; each request is bounded by the work budgets and a wall-clock timeout,
-after which the session continues from its state before the request.  See the MCP page of the site.
+after which the session continues from its state before the request; while four such abandoned
+computations are still running, a new request is refused until one finishes.  See the MCP page of the site.
 The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
 
 **Answers that changed** — the same values, written as a reader would write them:

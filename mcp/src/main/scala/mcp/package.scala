@@ -10,6 +10,7 @@ package it.grypho.scala.leonardo
  *  silent product, and `latex` on, whose rendering travels as a second content part.  A request that
  *  passes its wall-clock timeout is answered at once and its worker abandoned — nothing can interrupt a
  *  computation, its work budgets eventually stop it — the session continuing on a fresh worker restored
- *  from its script.  The official Java SDK carries the protocol, confined to this module.
+ *  from its script, and while four abandoned computations still run a request is refused (F_0312).  The
+ *  official Java SDK carries the protocol, confined to this module.
  */
 package mcp
