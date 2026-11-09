@@ -34,7 +34,8 @@ object ToScala:
       else Right(s"core._Rational.of(${big(r.num)}, ${big(r.den)}).get")
     case c: _Complex  => Right(s"core._Complex.of(${dbl(c.re)}, ${dbl(c.im)})")
     case t: _Truth    => Right(s"core._Truth.of(${dbl(t.d)})")
-    case b: _Based    => Right(s"core._Based.of(${dbl(b.value)}, ${b.base}, ${b.balanced})")
+    case b: _Based    => Right(b.exact.fold(s"core._Based.of(${dbl(b.value)}, ${b.base}, ${b.balanced})")(n =>
+                           s"core._Based.ofExact(${big(n)}, ${b.base}, ${b.balanced})"))   // F_0323
     case s: _Surd     => for a <- apply(s.a); b <- apply(s.b) yield s"core._Surd.of($a, $b, ${big(s.d)}).get"
     case i: _Interval => for lo <- apply(i.lo); hi <- apply(i.hi) yield s"core._Interval.of($lo, $hi).get"
     case d: probability._Distribution =>

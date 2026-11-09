@@ -16,6 +16,18 @@ import core.*
  *  to `_Bool`.  Any other concrete operand (a `_Number`, a matrix) leaves the node
  *  symbolic.
  *
+ *  **A known operand decides what it can on either side** (F_0326, LT L_0082).  The
+ *  annihilators were always folded on the left (`false and X`, `true or X`, `false implies X`,
+ *  each without evaluating `X`) and nowhere else, so with `p := true` the prompt answered
+ *  `p and q` as `(true and q)` while `simplify` gave `q`.  Now the identity and the annihilator
+ *  fold on both sides: `true and q` is `q`, `q and false` is `false`, `true implies q` is `q`,
+ *  `q implies true` is `true`, `q implies false` is `not q`, `true xor q` is `not q`,
+ *  `false xor q` is `q`.  Sound under all three semantics: every t-norm has unit `1` and
+ *  annihilator `0`, every t-conorm unit `0` and annihilator `1`, the S-implication is
+ *  `tconorm(1 - a, b)`, and `xor` is the lattice reading of `(a and not b) or (not a and b)`,
+ *  in which one crisp operand leaves the other or its negation under each kernel.  Only a
+ *  truth-valued or symbolic other side is folded: a number beside a truth value stays as written.
+ *
  *  `eval` consults its `Environment` for two knobs, neither of which is a second node
  *  hierarchy: the truth-value *encoding* (`symmetricLogic`, which additionally admits the
  *  digits `{-1, 0, 1}` as truth values -- a change of digits, never a change of meaning)
@@ -58,12 +70,54 @@ private def combine(
         case _                  => Left(wrap(x, y))
     case (l, r) => Left(wrap(l.toExpression, r.toExpression))
 
+/** The truth degree of an evaluated operand, when it has one. */
+private def degreeOf(r: Either[_Expression, _Value], env: Environment): Option[Double] = r match
+  case Right(v: _Value) => asTruth(v, env.symmetricLogic)
+  case _                => None
+
+/** Whether an evaluated operand may be folded against a known one (F_0326): truth-valued or still
+ *  symbolic.  A number or a matrix beside a truth value is neither, and the node stays as written. */
+private def foldable(r: Either[_Expression, _Value], env: Environment): Boolean =
+  r.isLeft || degreeOf(r, env).isDefined
+
+/** `not` of an evaluated operand (F_0326): the degree negated, or the symbolic `Not`. */
+private def negated(r: Either[_Expression, _Value], env: Environment): Either[_Expression, _Value] =
+  degreeOf(r, env).fold[Either[_Expression, _Value]](Left(Not(r.toExpression)))(d => Right(_Truth.of(kleeneNot(d))))
+
+/** An evaluated operand as the connective's answer (F_0326): its degree as a truth value -- under the
+ *  symmetric encoding a bare digit `0` is read as `unknown` and must come back as one, not as the
+ *  number -- or the symbolic operand itself. */
+private def asAnswer(r: Either[_Expression, _Value], env: Environment): Either[_Expression, _Value] =
+  degreeOf(r, env).fold(r)(d => Right(_Truth.of(d)))
+
+/** A t-norm-like connective with `unit` and `zero` folded on either side (F_0326), else [[combine]]:
+ *  the unit leaves the other operand, the zero decides alone.
+ *
+ *  @param unit the degree the connective ignores (`1` for `and`, `0` for `or`)
+ *  @param zero the degree that decides the result alone (`0` for `and`, `1` for `or`) */
+private def withIdentities(
+    ra:   Either[_Expression, _Value],
+    rb:   Either[_Expression, _Value],
+    unit: Double,
+    zero: Double,
+    rule: LogicSemantics => (Double, Double) => Double,
+    wrap: (_Expression, _Expression) => _Expression,
+    env:  Environment
+): Either[_Expression, _Value] =
+  (degreeOf(ra, env), degreeOf(rb, env)) match
+    case (Some(d), _) if d == zero && foldable(rb, env) => Right(_Truth.of(zero))
+    case (_, Some(d)) if d == zero && foldable(ra, env) => Right(_Truth.of(zero))
+    case (Some(d), _) if d == unit && foldable(rb, env) => asAnswer(rb, env)
+    case (_, Some(d)) if d == unit && foldable(ra, env) => asAnswer(ra, env)
+    case _                                              => combine(ra, rb, rule, wrap, env)
+
 
 /** Conjunction: `a and b`, evaluated as `min` over the operand degrees.
  *
  *  Short-circuits on a false left operand exactly as `Product.eval` does on a zero left
  *  operand: `false and X` is `false` without evaluating `X`.  The rule is sound in the
  *  graded table too — `0` annihilates `min` — so no many-valued special case is needed.
+ *  A true operand on either side leaves the other, a false right operand decides (F_0326).
  *
  *  @param a left operand
  *  @param b right operand
@@ -77,13 +131,14 @@ case class And(a: _Expression, b: _Expression) extends _Connective:
     a.eval(env) match
       // short-circuit: false and X = false, X never evaluated (the Product zero rule)
       case Right(v) if asTruth(v, env.symmetricLogic).contains(0.0) => Right(_Bool(false))
-      case ra => combine(ra, b.eval(env), kleeneAnd, And.apply, env)
+      case ra => withIdentities(ra, b.eval(env), unit = 1.0, zero = 0.0, kleeneAnd, And.apply, env)
 
 
 /** Disjunction: `a or b`, evaluated as `max` over the operand degrees.
  *
  *  Short-circuits on a true left operand (the dual of [[And]]'s rule): `true or X` is
  *  `true` without evaluating `X`.  Sound in the graded table — `1` annihilates `max`.
+ *  A false operand on either side leaves the other, a true right operand decides (F_0326).
  *
  *  @param a left operand
  *  @param b right operand
@@ -97,7 +152,7 @@ case class Or(a: _Expression, b: _Expression) extends _Connective:
     a.eval(env) match
       // short-circuit: true or X = true, X never evaluated
       case Right(v) if asTruth(v, env.symmetricLogic).contains(1.0) => Right(_Bool(true))
-      case ra => combine(ra, b.eval(env), kleeneOr, Or.apply, env)
+      case ra => withIdentities(ra, b.eval(env), unit = 0.0, zero = 1.0, kleeneOr, Or.apply, env)
 
 
 /** Negation: `not a`, evaluated as `1 - a`.  `unknown` is the fixpoint.
@@ -119,7 +174,9 @@ case class Not(a: _Expression) extends _Connective:
 /** Material implication: `a implies b`, evaluated as `max(1 - a, b)`.
  *
  *  Short-circuits on a false left operand: `false implies X` is `true` without
- *  evaluating `X` (sound in the graded table, since `1` annihilates `max`).
+ *  evaluating `X` (sound in the graded table, since `1` annihilates `max`).  A true
+ *  antecedent leaves the consequent, a true consequent decides, a false consequent leaves the
+ *  negated antecedent (F_0326): the readings of `tconorm(1 - a, b)` at one crisp operand.
  *
  *  @param a antecedent
  *  @param b consequent
@@ -133,12 +190,19 @@ case class Implies(a: _Expression, b: _Expression) extends _Connective:
     a.eval(env) match
       // short-circuit: false implies X = true, X never evaluated
       case Right(v) if asTruth(v, env.symmetricLogic).contains(0.0) => Right(_Bool(true))
-      case ra => combine(ra, b.eval(env), kleeneImplies, Implies.apply, env)
+      case ra =>
+        val rb = b.eval(env)
+        (degreeOf(ra, env), degreeOf(rb, env)) match
+          case (_, Some(1.0)) if foldable(ra, env) => Right(_Bool(true))
+          case (Some(1.0), _) if foldable(rb, env) => asAnswer(rb, env)
+          case (_, Some(0.0)) if foldable(ra, env) => negated(ra, env)
+          case _                                   => combine(ra, rb, kleeneImplies, Implies.apply, env)
 
 
 /** Exclusive disjunction: `a xor b`, evaluated as the lattice reading of
  *  `(a and not b) or (not a and b)` (see [[kleeneXor]]).  No short-circuit is possible:
- *  both operands always matter.
+ *  both operands always matter -- but a crisp one decides how (F_0326): `false xor X` is `X`
+ *  and `true xor X` is `not X`, on either side.
  *
  *  @param a left operand
  *  @param b right operand
@@ -149,4 +213,10 @@ case class Xor(a: _Expression, b: _Expression) extends _Connective:
   override def rebuild(c: List[_Expression]): _Expression = Xor(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    combine(a.eval(env), b.eval(env), kleeneXor, Xor.apply, env)
+    val (ra, rb) = (a.eval(env), b.eval(env))
+    (degreeOf(ra, env), degreeOf(rb, env)) match
+      case (Some(0.0), _) if foldable(rb, env) => asAnswer(rb, env)
+      case (_, Some(0.0)) if foldable(ra, env) => asAnswer(ra, env)
+      case (Some(1.0), _) if foldable(rb, env) => negated(rb, env)
+      case (_, Some(1.0)) if foldable(ra, env) => negated(ra, env)
+      case _                                   => combine(ra, rb, kleeneXor, Xor.apply, env)

@@ -83,10 +83,13 @@ class LogicTest extends AnyFlatSpec:
 
   // --- partial reduction: free variables stay symbolic ---
 
-  "a connective over a free variable" should "stay symbolic with reduced operands" in
+  "a connective over a free variable" should "fold a true operand away, and stay symbolic between two free names" in
   {
-    And(a, T).eval(new Environment()) match
-      case Left(And(_Variable("a"), _Bool(true))) => succeed
+    // F_0326: `a and true` is `a` -- the identity folds on either side; until then this case pinned
+    // `(a and true)` as the answer
+    assert(And(a, T).eval(new Environment()) == Left(a))
+    And(a, b).eval(new Environment()) match
+      case Left(And(_Variable("a"), _Variable("b"))) => succeed
       case other => fail(s"unexpected result: $other")
   }
 

@@ -11,7 +11,8 @@ import latex.ToLatex
 import parser.Parser
 import optimize.{_Stationary, _Minimize, MinimizeFailure, MinimizeMethod, StationaryKind,
                  classifyStationary, numericPoints, _QP, QpFailure, QpConstraint,
-                 _LsqFit, _CurveFit, LsqFailure, LsqResult, _Nlp, NlpFailure, NlpResult, _LP, LpFailure}
+                 _LsqFit, _CurveFit, LsqFailure, LsqResult, _Nlp, NlpFailure, NlpResult, _LP, LpFailure,
+                 _NSolve, RootFailure, RootResult}
 import ode.{_ODE, _ODESystem, _OdeStep, _OdeSolve, OdeFailure}
 
 import scala.util.control.NonFatal
@@ -1151,6 +1152,9 @@ final class Session:
       case (l: _LsqFit, _)                => l.detailed(env).toOption.map(fitNote(l.params, _))
       case (c: _CurveFit, Left(_: _CurveFit)) => c.detailed(env).left.toOption.map(w => s"lsqfit declined: ${describeLsq(w)}")
       case (c: _CurveFit, _)                  => c.detailed(env).toOption.map(fitNote(c.params, _))
+      // F_0319: a root says how it got there -- iterations, residual, what a bound held -- or why it declined.
+      case (r: _NSolve, Left(_: _NSolve)) => r.detailed(env).left.toOption.map(w => s"nsolve declined: ${describeRoot(w)}")
+      case (r: _NSolve, _)                => r.detailed(env).toOption.map(rootNote(r.vars, _))
       // F_0079: a reduction or tabulation that declined on its range says so, instead of
       // echoing the call back with no hint that a cap or a non-whole bound was the reason.
       case (r: _Reduction, Left(_: _Reduction)) => r.declineReason(env).map(w => s"${r.kind.word} declined: $w")
@@ -1229,7 +1233,9 @@ final class Session:
     val names = s.vars.map(_.variable).mkString("(", ", ", ")")
     val parts = numericPoints(points).map { p =>
       val at = s.vars.map(v => formatExpression(_Number(p(v.variable)), false)).mkString("(", ", ", ")")
-      val what = classifyStationary(s.f, s.vars, p, env) match
+      // the objective the node analysed (F_0321): as written it may hold a `dot` or a `derive` whose
+      // Hessian `derive` cannot take, and the second derivative of a rule-less node looped
+      val what = classifyStationary(optimize.reduced(s.f, s.vars, env), s.vars, p, env) match
         case Some(StationaryKind.Minimum)    => "a local minimum"
         case Some(StationaryKind.Maximum)    => "a local maximum"
         case Some(StationaryKind.Saddle)     => "a saddle point"
@@ -1264,6 +1270,24 @@ final class Session:
     if held.nonEmpty then s"$base; ${held.mkString(", ")} held at a bound, so no covariance"
     else if r.covariance.isEmpty then s"$base; no covariance: as many residuals as parameters"
     else base
+
+  /** A certified root in prose (F_0319): the iterations, the residual, and what a bound held. */
+  private def rootNote(vars: Vector[_Variable], r: RootResult): String =
+    val held = r.active.map(vars(_).variable)
+    val base = s"nsolve: ${r.iterations} iterations, residual norm ${_Number.render(r.residual)}"
+    if held.nonEmpty then s"$base; ${held.mkString(", ")} held at a bound" else base
+
+  /** A [[RootFailure]] in prose. */
+  private def describeRoot(why: RootFailure): String = why match
+    case RootFailure.InvalidInput(detail) => detail
+    case RootFailure.NotEvaluable         => "the system or its Jacobian is not a real number at the starting point"
+    case RootFailure.SingularJacobian(rank, n) =>
+      s"the Jacobian has numerical rank $rank of $n at the point, so the root is not isolated"
+    case RootFailure.NotARoot(res) =>
+      s"the iteration stopped where the residual is smallest but not a root (residual norm ${_Number.render(res)}); start elsewhere"
+    case RootFailure.MaxIterations(limit, res) =>
+      s"the iteration limit ($limit) was reached with residual norm ${_Number.render(res)}, above the precision's tolerance"
+    case RootFailure.TooLarge(n) => s"$n unknowns exceed the work cap"
 
   /** An [[LsqFailure]] in prose.  The cosine is rendered in full, like a gradient norm. */
   private def describeLsq(why: LsqFailure): String = why match
@@ -2793,6 +2817,7 @@ object Session:
       |control              tfpoles( tfzeros( isStable( c2d( stateSpace( dlsim( routhTable(
       |                     acker( controllable( ctrb( linearize( arx( dlqr( kalmanStep(
       |optimization         stationary( convex( lagrange( kkt( minimize( qp( lsqfit( nlp( lp(
+      |                     nsolve(
       |transforms           laplace( fourier( fourierCausal( invlaplace( ztrans( dft( conv(
       |exact values         rationalize(x) makes a decimal exact; √13 types an exact root
       |                     every function, with its arguments, is in the cheat sheet:

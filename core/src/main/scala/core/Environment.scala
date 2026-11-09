@@ -153,3 +153,10 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
    */
   def withBinding(variable: String, value: _Value): Environment =
     new Environment(precision, variables + (variable -> value), symmetricLogic, semantics, workingPrecision, limits, exactMode)
+
+  /** This environment with `names` unbound (F_0321): what an analysis that treats them as its own
+   *  variables evaluates the rest of an expression in, so a session binding of one never folds it.
+   *  @param names the names to free
+   *  @return the same settings without those bindings */
+  def withoutBindings(names: Iterable[String]): Environment =
+    new Environment(precision, variables -- names, symmetricLogic, semantics, workingPrecision, limits, exactMode)

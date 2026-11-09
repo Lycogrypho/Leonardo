@@ -172,6 +172,12 @@ private def integrateImpl(e: _Expression, v: _Variable, depth: Int)(using t: Tie
   // matrix in the scalar node Product(matrix, v) instead of integrating per element.
   case ew: _ElementWise => ew.rebuild(ew.children.map(integrateImpl(_, v, depth)))
 
+  // F_0320: a series node stands for a polynomial -- integrate the series it computes (the twin of
+  // the `derive` arms); a series that declines keeps the node.
+  case s: _Taylor  => seriesPolynomial(s).fold(_Integral(e, v))(integrateImpl(_, v, depth))
+  case s: _Pade    => s.detailed(new Environment()).fold(_ => _Integral(e, v), integrateImpl(_, v, depth))
+  case s: _Laurent => s.detailed(new Environment()).fold(_ => _Integral(e, v), integrateImpl(_, v, depth))
+
   // integral(c, v) = c*v          (c independent of v)
   case _ if !dependsOn(e, v) => Product(e, v)
 

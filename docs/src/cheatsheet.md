@@ -305,6 +305,7 @@ An answer that cannot be proved complete is not given: the call stays as written
 | `lp(f, A, b, lb, ub)` / `lp(f, A, b, Aeq, beq, lb, ub)` | `min f'x` s.t. `A x <= b`, `lb <= x <= ub`, **exact** (simplex over the rationals, Bland's rule); infeasible and unbounded are proved; `0` = absent group; caps 40 variables, 80 constraints, 2048-bit coefficients |
 | `nlp(f, [[x], [y]], x0, g, h, m)` | `min f` s.t. `g <= 0`, `h = 0`, by `m` = `sqp` or `auglag`, always named; `g`, `h` a column, one cell, or `0` = none; a cell may be a relation (`<=`, `>=`, `=`), never strict |
 | `nlp(f, [[x], [y]], x0, g, h, lb, ub, m)` | With bounds (`-inf` / `inf` for none). A **local** KKT point, certified (scale-free KKT residual); the REPL names the binding inequalities and their multipliers, or says why it declined |
+| `nsolve(F, [[x], [y]], x0)` / `nsolve(F, [[x], [y]], x0, lb, ub)` | A root of the square nonlinear system `F = 0` from `x0`, `F` a column of expressions (each meaning `F_i = 0`) or equations `l = r`, by Powell's dogleg trust region; bounds `-inf` / `inf` for none, a number applies to all. Answered as a column only when every equation vanishes against the size of its own terms at the precision and the Jacobian is nonsingular there; the REPL notes the iterations and the residual, or says why it declined (a residual minimum that is not a root, a singular Jacobian, the cap of 200 steps) |
 
 ---
 ## Calculus

@@ -208,7 +208,9 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   model fitted to data columns (`lsqfit(a*exp(b*t), t, T, Y, [[a], [b]], p0)`) or a residual
   column minimised — by scaled Levenberg–Marquardt over QR, with optional bounds and, on `cov`,
   the covariance; it answers only a certified fit and declines one whose parameters are not
-  identifiable. `lp(f, A, b, lb, ub)` solves a linear program **exactly**, by the simplex method
+  identifiable. `nsolve(F, [[x], [y]], x0)` finds a root of a square nonlinear system by a
+  dogleg trust region, certifying every equation against the size of its own terms, and declines a
+  minimum of the residual that is not a root. `lp(f, A, b, lb, ub)` solves a linear program **exactly**, by the simplex method
   over the rationals with Bland's rule, so infeasibility and unboundedness are proved rather
   than suspected. `nlp(f, [[x], [y]], x0, g, h, sqp | auglag)` minimises under nonlinear
   constraints `g ≤ 0`, `h = 0` and optional bounds, by sequential quadratic programming (a

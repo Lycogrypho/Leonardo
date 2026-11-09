@@ -1995,6 +1995,17 @@ package "optimize" <<Rectangle>> {
     class "_Nlp" <<case>> [[optimization.html]] {
         nlp(f, [[x], [y]], x0, g, h[, lb, ub], sqp | auglag)
     }
+    class "Roots" <<utility>> [[optimization.html]] {
+        __ F_0319: a certified root of F(x) = 0, square __
+        nsolve(F, vars, x0, bounds, env) | nsolve(f, jacobian, scale, x0, lo, hi, env)
+        Powell dogleg, More column scaling, projected active set
+        certificate: |F_i| <= tol * sum|terms_i|, Jacobian of full rank
+        Left(RootFailure: NotARoot, SingularJacobian, ...) / Right(RootResult)
+        MaxNsolveIterations 200 (measured)
+    }
+    class "_NSolve" <<case>> [[optimization.html]] {
+        nsolve(F, [[x], [y]], x0[, lb, ub])
+    }
 
     "_Stationary" ..> "Stationary"
     "_Lagrange"   ..> "Stationary"
@@ -2005,6 +2016,8 @@ package "optimize" <<Rectangle>> {
     "_LsqFit"     ..> "LeastSquares"
     "_CurveFit"   ..> "LeastSquares"
     "_Nlp"        ..> "Nlp"
+    "_NSolve"     ..> "Roots"
+    "Roots"       ..> "LeastSquares" : Residual (compiled cells, term scales)
     "Nlp"         ..> "QP"           : SQP subproblems, multipliers
     "Nlp"         ..> "LeastSquares" : evaluator (compiled cells)
     "Nlp"         ..> "_Jacobian"    : one definition of the Jacobian

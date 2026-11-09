@@ -16,6 +16,9 @@
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/docs/Leonardo.leonardo-docs.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/mcp/Leonardo.leonardo-mcp.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/mcp/Leonardo.leonardo-mcp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/mcp/Leonardo.leonardo-mcp.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/mcp/Leonardo.leonardo-mcp.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/mcp/Leonardo.leonardo-mcp.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/mcp/Leonardo.leonardo-mcp.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.main.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.test.iml" filepath="$PROJECT_DIR$/.idea/modules/Leonardo/repl/.jvm/Leonardo.leonardo-repl.repl-sources.test.iml" />

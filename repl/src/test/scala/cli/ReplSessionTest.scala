@@ -1811,7 +1811,8 @@ class ReplSessionTest extends AnyFlatSpec:
     s.execute("b := 2 = 3")     // _Bool(false)
     assert(s.execute("a and b") == "false")
     assert(s.execute("a or b") == "true")
-    assert(s.execute("a and c") == "(true and c)")   // c free: stays symbolic, a reduced
+    assert(s.execute("a and c") == "c")              // c free: the true operand folds away (F_0326)
+    assert(s.execute("c and d") == "(c and d)")      // both free: stays symbolic
   }
 
   "simplify with connectives" should "run the logic pass after the scalar pass" in

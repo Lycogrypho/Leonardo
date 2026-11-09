@@ -148,6 +148,7 @@ private[leonardo] def rationalizeDigits(ds: List[Double]): Option[Int] =
  *  it holds a value `rationalize` declines (a complex number, an interval). */
 private[leonardo] def decimalLeaves(e: _Expression): Option[List[Double]] = e match
   case _: _Rational | _: _Surd   => Some(Nil)
+  case b: _Based if b.isExact    => Some(Nil)   // F_0323: before the widening `_Number` arm
   case _: _Complex | _: _Interval => None
   case _Number(d)                => Some(List(d))
   case m: _MatrixValue           => Some(m.toVector.toList)

@@ -250,7 +250,13 @@ private def deriveImpl(e: _Expression, v: _Variable)(using t: Tier): _Expression
   // Element-wise containers (matrix literals, matrix sums, transpose — see
   // core._ElementWise): differentiation distributes over the children.
   case ew: _ElementWise         => ew.rebuild(ew.children.map(deriveIn(_, v)))
-  case _Derivative(inner, iv)   => deriveIn(deriveIn(inner, iv), v)
+  // The inner derivative may have no rule and come back as the node itself (`digamma`, `Si` of a
+  // matrix, a `dot`); deriving THAT again re-enters this arm forever (F_0321 found it: the REPL's
+  // Hessian of `derive(dot(…), t)`).  An inner derivative that did not reduce leaves the whole
+  // node symbolic, the `_Derivative.eval` fixpoint convention one level down.
+  case _Derivative(inner, iv)   =>
+    val first = deriveIn(inner, iv)
+    if first == e then _Derivative(e, v) else deriveIn(first, v)
   case _Integral(inner, iv)     => if iv.variable == v.variable then inner
                                    else _Derivative(e, v)
   case _DefIntegral(_, _, _, _) => _Derivative(e, v)
@@ -258,8 +264,23 @@ private def deriveImpl(e: _Expression, v: _Variable)(using t: Tier): _Expression
   // valid under continuity, but the engine does not verify that condition, so we
   // stay symbolic to be conservative).
   case _: _Limit                => _Derivative(e, v)
+  // F_0320: a series node stands for a polynomial -- differentiate the series it computes.  `taylor`
+  // is built in this tier; `pade` and `laurent` hold Double coefficients and compute in an empty
+  // environment, which is all `derive` ever has.  A series that declines keeps the node, as before.
+  case s: _Taylor               => seriesPolynomial(s).fold(_Derivative(e, v))(deriveIn(_, v))
+  case s: _Pade                 => s.detailed(new Environment()).fold(_ => _Derivative(e, v), deriveIn(_, v))
+  case s: _Laurent              => s.detailed(new Environment()).fold(_ => _Derivative(e, v), deriveIn(_, v))
   // A scalar node with no rule of its own is still a constant when `v` does not occur in it
   // (F_0204: `derive(Beta(2, 3)*x, x)` kept `derive(Beta(2.0, 3.0), x)`).  Only the scalar
   // families qualify: a matrix-valued node's derivative is a zero MATRIX, not `0`.
   case other if scalarFamily(other) && !dependsOn(other, v) => t.n(0)
   case other                    => _Derivative(other, v)
+
+/** The polynomial a `taylor` node stands for, built in the computation's tier (F_0320), or `None` when
+ *  the series declines.  Shared by `derive` and `integrate`, neither of which has an environment: the
+ *  order is read in an empty one, as the node's own `detailed` would read it with no bindings. */
+private[scalar] def seriesPolynomial(s: _Taylor)(using t: Tier): Option[_Expression] =
+  s.n.eval(new Environment()) match
+    case Right(_Number(d)) if d.isWhole && d >= 0 && d <= Limit.MaxTaylorOrder.default =>
+      taylorDetailedIn(s.e, s.v, s.point, d.toInt, Limits.Default, t.exact).toOption
+    case _ => None

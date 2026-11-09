@@ -232,7 +232,8 @@ More: [Logic](https://lycogrypho.github.io/Leonardo/logic.html).
 - `qp`, a convex quadratic-programming solver under linear constraints — the problem a model-predictive controller solves every cycle
 - `lsqfit`, nonlinear least squares that fits a model to data and answers only a certified, identifiable fit
 - `lp`, exact linear programming over the rationals
-- `nlp`, constrained nonlinear programming by SQP or an augmented Lagrangian, answering a certified KKT point.
+- `nlp`, constrained nonlinear programming by SQP or an augmented Lagrangian, answering a certified KKT point
+- `nsolve`, a root of a square nonlinear system by a dogleg trust region, certified equation by equation against its own terms.
 
 More: [Optimization](https://lycogrypho.github.io/Leonardo/optimization.html).
 </details>

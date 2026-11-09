@@ -263,3 +263,11 @@ class DerivativeTest extends AnyFlatSpec:
     import scalar.Syntax.*
     val f = Power(x, _Number(3))
     assert(math.abs(evalNum(f.deriveN(x, 2), "x" -> 2.0) - 12.0) < 1e-4)
+
+  // --- a derivative with no rule, differentiated again (found by F_0321) ---
+
+  "a second derivative of a function with no rule" should "stay symbolic rather than recurse" in:
+    // digamma has no derivative rule (trigamma is not implemented), so the inner derivative comes
+    // back as itself; deriving that again re-entered the same arm until the stack ran out
+    val d = _Derivative(_Derivative(Digamma(x), x), x)
+    assert(d.eval(new Environment()) == Left(d))

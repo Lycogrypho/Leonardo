@@ -129,7 +129,7 @@ def curveFit(model: _Expression, t: _Variable, tdata: Vector[Double], ydata: Vec
 private def finite(d: Double): Boolean = d.isFinite
 
 /** The bounds as arrays, infinite where absent, or why the input is malformed. */
-private def checked(vars: Vector[_Variable], p0: Vector[Double], bounds: Option[(Vector[Double], Vector[Double])])
+private[optimize] def checked(vars: Vector[_Variable], p0: Vector[Double], bounds: Option[(Vector[Double], Vector[Double])])
     : Either[LsqFailure, (Vector[Double], Vector[Double])] =
   val n = vars.size
   val (lo, hi) = bounds.getOrElse((Vector.fill(n)(Double.NegativeInfinity), Vector.fill(n)(Double.PositiveInfinity)))
@@ -152,7 +152,7 @@ private[optimize] def unbound(cells: Seq[_Expression], vars: Vector[_Variable], 
 
 /** A residual `r : ℝⁿ → ℝᵐ` with its Jacobian (row-major `m×n`) and the size of the terms each
  *  residual cancels, which is what an exact fit's rounding is measured against. */
-private final class Residual(val m: Int, val n: Int,
+private[optimize] final class Residual(val m: Int, val n: Int,
                              val values: Array[Double] => Option[Array[Double]],
                              val jacobian: Array[Double] => Option[Array[Double]],
                              val scale: Array[Double] => Option[Array[Double]])
@@ -220,8 +220,12 @@ private[optimize] def termSums(cells: Vector[_Expression], vars: Vector[_Variabl
     }
 
 /** The residual form: `r` renamed to fresh parameter names, evaluated, and differentiated by the
- *  library's one Jacobian ([[vector._Jacobian]]). */
-private def residualSystem(r: _Expression, params: Vector[_Variable], env: Environment): Either[LsqFailure, Residual] =
+ *  library's one Jacobian ([[vector._Jacobian]]).
+ *  @param split how a cell is cut into the terms its scale sums: `lsqfit` reads them as written, `nsolve`
+ *               expands first (F_0319), since `1e-9*(x^2 + y^2 - 4)` as written is one term equal to
+ *               the residual itself, against which no root could ever certify */
+private[optimize] def residualSystem(r: _Expression, params: Vector[_Variable], env: Environment,
+                                     split: _Expression => List[_Expression] = summands): Either[LsqFailure, Residual] =
   val fresh   = freshNames(params.size, "__p", r.freeVars ++ params.map(_.variable)).toVector
   val renamed = substitute(r, params.map(_.variable).zip(fresh).toMap)
   columnCells(renamed.eval(env).toExpression) match
@@ -235,7 +239,7 @@ private def residualSystem(r: _Expression, params: Vector[_Variable], env: Envir
           case None => Left(LsqFailure.NotEvaluable)
           case Some(jac) =>
             Right(Residual(m, n, evaluator(cells, fresh, env), evaluator(jac, fresh, env),
-                           termSums(cells, fresh, env, summands)))
+                           termSums(cells, fresh, env, split)))
 
 /** The curve-fit form: `rₖ = yₖ − model(tₖ, p)`, the model and its gradient compiled once. */
 private def curveSystem(model: _Expression, t: _Variable, tdata: Vector[Double], ydata: Vector[Double],

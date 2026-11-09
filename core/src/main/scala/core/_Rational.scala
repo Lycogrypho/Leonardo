@@ -171,6 +171,7 @@ object _Rational:
   def containsExact(e: _Expression): Boolean = e match
     case _: _Rational => true
     case _: _Surd     => true   // F_0231: an exact surd puts its expression in the exact tier
+    case b: _Based    => b.isExact   // F_0323: a based literal read in exact mode
     // An exact interval is a leaf with exact endpoints (F_0008): `:save` groups it under
     // `exact on`, or a reload would read its endpoints as Doubles.
     case i: _Interval => i.isExact

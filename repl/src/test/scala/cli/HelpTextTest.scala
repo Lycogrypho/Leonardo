@@ -38,7 +38,7 @@ class HelpTextTest extends AnyFlatSpec:
   "the help listing" should "name the functions added since 3.8, and point at the cheat sheet (D_0152)" in {
     for word <- Seq("dot(", "cross(", "trace(", "norm(", "size(", "svd(", "chol(", "median(", "anova(",
                     "ttest(", "tfpoles(", "routhTable(", "acker(", "dlsim(", "minimize(", "qp(",
-                    "lsqfit(", "nlp(", "lp(", "rationalize(", "dft(", "cnf(") do
+                    "lsqfit(", "nlp(", "lp(", "nsolve(", "rationalize(", "dft(", "cnf(") do
       assert(Session.help.contains(word), word)
     assert(Session.help.contains("cheat sheet"))
   }

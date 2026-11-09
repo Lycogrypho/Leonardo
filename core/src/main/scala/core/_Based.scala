@@ -20,11 +20,25 @@ package core
  *  there is no defensible answer — so the base survives *display and storage*, which is what
  *  a base is for, and arithmetic falls back to decimal.
  *
+ *  **In exact mode the value is exact too** (F_0323, LT L_0080): a literal parsed or a `tobase` taken
+ *  under `exact on` carries its integer, `_Rational.containsExact` reports it, and the operators read
+ *  it through [[_Based.unwrapExact]] -- so `0b1010 + 0b0110` is the exact `16`, not `16.0` with a
+ *  note, and `:save` groups the value under `exact on`.  Outside exact mode nothing changes.  A
+ *  fourth field on a case class with a private constructor is additive: in Scala 3 `unapply` returns
+ *  the instance and `copy` is private with the constructor.
+ *
  *  @param value    the integer value, held as a `Double` like every other numeric tier
  *  @param base     the radix, `2 .. 36`
  *  @param balanced whether the digits are the balanced set (base 3 only)
+ *  @param exact    the integer when the value is exact (F_0323), else `None`
  */
-case class _Based private (value: Double, base: Int, balanced: Boolean) extends _Value:
+case class _Based private (value: Double, base: Int, balanced: Boolean, exact: Option[BigInt]) extends _Value:
+
+  /** Whether the value is exact (F_0323): parsed or converted in exact mode. */
+  def isExact: Boolean = exact.isDefined
+
+  /** The exact integer as a rational, when exact. */
+  def rational: Option[_Rational] = exact.map(_Rational(_))
 
   /** The literal form, which re-parses to this same value — the round-trip invariant.
    *
@@ -73,9 +87,32 @@ object _Based:
     // value is a plain number.
     if !value.isWhole || !value.isFinite || math.abs(value) > MaxExactInteger then _Number(value)
     else if balanced then
-      if base == 3 then new _Based(value, 3, true) else _Number(value)
+      if base == 3 then new _Based(value, 3, true, None) else _Number(value)
     else if base == 10 || base < MinBase || base > MaxBase then _Number(value)
-    else new _Based(value, base, false)
+    else new _Based(value, base, false, None)
+
+  /** [[of]] in the exact tier (F_0323): the integer `n` written in `base`, its value exact.  Collapses
+   *  as [[of]] does -- base 10, an invalid radix, a magnitude past `2^53` -- to an exact `_Rational`
+   *  rather than a `_Number`, since the caller's tier is exact.
+   *  @param n        the integer
+   *  @param base     the radix
+   *  @param balanced whether the digits are the balanced set (base 3 only)
+   *  @return the exact based value, or the integer as a `_Rational` */
+  def ofExact(n: BigInt, base: Int, balanced: Boolean = false): _Value =
+    if n.abs > BigInt(MaxExactInteger.toLong) then _Rational(n)
+    else if balanced then
+      if base == 3 then new _Based(n.toDouble, 3, true, Some(n)) else _Rational(n)
+    else if base == 10 || base < MinBase || base > MaxBase then _Rational(n)
+    else new _Based(n.toDouble, base, false, Some(n))
+
+  /** The exact integer behind an exact based value, else `v` itself (F_0323): what an operator reads
+   *  its operands through, so an exact `0b1010` takes the exact arms.  An inexact based value, or any
+   *  other value, passes unchanged.
+   *  @param v an evaluated operand
+   *  @return `v`, or its exact integer */
+  def unwrapExact(v: _Value): _Value = v match
+    case b: _Based => b.rational.getOrElse(v)
+    case other     => other
 
   /** `2^53`: the largest magnitude below which every integer is a `Double`. */
   private val MaxExactInteger: Double = 9007199254740992.0

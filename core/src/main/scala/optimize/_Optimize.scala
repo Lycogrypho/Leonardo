@@ -9,6 +9,19 @@ import matrix._Matrix
  *  trailing names after the other arguments. */
 private def tuple(vars: Vector[_Variable]): String = vars.map(_.variable).mkString(", ")
 
+/** `e` with every node that computes evaluated, bottom-up, the variables unbound (F_0321, LT L_0075).
+ *
+ *  `dot`, `derive` and their like are nodes `derive` and `collect` cannot see through, so
+ *  `stationary(dot(derive(q, t), derive(q, t)), t)` stayed unevaluated while the same polynomial
+ *  expanded answered -- F_0165's case (`solve(det(…) = 0, k)`) for the optimizer.  The variables are
+ *  freed first, so a session binding of one never folds the objective; a node that cannot reduce
+ *  stays, and the analysis declines as before.  `private[leonardo]` for the REPL's classification
+ *  note, which must read the objective the node analysed, not the one as written. */
+private[leonardo] def reduced(e: _Expression, vars: Vector[_Variable], env: Environment): _Expression =
+  val free = env.withoutBindings(vars.map(_.variable))
+  def go(x: _Expression): _Expression = x.rebuild(x.children.map(go)).eval(free).toExpression
+  go(e)
+
 
 /** `stationary(f, x, y, …)` — every stationary point of `f` (F_0010 slice 1).
  *
@@ -29,7 +42,7 @@ case class _Stationary(f: _Expression, vars: Vector[_Variable]) extends _Express
   override def rebuild(c: List[_Expression]): _Expression = _Stationary(c.head, vars)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    pointsResult(stationaryPoints(f, vars, env), vars, this)
+    pointsResult(stationaryPoints(reduced(f, vars, env), vars, env), vars, this)
 
 
 /** `convex(f, x, y, …)` — `true`, `false`, or symbolic when neither can be established
@@ -44,7 +57,7 @@ case class _Convex(f: _Expression, vars: Vector[_Variable]) extends _Expression:
   override def rebuild(c: List[_Expression]): _Expression = _Convex(c.head, vars)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    convexity(f, vars, env).fold(Left(this))(b => Right(_Bool(b)))
+    convexity(reduced(f, vars, env), vars, env).fold(Left(this))(b => Right(_Bool(b)))
 
 
 /** `lagrange(f, [[g1], [g2]], x, y, …)` — the stationary points of `f` on `g = 0`, by
@@ -63,7 +76,8 @@ case class _Lagrange(f: _Expression, constraints: _Expression, vars: Vector[_Var
   override def rebuild(c: List[_Expression]): _Expression = _Lagrange(c.head, c(1), vars)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val points = Constraints.equalities(constraints).flatMap(gs => lagrangePoints(f, gs, vars, env))
+    val points = Constraints.equalities(constraints)
+      .flatMap(gs => lagrangePoints(reduced(f, vars, env), gs.map(reduced(_, vars, env)), vars, env))
     pointsResult(points, vars, this)
 
 

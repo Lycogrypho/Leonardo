@@ -14,7 +14,7 @@ import logic.*
 import domain.*
 import vector.*
 import control.*
-import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, MinimizeMethod, _LsqFit, _CurveFit, _Nlp, NlpMethod, _LP}
+import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, MinimizeMethod, _LsqFit, _CurveFit, _Nlp, NlpMethod, _LP, _NSolve}
 
 
 /** Recursive-descent parser for Leonardo mathematical expressions.
@@ -158,6 +158,7 @@ object Parser extends JavaTokenParsers:
                                                          // methods sqp/auglag are slot words
     "lsqfit",                                             // F_0063 nonlinear least squares;
                                                          // `cov` is a slot word, NOT reserved
+    "nsolve",                                             // F_0319 nonlinear system solver
     "stationary", "convex", "lagrange", "kkt", "minimize",  // F_0010 optimization; the
                                                          // method words (gd, newton, bfgs,
                                                          // pbfgs) are NOT reserved: they are
@@ -1087,7 +1088,13 @@ object Parser extends JavaTokenParsers:
       case r ~ ps ~ p0 ~ ((b, c)) => _LsqFit(r, ps, p0, b, c) } |
     "lsqfit(" ~> guardedExpr ~ ("," ~> variable) ~ ("," ~> guardedExpr) ~ ("," ~> guardedExpr) ~
       ("," ~> variableColumn) ~ ("," ~> guardedExpr) ~ lsqTail ^^ {
-      case f ~ tv ~ td ~ yd ~ ps ~ p0 ~ ((b, c)) => _CurveFit(f, tv, td, yd, ps, p0, b, c) }
+      case f ~ tv ~ td ~ yd ~ ps ~ p0 ~ ((b, c)) => _CurveFit(f, tv, td, yd, ps, p0, b, c) } |
+    // F_0319: nsolve(F, [[x], [y]], x0[, lb, ub]) -- minimize's column of names, the bounds an optional
+    // group (qp's shape); a cell of F is an expression meaning F = 0 or an equation l = r.
+    "nsolve(" ~> guardedExpr ~ ("," ~> variableColumn) ~ ("," ~> guardedExpr) ~
+      opt(("," ~> guardedExpr) ~ ("," ~> guardedExpr)) <~ ")" ^^ {
+      case f ~ vs ~ x0 ~ Some(lo ~ hi) => _NSolve(f, vs, x0, Some((lo, hi)))
+      case f ~ vs ~ x0 ~ None          => _NSolve(f, vs, x0, None) }
 
   /** `lsqfit`'s optional bounds and `cov`, closing the call (F_0063).  `cov` alone is tried
    *  FIRST, or it would parse as a variable in the lower-bound slot (the `minimize` method rule). */
@@ -1205,7 +1212,8 @@ object Parser extends JavaTokenParsers:
     """0[xX][0-9a-fA-F]+(?![a-zA-Z0-9_])""".r ^^ { s => based(s.drop(2), 16) } |
     """0[tT][01Tt]+(?![a-zA-Z0-9_])""".r      ^^ { s =>
       _Based.parseBigBalanced(s.drop(2)).fold[_Value](_Number(Double.NaN))(n =>
-        _Based.of(n.toDouble, 3, balanced = true))
+        if exactPrecision.get().isDefined then _Based.ofExact(n, 3, balanced = true)   // F_0323
+        else _Based.of(n.toDouble, 3, balanced = true))
     }
 
   /** Builds a based literal, or NaN when the digits do not parse (unreachable: the regex
@@ -1214,8 +1222,10 @@ object Parser extends JavaTokenParsers:
   private def based(digits: String, base: Int): _Value =
     // Read without a bound, then held to what a based value can represent exactly (F_0186): the
     // `Long` reader wrapped `0x10000000000000000` to `0`.
+    // In exact mode the literal is exact (F_0323): a based integer written under `exact on` was a
+    // `Double`, so `0b1010 + 0b0110` answered `16.0` with the `rationalize` note.
     _Based.parseBigDigits(digits, base).fold[_Value](_Number(Double.NaN))(n =>
-      _Based.of(n.toDouble, base))
+      if exactPrecision.get().isDefined then _Based.ofExact(n, base) else _Based.of(n.toDouble, base))
   /** An unsigned floating-point literal.
    *
    *  Unsigned by design — a `-` is always a grammar operator, never part of the token.

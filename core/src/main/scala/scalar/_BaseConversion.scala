@@ -24,10 +24,21 @@ case class _ToBase(e: _Expression, base: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (e.eval(env), base.eval(env)) match
-      case (Right(_Number(v)), Right(_Number(b)))
-          if v.isWhole && b.isWhole && b >= _Based.MinBase && b <= _Based.MaxBase =>
+      // F_0323: an exact integer re-based stays exact; the `_Number` arm below widens over it, so first.
+      case (Right(v: _Value), Right(_Number(b))) if wholeExact(v).isDefined && validBase(b) =>
+        Right(_Based.ofExact(wholeExact(v).getOrElse(BigInt(0)), b.toInt))
+      case (Right(_Number(v)), Right(_Number(b))) if v.isWhole && validBase(b) =>
         Right(_Based.of(v, b.toInt))
       case _ => Left(this)
+
+/** Whether `b` is a whole number in `_Based.MinBase .. _Based.MaxBase`. */
+private def validBase(b: Double): Boolean = b.isWhole && b >= _Based.MinBase && b <= _Based.MaxBase
+
+/** The exact integer `v` is -- an exact based value, or a rational with denominator 1 -- else `None`
+ *  (F_0323). */
+private def wholeExact(v: _Value): Option[BigInt] = _Based.unwrapExact(v) match
+  case r: _Rational => r.toBigIntExact
+  case _            => None
 
 
 /** `balanced(n)` — the balanced-ternary form of `n`, with digits `{-1, 0, 1}`.
@@ -46,5 +57,7 @@ case class _Balanced(e: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     e.eval(env) match
+      case Right(v: _Value) if wholeExact(v).isDefined =>   // F_0323, before the widening arm
+        Right(_Based.ofExact(wholeExact(v).getOrElse(BigInt(0)), 3, balanced = true))
       case Right(_Number(v)) if v.isWhole => Right(_Based.of(v, 3, balanced = true))
       case _                              => Left(this)

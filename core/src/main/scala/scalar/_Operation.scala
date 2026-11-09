@@ -47,7 +47,8 @@ case class Sum(a: _Expression, b: _Expression) extends _Operation:
   override def rebuild(c: List[_Expression]): _Expression = Sum(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), b.eval(env)) match
+    // F_0323: an exact based literal is read as its integer, so it takes the exact arms.
+    (a.eval(env).map(_Based.unwrapExact), b.eval(env).map(_Based.unwrapExact)) match
       // F_0248: past the exact tier's budgets the node stays as written, before any BigInt work.
       case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env, ExactOp.Add) => Left(this)
       // ORDER IS LOAD-BEARING: `_Number` is a widening extractor that also matches a
@@ -87,7 +88,7 @@ case class Product(a: _Expression, b: _Expression) extends _Operation:
   override def rebuild(c: List[_Expression]): _Expression = Product(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), b.eval(env)) match
+    (a.eval(env).map(_Based.unwrapExact), b.eval(env).map(_Based.unwrapExact)) match   // F_0323
       // matrix cases precede the zero short-circuit: 0 * M is the zero MATRIX.
       // `_Number(k)` here also matches an exact scalar, so `2 * A` keeps working in exact
       // mode; exact matrix ENTRIES ride the symbolic `_Matrix` and never reach this arm.
@@ -132,7 +133,7 @@ case class Ratio(a: _Expression, b: _Expression) extends _Operation:
   override def rebuild(c: List[_Expression]): _Expression = Ratio(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (a.eval(env), b.eval(env)) match
+    (a.eval(env).map(_Based.unwrapExact), b.eval(env).map(_Based.unwrapExact)) match   // F_0323
       case (Right(x: _Value), Right(y: _Value)) if overExactBudget(x, y, env, ExactOp.Divide) => Left(this)   // F_0248, F_0256
       // Exact tier first — see the ORDER note in Sum.  A zero denominator is the same
       // domain error as below: `divide` returns None and the node stays symbolic.
@@ -200,7 +201,7 @@ case class Power(base: _Expression, exp: _Expression) extends _Operation:
   override def rebuild(c: List[_Expression]): _Expression = Power(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (base.eval(env), exp.eval(env)) match
+    (base.eval(env).map(_Based.unwrapExact), exp.eval(env).map(_Based.unwrapExact)) match   // F_0323
       // Exact tier first -- see the ORDER note in Sum.
       case (Right(b: _Rational), Right(e: _Rational)) => ratPow(b, e, env)
       // F_0231: a surd to an integer power is exact; to a fractional one, or anything to a surd

@@ -189,7 +189,7 @@ abstract class _Function extends _Expression:
       real: Double => Option[_Value],
       complex: _Complex => Option[_Value] = _ => None,
       exact: PartialFunction[_Rational, Either[_Expression, _Value]] = PartialFunction.empty): Either[_Expression, _Value] =
-    arg.eval(env) match
+    arg.eval(env).map(_Based.unwrapExact) match   // F_0323: an exact based literal takes the exact arm
       case Right(r: _Rational)     => exact.applyOrElse(r, (q: _Rational) => viaExact(q, env))
       // F_0231: a node closed over surds says so through [[surdKernel]]; any other reads the surd
       // as its working-precision rational, the value it stood for before -- never as a `Double`.

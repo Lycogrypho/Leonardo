@@ -108,6 +108,21 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   `x*(1 - x)^(1/2)`, `x^3*(1 + x^2)^(1/2)`, `1/(x^2 + 4)^(3/2)`, `1/(x^2*(9 + x^2)^(1/2))`,
   `x^(1/2)/(x^2 + x)`, `sin(x)^5*cos(x)^8`, `x*sin(x)*cos(x)` and `cos(ln(x))`, exact in exact mode where
   the answer is algebraic.  Only integrals that stayed unevaluated are affected.
+- **New: `nsolve(F, [[x], [y]], x0[, lb, ub])`**, a root of a square nonlinear system by Powell's dogleg trust
+  region, answered only when every equation vanishes against the size of its own terms and the Jacobian is
+  nonsingular there; a minimum of the residual that is not a root is declined, with the reason in a note.
+  In a program, `nsolve` over expressions or over numeric callbacks (the system, its Jacobian and each
+  equation's scale).
+- `derive` and `integral` of a `taylor`, `maclaurin`, `pade` or `laurent` call compute the series first
+  (they echoed the call; only `simplify` answered).
+- `stationary`, `convex` and `lagrange` evaluate an objective written through `dot`, `derive` or another
+  computing node before analysing it: `stationary(dot(derive(q, t), derive(q, t)), t)` answers `t = 0`
+  (it echoed itself).
+- In exact mode a based literal is exact: `0b1010 + 0b0110` is `16` (it was `16.0` with a `rationalize`
+  note) and `tobase(10, 2)` carries no note.  New, additive: `_Based.ofExact`, `_Based.exact`,
+  `Environment.withoutBindings`.
+- A logical connective with one known operand folds it on either side: with `p := true`, `p and q` is
+  `q` (it was `(true and q)`), `q implies true` is `true`, `p xor q` is `not q`.
 - A vector operator sees later bindings of its coordinates: after `H := hessian(f, x, y)`, `x := 1` and
   `y := 1`, `H` is `[[2.0, 2.0], [2.0, 6.0]]` and `eigen(H)` answers, as `det(H)` already did (`H` kept `x`
   and `y`).  `grad`, `curl` and `jacobian` alike; `div(grad(f, x, y), x, y)` still differentiates first.

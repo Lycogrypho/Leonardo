@@ -211,6 +211,13 @@ enum Limit(val default: Long):
    *  evaluation is a few arithmetic operations per variable. */
   case MaxDerivativeFreeEvaluations extends Limit(100000)
 
+  // ── optimize, continued (F_0319) ──
+
+  /** Dogleg steps `nsolve` may take, rejected ones included (F_0319).  Measured on the suite: the
+   *  hydraulics and Broyden's tridiagonal system converge in 4, the circle in 5, Powell's badly scaled
+   *  function in 43 from `(0, 1)` at precision 10; 200 is between four and five times the slowest. */
+  case MaxNsolveIterations extends Limit(200)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

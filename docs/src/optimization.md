@@ -325,6 +325,35 @@ lesson.show("lsqfit((a + b)*t, t, T, Y, [[a], [b]], [[1], [1]])")
 A program calls `curveFit` or `lsqfit`, whose `LsqResult` carries the iterations, the residual
 norm, the covariance and which parameters a bound holds.
 
+## Nonlinear equations
+
+`nsolve(F, [[x], [y]], x0)` finds a root of a **square** nonlinear system — `n` equations in `n`
+unknowns — from a starting point. `F` is a column whose cells are expressions meaning `F_i = 0`, or
+equations `l = r`; the unknowns are a column of names, `minimize`'s shape:
+
+```scala mdoc:passthrough
+lesson.show("nsolve([[x^2 + y^2 = 4], [x - y]], [[x], [y]], [[1], [0]])")
+```
+
+Two more arguments bound the unknowns (`-inf`/`inf` for none, a number applying to every unknown),
+and a root outside the box is not a root of the bounded problem.
+
+**How it is solved, and when it answers.** Powell's dogleg trust region — the Newton step while it
+fits the region, the steepest-descent step of `‖F‖²` when the region is smaller, and the path
+between the two otherwise — with the Jacobian's columns scaled so the iteration is the same in
+whatever units an unknown is written. A point is answered only if **every equation vanishes against
+the size of its own terms** at the precision's tolerance (so a tiny equation is not certified by
+being tiny) and the Jacobian there is nonsingular, which is what makes the root isolated. The point
+where `‖F‖²` is smallest but not zero — what a least-squares fit would return — is declined:
+
+```scala mdoc:passthrough
+lesson.show("nsolve([[x^2 + 1], [y - 1]], [[x], [y]], [[0.7], [0]])")
+```
+
+A program calls `nsolve` on expressions, or on numeric callbacks for the system, its Jacobian and
+each equation's term size (what the certificate measures against); a start already at the root
+answers at once, so the previous step's solution is the warm start of the next.
+
 ## Linear programming
 
 `lp(f, A, b, lb, ub)` minimises **`fᵀx` subject to `A x ≤ b` and `lb ≤ x ≤ ub`**, `qp`'s shape
