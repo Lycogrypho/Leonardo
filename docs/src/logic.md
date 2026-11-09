@@ -20,8 +20,8 @@ val env = new Environment()
 
 ## Connectives
 
-The `logic` package provides the five connectives — `And`, `Or`, `Not`,
-`Implies`, `Xor` — as ordinary expression nodes over the shared AST. Operands are
+The `logic` package provides the six connectives — `And`, `Or`, `Not`,
+`Implies`, `Xor`, `Iff` — as ordinary expression nodes over the shared AST. Operands are
 untyped `_Expression`s, so equations and any other domain compose freely. `eval`
 runs the [Kleene](https://en.wikipedia.org/wiki/Three-valued_logic#Kleene_and_Priest_logics)/[Zadeh](https://en.wikipedia.org/wiki/Fuzzy_logic)
 min–max rule table (`and` = min, `or` = max, `not` = 1 − a)
@@ -32,9 +32,11 @@ And(_Bool(true), _Bool(false)).eval(env)
 ```
 
 In the grammar the connectives are the word operators `and`, `or`, `not`,
-`implies`, `xor`, with `true`/`false` as literals. They bind **looser** than
+`implies`, `xor`, `iff`, with `true`/`false` as literals. They bind **looser** than
 `=`/`==`, with precedence (tightest to loosest) `not` > `and` > `xor` > `or` >
-`implies` (`implies` is right-associative):
+`implies` > `iff`. `implies` is right-associative, and `iff` **does not chain**: `a iff b iff c` is
+a parse error rather than a guess, since the biconditional is associative in classical logic and
+not in a many-valued one:
 
 ```scala mdoc
 Parser.parse("a or b and c").get
@@ -43,11 +45,27 @@ Parser.parse("true and false").get.eval(env)
 ```
 
 A connective over an unbound variable stays symbolic with the operands reduced,
-following the library-wide dual-evaluation contract:
+following the library-wide dual-evaluation contract.  **A known operand decides what it can, on
+either side**: `true` is the unit of `and` and the annihilator of `or`, so `true and q` is `q` and
+`q or true` is `true`; likewise `q implies true` is `true`, `q implies false` is `not q`, and
+`true xor q` is `not q`.  The rules are sound under all three t-norm families, and only a
+truth-valued or symbolic other side is folded:
 
 ```scala mdoc
 And(a, _Bool(true)).eval(env)
+And(a, b).eval(env)
+Xor(_Bool(true), a).eval(env)
 And(a, _Bool(true)).eval(env.withBinding("a", _Bool(true)))
+```
+
+`a iff b` is the biconditional, evaluated as the conjunction of the two implications; it is the
+classical equivalence on `{true, false}`, `unknown iff unknown` is `unknown`, and under every
+semantics it is exactly `not (a xor b)`:
+
+```scala mdoc
+Iff(_Bool(true), _Bool(false)).eval(env)
+Iff(_Truth.Unknown, _Truth.Unknown).eval(env)
+Iff(a, _Bool(true)).eval(env)
 ```
 
 `And`, `Or`, and `Implies` short-circuit exactly as `Product.eval` does on a zero
@@ -342,6 +360,23 @@ simplifyLogicFully(Or(a, And(a, b)))
 simplifyLogicFully(And(a, Not(a)))
 ```
 
+Three more laws **shrink** a formula and so belong here: the combining law
+`(a and b) or (a and not b) = a` with its dual, the absorbed implication
+`(a implies b) and a = a and b`, and De Morgan *where it removes a negation* —
+`not (not a and not b)` is `a or b`.  `not (a and b)` has nothing to remove and stays, as does the
+reshaping of `implies`/`xor`/`iff`, which belongs to the normal forms below.  The combining law and
+the absorbed implication hold only in classical logic (at `a = 0.9`, `b = 0.5` the first is `0.5`,
+not `0.9`), so like the complement law they are gated on the operands being crisp; De Morgan holds
+in all three t-norm families and fires unconditionally:
+
+```scala mdoc
+simplifyLogicFully(Not(And(Not(a), Not(b))))
+simplifyLogicFully(Or(And(a, b), And(a, Not(b))))
+simplifyLogicFully(And(Implies(a, b), a))
+simplifyLogicFully(Or(And(_Truth.of(0.9), b), And(_Truth.of(0.9), Not(b))))   // graded: left alone
+simplifyLogicFully(Not(Iff(a, b)))                                              // not (a iff b) = a xor b
+```
+
 The REPL's `simplify` command runs this pass after the scalar pass, injecting
 `scalar.simplifyFully` for scalar bodies nested inside connectives.
 
@@ -350,7 +385,7 @@ The REPL's `simplify` command runs this pass after the scalar pass, injecting
 `toCNF` / `toDNF` rewrite an expression into
 [conjunctive](https://en.wikipedia.org/wiki/Conjunctive_normal_form) /
 [disjunctive](https://en.wikipedia.org/wiki/Disjunctive_normal_form) normal form:
-`implies`/`xor` are desugared, `not` is pushed to the leaves via
+`implies`/`xor`/`iff` are desugared, `not` is pushed to the leaves via
 [De Morgan's laws](https://en.wikipedia.org/wiki/De_Morgan%27s_laws), and the appropriate
 connective is distributed. A distribution that would exceed 1024 clauses returns the input
 unchanged:
@@ -377,6 +412,31 @@ since an input returned unchanged cannot be told from one that was already in no
 (b and (not a))
 ```
 
+## Equivalence
+
+`==` between two formulas compares *values*, and a connective is not even an operand of it; whether two
+formulas say the same thing is a different relation.  `equivalent(f, g)` answers it: `true` when the
+two agree on every assignment of their free names as booleans, `false` as soon as one row differs.
+A name bound in the session is read as its value and is not enumerated.  It is crisp only, like
+`cnf`: past the table's 16 names, or on a row that is no boolean (a graded value, a relation — names
+are enumerated *as booleans*, so `x > 0` has no row), the call stays as written and a note says why.
+`detailed` carries the first differing row, in the order of `truthTable`:
+
+```scala mdoc
+_Equivalent(Implies(a, b), Or(Not(a), b)).eval(env)
+_Equivalent(And(a, b), Or(a, b)).eval(env)
+_Equivalent(And(a, b), Or(a, b)).detailed(env)
+_Equivalent(a, _Truth.Unknown).detailed(env)
+```
+
+At the prompt a differing pair names its row:
+
+```
+> equivalent(p and q, p or q)
+false
+  note: equivalent: not equivalent at p = false, q = true (the left side is false, the right side is true)
+```
+
 ## Truth tables
 
 `truthTable` enumerates every boolean assignment of a variable list (up to 16
@@ -398,3 +458,17 @@ false true  | false
 true  false | false
 true  true  | true
 ```
+
+The header is the formula **as typed**: with `f := a and b` and `g := a or b`, `truth f xor g` heads its
+column `(f xor g)`, not the two definitions substituted in full, while the columns are still the atoms.
+A row that does not reduce shows `?`; when that is because a name inside a relation was enumerated as a
+boolean — `x > 0` is not a proposition — a note names the first such operand:
+
+```
+leonardo> truth x > 0 or y
+...
+  note: truth enumerates names as booleans; x > 0.0 is not a proposition
+```
+
+Under `pretty on` a formula is written the way a logician writes it, with the fewest brackets the
+grammar's precedence allows: `p and q or r`, not `((p and q) or r)`.

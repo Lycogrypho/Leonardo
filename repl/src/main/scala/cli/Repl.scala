@@ -5,7 +5,7 @@ import core.*
 import scalar.*
 import matrix.*
 import equation.{_Equation, _Solve, _EqualityCheck, _Comparison, equalOnlyToWorkingPrecision}
-import logic.{_Connective, asTruth, simplifyLogicFully, truthTable, kleeneTable,
+import logic.{_Connective, And, Or, Not, Implies, Xor, Iff, asTruth, simplifyLogicFully, truthTable, kleeneTable,
                   MaxTruthTableVars, MaxKleeneTableVars}
 import latex.ToLatex
 import parser.Parser
@@ -962,6 +962,13 @@ final class Session:
    *  lays the rows out as left-aligned columns with the expression itself as the result
    *  header.  A row whose result is `None` renders as `?`.
    *
+   *  **The header is the formula as typed** (F_0327): `truth f xor g` heads its result column
+   *  `(f xor g)`, not the two definitions substituted in full, which scrolled sideways; the
+   *  columns are still the body's atoms.  **A `?` that comes from a non-proposition says so**: a
+   *  relation or an arithmetic node holding a name is not true or false when the name is
+   *  enumerated as a boolean, so every row stays `?` and nothing said why; a note names the first
+   *  one.  A `?` from a graded constant (`unknown`) is what `truth3` is for and carries no note.
+   *
    *  @param e        the parsed expression to tabulate
    *  @param command  the command name, used in the too-many-variables message
    *  @param maxVars  the variable cap for this table's arity
@@ -981,11 +988,32 @@ final class Session:
       def row(cells: List[String], result: String): String =
         val vals = cells.zip(widths).map((c, w) => c.padTo(w, ' ')).mkString(" ")
         if vals.isEmpty then s"| $result" else s"$vals | $result"
-      val header = row(names, body.toString)
-      val lines  = rows(body, vars).map { (assignment, result) =>
+      val header = row(names, e.toString)
+      val data   = rows(body, vars)
+      val lines  = data.map { (assignment, result) =>
         row(names.map(assignment), result.getOrElse("?"))
       }
-      (header +: lines).mkString("\n")
+      val note =
+        if data.exists(_._2.isEmpty) then
+          nonProposition(body).map { atom =>
+            val over = if command == "truth" then "booleans" else "false, unknown or true"
+            s"\n  note: $command enumerates names as $over; ${Conventional.render(atom, _ => None)} is not a proposition"
+          }.getOrElse("")
+        else ""
+      (header +: lines).mkString("\n") + note
+
+  /** The first operand of a formula, read left to right through the connectives, that is neither a name
+   *  nor a truth value and holds a name -- a relation or an arithmetic node, which no assignment of
+   *  truth values to its names can reduce (F_0327).  A closed one reduces by itself and is no culprit. */
+  private def nonProposition(e: _Expression): Option[_Expression] = e match
+    case And(a, b)     => nonProposition(a).orElse(nonProposition(b))
+    case Or(a, b)      => nonProposition(a).orElse(nonProposition(b))
+    case Xor(a, b)     => nonProposition(a).orElse(nonProposition(b))
+    case Implies(a, b) => nonProposition(a).orElse(nonProposition(b))
+    case Iff(a, b)     => nonProposition(a).orElse(nonProposition(b))
+    case Not(a)        => nonProposition(a)
+    case _: _Variable | _: _Value => None
+    case other         => Option.when(other.freeVars.nonEmpty)(other)
 
   /** Auto-binds the solved variable when `solve` produces a result at the REPL top level.
    *
@@ -1152,6 +1180,12 @@ final class Session:
       case (l: _LsqFit, _)                => l.detailed(env).toOption.map(fitNote(l.params, _))
       case (c: _CurveFit, Left(_: _CurveFit)) => c.detailed(env).left.toOption.map(w => s"lsqfit declined: ${describeLsq(w)}")
       case (c: _CurveFit, _)                  => c.detailed(env).toOption.map(fitNote(c.params, _))
+      // F_0322: two formulas that differ name the first row they differ on; one that could not be
+      // decided says why.  Agreement carries no note.
+      case (q: logic._Equivalent, Right(_Bool(false))) =>
+        q.detailed(env).toOption.collect { case d: logic.EquivalenceVerdict.Differ => differNote(d) }
+      case (q: logic._Equivalent, Left(_: logic._Equivalent)) =>
+        q.detailed(env).left.toOption.map(w => s"equivalent declined: ${describeEquivalence(w)}")
       // F_0319: a root says how it got there -- iterations, residual, what a bound held -- or why it declined.
       case (r: _NSolve, Left(_: _NSolve)) => r.detailed(env).left.toOption.map(w => s"nsolve declined: ${describeRoot(w)}")
       case (r: _NSolve, _)                => r.detailed(env).toOption.map(rootNote(r.vars, _))
@@ -1270,6 +1304,18 @@ final class Session:
     if held.nonEmpty then s"$base; ${held.mkString(", ")} held at a bound, so no covariance"
     else if r.covariance.isEmpty then s"$base; no covariance: as many residuals as parameters"
     else base
+
+  /** The first row two formulas differ on, in prose (F_0322). */
+  private def differNote(d: logic.EquivalenceVerdict.Differ): String =
+    val at = d.assignment.toList.sortBy(_._1).map((n, v) => s"$n = $v").mkString(", ")
+    val sides = s"the left side is ${d.left}, the right side is ${d.right}"
+    if at.isEmpty then s"equivalent: not equivalent ($sides)" else s"equivalent: not equivalent at $at ($sides)"
+
+  /** An [[logic.EquivalenceFailure]] in prose (F_0322). */
+  private def describeEquivalence(why: logic.EquivalenceFailure): String = why match
+    case logic.EquivalenceFailure.TooManyNames(n, limit) => s"$n names exceed the table's limit of $limit"
+    case logic.EquivalenceFailure.NotBoolean =>
+      "a row does not reduce to true or false (a graded value, or a relation: names are enumerated as booleans)"
 
   /** A certified root in prose (F_0319): the iterations, the residual, and what a bound held. */
   private def rootNote(vars: Vector[_Variable], r: RootResult): String =
@@ -2549,9 +2595,13 @@ object Session:
       """|Print the truth table of a boolean expression over its free variables.
          |Variables are enumerated as true/false (the first variable varies slowest);
          |rows that do not reduce to a boolean show "?".  Limit: 16 variables.
-         |Connective precedence (tightest to loosest): not, and, xor, or, implies.
+         |Connective precedence (tightest to loosest): not, and, xor, or, implies, iff.
          |  truth a and (b or not a)
          |  truth (a or b) and not (a and b)     equivalent to a xor b
+         |The header is the formula as typed, so named formulas stay short:
+         |  f := a and b      g := a or b      truth f xor g
+         |A "?" that comes from a relation (x > 0 is not true or false) is explained in a note.
+         |To ask whether two formulas agree on every row, use equivalent(f, g).
          |Use truth3 for the three-valued (Kleene) table.""".stripMargin,
     "truth3" ->
       """|Print the three-valued (Kleene) truth table over the free variables.
@@ -2788,7 +2838,7 @@ object Session:
       |simplify <expr>      structural simplification (matrix algebra is carried out,
       |                     then each element is simplified; scalars ignore bindings)
       |expand <expr>        distribute products over sums (matrix algebra as above)
-      |a and b, not a, ...  logic connectives (loosest first): implies, or, xor, and,
+      |a and b, not a, ...  logic connectives (loosest first): iff, implies, or, xor, and,
       |                     not; literals true/false/unknown (three-valued Kleene)
       |truth <expr>         print the truth table over the expression's free variables
       |truth3 <expr>        three-valued table: false / unknown / true per variable
@@ -2810,6 +2860,9 @@ object Session:
       |logic <semantics>    fuzzy t-norm: minmax | product | lukasiewicz (default: minmax)
       |defuzz(e, v, lo, hi[, method])  defuzzify a curve: centroid (default) | mom | bisector
       |cnf(e), dnf(e)       conjunctive / disjunctive normal form
+      |equivalent(f, g)     true when two formulas agree on every row of the truth table
+      |floor( ceil( round( mod(   integer parts and the remainder with the divisor's sign;
+      |                     round sends a tie away from zero
       |matrices             det( inv( lu( qr( eig( jordan( chol( svd( pinv( rank( norm(
       |                     dot( cross( trace( size( expm( hcat( vcat( kron( submatrix(
       |statistics           mean( variance( median( sort( quantile( regress( ttest( proptest(

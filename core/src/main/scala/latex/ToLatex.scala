@@ -248,6 +248,12 @@ object ToLatex:
     // which would otherwise render the grammar's spelling instead of the notation.
     case Abs(e) => (s"\\left|${at(e, Grouped)}\\right|", Atomic)
 
+    // F_0324: the floor and the ceiling are their own delimiters too; the remainder is the infix
+    // `\bmod`, at product level.  `round` has no bracket notation and takes the generic arm.
+    case Floor(e)  => (s"\\left\\lfloor ${at(e, Grouped)}\\right\\rfloor", Atomic)
+    case Ceil(e)   => (s"\\left\\lceil ${at(e, Grouped)}\\right\\rceil", Atomic)
+    case Mod(a, b) => (s"${at(a, AtProduct)} \\bmod ${at(b, AtProduct)}", AtProduct)
+
     // A norm is its own delimiter in the same way (F_0039), its order a subscript: a whole order
     // as an integer and `inf` as \infty, since `_{1.0}` and `_{Infinity}` are no one's notation.
     case _Norm(x, order) =>

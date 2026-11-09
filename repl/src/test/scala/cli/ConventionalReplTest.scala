@@ -28,6 +28,15 @@ class ConventionalReplTest extends AnyFlatSpec:
     assert(solved.contains("x = -(2*y - 3)") && !solved.contains("-1 *"), solved)
   }
 
+  "pretty on" should "write a formula as a logician does, and pretty off keep it bracketed (F_0327)" in {
+    val on  = session(pretty = true)
+    val off = session(pretty = false)
+    assert(on.execute("p and q or r") == "p and q or r")
+    assert(off.execute("p and q or r") == "((p and q) or r)")
+    assert(on.execute("simplify (a or b) and (a or b)") == "a or b")
+    assert(on.execute("g := not (a and b) implies c") == "g := not (a and b) implies c")
+  }
+
   "pretty off" should "keep the internal form, which the existing suites pin" in {
     val s = session(pretty = false)
     assert(s.execute("4 - k*k") == "(4 + (-1 * (k * k)))")

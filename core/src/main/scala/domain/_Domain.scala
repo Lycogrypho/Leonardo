@@ -123,4 +123,4 @@ private def renderConstraint(c: Constraint): Option[_Expression] =
     case Never        => Some(_Bool(false))
     // Infinite exclusion sets: the language has no quantifier, and a truncated list would
     // read as exhaustive.
-    case NotOddMultipleOfHalfPi | NotNonPositiveInteger => None
+    case NotOddMultipleOfHalfPi | NotNonPositiveInteger | NotInteger | NotHalfInteger => None

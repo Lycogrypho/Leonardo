@@ -510,7 +510,7 @@ The cache is `private[scalar]`, so it is invisible to callers outside the packag
 priority levels — the logic connectives bind loosest, then the relations, then arithmetic:
 
 ```
-topLevel   → logicExpr                    (not > and > xor > or > implies)
+topLevel   → logicExpr                    (not > and > xor > or > implies > iff; iff does not chain)
 equationExpr → expr [relop expr]          (relop: >= <= != == > < = — longest first)
 expr       → ["+" | "-"] simpleExpr
 simpleExpr → term (("+"|"-") term)*
@@ -898,13 +898,15 @@ sound under every one of them.
 
 **Two gates protect simplification**, and the distinction matters:
 
-- *Classical-only* rules — complement (`a and not a = false`), `a implies a`, `a xor a` —
+- *Classical-only* rules — complement (`a and not a = false`), `a implies a`, `a xor a`, and the two F_0325 laws, the
+  combining law `(a and b) or (a and not b) = a` and the absorbed implication
+  `(a implies b) and a = a and b` —
   fail already at `unknown`, so they are gated on `isCrisp`.
 - *Lattice-only* rules — idempotence and absorption — hold for graded values under
   min–max but **not** under product or Łukasiewicz, where `a and a` is `a²`.  They carry
   the additional `semantics == MinMax` gate.
 
-Everything else (constant folding, identity and annihilator elements, double negation) is
+Everything else (constant folding, identity and annihilator elements, double negation, and De Morgan where it removes a negation) is
 valid under every t-norm and fires unconditionally.  `xor` is defined *through* the same
 `(a and not b) or (not a and b)` desugaring that `toCNF`/`toDNF` apply, so eval and the
 normal forms cannot disagree — the naive `|a − b|` would answer `false` at

@@ -5,6 +5,7 @@ import core.*
 import scalar.{Sum, Product, Ratio, Power}
 import matrix.{MatSum, MatProduct, MatScale}
 import equation.{_Equation, _EqualityCheck, _Comparison, CompareOp}
+import logic.{And, Or, Not, Implies, Xor, Iff}
 
 /** The conventional display of an expression (F_0224): grammar text with the fewest brackets
  *  the grammar needs, and subtraction written as a binary minus.
@@ -15,6 +16,12 @@ import equation.{_Equation, _EqualityCheck, _Comparison, CompareOp}
  *  an expression of the same value**, since a reader copies answers back into the prompt;
  *  `ConventionalTest` checks that on a generated corpus.
  *
+ *  - **The connectives** (F_0327) are written with the grammar's own precedence, tightest first
+ *    `not` > `and` > `xor` > `or` > `implies` > `iff`, all below the relations: `p and q or r`, not
+ *    `((p and q) or r)`.  `implies` is right-associative and the others left-fold, so the operand
+ *    that associativity does not cover keeps its brackets (`a or (b or c)`, `(a implies b) implies c`).
+ *    A relation under a `not` is bracketed although the grammar does not need it: `not x > 0` reads
+ *    as `(not x) > 0` to the eye, and the brackets cost nothing.
  *  - Precedence, loosest first: relation, sum, product, power, atom.  A sum's or a product's
  *    operands lose the brackets associativity makes redundant; a power base, an exponent, the
  *    right operand of `/` and an operand of `*` keep the ones they need, and an operand that
@@ -32,11 +39,17 @@ import equation.{_Equation, _EqualityCheck, _Comparison, CompareOp}
  */
 private[cli] object Conventional:
 
-  private val RelationLevel = 1
-  private val SumLevel      = 2
-  private val ProductLevel  = 3
-  private val PowerLevel    = 4
-  private val AtomLevel     = 5
+  private val IffLevel      = 0
+  private val ImpliesLevel  = 1
+  private val OrLevel       = 2
+  private val XorLevel      = 3
+  private val AndLevel      = 4
+  private val NotLevel      = 5
+  private val RelationLevel = 6
+  private val SumLevel      = 7
+  private val ProductLevel  = 8
+  private val PowerLevel    = 9
+  private val AtomLevel     = 10
 
   /** The conventional text of `e`.
    *  @param e    the expression
@@ -68,6 +81,16 @@ private[cli] object Conventional:
         case MatScale(k, m)   => (at(k, ProductLevel, signed = true) + "*" + at(m, ProductLevel), ProductLevel)
         case Ratio(a, b)      => (at(a, ProductLevel, signed = true) + "/" + at(b, PowerLevel), ProductLevel)
         case Power(b, x)      => (at(b, AtomLevel) + "^" + at(x, PowerLevel), PowerLevel)
+        // F_0327: left-folding connectives bracket a right operand of their own level, implies a left one
+        case Or(l, r)      => (at(l, OrLevel, signed = true) + " or " + at(r, OrLevel + 1, signed = true), OrLevel)
+        case Xor(l, r)     => (at(l, XorLevel, signed = true) + " xor " + at(r, XorLevel + 1, signed = true), XorLevel)
+        case And(l, r)     => (at(l, AndLevel, signed = true) + " and " + at(r, AndLevel + 1, signed = true), AndLevel)
+        case Implies(l, r) => (at(l, ImpliesLevel + 1, signed = true) + " implies " + at(r, ImpliesLevel, signed = true), ImpliesLevel)
+        // iff does not chain (F_0322): both operands sit above it, so a nested one is bracketed
+        case Iff(l, r)     => (at(l, ImpliesLevel, signed = true) + " iff " + at(r, ImpliesLevel, signed = true), IffLevel)
+        case Not(a) =>
+          val (t, level) = text(a, leaf)
+          (s"not ${if level < NotLevel || level == RelationLevel then s"($t)" else t}", NotLevel)
         case _Equation(l, r)      => relation(at(l, SumLevel, signed = true), "=", at(r, SumLevel, signed = true))
         case _EqualityCheck(l, r) => relation(at(l, SumLevel, signed = true), "==", at(r, SumLevel, signed = true))
         case _Comparison(l, op, r) =>

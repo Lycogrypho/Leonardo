@@ -165,6 +165,11 @@ private def kernel(e: _Expression, leaves: Map[String, Kernel], env: Environment
   case Ln(a)         => unary(a, leaves, env)(log)
   case LogBase(a, b) => binary(a, b, leaves, env)((p, q) => log(p) / log(q))
   case Abs(a)        => unary(a, leaves, env)(math.abs)
+  // F_0324: the integer parts; a point the remainder is undefined at is NaN, as for Ln.
+  case Floor(a)      => unary(a, leaves, env)(Rounding.floorD)
+  case Ceil(a)       => unary(a, leaves, env)(Rounding.ceilD)
+  case Round(a)      => unary(a, leaves, env)(Rounding.roundD)
+  case Mod(a, b)     => binary(a, b, leaves, env)((p, q) => Rounding.modD(p, q).getOrElse(Double.NaN))
   // F_0056: the scalar order functions; NaN stands for "undefined here", as for Ln.
   case _Join(k, args) =>
     val ks = args.map(kernel(_, leaves, env))

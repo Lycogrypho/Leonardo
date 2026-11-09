@@ -16,7 +16,7 @@ import java.util.regex.Pattern
  *  @param function mathematical function names (`sin`, `cos`, `exp`, ...)
  *  @param constant named constants (`pi`, `e`, `i`) and the truth literals (`true`, `false`, `unknown`)
  *  @param number   numeric literals
- *  @param operator arithmetic operators, `:=`, and the word connectives (`and`, `or`, `not`, `implies`, `xor`)
+ *  @param operator arithmetic operators, `:=`, and the word connectives (`and`, `or`, `not`, `implies`, `xor`, `iff`)
  *  @param equation bare `=` (equation relation)
  *  @param paren    parentheses and square brackets
  *  @param variable user identifiers and everything else
@@ -102,7 +102,7 @@ class LeonardoHighlighter(schemeName: () => String) extends JHighlighter:
   // reserved word that is not a command, a connective, a constant or a coordinate system;
   // `truth` is both a command and a function, and is coloured as whichever position it holds.
   private val Commands       = Session.CommandWords
-  private val LogicOps       = Set("and", "or", "not", "implies", "xor")
+  private val LogicOps       = Set("and", "or", "not", "implies", "xor", "iff")
   private val Constants      = Set("pi", "e", "i", "inf", "true", "false", "unknown", "eulergamma", "goldenratio")
   private val CoordinateWords = Set("cartesian", "cylindrical", "spherical", "sphericalmaths")
   private val Functions =

@@ -45,6 +45,11 @@ enum Requirement:
   case NotOddMultipleOfHalfPi
   /** `g` is not `0, -1, -2, …` — the `Gamma` / `fact` poles.  Also infinitely many. */
   case NotNonPositiveInteger
+  /** `g` is not an integer -- where `floor(g)` and `ceil(g)` jump (F_0324).  Differentiability only:
+   *  those functions are defined everywhere.  Infinitely many exclusions, so never intervals. */
+  case NotInteger
+  /** `2g` is not an odd integer -- where `round(g)` jumps (F_0324).  Infinitely many exclusions. */
+  case NotHalfInteger
   /** Never satisfiable.
    *
    *  Not a mathematical requirement but a statement about *this library*: the argument sits
@@ -123,7 +128,7 @@ private[leonardo] def differentiableDomainOf(e: _Expression, v: _Variable, kind:
   val kinks = kinkArgs(e).map(a => Constraint(a, Requirement.NonZero))
   val de    = derive(e, v)
   val cs    = (collectConstraints(e, kind) ++
-               collectConstraints(de, kind) ++ kinks).distinct
+               collectConstraints(de, kind) ++ kinks ++ jumpConstraints(e, v)).distinct
   val is    = resolveIntervals(cs, v, env)
   DomainSet(cs, if kind == DomainKind.Real then is.map(withSmoothPoints(_, e, de, v, env)) else is)
 
@@ -202,6 +207,8 @@ private def satisfies(req: Requirement, d: Double): Boolean =
       !(math.abs(k - math.round(k)) < 1e-9 && math.round(k) % 2 != 0)
     case NotNonPositiveInteger =>
       !(d <= 0 && math.abs(d - math.round(d)) < 1e-9)
+    case NotInteger     => d != math.floor(d)
+    case NotHalfInteger => { val t = 2.0 * d; !(t == math.floor(t) && math.floor(t) % 2.0 != 0.0) }
 
 /** A human-readable form of a requirement, for diagnostics. */
 private[leonardo] def describe(req: Requirement): String =
@@ -213,6 +220,8 @@ private[leonardo] def describe(req: Requirement): String =
     case InClosedUnit            => "must lie in [-1, 1]"
     case NotOddMultipleOfHalfPi  => "must not be an odd multiple of pi/2"
     case NotNonPositiveInteger   => "must not be zero or a negative integer"
+    case NotInteger              => "must not be an integer"
+    case NotHalfInteger          => "must not be half an odd integer"
     case Never                   => "is not computable here"
 
 /** Every kink in `e`, as the expression that is zero there (F_0056): a step's argument; for a
@@ -230,6 +239,19 @@ private def kinkArgs(e: _Expression): Vector[_Expression] =
     case _                 => Vector.empty
   here ++ e.children.toVector.flatMap(kinkArgs)
 
+/** Where the integer parts jump, as constraints on the argument (F_0324): `floor` and `ceil` at the
+ *  integers, `round` at the half-integers, `mod(a, b)` where `a/b` is an integer.  A staircase has
+ *  derivative zero between its jumps and none at them, so only `differentiable` asks -- `domain`
+ *  does not, they are defined everywhere.  Only an argument that depends on `v` jumps in `v`. */
+private def jumpConstraints(e: _Expression, v: _Variable): Vector[Constraint] =
+  val here = e match
+    case Floor(g)  => Vector(Constraint(g, Requirement.NotInteger))
+    case Ceil(g)   => Vector(Constraint(g, Requirement.NotInteger))
+    case Round(g)  => Vector(Constraint(g, Requirement.NotHalfInteger))
+    case Mod(a, b) => Vector(Constraint(Ratio(a, b), Requirement.NotInteger))
+    case _         => Vector.empty
+  here.filter(c => dependsOn(c.arg, v)) ++ e.children.toVector.flatMap(jumpConstraints(_, v))
+
 /** Walks the tree and unions the requirements each node places on its arguments. */
 private def collectConstraints(e: _Expression, kind: DomainKind): Vector[Constraint] =
   (own(e, kind) ++ e.children.toVector.flatMap(collectConstraints(_, kind))).distinct
@@ -246,6 +268,7 @@ private def own(e: _Expression, kind: DomainKind): Vector[Constraint] =
                                  Constraint(b, if real then Positive else NonZero))
 
     case Ratio(_, d)   => Vector(Constraint(d, NonZero))
+    case Mod(_, b)     => Vector(Constraint(b, NonZero))   // F_0324: a remainder mod zero is undefined
 
     // A fractional exponent is an even root over the reals; over the complex plane the
     // principal value exists for every base, so only the negative-integer case survives.
@@ -318,7 +341,7 @@ private def plainIntervalsFor(c: Constraint, v: _Variable,
   import Requirement.*
   c.req match
     case Never                                     => Some(Vector.empty)
-    case NotOddMultipleOfHalfPi | NotNonPositiveInteger => None   // infinite exclusion set
+    case NotOddMultipleOfHalfPi | NotNonPositiveInteger | NotInteger | NotHalfInteger => None   // infinite exclusion set
     case Positive    => polySatisfying(c.arg, v, env, Vector(0.0), _ > 0)
     case NonNegative => polySatisfying(c.arg, v, env, Vector(0.0), _ >= 0)
     case NonZero     => polySatisfying(c.arg, v, env, Vector(0.0), _ != 0)

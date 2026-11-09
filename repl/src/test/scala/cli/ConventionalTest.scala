@@ -63,6 +63,56 @@ class ConventionalTest extends AnyFlatSpec:
     assert(shown(Power(Ratio(_Rational(2), _Rational(3)), x)) == "(2/3)^x")
   }
 
+  it should "write the connectives with the grammar's precedence and the fewest brackets (F_0327)" in {
+    // not > and > xor > or > implies; implies is right-associative, the others left-fold
+    for (src, text) <- List(
+        "p and q or r"            -> "p and q or r",
+        "(p or q) and r"          -> "(p or q) and r",
+        "p or q and r"            -> "p or q and r",
+        "not (a and b)"           -> "not (a and b)",
+        "not a and b"             -> "not a and b",
+        "not not a"               -> "not not a",
+        "a implies b implies c"   -> "a implies b implies c",
+        "(a implies b) implies c" -> "(a implies b) implies c",
+        "a or b or c"             -> "a or b or c",
+        "a or (b or c)"           -> "a or (b or c)",
+        "a xor b or c"            -> "a xor b or c",
+        "a xor (b or c)"          -> "a xor (b or c)",
+        "a or b implies c and d"  -> "a or b implies c and d",
+        "(a implies b) and c"     -> "(a implies b) and c",
+        // a relation is a proposition: no bracket inside a connective, one under a `not`, which would
+        // otherwise read as `(not x) > 0`
+        "x > 0 and y < 1"         -> "x > 0.0 and y < 1.0",
+        "not (x > 0)"             -> "not (x > 0.0)")
+    do assert(shown(parsed(src)) == text, src)
+  }
+
+  it should "keep the value of a connective formula, on a generated corpus (F_0327)" in {
+    import logic.{And, Or, Not, Implies, Xor}
+    val random = new scala.util.Random(327)
+    val atoms  = List(_Variable("a"), _Variable("b"), _Variable("c"))
+    def tree(depth: Int): _Expression =
+      if depth == 0 || random.nextInt(5) == 0 then atoms(random.nextInt(3))
+      else random.nextInt(5) match
+        case 0 => And(tree(depth - 1), tree(depth - 1))
+        case 1 => Or(tree(depth - 1), tree(depth - 1))
+        case 2 => Not(tree(depth - 1))
+        case 3 => Implies(tree(depth - 1), tree(depth - 1))
+        case _ => Xor(tree(depth - 1), tree(depth - 1))
+    def table(e: _Expression): List[Option[Boolean]] =
+      for i <- (0 until 8).toList yield
+        val env = atoms.zipWithIndex.foldLeft(new Environment()) { case (acc, (v, j)) =>
+          acc.withBinding(v.variable, _Bool(((i >> j) & 1) == 1)) }
+        e.eval(env) match
+          case Right(_Bool(b)) => Some(b)
+          case _               => None
+    for _ <- 1 to 600 do
+      val e    = tree(4)
+      val text = shown(e)
+      assert(table(e) == table(parsed(text)), s"$e shown as $text")
+      assert(!table(e).contains(None), s"$e did not reduce")
+  }
+
   it should "leave the arguments of a call to the call's own spelling" in {
     assert(shown(parsed("sin(x + -1*y) + derive(x^2, x)")) == "sin(x - y) + derive(x^2.0, x)")
   }

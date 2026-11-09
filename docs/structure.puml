@@ -424,6 +424,24 @@ package "scalar" {
     class "Erf / Erfc" <<case>> [[expressions.html]] {
         erf(x) ; erfc(x) = Q(1/2, x^2)
     }
+
+    ' -- Integer parts (F_0324) --
+    class "Floor / Ceil / Round" <<case>> [[expressions.html]] {
+        floor(x) ; ceil(x) ; round(x) (a tie away from zero)
+        exact on exact input; a surd decided by BigInt isqrt
+        derive = 0 between the jumps
+    }
+    class "Mod" <<case>> [[expressions.html]] {
+        a : _Expression
+        b : _Expression
+        mod(a, b) = a - b*floor(a/b), the divisor's sign
+        Double: exact remainder (x % y), not the formula
+    }
+    class "Rounding" <<utility>> [[expressions.html]] {
+        ~ floorD / ceilD / roundD / modD
+        ~ floorOf / ceilOf / roundOf (rationals)
+        ~ floorS / ceilS / roundS (surds, exact)
+    }
     class "GammaP / GammaQ" <<case>> [[expressions.html]] {
         regularised incomplete gamma P / Q
     }
@@ -458,6 +476,10 @@ package "scalar" {
     "Gamma / LogGamma / Digamma" --|> "_Function"
     "Beta / BetaI"           --|> "_Function"
     "Erf / Erfc"             --|> "_Function"
+    "Floor / Ceil / Round"   --|> "_Function"
+    "Mod"                    --|> "_Function"
+    "Floor / Ceil / Round"   ..> "Rounding"   : kernels
+    "Mod"                    ..> "Rounding"   : modD, or the definition when exact
     "GammaP / GammaQ"        --|> "_Function"
     "Si / Ci / Ei / Li"      --|> "_Function"
     "FresnelS / FresnelC"    --|> "_Function"
@@ -1410,6 +1432,7 @@ package "logic" {
         kleeneNot = 1 - a
         kleeneImplies = max(1 - a, b)
         kleeneXor = max(min(a,1-b), min(1-a,b))
+        kleeneIff = tnorm(implies(a,b), implies(b,a))   (F_0322)
     }
 
     class "SimplifyLogic" <<utility>> [[logic.html]] {
@@ -1418,13 +1441,15 @@ package "logic" {
         __ rules __
         constant folding, double negation,
         idempotence, complement, absorption
+        F_0325: combining law, (a implies b) and a,
+        De Morgan where it removes a negation (shrinking only)
         leaf pass injected (cli passes scalar simplifyFully)
     }
     class "NormalForm" <<utility>> [[logic.html]] {
         + toCNF(e): _Expression
         + toDNF(e): _Expression
         __ pipeline __
-        desugar implies/xor -> NNF (De Morgan) -> distribute
+        desugar implies/xor/iff -> NNF (De Morgan) -> distribute
         clause cap 1024 -> input unchanged
     }
     class "TruthTableLogic" <<utility>> [[logic.html]] {
@@ -1488,6 +1513,21 @@ package "logic" {
         CNF  cnf
         DNF  dnf
     }
+    class "Iff" <<case>> [[logic.html]] {
+        a : _Expression
+        b : _Expression
+        __ F_0322: a iff b __
+        loosest connective, does not chain
+        not (a xor b) in every semantics
+    }
+    class "_Equivalent" <<case>> [[logic.html]] {
+        __ F_0322: equivalent(f, g) __
+        every row over the free names of both sides
+        detailed: Same | Differ(first row) | TooManyNames | NotBoolean
+    }
+    "Iff"          --|> "_Connective"
+    "_Equivalent"  --|> "_Expression"
+    "_Equivalent"  ..> "TruthTableLogic" : truthTable of each side
     "_DefuzzifyBy" --|> "_Expression"
     "_NormalForm"  --|> "_Expression"
     "_DefuzzifyBy" ..> "Defuzzify"

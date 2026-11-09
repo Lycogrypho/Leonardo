@@ -75,10 +75,10 @@ class AsciiMathTest extends AnyFlatSpec:
   {
     // The whole point: passing this through would give a product with a free variable, which
     // is an answer to a different question rather than an error.  (`abs` was the example
-    // here until F_0036 made it a real function -- itself a measure of how visible the gap
-    // was; `floor` is today's plausible-but-absent name.)
-    assert(read("floor(x)").contains("floor"))
-    assert(read("floor(x)").contains("not a function"))
+    // here until F_0036 made it a real function, and `floor` until F_0324 did -- itself a
+    // measure of how visible each gap was; `fract` is today's plausible-but-absent name.)
+    assert(read("fract(x)").contains("fract"))
+    assert(read("fract(x)").contains("not a function"))
     assert(read("foo(x)").contains("not a function"))
   }
 

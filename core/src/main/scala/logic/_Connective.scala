@@ -4,8 +4,8 @@ package logic
 import core.*
 
 
-/** Marker trait for the five logical connectives: [[And]], [[Or]], [[Not]], [[Implies]],
- *  and [[Xor]].
+/** Marker trait for the six logical connectives: [[And]], [[Or]], [[Not]], [[Implies]],
+ *  [[Xor]] and [[Iff]].
  *
  *  Operands are untyped `core._Expression`s so equations and other domains compose
  *  without cross-domain imports.  `eval` runs the shared Kleene/Zadeh min–max rule table
@@ -197,6 +197,30 @@ case class Implies(a: _Expression, b: _Expression) extends _Connective:
           case (Some(1.0), _) if foldable(rb, env) => asAnswer(rb, env)
           case (_, Some(0.0)) if foldable(ra, env) => negated(ra, env)
           case _                                   => combine(ra, rb, kleeneImplies, Implies.apply, env)
+
+
+/** Biconditional: `a iff b`, evaluated as the conjunction of the two implications (F_0322, LT L_0079;
+ *  see [[kleeneIff]]).  Under min-max that is `not (a xor b)`, and `unknown iff unknown` is `unknown`.
+ *
+ *  No short-circuit is possible -- both operands matter -- but a crisp one decides how, on either
+ *  side, as for [[Xor]] and under every semantics: `true iff X` is `X`, `false iff X` is `not X`.
+ *
+ *  @param a left operand
+ *  @param b right operand
+ */
+case class Iff(a: _Expression, b: _Expression) extends _Connective:
+  override def toString: String = s"($a iff $b)"
+  override def children: List[_Expression] = List(a, b)
+  override def rebuild(c: List[_Expression]): _Expression = Iff(c.head, c(1))
+
+  override def eval(env: Environment): Either[_Expression, _Value] =
+    val (ra, rb) = (a.eval(env), b.eval(env))
+    (degreeOf(ra, env), degreeOf(rb, env)) match
+      case (Some(1.0), _) if foldable(rb, env) => asAnswer(rb, env)
+      case (_, Some(1.0)) if foldable(ra, env) => asAnswer(ra, env)
+      case (Some(0.0), _) if foldable(rb, env) => negated(rb, env)
+      case (_, Some(0.0)) if foldable(ra, env) => negated(ra, env)
+      case _                                   => combine(ra, rb, kleeneIff, Iff.apply, env)
 
 
 /** Exclusive disjunction: `a xor b`, evaluated as the lattice reading of

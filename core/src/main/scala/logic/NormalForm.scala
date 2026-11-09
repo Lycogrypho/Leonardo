@@ -18,7 +18,7 @@ private val MaxNormalFormClauses = Limit.MaxNormalFormClauses.default.toInt
 /** Rewrites `e` into conjunctive normal form: a conjunction of disjunctions of literals.
  *
  *  Pipeline: [[simplifyLogic]] fixpoint (folds connective-level constants away), desugar
- *  `implies`/`xor`, push `not` to the leaves via [[https://en.wikipedia.org/wiki/De_Morgan%27s_laws De Morgan]], then distribute `or` over
+ *  `implies`/`xor`/`iff`, push `not` to the leaves via [[https://en.wikipedia.org/wiki/De_Morgan%27s_laws De Morgan]], then distribute `or` over
  *  `and`.  Trivially-true clauses (containing a complementary literal pair) and duplicate
  *  literals/clauses are dropped; when every clause is trivially true the result is
  *  `_Bool(true)`.
@@ -155,6 +155,9 @@ private def nnf(e: _Expression, negated: Boolean): _Expression =
                                 else Or(go(a, false), go(b, false))
           case Implies(a, b) => if negated then And(go(a, false), go(b, true))
                                 else Or(go(a, true), go(b, false))
+          // a iff b = (not a or b) and (a or not b); negated it is the xor (F_0322)
+          case Iff(a, b)     => if negated then Or(And(go(a, false), go(b, true)), And(go(a, true), go(b, false)))
+                                else And(Or(go(a, true), go(b, false)), Or(go(a, false), go(b, true)))
           // a xor b = (a and not b) or (not a and b); negated, (a or not b) and (not a or b)
           case Xor(a, b)     => if negated then And(Or(go(a, false), go(b, true)), Or(go(a, true), go(b, false)))
                                 else Or(And(go(a, false), go(b, true)), And(go(a, true), go(b, false)))

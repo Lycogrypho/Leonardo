@@ -27,7 +27,7 @@ import optimize.{_Stationary, _Convex, _Lagrange, _KKT, _Minimize, _QP, Minimize
  *  Grammar summary:
  *  {{{
  *  topLevel     ::= logicExpr
- *  logicExpr    ::= implExpr                    -- boolean connectives bind loosest
+ *  logicExpr    ::= implExpr ["iff" implExpr]    -- boolean connectives bind loosest; iff does not chain (F_0322)
  *  implExpr     ::= orExpr ["implies" implExpr] -- right-associative, loosest connective
  *  orExpr       ::= xorExpr ("or" xorExpr)*
  *  xorExpr      ::= andExpr ("xor" andExpr)*
@@ -74,6 +74,11 @@ object Parser extends JavaTokenParsers:
     "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",   // hyperbolic
     "sec", "csc", "cot", "sech", "csch", "coth",          // reciprocal trig / hyperbolic
     "rationalize",                                       // F_0170, a decimal made exact on request
+    "floor", "ceil", "round", "mod",                      // F_0324 integer parts; `mod` is a
+                                                         // plausible variable name, reserved only
+                                                         // because a production needs it (2.13) and
+                                                         // free to release until 3.9.0 ships.
+                                                         // `round` goes half away from zero
     "abs",                                               // absolute value / complex modulus
                                                          // (F_0036); reserved because the
                                                          // production needs it -- before it,
@@ -119,6 +124,10 @@ object Parser extends JavaTokenParsers:
     "taylor", "maclaurin", "fourierSeries", "pade", "laurent",
     "tobase", "balanced",                                // base conversion            // series expansions
     "and", "or", "not", "implies", "xor",                // logic connectives
+    "iff", "equivalent",                                 // F_0322: the biconditional and the
+                                                         // equivalence test; plausible names,
+                                                         // reserved because productions need them
+                                                         // (2.13), free to release until 3.9.0
     "cnf", "dnf",                                        // F_0133 normal forms at the prompt
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions;
@@ -393,7 +402,17 @@ object Parser extends JavaTokenParsers:
    *  `implies` is right-associative, the others left-fold.  So
    *  `a or b and c` is `a or (b and c)` and `x = 1 and y = 2` is `(x = 1) and (y = 2)`.
    */
-  lazy val logicExpr: Parser[_Expression] = implExpr
+  lazy val logicExpr: Parser[_Expression] = iffExpr
+
+  /** Biconditional level (F_0322): the loosest connective, `a implies b iff c` being
+   *  `(a implies b) iff c`, and **non-associative** -- `a iff b iff c` is a parse error, the way
+   *  `a = b = c` is.  Chained, `iff` is associative classically but not in a many-valued logic, and
+   *  a reading guessed for the reader would be right for half of them (the 6.26 lesson). */
+  lazy val iffExpr: Parser[_Expression] = implExpr ~ opt(kw("iff") ~> implExpr) ^^
+    {
+      case l ~ Some(r) => Iff(l, r)
+      case l ~ None    => l
+    }
 
   /** Implication level: right-associative and the loosest connective. */
   lazy val implExpr: Parser[_Expression] = orExpr ~ opt(kw("implies") ~> guardedImplExpr) ^^
@@ -830,6 +849,11 @@ object Parser extends JavaTokenParsers:
     // a distribution delegates back to `probability.Moments`, a matrix is a sample.  The
     // two-argument form above stays the linearity rule table and is untouched.
     "variance(" ~> guardedExpr <~ ")"        ^^ { e => _Statistic(StatKind.Variance, e) }        |    "abs("     ~> guardedExpr <~ ")"                                     ^^ Abs.apply                     |
+    // F_0324: the integer parts, and the remainder with the divisor's sign.
+    "floor("   ~> guardedExpr <~ ")"                                     ^^ Floor.apply                   |
+    "ceil("    ~> guardedExpr <~ ")"                                     ^^ Ceil.apply                    |
+    "round("   ~> guardedExpr <~ ")"                                     ^^ Round.apply                   |
+    "mod("     ~> guardedExpr ~ ("," ~> guardedExpr) <~ ")"              ^^ { case a ~ b => Mod(a, b) }   |
     // F_0170: a decimal made exact, when asked for; the digits are optional.
     "rationalize(" ~> guardedExpr ~ opt("," ~> guardedExpr) <~ ")" ^^ { case e ~ d => _Rationalize(e, d) } |
     // F_0056, Decision A (the numpy split): maximum/minimum are the element-wise JOIN, two or
@@ -893,6 +917,8 @@ object Parser extends JavaTokenParsers:
     // printed form of a graded _Truth); the hedges and curves produce degrees directly.
     "truth("    ~> guardedExpr <~ ")"                                     ^^ _TruthOf.apply                |
     // F_0133: the normal forms, taking a full logic expression like the hedges do.
+    // F_0322: logical equivalence of two formulas, a full logic expression on each side.
+    "equivalent(" ~> guardedMembership ~ ("," ~> guardedMembership) <~ ")" ^^ { case f ~ g => _Equivalent(f, g) } |
     "cnf("      ~> guardedMembership <~ ")" ^^ (e => _NormalForm(NormalKind.CNF, e))                  |
     "dnf("      ~> guardedMembership <~ ")" ^^ (e => _NormalForm(NormalKind.DNF, e))                  |
     "very("     ~> guardedMembership <~ ")"                               ^^ Very.apply                    |

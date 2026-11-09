@@ -78,7 +78,7 @@ object AsciiMath:
 
   /** The connective words, which MathLive writes as words (`a and b`, ` not a`): kept apart by
    *  spaces rather than read as juxtaposed names — `a*and*b` is a parse error (F_0208). */
-  private val Connectives: Set[String] = Set("and", "or", "not", "xor", "implies")
+  private val Connectives: Set[String] = Set("and", "or", "not", "xor", "implies", "iff")
 
   /** Whether a node is a connective word (F_0208). */
   private def connectiveLeaf(n: Node): Boolean = n match

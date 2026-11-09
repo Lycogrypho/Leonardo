@@ -133,6 +133,22 @@ private[logic] def kleeneNot(a: Double): Double = 1.0 - a
 private[logic] def kleeneImplies(semantics: LogicSemantics)(a: Double, b: Double): Double =
   kleeneOr(semantics)(kleeneNot(a), b)
 
+/** Biconditional kernel (F_0322): the conjunction of the two implications,
+ *  `tnorm(implies(a, b), implies(b, a))` in the active semantics.
+ *
+ *  On `{0, 1}` it is classical equivalence.  By the duality of the three families -- the conorm is
+ *  the norm's dual under the strong negation -- it is exactly `not (a xor b)` in each, which is why
+ *  `simplify` may read the one as the other.  `true` is its unit and `false` negates, under every
+ *  semantics (`tnorm(1, x) = x`, `implies(0, x) = 1`, `implies(x, 0) = 1 - x`).
+ *
+ *  @param semantics the active semantics
+ *  @param a         left truth degree
+ *  @param b         right truth degree
+ *  @return the biconditional degree
+ */
+private[logic] def kleeneIff(semantics: LogicSemantics)(a: Double, b: Double): Double =
+  kleeneAnd(semantics)(kleeneImplies(semantics)(a, b), kleeneImplies(semantics)(b, a))
+
 /** Exclusive-disjunction kernel: the reading of `(a and not b) or (not a and b)` in the
  *  active semantics.
  *

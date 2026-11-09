@@ -158,6 +158,29 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   reads as the real root.
 - `derive` of a root is written `(1/3)*h^(-2/3)`: an exponent free of the variable takes the power rule however
   it is typed (`derive(h^(1/3), h)` was `h^(1/3)*(0*ln(h) + (1/3)/h)`, which read `0` at `h = 0`).
+- **New: `floor(x)`, `ceil(x)`, `round(x)` and `mod(a, b)`.**  Exact on exact input (`floor(7/2)` is `3`; a
+  surd is decided by integer arithmetic, so `floor((10^80 - 1)^(1/2))` is `10^40 - 1` although its
+  30-digit reading is `10^40`), element-wise on a matrix, a complex or interval argument left as written.
+  `round` sends a tie **away from zero** (`round(2.5)` is `3`, `round(-2.5)` is `-3`; Python and numpy go half
+  to even).  `mod` takes the sign of the divisor, `mod(-7, 3)` is `2`, and on doubles is the exact
+  remainder rather than `a - b*floor(a/b)`, which loses every digit past `2^53`; a zero divisor stays as
+  written.  `derive` is zero between the jumps and `differentiable` excludes them, the answer staying
+  symbolic as for `tan`.  LaTeX: `\lfloor x \rfloor`, `\lceil x \rceil`, `a \bmod b`.
+- **New: `a iff b` and `equivalent(f, g)`.**  `iff` is the biconditional, the loosest connective, and does
+  not chain (`a iff b iff c` is a parse error: it is associative classically, not in a many-valued
+  logic); it is exactly `not (a xor b)` in every semantics, and `cnf`/`dnf`/`simplify` read it.
+  `equivalent(f, g)` is `true` when two formulas agree on every assignment of their free names as booleans,
+  and `false` with the first differing row in a note; past 16 names, or on a row that is no boolean, it
+  stays as written with the reason.  It is not `==`, which compares values.
+- `simplify` combines and applies De Morgan where that shrinks the formula: `(p and q) or (p and not q)` is
+  `p`, `(p implies q) and p` is `p and q`, `not (not p and not q)` is `p or q`, and `not (a iff b)` is
+  `a xor b`.  The first two hold only in classical logic and are gated on crisp operands.
+- Under `pretty on` a formula is written with the fewest brackets the precedence allows, `p and q or r`
+  rather than `((p and q) or r)`.  `truth f xor g` heads its table with the formula as typed, `(f xor g)`,
+  not the two definitions in full, and a `?` that comes from a relation (`truth x > 0 or y`) says so in a
+  note.
+- **Six words are reserved now**: `floor`, `ceil`, `round`, `mod`, `iff` and `equivalent`.  A saved session
+  that used one as a variable name must rename it; `:load` reports it as a reserved word.
 
 **New in the library** (additive, no prompt form; requested by an MPC application):
 

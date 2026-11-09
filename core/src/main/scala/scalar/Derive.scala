@@ -192,6 +192,12 @@ private def deriveImpl(e: _Expression, v: _Variable)(using t: Tier): _Expression
   // is what hands `differentiableDomainOf` its NonZero constraint through the existing
   // Ratio arm, with no abs-specific rule in Domain.scala (issue F_0036).
   case Abs(a)               => Ratio(dmul(a, deriveIn(a, v)), Abs(a))
+  // F_0324: a staircase is flat between its jumps.  The jumps themselves are not differentiable
+  // points, and `differentiable` excludes them (they are infinitely many, so the answer stays
+  // symbolic, like `tan`'s poles).
+  case _: Floor | _: Ceil | _: Round => t.n(0)
+  // mod(a, b) = a - b*floor(a/b): its slope is a' - b'*floor(a/b), by the definition.
+  case Mod(a, b)            => deriveIn(Sum(a, dmul(t.n(-1), Product(b, Floor(Ratio(a, b))))), v)
   // F_0056: the join through the step, the FIRST argument favoured at a tie — a stated
   // subgradient choice.  For maximum the step is on a − b, for minimum on b − a; either way it
   // is 1 exactly when `a` is chosen, ties included, so the slope there is a' rather than the

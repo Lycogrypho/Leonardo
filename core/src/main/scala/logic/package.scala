@@ -3,14 +3,17 @@ package it.grypho.scala.leonardo
  *  expression hierarchy.
  *
  *  The core types are:
- *  - [[_Connective]] -- marker trait of the five connective nodes [[And]], [[Or]],
- *    [[Not]], [[Implies]], [[Xor]].  Operands are untyped `_Expression`s, so equations
+ *  - [[_Connective]] -- marker trait of the six connective nodes [[And]], [[Or]],
+ *    [[Not]], [[Implies]], [[Xor]], [[Iff]].  Operands are untyped `_Expression`s, so equations
  *    and other domains compose without cross-domain imports; `eval` reduces to
  *    `core._Bool` or `core._Truth` when the operands do.
  *  - [[asTruth]] and the [[kleeneAnd]] / [[kleeneOr]] / [[kleeneNot]] /
- *    [[kleeneImplies]] / [[kleeneXor]] kernels -- the single shared rule table.
+ *    [[kleeneImplies]] / [[kleeneXor]] / [[kleeneIff]] kernels -- the single shared rule table.
  *  - [[simplifyLogic]] / [[simplifyLogicFully]] -- structural simplification: constant
- *    folding, double negation, idempotence, complement, and absorption.
+ *    folding, double negation, idempotence, complement, absorption, the combining law and
+ *    De Morgan where it removes a negation.
+ *  - [[_Equivalent]] -- `equivalent(f, g)`, whether two formulas agree on every assignment of
+ *    their free names as booleans.
  *  - [[toCNF]] / [[toDNF]] -- conjunctive / disjunctive normal forms (crisp-only).
  *  - [[truthTable]] / [[kleeneTable]] -- exhaustive enumeration of the two- and
  *    three-valued assignments of a variable list, with the evaluation result per row.

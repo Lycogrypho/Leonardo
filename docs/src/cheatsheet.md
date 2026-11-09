@@ -118,9 +118,26 @@ Outside exact mode each evaluates to its `Double`; in exact mode it stays symbol
 
 ## Mathematical functions
 
+### Integer parts
+
+| Syntax | Result | Notes |
+|---|---|---|
+| `floor(-2.5)` | `-3.0` | |
+| `ceil(-2.5)` | `-2.0` | |
+| `round(2.5)` | `3.0` | A tie goes away from zero |
+| `round(-2.5)` | `-3.0` | |
+| `mod(-7, 3)` | `2.0` | The sign of the divisor |
+| `mod(7, -3)` | `-2.0` | |
+| `mod(7, 0)` | `mod(7.0, 0.0)` | A zero divisor stays as written |
+| `derive(mod(x, 3), x)` | `1.0` | Between the jumps |
+
+
 | Expression | Meaning |
 |---|---|
 | `abs(x)` | Absolute value; on a complex value, the modulus (`abs(3 + 4i)` is `5`) |
+| `floor(x)` / `ceil(x)` | The greatest integer not above `x` / the least not below it. **Exact on exact input** (`floor(7/2)` is `3` in exact mode; a surd is decided by integer arithmetic, `floor((10^80 - 1)^(1/2))` is `10^40 - 1`); element-wise on a matrix; a complex or interval argument stays as written. `derive` is `0` between the jumps and `differentiable` excludes them — infinitely many, so the answer stays symbolic, like `tan`'s |
+| `round(x)` | The nearest integer, **a tie going away from zero**: `round(2.5)` is `3`, `round(-2.5)` is `-3` (Python and numpy go half to even; MATLAB and Excel agree with this) |
+| `mod(a, b)` | `a - b*floor(a/b)`, the remainder **with the sign of the divisor** (Python's convention). On `Double`s it is the exact remainder of the two values, not that formula, which loses every digit once `a/b` passes 2⁵³; exact on exact input; `b = 0`, an infinite operand or a matrix stays as written |
 | `exp(x)` | eˣ |
 | `ln(x)` | Natural logarithm |
 | `log(x)` | log₁₀(x) |
@@ -535,13 +552,19 @@ round-trip, while remaining usable as `255` everywhere.
 
 ### Connectives
 
+Under `pretty on` a formula is written with the fewest brackets the precedence allows (`p and q or r`);
+`truth` heads its table with the formula as typed and says when a `?` comes from a relation.
+
 | Syntax | Result / meaning |
 |---|---|
 | `true and false` | `false` (`true`/`false` are literals) |
 | `not a` | Negation |
 | `a implies b` | Material implication (right-associative) |
 | `a xor b` | Exclusive or |
-| `a or b and c` | = `a or (b and c)`. Precedence, tightest to loosest: `not` > `and` > `xor` > `or` > `implies` |
+| `a iff b` | Biconditional: `(a implies b) and (b implies a)`, exactly `not (a xor b)` in every semantics. The loosest connective, and it **does not chain** — `a iff b iff c` is a parse error, the biconditional being associative classically but not in a many-valued logic |
+| `a or b and c` | = `a or (b and c)`. Precedence, tightest to loosest: `not` > `and` > `xor` > `or` > `implies` > `iff` |
+| `equivalent(f, g)` | `true` when `f` and `g` agree on every assignment of their free names as booleans (a name bound in the session is read as its value), `false` otherwise with the first differing row in a note; stays as written past 16 names, or on a row that is no boolean (a graded value, a relation). **Not `==`**, which compares values |
+| `simplify (p and q) or (p and not q)` | `p`. `simplify` also applies `(a implies b) and a` → `a and b` and `not (not a and not b)` → `a or b`; the first two for crisp operands only |
 | `x = 1 and y = 2` | Connectives bind looser than `=` |
 | `false and (1/0 = 0)` | `false` (short-circuit: right side never evaluated) |
 | `cnf(a xor b)` | Conjunctive normal form: `((a or b) and ((not b) or (not a)))`; stays as written for a graded truth value, or past the clause budget |
