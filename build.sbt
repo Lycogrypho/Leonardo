@@ -534,7 +534,7 @@ lazy val mcp = (project in file("mcp"))
     dependencyOverrides ++= Seq(
       "tools.jackson.core"       % "jackson-core"            % "3.1.8",
       "tools.jackson.core"       % "jackson-databind"        % "3.1.8",
-      "tools.jackson.dataformat" % "jackson-dataformat-yaml" % "3.1.8"
+      "tools.jackson.dataformat" % "jackson-dataformat-yaml" % "3.3.0"
     ),
     Compile / mainClass := Some("it.grypho.scala.leonardo.mcp.leonardoMcp"),
     // The grammar resource (the cheat sheet) and the version, bundled at build time.
