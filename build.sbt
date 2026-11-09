@@ -532,8 +532,8 @@ lazy val mcp = (project in file("mcp"))
     // are fixed on the 3.1 line by 3.1.7; 3.1.8 is what the SDK's own main branch uses.  F_0253's
     // pattern: REMOVE these once the SDK itself depends on Jackson >= 3.1.7, or they pin an old version.
     dependencyOverrides ++= Seq(
-      "tools.jackson.core"       % "jackson-core"            % "3.1.8",
-      "tools.jackson.core"       % "jackson-databind"        % "3.1.8",
+      "tools.jackson.core"       % "jackson-core"            % "3.3.0",
+      "tools.jackson.core"       % "jackson-databind"        % "3.3.0",
       "tools.jackson.dataformat" % "jackson-dataformat-yaml" % "3.1.8"
     ),
     Compile / mainClass := Some("it.grypho.scala.leonardo.mcp.leonardoMcp"),
