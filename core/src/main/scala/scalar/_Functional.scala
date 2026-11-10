@@ -110,7 +110,10 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
           // One evaluation's setup — the antiderivative attempt and the domain analysis — is charged
           // to the outermost integral's budget too: inside a nested integral it runs per outer sample.
           Option.when(QuadratureWork.spend(QuadratureWork.SetupCost, env.limits(Limit.MaxQuadratureEvaluations)))(
-            byAntiderivative(lo, hi, a, b, env)
+            // F_0340: a staircase (floor, ceil, round, mod of a linear argument) by pieces between its jumps,
+            // tried only when the integrand holds one; nothing else reaches it
+            Staircase.integral(e, v, lo, hi, env)
+              .orElse(byAntiderivative(lo, hi, a, b, env))
               .orElse(Option.when(insideDomain(a, b, env))(
                 if a < b then adaptiveSimpson(a, b, env) else adaptiveSimpson(b, a, env).map(-_)).flatten.map(_Number(_)))
               .orElse(complexAntiderivative(a, b, env))

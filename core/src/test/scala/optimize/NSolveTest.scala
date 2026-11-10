@@ -89,6 +89,15 @@ class NSolveTest extends AnyFlatSpec:
     assert(r.isLeft, r.toString)
   }
 
+  "a root" should "be polished to the rounding level, one Newton step past the target (F_0338)" in {
+    // the target stopped at Newton's fourth iterate for x^2 = 2, 665857/470832, |x - √2| ≈ 1.6e-12
+    val r = answer(solve(Seq("x^2 - 2"), vars("x"), Vector(1.0)))
+    assert(abs(r.x(0) - sqrt(2.0)) <= 4 * Math.ulp(sqrt(2.0)), s"${r.x(0)} vs ${sqrt(2.0)}")
+    assert(r.x(0) != 665857.0 / 470832.0)
+    val q = answer(solve(Seq("x^2 - 9/4"), vars("x"), Vector(1.0)))
+    assert(abs(q.x(0) - 1.5) <= 4 * Math.ulp(1.5), q.toString)
+  }
+
   "a start where the Jacobian is singular" should "still move, by the Cauchy point (F_0333)" in {
     // J = [[1, 2y], [1, -1]] is singular on y = -1/2, where the gradient of |F|^2 is (-3.25, 3.25): a descent
     // step exists, and the old full-radius step overshot it and stopped at the start (|F| = 2.79).  Roots:

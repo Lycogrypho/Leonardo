@@ -74,7 +74,10 @@ case class _Matrix(rows: Int, cols: Int, elems: Vector[_Expression]) extends _El
   override def rebuild(c: List[_Expression]): _Expression = _Matrix(rows, cols, c.toVector)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    val reduced = elems.map(_.eval(env))
+    // An exact based cell is read as its integer (F_0336): `[[0b1, 0b10]]` under `exact on` collapsed to
+    // the dense `[[1.0, 2.0]]`.  The base is not kept in a matrix, as outside exact mode, where the
+    // dense carrier holds plain numbers.
+    val reduced = elems.map(_.eval(env).map(_Based.unwrapExact))
     // An exactly-written matrix must NOT collapse into the dense carrier: `_MatrixValue`
     // holds an `Array[Double]` by design, so collapsing would silently discard exactness at
     // the literal, before any operation could use it.  The symbolic `_Matrix` IS the exact

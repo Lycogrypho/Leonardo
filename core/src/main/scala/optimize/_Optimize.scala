@@ -100,7 +100,8 @@ case class _KKT(f: _Expression, g: _Expression, h: _Expression, vars: Vector[_Va
   override def rebuild(c: List[_Expression]): _Expression = _KKT(c.head, c(1), c(2), vars)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    Left(kktConditions(f, g, h, vars, env).getOrElse(this))
+    // F_0339: the expressions evaluated bottom-up first, as for stationary (F_0321)
+    Left(kktConditions(reduced(f, vars, env), reduced(g, vars, env), reduced(h, vars, env), vars, env).getOrElse(this))
 
 
 /** `minimize(f, [[x], [y]], x0, method)` and `minimize(f, [[x], [y]], x0, lb, ub, method)` —
@@ -149,7 +150,8 @@ case class _Minimize(f: _Expression, vars: Vector[_Variable], x0: _Expression,
     read match
       case None => Left(MinimizeFailure.InvalidInput(
                      s"the starting point and bounds must be numeric columns of $n entries"))
-      case Some((start, box)) => minimize(f, vars, start, box, method, env)
+      // F_0339: an objective through `dot` or `derive` is evaluated bottom-up first, the variables unbound
+      case Some((start, box)) => minimize(reduced(f, vars, env), vars, start, box, method, env)
   }
 
 
@@ -259,7 +261,8 @@ case class _Nlp(f: _Expression, vars: Vector[_Variable], x0: _Expression, g: _Ex
     yield (start, gs, hs, box)
     read match
       case Left(detail) => Left(NlpFailure.InvalidInput(detail))
-      case Right((start, gs, hs, box)) => nlpSolve(f, vars, start, gs, hs, box, method, env)
+      case Right((start, gs, hs, box)) =>   // F_0339, as minimize
+        nlpSolve(reduced(f, vars, env), vars, start, gs.map(reduced(_, vars, env)), hs.map(reduced(_, vars, env)), box, method, env)
   }
 
 

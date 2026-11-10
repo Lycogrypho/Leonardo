@@ -442,6 +442,14 @@ package "scalar" {
         ~ floorOf / ceilOf / roundOf (rationals)
         ~ floorS / ceilS / roundS (surds, exact)
     }
+    class "Staircase" <<utility>> [[calculus.html]] {
+        __ F_0340 __
+        ~ integral(e, v, lo, hi, env): Option
+        split at the jumps of a linear argument;
+          each piece through _DefIntegral
+        MaxStaircasePieces (measured)
+    }
+    "Staircase" ..> "Rounding" : the integer parts' jumps
     class "GammaP / GammaQ" <<case>> [[expressions.html]] {
         regularised incomplete gamma P / Q
     }
@@ -1335,6 +1343,13 @@ package "equation" {
         rational: zeros ∪ poles sign chart
         answer is _Comparison / or / and / _Bool
     }
+    class "ExactBounds" <<utility>> [[equations.html]] {
+        __ F_0337 __
+        ~ exactRootsOf / exactCutPoints
+        ~ withExactLeaves: a Double bound -> the exact
+          root it reads (inequalities, domain)
+    }
+    "SolveInequality" ..> "ExactBounds" : bounds in the input's tier
 
     class "_SolveSystem" <<case>> [[equations.html]] {
         + equations : _Expression

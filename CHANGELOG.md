@@ -114,6 +114,14 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
 - `stationary` of a constant written through a node that does not evaluate, such as
   `stationary(dot(0, 0), t)`, stays unevaluated; it answered `false`, "no stationary point", where every
   point is one.
+- Under `exact on` an inequality's solution set and a domain have exact bounds: `solve(x^2 > 4, x)` is
+  `x < -2 or x > 2` (it was `-2.0`, `2.0`, with no note), `domain(ln(x - 1/3), x)` is `x > 1/3` (it was
+  `0.33333`), and a quadratic's irrational bound is a surd.  A bound with no exact form stays a decimal.
+- `minimize`, `lsqfit`, `nlp` and `kkt` evaluate their expressions first, as `stationary` does, so an
+  objective written through `dot` or `derive` is minimised: `minimize(dot([[x]], [[x]]) - 2*x, [[x]], [[0]], bfgs)`
+  is `[[1]]` (it declined as "not a real number").  A session binding of a variable's own name never folds it.
+- Under `exact on` the answer of a numeric method (`minimize`, `lsqfit`, `nlp`, `qp`, `ode`) carries the
+  "decimal approximation" note, no longer an offer to `rationalize` its iterates.
 - The limit algebra applies a function's value at the limit of its argument only to functions declared
   continuous where they are defined, so a limit through a function with no such declaration (a
   functional, a sequence) is declined rather than assumed.
@@ -174,7 +182,10 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   to even).  `mod` takes the sign of the divisor, `mod(-7, 3)` is `2`, and on doubles is the exact
   remainder rather than `a - b*floor(a/b)`, which loses every digit past `2^53`; a zero divisor stays as
   written.  `derive` is zero between the jumps and `differentiable` excludes them, the answer staying
-  symbolic as for `tan`.  LaTeX: `\lfloor x \rfloor`, `\lceil x \rceil`, `a \bmod b`.
+  symbolic as for `tan`.  A definite integral of a linear argument's staircase is split at its jumps
+  (`integral(floor(x), x, 0, 3)` is `3`, exact on exact input; new budget `Limit.MaxStaircasePieces`), and a
+  two-sided `limit` at a jump declines while each one-sided limit answers.  In exact mode a based literal
+  stays exact in a matrix, negated and in `binom`.  LaTeX: `\lfloor x \rfloor`, `\lceil x \rceil`, `a \bmod b`.
 - **New: `a iff b` and `equivalent(f, g)`.**  `iff` is the biconditional, the loosest connective, and does
   not chain (`a iff b iff c` is a parse error: it is associative classically, not in a many-valued
   logic); it is exactly `not (a xor b)` in every semantics, and `cnf`/`dnf`/`simplify` read it.

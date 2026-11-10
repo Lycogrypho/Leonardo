@@ -38,7 +38,12 @@ import logic.{And, Or}
  */
 private[equation] def solveInequality(c: _Comparison, v: _Variable,
                                       env: Environment): Option[_Expression] =
-  absTier(c, v, env).orElse(polynomialOrRational(c, v, env))
+  val answer = absTier(c, v, env).orElse(polynomialOrRational(c, v, env))
+  // F_0337: the bounds found in `Double` written in the comparison's tier, each the exact root it reads
+  if !_Rational.containsExactIn(c, env) then answer
+  else
+    val difference = Sum(c.lhs, Product(_Rational.literalLike(-1, c), c.rhs))
+    answer.map(withExactLeaves(_, exactCutPoints(difference, v, 0, env)))
 
 /** An absolute value of the unknown against a bound (F_0290): `abs(u) < c` is `-c < u < c`,
  *  `abs(u) > c` is `u < -c or u > c`, `abs(u) < abs(w)` is `u^2 < w^2`; the parts are solved through the

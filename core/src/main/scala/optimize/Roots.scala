@@ -170,13 +170,28 @@ private def dogleg(res: Residual, x0: Vector[Double], box: (Vector[Double], Vect
       e
     }
 
+  /** One Newton step past the stopping target, kept only if `|F|` falls (F_0338, the `rootsAtScale` rule):
+   *  the target is `10⁻¹⁰` of the terms, one quadratic step short of the rounding level, so `√2` was answered
+   *  as Newton's fourth iterate `665857/470832` (`|F| ≈ 4.5·10⁻¹²`).  Not counted as an iteration. */
+  def polished(x: Array[Double], fv: Array[Double], j: Array[Double]): (Array[Double], Array[Double], Array[Double]) =
+    val step = for
+      p  <- newton(j, fv, (0 until n).toArray)
+      xn  = clamp(Array.tabulate(n)(i => x(i) + p(i)))
+      fn <- res.values(xn)
+      if sumSq(fn) < sumSq(fv)
+      jn <- res.jacobian(xn)
+    yield (xn, fn, jn)
+    step.getOrElse((x, fv, j))
+
   @annotation.tailrec
   def loop(x: Array[Double], fv: Array[Double], j: Array[Double], d: Array[Double],
            delta: Double, k: Int): Either[RootFailure, RootResult] =
     val g    = jtr(j, fv, n, n)
     val free = freeOf(x, g)
     val fNow = 0.5 * sumSq(fv)
-    if res.scale(x).exists(within(fv, _, target)) then finish(x, fv, j, k, atCap = false)
+    if res.scale(x).exists(within(fv, _, target)) then
+      val (xp, fp, jp) = polished(x, fv, j)
+      finish(xp, fp, jp, k, atCap = false)
     else if free.isEmpty then finish(x, fv, j, k, atCap = false)
     else if k >= maxIt then finish(x, fv, j, k, atCap = true)
     else
@@ -278,5 +293,6 @@ case class _NSolve(f: _Expression, vars: Vector[_Variable], x0: _Expression,
       case Some(cells) if cells.isEmpty => Left(RootFailure.InvalidInput("there is no equation to solve"))
       case Some(cells) =>
         startAndBounds(x0, bounds, vars.size, env).left.map(fromLsq)
-          .flatMap((s, b) => nsolve(_Matrix(cells.size, 1, cells), vars, s, b, env))
+          // F_0339: each equation evaluated bottom-up first, the unknowns unbound
+          .flatMap((s, b) => nsolve(_Matrix(cells.size, 1, cells.map(reduced(_, vars, env))), vars, s, b, env))
   }

@@ -240,6 +240,13 @@ enum Limit(val default: Long):
    *  inside it, and a random function of 6 atoms uses under 10⁵. */
   case MaxMinimiseWork extends Limit(5000000)
 
+  /** Pieces a definite integral of a staircase is split into at the jumps of its integer parts
+   *  (F_0340): each piece is a definite integral of its own.  Measured cold (a fresh variable per
+   *  case, so no memo table helps) over `[0, 999]`, 999 pieces, JVM / Node: `floor(x)` 0.36 / 0.12 s,
+   *  `exp(-x/100)*floor(x)` 0.85 / 0.33 s, `exp(-x/100)*mod(x, 1)` 0.37 / 0.44 s, the exact
+   *  `x^2*floor(x)` 0.48 / 0.61 s. */
+  case MaxStaircasePieces extends Limit(1000)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

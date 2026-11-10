@@ -236,7 +236,7 @@ abstract class _Function extends _Expression:
    */
   protected final def evalBinary(a: _Expression, b: _Expression, env: Environment)(
       kernel: (Double, Double) => Option[Double]): Either[_Expression, _Value] =
-    (a.eval(env), b.eval(env)) match
+    (a.eval(env).map(_Based.unwrapExact), b.eval(env).map(_Based.unwrapExact)) match   // F_0336, as evalUnary
       // Exact tier first -- `_Number` widens, so anything below it never sees a `_Rational`. Two
       // cases, not a guard: by the second, the first argument is known inexact.
       case (Right(ra: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(ra.toDouble), bv), env)
@@ -916,7 +916,7 @@ case class Binom(n: _Expression, k: _Expression) extends _Function with NamedFun
   override def rebuild(c: List[_Expression]): _Expression = Binom(c.head, c(1))
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    (n.eval(env), k.eval(env)) match
+    (n.eval(env).map(_Based.unwrapExact), k.eval(env).map(_Based.unwrapExact)) match   // F_0336
       case (Right(a: _Rational), Right(b: _Rational)) =>
         val exact =
           for

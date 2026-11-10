@@ -56,6 +56,35 @@ class StationaryReducedTest extends AnyFlatSpec:
     assert(parse("stationary(0, t)").eval(env).isLeft)
   }
 
+  // ── F_0339: the numeric optimisers see through the computing nodes too ──────────────────────────
+
+  private def column(s: String, e: Environment = env): Vector[Double] = parse(s).eval(e) match
+    case Right(m: _MatrixValue) if m.cols == 1 => m.toVector
+    case other                                 => fail(s"$s: $other")
+
+  private def near(a: Vector[Double], b: Vector[Double]) = a.size == b.size && a.zip(b).forall((x, y) => math.abs(x - y) < 1e-6)
+
+  "the numeric optimisers" should "evaluate an objective written through dot before compiling it (F_0339)" in {
+    assert(near(column("minimize(dot([[x]], [[x]]) - 2*x, [[x]], [[0]], bfgs)"), Vector(1.0)))
+    assert(near(column("nlp(dot([[x]], [[x]]), [[x]], 2, 1 - x, 0, sqp)"), Vector(1.0)))
+    assert(near(column("lsqfit([[dot([[a]], [[a]]) - 4], [a - 2]], [[a]], 1)"), Vector(2.0)))
+    assert(near(column("nsolve([[dot([[x]], [[x]]) - 2]], [[x]], 1)"), Vector(math.sqrt(2.0))))
+    assert(near(column("lsqfit(dot([[a]], [[t]]), t, [[1], [2], [3]], [[2], [4], [6]], [[a]], 1)"), Vector(2.0)))
+  }
+
+  it should "never fold a session binding of their own variables (F_0339)" in {
+    val bound = env.withBinding("x", _Number(5.0)).withBinding("a", _Number(7.0))
+    assert(near(column("minimize(dot([[x]], [[x]]) - 2*x, [[x]], [[0]], bfgs)", bound), Vector(1.0)))
+    assert(near(column("nsolve([[dot([[x]], [[x]]) - 2]], [[x]], 1)", bound), Vector(math.sqrt(2.0))))
+    assert(near(column("lsqfit([[dot([[a]], [[a]]) - 4], [a - 2]], [[a]], 1)", bound), Vector(2.0)))
+  }
+
+  "kkt" should "state the conditions of an objective written through dot (F_0339)" in {
+    val out = parse("kkt(dot([[x]], [[x]]), 1 - x, 0, x)").eval(env)
+    assert(out.isLeft && !out.toExpression.toString.contains("kkt("), out.toString)
+    assert(!out.toExpression.toString.contains("dot("), out.toString)
+  }
+
   "a branch whose coefficient vanished" should "still be dropped where it divides by zero (F_0335)" in {
     // x*y = 1 is divided by y on one branch and the y = 0 branch has no solution: still exactly two points
     val ps = points("stationary(x^2 + y^2 - 2*x*y + (x*y - 1)^2, x, y)")

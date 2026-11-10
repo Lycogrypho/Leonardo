@@ -66,7 +66,8 @@ case class _LsqFit(r: _Expression, params: Vector[_Variable], p0: _Expression,
   /** The solver's full answer, or why there is none; what the REPL queries — computed once per
    *  environment, so its note reads the solve `eval` ran (F_0212). */
   def detailed(env: Environment): Either[LsqFailure, LsqResult] = answers(env) {
-    startAndBounds(p0, bounds, params.size, env).flatMap((s, b) => lsqfit(r, params, s, b, env))
+    // F_0339: the residual evaluated bottom-up first, the parameters unbound (F_0321's `reduced`)
+    startAndBounds(p0, bounds, params.size, env).flatMap((s, b) => lsqfit(reduced(r, params, env), params, s, b, env))
   }
 
 
@@ -105,6 +106,8 @@ case class _CurveFit(model: _Expression, t: _Variable, tdata: _Expression, ydata
     def data(e: _Expression) = numericMatrix(e, env).filter(d => d.rows == 1 || d.cols == 1).map(_.toVector)
     (data(tdata), data(ydata)) match
       case (Some(tv), Some(yv)) =>
-        startAndBounds(p0, bounds, params.size, env).flatMap((s, b) => curveFit(model, t, tv, yv, params, s, b, env))
+        // F_0339: the model evaluated bottom-up first, its parameters and `t` unbound
+        startAndBounds(p0, bounds, params.size, env)
+          .flatMap((s, b) => curveFit(reduced(model, params :+ t, env), t, tv, yv, params, s, b, env))
       case _ => Left(LsqFailure.InvalidInput("the data must be numeric rows or columns"))
   }

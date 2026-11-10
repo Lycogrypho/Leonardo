@@ -385,6 +385,10 @@ object Parser extends JavaTokenParsers:
     // negated exact literal would fold into an inexact one at parse time.
     case (Some("-"), r: _Rational)                => r.negate
     case (Some("-"), Product(r: _Rational, rest)) => Product(r.negate, rest)
+    // An exact based literal negates to its exact integer (F_0336): through the widening `_Number` arm
+    // below, `-0b101` under `exact on` was `-5.0`.  The base is not kept, as for a negated inexact one.
+    case (Some("-"), b: _Based) if b.isExact                => b.rational.fold(mkNeg(e))(_.negate)
+    case (Some("-"), Product(b: _Based, rest)) if b.isExact => b.rational.fold(mkNeg(e))(r => Product(r.negate, rest))
     case (Some("-"), _Number(n))                => _Number(-n)
     case (Some("-"), Product(_Number(k), rest)) => Product(_Number(-k), rest)
     case (Some("-"), MatScale(r: _Rational, m)) => MatScale(r.negate, m)

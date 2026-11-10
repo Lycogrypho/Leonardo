@@ -130,6 +130,9 @@ Outside exact mode each evaluates to its `Double`; in exact mode it stays symbol
 | `mod(7, -3)` | `-2.0` | |
 | `mod(7, 0)` | `mod(7.0, 0.0)` | A zero divisor stays as written |
 | `derive(mod(x, 3), x)` | `1.0` | Between the jumps |
+| `integral(floor(x), x, 0, 3)` | `3.0` | Split at the jumps of a linear argument; exact on exact input |
+| `limit(floor(x), x, 1, +)` | `1.0` | Each side answers; the two-sided limit at a jump declines |
+| `limit(floor(x), x, 1, -)` | `0.0` | |
 
 
 | Expression | Meaning |

@@ -876,6 +876,15 @@ final class Session:
     case _: _Solve => true
     case _         => e.children.exists(containsSolve)
 
+  /** Whether `e` holds a numeric iterative method (F_0338): its decimals are iterates, not readings of an
+   *  exact value, so a `rationalize` offer would read the method's rounding as a fraction —
+   *  `nsolve([[x^2 = 2]], …)` was offered `665857/470832`, Newton's fourth iterate.  `lp` is not here: it
+   *  is exact. */
+  private def containsNumericMethod(e: _Expression): Boolean = e match
+    case _: _NSolve | _: _Minimize | _: _LsqFit | _: _CurveFit | _: _Nlp | _: _QP
+       | _: _ODE | _: _ODESystem | _: _OdeStep | _: _OdeSolve => true
+    case _ => e.children.exists(containsNumericMethod)
+
   /** Returns `true` when the expression tree contains a boolean connective node. */
   private def containsConnective(e: _Expression): Boolean = e match
     case _: _Connective => true
@@ -1104,7 +1113,7 @@ final class Session:
     val answer = result.toExpression
     val offered =
       // A solve's answer is a binding echo, and wrapping the solve in rationalize would bind again.
-      if !exactMode || replaying || containsSolve(e) || !_Rational.containsExactIn(e, env) then None
+      if !exactMode || replaying || containsSolve(e) || containsNumericMethod(e) || !_Rational.containsExactIn(e, env) then None
       else for
         ds    <- matrix.decimalLeaves(answer) if ds.nonEmpty
         k     <- matrix.rationalizeDigits(ds)

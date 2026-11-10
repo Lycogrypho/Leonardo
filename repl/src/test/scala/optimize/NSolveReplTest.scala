@@ -13,6 +13,16 @@ class NSolveReplTest extends AnyFlatSpec:
     assert(out.startsWith("[[1.41421], [1.41421]]") && out.contains("note: nsolve:") && out.contains("iterations"), out)
   }
 
+  "under exact on" should "say the root is a decimal, and offer no rationalize (F_0338)" in {
+    val s = Session()
+    s.execute("exact on")
+    // Newton's iterates for x^2 = 2 are Pell convergents: the fourth, 665857/470832, was offered as exact
+    for line <- Seq("nsolve([[x^2 = 2]], [[x]], [[1]])", "minimize(x^2 - 2*x, [[x]], [[1/2]], bfgs)") do
+      val out = s.execute(line)
+      assert(!out.contains("rationalize"), out)
+      assert(out.contains("decimal approximation"), out)
+  }
+
   it should "read equations as cells, and bounds" in {
     val s = Session()
     assert(s.execute("nsolve([[x^2 + y^2 = 4], [x = y]], [[x], [y]], [[1], [0]])").startsWith("[[1.41421], [1.41421]]"))
