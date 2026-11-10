@@ -264,6 +264,17 @@ pieces of an MPC step as Scala functions (no prompt form):
   `arx2nmssIncremental` the same in increments with `y(k)` appended, so a controller on either needs no
   observer; `minreal(A, B, C, D, env)` reduces any realisation to the states that reach its
   input-output map.
+- A model whose **input is already an increment** — `arx2nmssIncremental`'s, or any model that keeps
+  `u(k−1)` in its state — is predicted with `mpcAccumulatedPrediction(A, B, C, Np, Nc, limits)`. Its
+  moves are increments, so `mpcQp` reads the `u` bounds as bounds on the actuator **position**
+  `u(k−1) + Δu(k) + … + Δu(k+j)` and the `Δu` bounds as bounds on the moves, exactly as in the
+  incremental form. **Do not give such a model to `mpcPrediction`**: that holds the last move over the
+  rest of the horizon, which for an increment is a ramp of the input, and its `u` bounds would then
+  bound the increments while nothing bounds the position.
+- In the two forms whose moves are increments, `R` weighs the moves and nothing weighs where the
+  actuator sits. `MpcWeights.positionTarget` adds `Σ ‖u(k+j) − u_s‖²_S` on the positions, which settles
+  a plant with more inputs than setpoints: one input as low as possible, say, and the others left to
+  hold the outputs.
 
 
 ## Identifying a model from data (ARX)
@@ -330,6 +341,14 @@ reason; and an exact fit beats any other, the fewest coefficients winning a tie,
 from an ARX model returns its true orders. The grid is held to a work budget,
 `Limit.MaxArxOrderWork`. A recursive estimate updated each cycle is `rlsUpdate` over numbers, which
 answers with the reason when it declines.
+
+**Scoring a model on new data.** `arxPredictionError(model, nk, u, y, env)` (Scala only) gives each
+output's root-mean-square **one-step** error and the residual series on any window, the model's own or
+one it was not fitted on: every sample is predicted from the *measured* samples before it, which is the
+loss the fit minimises and the order selection ranks by. `arxSimulationError` is the **free run**: only
+the first samples are measured and every later output is the model's own, fed back, so an error the
+one-step prediction forgets at each sample accumulates. That is the stricter test, and the relevant one
+for a model that will predict over a horizon; a free run that leaves the finite numbers is declined.
 
 
 ## Simulating a discrete model

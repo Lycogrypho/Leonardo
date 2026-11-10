@@ -31,7 +31,7 @@ final case class MpcBounds(u: Option[(Vector[Double], Vector[Double])] = None,
 /** A solved MPC step (F_0299).
  *
  *  @param moves  the decided sequence, `Nc` vectors of `m`: the inputs for an absolute prediction, the
- *                increments for an incremental one
+ *                increments for an incremental or an accumulated one
  *  @param input  `u(k)`, the input to apply now
  *  @param slacks the output slacks, empty when the outputs are not softened
  *  @param qp     the certified QP optimum, whose `active` set warm-starts the next step
@@ -76,8 +76,9 @@ final case class MpcQp(h: _MatrixValue, f: Vector[Double], ineq: Option[(_Matrix
  *  conservatively.
  *
  *  @param weight     `P`, `n×n`
- *  @param prediction the state prediction at the horizon's end, from [[mpcTerminalPrediction]], in the
- *                    same form (absolute or incremental) as the output prediction
+ *  @param prediction the state prediction at the horizon's end, from [[mpcTerminalPrediction]] or
+ *                    [[mpcAccumulatedTerminalPrediction]], in the same form (absolute, incremental or
+ *                    accumulated) as the output prediction
  *  @param target     `x_s`, `n` entries; `None` for the origin
  */
 final case class MpcTerminal(weight: _MatrixValue, prediction: MpcPredictionMatrices,
@@ -91,11 +92,28 @@ final case class MpcTerminal(weight: _MatrixValue, prediction: MpcPredictionMatr
  *  @param inputTarget the absolute form's input target `u_s` (F_0305): `m` entries held, or `Nc·m`
  *                     stacked, the move cost becoming `‖u − u_s‖²_R`; `None` for `u_s = 0`.  Without
  *                     it the absolute form's `R` pulls the inputs towards zero, which offsets tracking
- *                     whenever the steady input is not zero.  Not accepted with an incremental
- *                     prediction, whose moves are increments
+ *                     whenever the steady input is not zero.  Not accepted with an incremental or an
+ *                     accumulated prediction, whose moves are increments: see `positionTarget`
+ *  @param positionTarget the increment forms' cost on the input itself (F_0329), or `None`.  Not
+ *                     accepted with an absolute prediction, where `inputTarget` with `r` is that cost
  */
 final case class MpcWeights(q: Vector[_MatrixValue], r: Vector[_MatrixValue], terminal: Option[MpcTerminal] = None,
-                            inputTarget: Option[Vector[Double]] = None)
+                            inputTarget: Option[Vector[Double]] = None,
+                            positionTarget: Option[MpcPositionTarget] = None)
+
+/** A cost on the **position** of the inputs when the moves are increments (F_0329, APAC L_0013):
+ *  `Σⱼ ‖u(k+j) − u_s,j‖²_Sⱼ` over the `Nc` decided steps, with `u(k+j) = u(k−1) + Δu(k) + … + Δu(k+j)`.
+ *  In those forms `R` weighs the moves and nothing else weighs where the actuator sits, so a plant with
+ *  more inputs than setpoints keeps whatever split it started from; this cost settles it (a pump as low
+ *  as possible, a valve as open as possible).  With `L` the cumulative-sum matrix it adds `2·LᵀS̄L` to
+ *  the Hessian and `2·LᵀS̄(1⊗u(k−1) − u_s)` to the linear term.  `S` need only be positive
+ *  semidefinite — a zero row leaves that input free — as long as the whole Hessian stays positive
+ *  definite, which `R > 0` ensures.
+ *
+ *  @param weight `S`: one `m×m` for every step, or `Nc` of them
+ *  @param target `u_s`: `m` entries held, or `Nc·m` stacked
+ */
+final case class MpcPositionTarget(weight: Vector[_MatrixValue], target: Vector[Double])
 
 /** The state prediction at the end of the horizon (F_0304): `x(k+Np) = Φₓ·x + Γₓ·U` (absolute) or
  *  `Φₓ·x + Ψₓ·u(k−1) + Θₓ·ΔU` (incremental), the last move held past `Nc` as everywhere.  It is the
@@ -119,6 +137,25 @@ def mpcTerminalPrediction(a: _MatrixValue, b: _MatrixValue, np: Int, nc: Int, in
     mpcIncrementalPrediction(a, b, eye, np, nc, limits).map(p => MpcIncrementalPrediction(last(p.phi), last(p.psi), last(p.theta)))
   else mpcPrediction(a, b, eye, np, nc, limits).map(p => MpcPrediction(last(p.phi), last(p.gamma)))
 
+/** The state prediction at the end of the horizon for a model whose input is an increment (F_0328):
+ *  `x(k+Np) = Φₓ·x + Γₓ·ΔU`, the increments zero past `Nc` — the last block row of
+ *  [[mpcAccumulatedPrediction]] for `C = I`, the terminal prediction an [[MpcAccumulatedPrediction]]
+ *  goes with.
+ *
+ *  @param a      the state matrix, `n×n`
+ *  @param b      the matrix of the increments, `n×m`
+ *  @param np     the prediction horizon
+ *  @param nc     the control horizon
+ *  @param limits the budgets
+ *  @return the prediction, `n` rows, or why not
+ */
+def mpcAccumulatedTerminalPrediction(a: _MatrixValue, b: _MatrixValue, np: Int, nc: Int,
+                                     limits: Limits): Either[MpcFailure, MpcAccumulatedPrediction] =
+  def last(mat: _MatrixValue) = _MatrixValue(a.rows, mat.cols,
+    Array.tabulate(a.rows * mat.cols)(idx => mat(mat.rows - a.rows + idx / mat.cols, idx % mat.cols)))
+  mpcAccumulatedPrediction(a, b, _MatrixValue.identity(a.rows), np, nc, limits)
+    .map(p => MpcAccumulatedPrediction(last(p.phi), last(p.gamma)))
+
 /** Builds the condensed MPC quadratic programme (F_0299, APAC L_0002) with one weight for every step:
  *  [[mpcQp]] with `MpcWeights(Vector(q), Vector(r))`.
  *
@@ -140,13 +177,16 @@ def mpcQp(prediction: MpcPredictionMatrices, q: _MatrixValue, r: _MatrixValue, r
 /** Builds the condensed MPC quadratic programme (F_0299, F_0304, F_0305).
  *
  *  The cost is `Σᵢ ‖y(k+i) − r(k+i)‖²_Qᵢ + Σⱼ ‖z_j − u_s,j‖²_Rⱼ + ‖x(k+Np) − x_s‖²_P` — `z_j` the move
- *  `u(k+j)` for an absolute prediction and the increment `Δu(k+j)` for an incremental one — plus the
- *  slack penalties; with `Y = c₀ + G·Z`, `c₀ = Φx + Ψu(k−1)`, and `x(k+Np) = d₀ + Gₓ·Z`, it is
+ *  `u(k+j)` for an absolute prediction and the increment `Δu(k+j)` for an incremental or an accumulated
+ *  one — plus the slack penalties and, in the increment forms, the position cost of
+ *  [[MpcPositionTarget]]; with `Y = c₀ + G·Z`, `c₀ = Φx + Ψu(k−1)` (`Φx` alone for an accumulated
+ *  prediction, whose state holds the past input), and `x(k+Np) = d₀ + Gₓ·Z`, it is
  *  `½ Zᵀ·2(GᵀQ̄G + R̄ + GₓᵀPGₓ)Z + (2GᵀQ̄(c₀ − r) − 2R̄u_s + 2GₓᵀP(d₀ − x_s))ᵀZ`.
  *  A bound on the decision variable itself is a bound of `z`; every other bound is a row, and an
- *  infinite bound is no row at all.
+ *  infinite bound is no row at all: in the increment forms `MpcBounds.du` bounds `z` and `MpcBounds.u`
+ *  is rows over the cumulative sums `u(k−1) + Δu(k) + … + Δu(k+j)`.
  *
- *  @param prediction the prediction matrices, absolute or incremental (F_0298)
+ *  @param prediction the prediction matrices: absolute, incremental (F_0298) or accumulated (F_0328)
  *  @param weights    the step weights, the terminal cost and the input target
  *  @param reference  the reference: `p` entries held over the horizon, or `Np·p` stacked
  *  @param x          the current state, `n` entries
@@ -157,22 +197,22 @@ def mpcQp(prediction: MpcPredictionMatrices, q: _MatrixValue, r: _MatrixValue, r
  */
 def mpcQp(prediction: MpcPredictionMatrices, weights: MpcWeights, reference: Vector[Double],
           x: Vector[Double], uPrev: Vector[Double], bounds: MpcBounds, limits: Limits): Either[MpcFailure, MpcQp] =
-  val (g, psi) = forms(prediction)
+  val (g, psi, form) = forms(prediction)
   val phi = prediction.phi
   val (n, rowsY) = (phi.cols, phi.rows)
   val q0 = weights.q.headOption
   val r0 = weights.r.headOption
   val m  = r0.fold(0)(_.rows)
   val p  = q0.fold(0)(_.rows)
-  val incremental = psi.isDefined
+  val incremental = form != MoveForm.Absolute      // the moves are increments
   def bad(d: String) = Left(MpcFailure.InvalidInput(d))
   def pairOk(b: Option[(Vector[Double], Vector[Double])], k: Int) =
     b.forall((lo, hi) => lo.size == k && hi.size == k && lo.zip(hi).forall((l, h) => !l.isNaN && !h.isNaN && l <= h))
   lazy val np = rowsY / p
   lazy val nc = g.cols / m
   lazy val terminalError: Option[String] = weights.terminal.flatMap { t =>
-    val (gt, psiT) = forms(t.prediction)
-    if psiT.isDefined != incremental then Some("the terminal prediction must be in the same form as the output prediction")
+    val (gt, _, formT) = forms(t.prediction)
+    if formT != form then Some("the terminal prediction must be in the same form as the output prediction")
     else if t.prediction.phi.rows != n || t.prediction.phi.cols != n || gt.cols != g.cols then
       Some(s"the terminal prediction must have $n rows over the same moves")
     else if t.weight.rows != n || t.weight.cols != n || !t.weight.isFinite then Some(s"the terminal weight must be a finite ${n}x$n")
@@ -188,6 +228,13 @@ def mpcQp(prediction: MpcPredictionMatrices, weights: MpcWeights, reference: Vec
   else if weights.inputTarget.isDefined && incremental then bad("an input target has no meaning for increments")
   else if weights.inputTarget.exists(v => (v.size != m && v.size != nc * m) || v.exists(!_.isFinite)) then
     bad(s"the input target needs $m or ${nc * m} finite entries")
+  else if weights.positionTarget.isDefined && !incremental then
+    bad("a position target is for moves that are increments: in the absolute form it is the input target with R")
+  else if weights.positionTarget.exists(t => (t.weight.size != 1 && t.weight.size != nc) ||
+                                             t.weight.exists(w => w.rows != m || w.cols != m || !w.isFinite)) then
+    bad(s"the position weight must be one finite ${m}x$m matrix or $nc of them")
+  else if weights.positionTarget.exists(t => (t.target.size != m && t.target.size != nc * m) || t.target.exists(!_.isFinite)) then
+    bad(s"the position target needs $m or ${nc * m} finite entries")
   else if terminalError.isDefined then bad(terminalError.getOrElse(""))
   else if x.size != n then bad(s"the state has ${x.size} entries for $n states")
   else if uPrev.size != m then bad(s"u(k-1) has ${uPrev.size} entries for $m inputs")
@@ -212,18 +259,31 @@ def mpcQp(prediction: MpcPredictionMatrices, weights: MpcWeights, reference: Vec
     val target = weights.inputTarget.map(v => if v.size == nz then v else Vector.fill(nc)(v).flatten)
     // the terminal cost: x(k+Np) = d0 + Gx·Z
     val term = weights.terminal.map { t =>
-      val (gx, psiX) = forms(t.prediction)
+      val (gx, psiX, _) = forms(t.prediction)
       val d0 = Vector.tabulate(n)(i => (0 until n).map(j => t.prediction.phi(i, j) * x(j)).sum +
         psiX.fold(0.0)(ps => (0 until m).map(j => ps(i, j) * uPrev(j)).sum))
       val dev = t.target.fold(d0)(xs => d0.zip(xs).map(_ - _))
       val gtp = gx.transpose.multiply(t.weight)
       (gtp.multiply(gx), gtp.multiply(_MatrixValue(n, 1, dev.toArray)).toVector)
     }
+    // the position cost: u = 1⊗u(k−1) + L·Z, L the cumulative-sum matrix the u-bound rows also are
+    val position = weights.positionTarget.map { t =>
+      val sBar = Dense.blockDiagonal(Vector.tabulate(nc)(j => t.weight(if t.weight.size == 1 then 0 else j)))
+      val l    = _MatrixValue(nz, nz, Array.tabulate(nz * nz) { idx =>
+        val (i, j) = (idx / nz, idx % nz)
+        if i % m == j % m && j / m <= i / m then 1.0 else 0.0
+      })
+      val us   = if t.target.size == nz then t.target else Vector.fill(nc)(t.target).flatten
+      val lts  = l.transpose.multiply(sBar)
+      (lts.multiply(l), Dense.times(lts, Vector.tabulate(nz)(i => uPrev(i % m) - us(i))))
+    }
     val hz0  = gtq.multiply(g).add(rBar)
-    val hz   = term.fold(hz0)((ht, _) => hz0.add(ht)).scale(2.0)
+    val hz1  = position.fold(hz0)((hp, _) => hz0.add(hp))
+    val hz   = term.fold(hz1)((ht, _) => hz1.add(ht)).scale(2.0)
     val fz0  = gtq.multiply(_MatrixValue(rowsY, 1, c0.zip(ref).map(_ - _).toArray)).toVector
     val fz1  = target.fold(fz0)(us => fz0.zip(Dense.times(rBar, us)).map(_ - _))
-    val fz   = term.fold(fz1)((_, ft) => fz1.zip(ft).map(_ + _)).map(2.0 * _)
+    val fz2  = position.fold(fz1)((_, fp) => fz1.zip(fp).map(_ + _))
+    val fz   = term.fold(fz2)((_, ft) => fz2.zip(ft).map(_ + _)).map(2.0 * _)
     val size = nz + ns
     val hData = Array.tabulate(size * size) { idx =>
       val (i, j) = (idx / size, idx % size)
@@ -268,7 +328,13 @@ def mpcQp(prediction: MpcPredictionMatrices, weights: MpcWeights, reference: Vec
     if cells > limits(Limit.MaxMatrixCells) then Left(MpcFailure.TooLarge(cells))
     else Right(MpcQp(_MatrixValue(size, size, hData), f, ineq, lb, ub, m, nc, incremental, uPrev))
 
-/** The moves' matrix of a prediction and, for the incremental form, `Ψ`. */
-private def forms(prediction: MpcPredictionMatrices): (_MatrixValue, Option[_MatrixValue]) = prediction match
-  case MpcPrediction(_, gamma)                => (gamma, None)
-  case MpcIncrementalPrediction(_, ps, theta) => (theta, Some(ps))
+/** What a prediction's moves are: the inputs, or increments — with `u(k−1)` outside the state
+ *  (incremental, a `Ψ` term) or inside it (accumulated, none). */
+private enum MoveForm:
+  case Absolute, Incremental, Accumulated
+
+/** The moves' matrix of a prediction, `Ψ` for the incremental form, and the form. */
+private def forms(prediction: MpcPredictionMatrices): (_MatrixValue, Option[_MatrixValue], MoveForm) = prediction match
+  case MpcPrediction(_, gamma)                => (gamma, None, MoveForm.Absolute)
+  case MpcIncrementalPrediction(_, ps, theta) => (theta, Some(ps), MoveForm.Incremental)
+  case MpcAccumulatedPrediction(_, gamma)     => (gamma, None, MoveForm.Accumulated)

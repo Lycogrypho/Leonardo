@@ -121,18 +121,107 @@ private def rowsOf(series: Vector[Vector[Double]]): _MatrixValue =
   val n = series.head.size
   _MatrixValue(series.size, n, Array.tabulate(series.size * n)(idx => series(idx / n)(idx % n)))
 
+/** The autoregressive part of the model's output `r` at sample `k`, `Σ aᵢ·y(k−1−i)`, reading the past
+ *  outputs through `past(output, sample)`: the measured ones for a one-step prediction, the model's own
+ *  for a free run.  With `inputPart`, the one place the recursion is written, so the two errors and
+ *  the order search cannot disagree. */
+private def outputPart(model: ArxMimoModel, past: (Int, Int) => Double, p: Int, k: Int, r: Int): Double =
+  model.a.indices.map(i => (0 until p).map(c => model.a(i)(r, c) * past(c, k - 1 - i)).sum).sum
+
+/** The input part of the model's output `r` at sample `k`, `Σ bₗ·u(k−nk−l)`. */
+private def inputPart(model: ArxMimoModel, nk: Int, us: Vector[Vector[Double]], k: Int, r: Int): Double =
+  model.b.indices.map(l => us.indices.map(j => model.b(l)(r, j) * us(j)(k - nk - l)).sum).sum
+
 /** The one-step prediction errors of `model` on the series, `k = from … N − 1`, one vector per `k`. */
 private def predictionErrors(model: ArxMimoModel, nk: Int, us: Vector[Vector[Double]], ys: Vector[Vector[Double]],
                              from: Int): Vector[Vector[Double]] =
   val p = ys.size
   Vector.tabulate(ys.head.size - from) { idx =>
     val k = from + idx
-    Vector.tabulate(p) { r =>
-      val ar = model.a.indices.map(i => (0 until p).map(c => model.a(i)(r, c) * ys(c)(k - 1 - i)).sum).sum
-      val br = model.b.indices.map(l => us.indices.map(j => model.b(l)(r, j) * us(j)(k - nk - l)).sum).sum
-      ys(r)(k) - ar - br
-    }
+    Vector.tabulate(p)(r => ys(r)(k) - outputPart(model, (c, t) => ys(c)(t), p, k, r) - inputPart(model, nk, us, k, r))
   }
+
+/** The free-run errors of `model` on the series, `k = from … N − 1`: the outputs before `from` are the
+ *  measured ones, every later one the model's own, fed back. */
+private def simulationErrors(model: ArxMimoModel, nk: Int, us: Vector[Vector[Double]], ys: Vector[Vector[Double]],
+                             from: Int): Vector[Vector[Double]] =
+  val (p, n) = (ys.size, ys.head.size)
+  val sim = Array.tabulate(p)(r => ys(r).toArray)
+  // sample k reads samples before k only, so it is written in place
+  for k <- from until n; r <- 0 until p do
+    sim(r)(k) = outputPart(model, (c, t) => sim(c)(t), p, k, r) + inputPart(model, nk, us, k, r)
+  Vector.tabulate(n - from)(idx => Vector.tabulate(p)(r => ys(r)(from + idx) - sim(r)(from + idx)))
+
+/** The error of an ARX model on a window of data (F_0330, APAC L_0014).
+ *
+ *  @param rms       the root mean square of each output's residual over the scored samples
+ *  @param residuals `p×(N − from)`: row `r` holds output `r`'s residual `y − ŷ` at `k = from … N − 1`
+ *  @param from      the first scored sample, `max(na, nk + nb − 1)` — the model's reach into the past,
+ *                   so the samples before it are read and never scored
+ */
+final case class ArxPredictionError(rms: Vector[Double], residuals: _MatrixValue, from: Int)
+
+/** The **one-step** prediction error of an ARX model on a window of data (F_0330, APAC L_0014):
+ *  `y(k) − Σ aᵢ·y(k−1−i) − Σ bₗ·u(k−nk−l)` with the **measured** past outputs, the residual
+ *  [[arx]] minimises and [[arxOrderSelection]] ranks by — on any data, the model's own or a window it
+ *  was not fitted on.  The data is read as [[arxRegressors]] reads it, in the predictor sign.
+ *
+ *  A small one-step error says the model explains each sample from the samples just before it; a
+ *  model used over a horizon is tested by [[arxSimulationError]], which is stricter.
+ *
+ *  @param model the model
+ *  @param nk    the input delay it was fitted with
+ *  @param u     the inputs, `m×N` or `N×m`
+ *  @param y     the outputs, `p×N` or `N×p`
+ *  @param env   the budgets: the residual series is held to [[core.Limit.MaxMatrixCells]]
+ *  @return the error, or the reason: data that does not have the model's inputs and outputs, a window
+ *          no longer than the model's reach, a sample that is not finite
+ */
+def arxPredictionError(model: ArxMimoModel, nk: Int, u: _MatrixValue, y: _MatrixValue,
+                       env: Environment): Either[ArxFailure, ArxPredictionError] =
+  modelError(model, nk, u, y, env, predictionErrors)
+
+/** The **free-run** (simulation) error of an ARX model on a window of data (F_0330, APAC L_0014): the
+ *  outputs before sample `max(na, nk + nb − 1)` are the measured ones, and every later output is the
+ *  model's own, fed back — the measured inputs drive it, the measured outputs never correct it.  It is
+ *  the test of a model used to predict over a horizon: an error the one-step prediction forgets at
+ *  every sample accumulates here.  **Declined when the simulated output leaves the finite numbers**
+ *  (an unstable model on a long window), never answered as an infinity.
+ *
+ *  @param model the model
+ *  @param nk    the input delay it was fitted with
+ *  @param u     the inputs, `m×N` or `N×m`
+ *  @param y     the outputs, `p×N` or `N×p`
+ *  @param env   the budgets: the residual series is held to [[core.Limit.MaxMatrixCells]]
+ *  @return the error, or the reason
+ */
+def arxSimulationError(model: ArxMimoModel, nk: Int, u: _MatrixValue, y: _MatrixValue,
+                       env: Environment): Either[ArxFailure, ArxPredictionError] =
+  modelError(model, nk, u, y, env, simulationErrors)
+
+/** Reads the window, checks it against the model and scores the residuals `errors` computes. */
+private def modelError(model: ArxMimoModel, nk: Int, u: _MatrixValue, y: _MatrixValue, env: Environment,
+                       errors: (ArxMimoModel, Int, Vector[Vector[Double]], Vector[Vector[Double]], Int) => Vector[Vector[Double]])
+    : Either[ArxFailure, ArxPredictionError] =
+  for
+    dims       <- checkMimo(model, nk)
+    (p, m, nb)  = dims
+    series     <- seriesOf(u, y)
+    (us, ys)    = series
+    _          <- Either.cond(ys.size == p && us.size == m, (),
+                    ShapeMismatch(s"the model has $p outputs and $m inputs, the data ${ys.size} and ${us.size}"))
+    n           = ys.head.size
+    from        = math.max(model.a.size, nk + nb - 1)
+    _          <- Either.cond(n - from >= 1, (), TooShort(n, math.max(n - from, 0), p * (p * model.a.size + m * nb)))
+    _          <- Either.cond(p.toLong * (n - from) <= env.limits(Limit.MaxMatrixCells), (), TooLarge(p, n - from))
+    errs        = errors(model, nk, us, ys, from)
+    _          <- Either.cond(errs.forall(_.forall(_.isFinite)), (), NotNumeric("the model's output on this data is not finite"))
+  yield
+    val count = errs.size
+    ArxPredictionError(
+      Vector.tabulate(p)(r => math.sqrt(errs.map(e => e(r) * e(r)).sum / count)),
+      _MatrixValue(p, count, Array.tabulate(p * count)(idx => errs(idx % count)(idx / count))),
+      from)
 
 /** A residual below this fraction of its output's root mean square is rounding, an exact fit. */
 private val ExactFitLevel = 1e-10

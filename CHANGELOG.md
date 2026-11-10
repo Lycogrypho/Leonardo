@@ -217,6 +217,20 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   (input `Δu`, an integrator on every output), so an MPC on them needs no observer; and **`minreal`**,
   which reduces any realisation to its controllable and observable part, certified by its Markov
   parameters.
+- **An MPC on a model whose input is an increment**: `mpcAccumulatedPrediction(A, B, C, Np, Nc, limits)`
+  (and `mpcAccumulatedTerminalPrediction`) for a model with `Δu` as its input and the past input in its
+  state, `arx2nmssIncremental`'s included.  `mpcQp` then reads `MpcBounds.u` as bounds on the actuator
+  **position** `u(k−1) + Δu(k) + … + Δu(k+j)` and `MpcBounds.du` as bounds on the moves, and `solve`
+  returns the input to apply.  The increments are zero past `Nc`, so the input is held: passing the same
+  model to `mpcPrediction` instead holds the last *increment*, a ramp, unless `Nc = Np`.
+- **A cost on the actuator position when the moves are increments**: `MpcWeights.positionTarget`, an
+  `MpcPositionTarget(S, u_s)` adding `Σ ‖u(k+j) − u_s‖²_S` over the decided steps to the incremental and
+  the accumulated forms, where `R` weighs only the moves.  It settles the spare degree of freedom of a
+  plant with more inputs than setpoints (an input as low as possible, another left free).
+- **The error of an ARX model on data it was not fitted on**: `arxPredictionError(model, nk, u, y, env)`
+  gives each output's RMS and the residual series of the one-step prediction — the loss
+  `arxOrderSelection` ranks by — and `arxSimulationError` the same for a free run, the model's own
+  outputs fed back, the stricter test of a model used over a horizon.
 - **Numeric recursive least squares**: `rlsUpdate` over `_MatrixValue`/`Double`, answering
   `Either[RlsFailure, …]` with the reason, bit for bit the expression form's numbers.
 - **An uncertified derivative-free minimiser**: `minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)`

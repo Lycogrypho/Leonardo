@@ -2387,6 +2387,8 @@ not definite, shapes, n &gt; 200</data>
 mpcPrediction -&gt; Phi, Gamma (last move held)
 mpcIncrementalPrediction -&gt; Phi, Psi, Theta
 y = Phi x + Psi u(k-1) + Theta du
+F_0328: mpcAccumulatedPrediction -&gt; Phi, Gamma for a
+model whose input is du (increments zero past Nc)
 Left(MpcFailure)</data>
     </node>
     <node id="n217">
@@ -2401,7 +2403,10 @@ u / du / y bounds; soft y: one slack per output,
 rho1 s + rho2 s^2
 solve(warm, env) -&gt; first input, moves, slacks
 F_0304/5: MpcWeights (per-step Q, R; terminal P on
-x(k+Np), mpcTerminalPrediction; input target u_s)</data>
+x(k+Np), mpcTerminalPrediction; input target u_s)
+F_0328: increment forms: u bounds = position rows,
+du bounds direct
+F_0329: MpcPositionTarget (S, u_s on the position)</data>
     </node>
     <node id="n218">
         <data key="n_label">Disturbance</data>
@@ -2423,7 +2428,10 @@ disturbanceObserver (kalmanGain), steadyStateTarget</data>
         <data key="n_members">__ F_0301: ARX order selection __
 arxOrderSelection(u, y, nas, nbs, nks, AIC | BIC | FPE)
 same samples for every candidate; unexcited skipped
-MaxArxOrderWork (measured)</data>
+MaxArxOrderWork (measured)
+__ F_0330: a model's error on a window __
+arxPredictionError (one step) / arxSimulationError
+(free run) -&gt; RMS per output, residuals</data>
     </node>
     <node id="n220">
         <data key="n_label">Minreal</data>

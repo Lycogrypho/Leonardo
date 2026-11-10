@@ -3945,15 +3945,17 @@ kalmanStep: update, then predict (Joseph form)</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="140.0" width="396.0" x="0.0" y="0.0"/>
+              <y:Geometry height="172.0" width="436.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">MpcNumeric</y:NodeLabel>
               <y:UML stereotype="utility">
-                <y:AttributeLabel>mpcIncrementalPrediction -&gt; Phi, Psi, Theta</y:AttributeLabel>
+                <y:AttributeLabel>mpcIncrementalPrediction -&gt; Phi, Psi, Theta
+F_0328: mpcAccumulatedPrediction -&gt; Phi, Gamma for a</y:AttributeLabel>
                 <y:MethodLabel>-- F_0298: numeric prediction (library-only) --
 mpcPrediction -&gt; Phi, Gamma (last move held)
 y = Phi x + Psi u(k-1) + Theta du
+model whose input is du (increments zero past Nc)
 Left(MpcFailure)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
@@ -3963,18 +3965,21 @@ Left(MpcFailure)</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="172.0" width="420.0" x="0.0" y="0.0"/>
+              <y:Geometry height="220.0" width="420.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">MpcQp</y:NodeLabel>
               <y:UML stereotype="utility">
                 <y:AttributeLabel>-- F_0299: the condensed MPC QP --
 u / du / y bounds; soft y: one slack per output,
-rho1 s + rho2 s^2</y:AttributeLabel>
+rho1 s + rho2 s^2
+F_0328: increment forms: u bounds = position rows,
+du bounds direct</y:AttributeLabel>
                 <y:MethodLabel>mpcQp(prediction, Q, R, r, x, uPrev, bounds)
 solve(warm, env) -&gt; first input, moves, slacks
 F_0304/5: MpcWeights (per-step Q, R; terminal P on
-x(k+Np), mpcTerminalPrediction; input target u_s)</y:MethodLabel>
+x(k+Np), mpcTerminalPrediction; input target u_s)
+F_0329: MpcPositionTarget (S, u_s on the position)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -4000,15 +4005,18 @@ disturbanceObserver (kalmanGain), steadyStateTarget</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="124.0" width="460.0" x="0.0" y="0.0"/>
+              <y:Geometry height="172.0" width="460.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">ArxOrder</y:NodeLabel>
               <y:UML stereotype="utility">
                 <y:AttributeLabel>-- F_0301: ARX order selection --
-same samples for every candidate; unexcited skipped</y:AttributeLabel>
+same samples for every candidate; unexcited skipped
+-- F_0330: a model's error on a window --</y:AttributeLabel>
                 <y:MethodLabel>arxOrderSelection(u, y, nas, nbs, nks, AIC | BIC | FPE)
-MaxArxOrderWork (measured)</y:MethodLabel>
+MaxArxOrderWork (measured)
+arxPredictionError (one step) / arxSimulationError
+(free run) -&gt; RMS per output, residuals</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>

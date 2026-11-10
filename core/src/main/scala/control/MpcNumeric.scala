@@ -27,8 +27,9 @@ enum MpcFailure:
  */
 final case class MpcPrediction(phi: _MatrixValue, gamma: _MatrixValue) extends MpcPredictionMatrices
 
-/** Either form of the numeric prediction matrices (F_0298), which [[mpcQp]] takes (F_0299): the
- *  absolute form decides the moves `U`, the incremental one the increments `ΔU`. */
+/** Any form of the numeric prediction matrices (F_0298), which [[mpcQp]] takes (F_0299): the
+ *  absolute form decides the moves `U`, the incremental and the accumulated ones (F_0328) the
+ *  increments `ΔU`. */
 sealed trait MpcPredictionMatrices:
   /** `Φ`, the free response's dependence on the state. */
   def phi: _MatrixValue
@@ -44,6 +45,22 @@ sealed trait MpcPredictionMatrices:
  */
 final case class MpcIncrementalPrediction(phi: _MatrixValue, psi: _MatrixValue, theta: _MatrixValue)
     extends MpcPredictionMatrices
+
+/** The prediction matrices of a model whose **input is already an increment** `Δu` of an accumulated
+ *  input (F_0328, APAC L_0012) — [[arx2nmssIncremental]]'s, or any model with `u(k−1)` in its state:
+ *  `Y = Φ·x(k) + Γ·ΔU`.  The moves are increments, as in [[MpcIncrementalPrediction]], so [[mpcQp]]
+ *  reads `MpcBounds.u` as bounds on the position `u(k−1) + Δu(k) + … + Δu(k+j)` and `MpcBounds.du` as
+ *  bounds on the moves; but the past input is in the state, so there is no `Ψ·u(k−1)` term.
+ *
+ *  **Not an [[MpcPrediction]] of the same model**: that one holds its last move over the rest of the
+ *  horizon, which for an increment is a ramp of the input.  Here the increments are **zero past `Nc`**,
+ *  so the input is held — the two agree only when `Nc = Np`.  Build it with [[mpcAccumulatedPrediction]].
+ *
+ *  @param phi   `Φ`, as in [[MpcPrediction]]
+ *  @param gamma `Γ`, `(Np·p)×(Nc·m)`, its block `(i, l)` the Markov parameter `C·Aⁱ⁻ˡ·B` on and below
+ *               the diagonal and zero above
+ */
+final case class MpcAccumulatedPrediction(phi: _MatrixValue, gamma: _MatrixValue) extends MpcPredictionMatrices
 
 /** The numeric prediction matrices of `(A, B, C)` in absolute inputs (F_0298, APAC L_0001): the dense
  *  counterpart of [[mpcMatrices]], computed over arrays for a controller that rebuilds them each cycle.
@@ -79,6 +96,26 @@ def mpcIncrementalPrediction(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, 
     MpcIncrementalPrediction(t.phi,
       blocks(t, np, 1, t.p, t.m, (i, _) => Some(t.held(i))),
       blocks(t, np, nc, t.p, t.m, (i, l) => Option.when(l <= i)(t.held(i - l))))
+  }
+
+/** The numeric prediction matrices of a model `(A, B, C)` whose input is an increment of an
+ *  accumulated input (F_0328, APAC L_0012): the increments are zero past `Nc`, see
+ *  [[MpcAccumulatedPrediction]].  For a plant `(A, B, C)` in absolute inputs, the model
+ *  `[[A, B], [0, I]]`, `[[B], [I]]`, `[C, 0]` with the state `[x, u(k−1)]` gives the same programme as
+ *  [[mpcIncrementalPrediction]] of the plant.
+ *
+ *  @param a      the state matrix, `n×n`
+ *  @param b      the matrix of the increments, `n×m`
+ *  @param c      the output matrix, `p×n`
+ *  @param np     the prediction horizon, `1 ≤ Np ≤ Limit.MaxMpcHorizon`
+ *  @param nc     the control horizon, `1 ≤ Nc ≤ Np`
+ *  @param limits the budgets: [[core.Limit.MaxMpcHorizon]] and [[core.Limit.MaxMatrixCells]]
+ *  @return `(Φ, Γ)`, or why not
+ */
+def mpcAccumulatedPrediction(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, np: Int, nc: Int,
+                             limits: Limits): Either[MpcFailure, MpcAccumulatedPrediction] =
+  markovTerms(a, b, c, np, nc, limits).map { t =>
+    MpcAccumulatedPrediction(t.phi, blocks(t, np, nc, t.p, t.m, (i, l) => Option.when(l <= i)(t.markov(i - l))))
   }
 
 /** `C·Aⁱ` stacked, the Markov parameters `C·Aʲ·B` and their running sums, each block row-major. */

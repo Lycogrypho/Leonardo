@@ -1879,6 +1879,8 @@ package "control" {
         mpcPrediction -> Phi, Gamma (last move held)
         mpcIncrementalPrediction -> Phi, Psi, Theta
           y = Phi x + Psi u(k-1) + Theta du
+        F_0328: mpcAccumulatedPrediction -> Phi, Gamma for a
+          model whose input is du (increments zero past Nc)
         Left(MpcFailure)
     }
     class "MpcQp" <<utility>> [[control.html]] {
@@ -1889,6 +1891,9 @@ package "control" {
         solve(warm, env) -> first input, moves, slacks
         F_0304/5: MpcWeights (per-step Q, R; terminal P on
           x(k+Np), mpcTerminalPrediction; input target u_s)
+        F_0328: increment forms: u bounds = position rows,
+          du bounds direct
+        F_0329: MpcPositionTarget (S, u_s on the position)
     }
     class "Disturbance" <<utility>> [[control.html]] {
         __ F_0300: offset-free MPC __
@@ -1901,6 +1906,9 @@ package "control" {
         arxOrderSelection(u, y, nas, nbs, nks, AIC | BIC | FPE)
         same samples for every candidate; unexcited skipped
         MaxArxOrderWork (measured)
+        __ F_0330: a model's error on a window __
+        arxPredictionError (one step) / arxSimulationError
+          (free run) -> RMS per output, residuals
     }
     "MpcQp" ..> "MpcNumeric" : prediction matrices
     "Disturbance" ..> "Riccati" : kalmanGain
