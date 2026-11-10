@@ -15,12 +15,13 @@ rather type at a prompt than write Scala, start at
 
 ## Prerequisites
 
+- **JDK 25** or later: every Leonardo module is compiled for Java 25
 - Scala 3.3 or later
 - sbt 1.9 or later
 
 ## Adding Leonardo to your project
 
-Leonardo is published to **Maven Central** for Scala 3.3 LTS, and ships as **two artifacts**.
+Leonardo is published to **Maven Central** for Scala 3.3 LTS, and ships as **three artifacts**.
 The library is what you almost always want:
 
 ```scala
@@ -37,6 +38,9 @@ libraryDependencies += "it.grypho" %% "leonardo-repl" % "@VERSION@"
 
 `leonardo-repl` depends on `leonardo`, so the second line replaces the first rather than
 supplementing it.
+
+The third, `leonardo-mcp`, is not a library to depend on: it is a server that lets an AI assistant
+call the REPL over the Model Context Protocol, run as a jar. See [MCP server](mcp.md).
 
 ## Import conventions
 

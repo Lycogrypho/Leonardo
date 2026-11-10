@@ -19,7 +19,7 @@ For a command-by-command listing of the REPL see the [cheat sheet](cheatsheet.md
 pages carry the worked examples: [Expressions](expressions.md), [Calculus](calculus.md),
 [Matrices](matrix.md), [Equations](equations.md), [Logic](logic.md),
 [Sequences](sequences.md), [Control](control.md), [Optimization](optimization.md) and the
-[REPL](repl.md).
+[REPL](repl.md); [MCP server](mcp.md) covers using Leonardo from an AI assistant.
 
 - **Expression Parsing**: Parses mathematical expressions using a [recursive descent parser](https://en.wikipedia.org/wiki/Recursive_descent_parser) based on `scala-parser-combinators`. Supports standard operators, mathematical functions (`sin`, `cos`, `tan`/`tg`, `asin`, `acos`, `atan`, `exp`, `ln`, `log`, `log(x, b)`), implicit multiplication, unary minus in any operand position (`3 * -x`, `2^-x`), multi-character variable names (`theta`, `x1`, `alpha`), and built-in constants `pi`, `e`, `eulergamma`, `goldenratio` (with the glyphs `π`, `γ`, `φ`) and `i` (imaginary unit). The named constants are symbols: a formula keeps `pi`, exact mode answers `sin(pi/6)` as `1/2`, and outside exact mode each evaluates to its `Double`. Logarithms: `ln(x)` is the natural log; `log(x)` is decimal (base-10); `log(x, b)` is the general base-b log computed as `ln(x)/ln(b)` — so `log(1000, 10) = 3`, `log(8, 2) = 3`.
 
@@ -321,6 +321,15 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   [browser REPL](https://lycogrypho.github.io/Leonardo/app/) reads that channel and typesets
   the formula beside the answer with the vendored MathLive, whose full build also carries the
   page's math editor.
+
+- **MCP server**: `leonardo-mcp` serves the REPL to an AI assistant over the Model Context
+  Protocol (stdio), so the assistant delegates symbolic, exact and certified numeric work to
+  Leonardo instead of computing in-model.  Typed tools for `simplify`, `derive`, `integrate`,
+  `solve` and `limit` beside a general `evaluate`, one session per server whose state persists
+  between calls, a result's LaTeX as a second part, and a result as Scala source on request.
+  A request has a time limit; a timed-out one is answered at once and the session goes on.  It
+  reaches no file and cannot end the process.  A runnable jar on every Release, or `cs launch`
+  from Maven Central; JDK 25.  See [MCP server](mcp.md).
 
 - **Normalization**: `normalize(e, x)` collects like terms into an ascending polynomial in one variable (`10x - 2x` → `8x`, whatever the tree shape), and `collect(e, x)` extracts the dense coefficient list — the polynomial prerequisite the equation solver, the integration tiers and the transforms are all built on. Non-polynomial forms are left untouched.
 

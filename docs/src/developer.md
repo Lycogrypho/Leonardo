@@ -1517,19 +1517,21 @@ Key build file sections:
 
 | Section | Purpose |
 |---|---|
-| `ThisBuild / scalacOptions` | `-explain`, `-deprecation`, `-feature`, `-Wconf:src=.*package\\.scala:silent`.  `ThisBuild`-scoped so both modules get them; a bare `scalacOptions ++=` would reach the root aggregate only |
+| `ThisBuild / scalacOptions` | `-explain`, `-deprecation`, `-feature`, `-Wconf:src=.*package\\.scala:silent`.  `ThisBuild`-scoped so every module gets them; a bare `scalacOptions ++=` would reach the root aggregate only |
+| `lazy val JdkFloor` | `25`, emitted as `-release 25` on every published JVM module and pinned by `ClassFileVersionTest` (class-file major 69) in each.  **A class-file version is a break MiMa cannot see**, so moving the floor costs at least a minor release and a CHANGELOG line |
 | `lazy val core` | The library — everything but `cli`.  Publishes as `it.grypho:leonardo`.  Depends on `scala-parser-combinators` 2.5.0 and `spire` 0.18.0; compiled for the JDK 25 floor |
 | `lazy val replModule` | The REPL — the `cli` package and `Main.scala`.  Publishes as `it.grypho:leonardo-repl`.  The only module that depends on `jline` |
+| `lazy val mcp` | The MCP server over `replModuleJVM`, JVM only.  Publishes as `it.grypho:leonardo-mcp`.  The only module that depends on the MCP Java SDK (and its Jackson/Reactor stack); `mcp/assembly` (sbt-assembly) builds the runnable `leonardo-mcp-<version>.jar`, with `META-INF/services` concatenated because the SDK finds its JSON mapper through `ServiceLoader` |
 | `lazy val docs` | Runs mdoc; `publish / skip := true`.  Separate because `MdocPlugin` adds `org.scalameta:mdoc` to the enabled project's `libraryDependencies`, from where it reaches the published POM |
 | `lazy val tools` | The repository's own guards (F_0027); `publish / skip := true`, not aggregated, and **forked** — a guard's answer is its exit code, and `sys.exit` in sbt's own JVM would end the session mid-`checks` |
 | `lazy val web` | The browser front end; Scala.js only, `publish / skip := true`, **not aggregated** — linking a bundle on every `sbt test` would put front-end work in the path of every library change, so `web/test` is named explicitly by `ci.yml` |
-| `lazy val root` | Pure aggregate over the four (`coreJVM`, `coreJS`, `replModuleJVM`, `replModuleJS`); publishes nothing |
-| `sbt checks` | Every repository guard in one sbt boot; what `ci.yml` runs |
+| `lazy val root` | Pure aggregate over the five (`coreJVM`, `coreJS`, `replModuleJVM`, `replModuleJS`, `mcp`); publishes nothing |
+| `sbt checks` | Every repository guard in one sbt boot; what `ci.yml` runs.  Its last step, `checkPomIsolation`, fails if the generated POM of `leonardo` or `leonardo-repl` names any of the MCP server's dependencies — the check is the POM, not the settings |
 | `sbt app` | Links the browser REPL and assembles `web/target/app/` — `index.html`, `main.js`, `Banner.svg` (copied from `docs/src`, so the page and the docs site carry one logo), `vendor/` — the directory `pages.yml` deploys to `/app` and anyone can serve as-is |
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
-| `sbt unidoc` | One combined API across both modules → `target/scala-<version>/api`; this is what the site publishes, and what keeps `cli` in the reference |
-| `sbt mimaReportBinaryIssues` | Checks both published modules against `mimaBaseline` (currently `3.8.2`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in a **separate commit once the release resolves from Central** -- a baseline naming a version Central does not serve yet turns `ci.yml` red; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
+| `sbt unidoc` | One combined API across the published modules → `target/scala-<version>/api`; this is what the site publishes, and what keeps `cli` in the reference |
+| `sbt mimaReportBinaryIssues` | Checks the published modules against `mimaBaseline` (currently `3.8.2`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in a **separate commit once the release resolves from Central** -- a baseline naming a version Central does not serve yet turns `ci.yml` red; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
 
 The `-Wconf:src=.*package\\.scala:silent` option suppresses the "No class, trait or object
 defined" structural warning for pure package-doc stub files.
@@ -1544,7 +1546,8 @@ all ` ```scala mdoc ``` ` code blocks in the docs.
 `sbt app` assembles the browser REPL into `web/target/app/`; the Pages workflow copies that
 directory and adds nothing to it, `release.yml` zips it onto every GitHub Release as
 `leonardo-app-<version>.zip` (~1.8 MB), and `app-bundle.yml` uploads it as a workflow artifact
-on request.  **One task, three consumers**, differing only in *which* build a reader can
+on request.  The same release job also builds `mcp/assembly` and attaches the MCP server's
+runnable `leonardo-mcp-<version>.jar` beside the zip, so every Release carries two assets.  **One task, three consumers**, differing only in *which* build a reader can
 obtain — the live one, a tagged one, or any commit — never in what the app is.
 
 `ci.yml` runs `sbt web/test app` on every push, so the task all three depend on is covered by
@@ -1664,9 +1667,9 @@ is what D_0030 found.
 **Updates** are Scala Steward's (`.scala-steward.conf`, weekly pull requests) for the sbt
 dependencies, and Dependabot's (`.github/dependabot.yml`) for the pinned action SHAs and the
 docs site's gems.  Steward proposes what is **newer**.  It says nothing about what is
-*vulnerable*, and two artifacts sit on its `updates.ignore` list unconditionally — `spire` and
-`scala-parser-combinators`, each pinned for a reason that still holds — so a security release
-of either would have been skipped in silence.
+*vulnerable*, and `spire` sits on its `updates.ignore` list unconditionally, pinned for a reason
+that still holds — so a security release of it would have been skipped in silence.
+(`scala-parser-combinators` sat beside it until the JDK floor that held it at 2.4.0 rose to 25.)
 
 **Alerts** come from the dependency graph.  `dependency-graph.yml` submits the sbt graph to
 GitHub on any push that touches `build.sbt` or `project/**`, which switches Dependabot alerts

@@ -39,12 +39,19 @@ extension beside `toExpression` sounds obvious and is impossible.
 ## Modules
 
 That layering is also the **artifact** boundary. Because nothing imports `cli`, it can be
-published separately — and it is, so that a library consumer never resolves JLine:
+published separately — and it is, so that a library consumer never resolves JLine. The MCP
+server sits one layer further out, over the REPL, for the same reason: its protocol stack must
+reach no one who only wants the library.
 
 | Artifact | Contains | Extra dependencies |
 |---|---|---|
 | `it.grypho:leonardo` | Every package except `cli` | `scala-parser-combinators`, `spire` |
 | `it.grypho:leonardo-repl` | `cli` only; depends on `leonardo` | `jline` |
+| `it.grypho:leonardo-mcp` | The [MCP server](mcp.md); depends on `leonardo-repl`; JVM only | the MCP Java SDK (with Jackson and Reactor), `slf4j-simple` |
+
+Every module is compiled for **Java 25**. The build checks the generated POMs on every run
+(`sbt checks`), so neither `leonardo` nor `leonardo-repl` can come to name the MCP server's
+dependencies by accident.
 
 The split cost no code change, which is the practical dividend of the layering rule: `cli`
 being a leaf that nothing imports is exactly what made it detachable. It also left the library
@@ -52,7 +59,8 @@ free of any terminal dependency — the one thing that would have blocked a Scal
 
 ## Running off the JVM
 
-Both modules **cross-build for Scala.js**, and the whole suite runs on Node as well as the JVM:
+The library and the REPL **cross-build for Scala.js** (the MCP server is a JVM process and
+does not), and their whole suites run on Node as well as the JVM:
 every library case except the one that needs real threads, and every REPL case except those
 that drive JLine or files. The port needed two platform-specific pieces in
 the library and four in the REPL; everything else is the same source.

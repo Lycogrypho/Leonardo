@@ -67,6 +67,7 @@ d.eval(env)
 | **Intervals** | `[lo, hi]` values with rigorous, outward-rounded bounds through arithmetic and the elementary functions; a comparison of overlapping intervals answers `unknown` |
 | **Sampling** | `sample(e, v, lo, hi, n)` → `Vector[(Double, Double)]`; compiled `Double ⇒ Double` fast path |
 | **REPL** | Interactive session with bindings, named functions, session scripts |
+| **MCP server** | The REPL as a tool an AI assistant calls over the Model Context Protocol (`leonardo-mcp`) |
 
 ## New here? Start with a lesson
 
@@ -96,6 +97,7 @@ The pages below are the *reference*: they answer "what does this do?", where a l
 - [Interactive REPL](repl.md) — session commands and scripts
 - [Browser REPL](https://lycogrypho.github.io/Leonardo/app/) — the same REPL, in your browser
 - [Cheat sheet](cheatsheet.md) — every REPL command on one page
+- [MCP server](mcp.md) — Leonardo as a tool for an AI assistant
 - [Architecture](architecture.md) — package diagram and design decisions
 - [Developer Guide](developer.md) — onboarding reference for contributors
 - [Lessons: at the prompt](lessons/repl.md) · [Lessons: in your program](lessons/library.md) —
