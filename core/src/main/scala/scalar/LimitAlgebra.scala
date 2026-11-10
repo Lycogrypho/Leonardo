@@ -108,8 +108,11 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
       case Inf(s)    => Some(Fin(lit(s), None))
       case Fin(c, _) => Some(Fin(fold(Tanh(c)), None))
     }
-    // Any other function continuous at a finite value it is defined at.
-    case f: _Function if f.children.sizeIs == 1 => lim(f.children.head, pt, depth).flatMap {
+    // F_0332: the integer parts jump, so the side the argument comes from decides.
+    case f @ (_: Floor | _: Ceil | _: Round) => lim(f.children.head, pt, depth).flatMap(integerPart(f, _))
+    // Any other function on the allowlist, continuous at a finite value it is defined at (F_0332, the
+    // owner's decision: continuity is declared, so a function added later is declined by default).
+    case f: _Function if f.children.sizeIs == 1 && continuousWhereDefined(f) => lim(f.children.head, pt, depth).flatMap {
       case Fin(c, _) => f.rebuild(List(c)).eval(env) match
         case Right(_Number(d)) if d.isFinite => Some(Fin(_Number(d), None))
         case Left(x) if !dependsOn(x, v) && x.freeVars.nonEmpty => Some(Fin(x, None))
@@ -117,6 +120,28 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
       case _ => None
     }
     case _ => None
+
+  /** `floor`, `ceil` or `round` of a limit `l` (F_0332): the value at `c` where the function does not jump
+   *  there; at a jump, the side decides — from above `floor` is `c`, `ceil` `c + 1`, `round` `⌈c⌉`; from
+   *  below `c − 1`, `c` and `⌊c⌋` — and with no side known, or a value that is not a number, `None`.  The
+   *  answer is locally constant, so its side is `0`. */
+  private def integerPart(f: _Function, l: LVal): Option[LVal] = l match
+    case Inf(_) => None
+    case Fin(c, s) => numeric(c).flatMap { d =>
+      val atJump = f match
+        case _: Round => { val t = 2 * d; t == math.floor(t) && math.floor(t) % 2 != 0 }
+        case _        => d == math.floor(d)
+      def at(x: _Expression) = Some(Fin(fold(x), Some(0)))
+      if !atJump || s.contains(0) then at(f.rebuild(List(c)))
+      else (f, s) match
+        case (_: Floor, Some(1))  => at(c)
+        case (_: Floor, Some(-1)) => at(Sum(c, lit(-1)))
+        case (_: Ceil, Some(1))   => at(Sum(c, lit(1)))
+        case (_: Ceil, Some(-1))  => at(c)
+        case (_: Round, Some(1))  => at(Ceil(c))
+        case (_: Round, Some(-1)) => at(Floor(c))
+        case _                    => None
+    }
 
   /** `sin c` or `cos c`; a zero (to the function's range) is read with its side from the derivative. */
   private def trig(l: LVal, cosine: Boolean): Option[LVal] = l match
@@ -308,7 +333,7 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
           case Some(Fin(c, _))              => Option.when(!isZero(fold(f.rebuild(List(c)))))(G(fold(f.rebuild(List(c))), 0, 0, 0))
           case _                            => None
       case Sum(_, _) => sumGrowth(e)
-      case f: _Function if f.children.sizeIs == 1 =>
+      case f: _Function if f.children.sizeIs == 1 && continuousWhereDefined(f) =>
         lim(f.children.head, Infinity(1)).collect { case Fin(c, _) => fold(f.rebuild(List(c))) }
           .filter(x => !isZero(x)).map(G(_, 0, 0, 0))
       case _ => None
@@ -333,6 +358,21 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
   private def linear(u: _Expression): Option[(Double, _Expression)] =
     collect(u, v).filter(cs => cs.sizeIs == 2).flatMap(cs => numeric(cs(1)).filter(_ != 0).map(s => (s, cs(0))))
 
+
+/** Whether a one-argument function is **continuous wherever it is defined** (F_0332), so that its limit is
+ *  its value at the limit of its argument.  An allowlist, by the owner's decision: the generic arm used to
+ *  assume it of every `_Function`, and `floor`, `ceil` and `round` (F_0324) then answered a two-sided limit
+ *  at their jumps — as did the functionals whose one child is their operand (`derive`, `integral`, the
+ *  transforms), for which the property means nothing.  A function added later is declined by default; add
+ *  it here when it is continuous where defined.  A pole (`Gamma` at `0`) is not a point of the domain and
+ *  does not evaluate, so the arm declines it. */
+private def continuousWhereDefined(f: _Function): Boolean = f match
+  case _: Exp | _: Ln | _: Abs | _: Sin | _: Cos | _: Tg | _: Asin | _: Acos | _: Atan
+     | _: Sinh | _: Cosh | _: Tanh | _: Asinh | _: Acosh | _: Atanh
+     | _: Sec | _: Csc | _: Cot | _: Sech | _: Csch | _: Coth
+     | _: Factorial | _: Gamma | _: LogGamma | _: Digamma | _: Erf | _: Erfc
+     | _: Si | _: Ci | _: Ei | _: Li | _: FresnelS | _: FresnelC => true
+  case _ => false
 
 /** The limit-algebra answer for `e` as `v → point` (F_0286), with the conditions it assumed, or `None`.
  *  A two-sided limit at a finite point is answered when both sides agree. */

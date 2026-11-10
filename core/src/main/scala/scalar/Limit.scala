@@ -49,7 +49,7 @@ private def limitTiers(e: _Expression, v: _Variable, point: _Expression, dir: Li
     // Placed before the widening `_Number` arm, which would read the rational as a Double.
     // A surd point too (F_0263): `limit(x^2, x, 2^(1/2))` answered `2.0`.
     case Right(r @ _Number(d)) if _Surd.isExact(r) =>
-      exactLimit(e, v, r, env, env.limits.count(Limit.MaxHopitalSteps))
+      exactLimit(e, v, r, dir, env, env.limits.count(Limit.MaxHopitalSteps))
         .getOrElse(orComplex(limitFinite(e, v, d, dir, env, env.limits.count(Limit.MaxHopitalSteps)), e, v, d, dir, env))
     case Right(_Number(p)) =>
       if p.isInfinite then limitInfinity(e, v, p, env)
@@ -59,9 +59,12 @@ private def limitTiers(e: _Expression, v: _Variable, point: _Expression, dir: Li
 /** The limit at an exact point, exactly, or `None` to leave it to the `Double` tiers (F_0210):
  *  direct substitution when it gives an exact value and no step jumps there, and L'Hôpital at an
  *  exact `0/0`.  The derivatives are taken in the expression's own tier, so an exact numerator
- *  stays exact through each step.  Anything else — a one-sided question, a pole, a decimal —
- *  falls through unchanged, so no answer that was not exact before is changed. */
-private def exactLimit(e: _Expression, v: _Variable, p: _Value, env: Environment, stepsLeft: Int): Option[_Expression] =
+ *  stays exact through each step.  Continuity is asked of the sides `dir` names (F_0332: the
+ *  one-sided limit of `floor` at its jump is the value from that side, which a two-sided check refused,
+ *  so the `Double` tier answered `1.0` for `1`).  Anything else — a pole, a decimal — falls through
+ *  unchanged, so no answer that was not exact before is changed. */
+private def exactLimit(e: _Expression, v: _Variable, p: _Value, dir: LimitDir, env: Environment,
+                       stepsLeft: Int): Option[_Expression] =
   def at(x: _Expression): Option[_Value] = x.eval(env.withBinding(v.variable, p)).toOption
   def zero(x: Option[_Value]): Boolean = x.exists(y => _Surd.signum(y).contains(0))
   val pd = p match { case _Number(d) => d; case _ => Double.NaN }
@@ -70,10 +73,10 @@ private def exactLimit(e: _Expression, v: _Variable, p: _Value, env: Environment
     // A surd answer too (F_0263): `limit(x^(1/2), x, 2)` answered `1.41421`.  Only where the
     // expression is continuous (F_0276): `sec(x) - tan(x)` at the exact reading of `pi/2` cancels two
     // readings of size 1e43 and answered `-4.8E42`.
-    case Some(r @ _Number(rd)) if _Surd.isExact(r) && continuousAt(e, v, pd, rd, LimitDir.Both, env) => Some(r)
+    case Some(r @ _Number(rd)) if _Surd.isExact(r) && continuousAt(e, v, pd, rd, dir, env) => Some(r)
     case _ => e match
       case Ratio(num, den) if stepsLeft > 0 && zero(at(num)) && zero(at(den)) =>
-        exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, env, stepsLeft - 1)
+        exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, dir, env, stepsLeft - 1)
       case _ => None
 
 /** The principal complex value at `p` when the real tiers declined (F_0297, the owner's decision):

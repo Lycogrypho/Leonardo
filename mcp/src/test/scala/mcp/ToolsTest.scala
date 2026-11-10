@@ -115,11 +115,14 @@ class ToolsTest extends AnyFlatSpec:
     val hold = CountDownLatch(1)
     val w    = SessionWorker(500.millis, onRestore = () => blockOn(hold))
     try
-      assert(w.run(_.execute("a := 5")).isRight)
+      // The requests that must succeed get their own limit: only the restore is meant to meet the 500 ms
+      // one.  Under a full `sbt test` (the Scala.js linkers beside it) the first line on a cold session
+      // took longer than 500 ms and this assertion failed while the code was right.
+      assert(w.run(_.execute("a := 5"), 30.seconds).isRight)
       val out = w.run(_ => blockOn(hold))
       assert(out.left.exists(s => s.contains("timed out as well") && s.contains("starts empty")), out.toString)
       // the empty session was built on the caller's thread, so no restore is pending
-      assert(first(call(w, "evaluate", "line" -> "a")) == "a")
+      assert(w.run(_.execute("a"), 30.seconds).exists(_.linesIterator.nextOption().contains("a")))
     finally hold.countDown()
   }
 

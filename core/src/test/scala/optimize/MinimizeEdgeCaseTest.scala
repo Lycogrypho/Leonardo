@@ -97,3 +97,25 @@ class MinimizeEdgeCaseTest extends AnyFlatSpec:
   it should "still report a genuinely unbounded objective" in {
     assert(run("-x^3", 1.0, MinimizeMethod.BFGS) == Left(MinimizeFailure.Unbounded))
   }
+
+  "minimize from a point where f = 0" should "not read the first decrease as unbounded (F_0334)" in {
+    // x^2 - 2x is 0 at the start and -1 at its minimiser x = 1: the relative test's threshold was 0
+    for m <- MinimizeMethod.values do
+      run("x^2 - 2*x", 0.0, m) match
+        case Right(r)  => assert(math.abs(r.x(0) - 1.0) < 1e-4, s"$m: $r")
+        case Left(why) => fail(s"$m: $why")
+    val (xv, yv) = (_Variable("x"), _Variable("y"))
+    minimize(Parser.parse("x^2 + y^2 - 2*x").get, Vector(xv, yv), Vector(0.0, 0.0), None, MinimizeMethod.BFGS, env) match
+      case Right(r)  => assert(math.abs(r.x(0) - 1.0) < 1e-4 && math.abs(r.x(1)) < 1e-4, r)
+      case Left(why) => fail(s"$why")
+    minimize(Parser.parse("x^2 - 2*x").get, Vector(xv), Vector(0.0), Some((Vector(-5.0), Vector(5.0))),
+             MinimizeMethod.ProjectedBFGS, env) match
+      case Right(r)  => assert(math.abs(r.x(0) - 1.0) < 1e-4, r)
+      case Left(why) => fail(s"$why")
+  }
+
+  it should "still report what is unbounded from there" in {
+    assert(run("-x", 0.0, MinimizeMethod.BFGS) == Left(MinimizeFailure.Unbounded))
+    assert(run("-x^3", 0.0, MinimizeMethod.BFGS).isLeft)          // a saddle at its start: no minimiser
+    assert(run("x - x^4", 0.0, MinimizeMethod.BFGS) == Left(MinimizeFailure.Unbounded))
+  }

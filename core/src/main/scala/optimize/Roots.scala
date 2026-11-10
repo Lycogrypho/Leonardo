@@ -197,9 +197,13 @@ private def dogleg(res: Residual, x0: Vector[Double], box: (Vector[Double], Vect
         val alpha = sumSq(gs) / sumSq(jg)                 // the Cauchy point's step length
         val yc    = gs.map(v => -alpha * v)
         val yn    = newton(j, fv, free).map(p => Array.tabulate(nf)(c => p(c) * d(free(c))))
+        // With no Newton step (a singular J), the Cauchy point if it fits the region (F_0333: the guard
+        // sent this case to the full radius, an overshoot whose predicted decrease was negative and read
+        // as a stall, so a singular start declined without moving), else steepest descent to the edge.
         val y: Array[Double] = yn match
           case Some(yN) if norm(yN) <= delta => yN
-          case _ if !alpha.isFinite || yn.isEmpty || norm(yc) >= delta => gs.map(v => -(delta / gsNorm) * v)
+          case _ if !alpha.isFinite || norm(yc) >= delta => gs.map(v => -(delta / gsNorm) * v)
+          case None => yc
           case Some(yN) =>
             // the dogleg: from the Cauchy point towards the Newton point, as far as the region allows
             val diff = Array.tabulate(nf)(c => yN(c) - yc(c))
@@ -208,7 +212,6 @@ private def dogleg(res: Residual, x0: Vector[Double], box: (Vector[Double], Vect
             val cc   = sumSq(yc) - delta * delta
             val tau  = (-b + math.sqrt(math.max(0.0, b * b - 4 * a * cc))) / (2 * a)
             Array.tabulate(nf)(c => yc(c) + tau * diff(c))
-          case None => yc
         val p  = new Array[Double](n)
         for c <- 0 until nf do p(free(c)) = y(c) / d(free(c))
         val xn   = clamp(Array.tabulate(n)(i => x(i) + p(i)))

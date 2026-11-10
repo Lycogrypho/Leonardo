@@ -1183,7 +1183,7 @@ taylor(e,v,a,n) ; maclaurin = a 0</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/calculus.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="156.0" width="396.0" x="0.0" y="0.0"/>
+              <y:Geometry height="204.0" width="428.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">EvalLimit</y:NodeLabel>
@@ -1191,9 +1191,12 @@ taylor(e,v,a,n) ; maclaurin = a 0</y:MethodLabel>
                 <y:AttributeLabel>-- tiers --
 1. direct substitution
 3. structural rules at +/-inf
-4. one-sided epsilon fallback</y:AttributeLabel>
+4. one-sided epsilon fallback
+a function's value only if continuousWhereDefined</y:AttributeLabel>
                 <y:MethodLabel>+ evalLimit(e, v, point, dir, env): _Expression
-2. L'Hopital (0/0, inf/inf, c/0)</y:MethodLabel>
+2. L'Hopital (0/0, inf/inf, c/0)
+5. the limit algebra (F_0286): limits of the parts;
+(F_0332, an allowlist); floor/ceil/round by side</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>

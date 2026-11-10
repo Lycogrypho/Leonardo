@@ -108,6 +108,15 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   `x*(1 - x)^(1/2)`, `x^3*(1 + x^2)^(1/2)`, `1/(x^2 + 4)^(3/2)`, `1/(x^2*(9 + x^2)^(1/2))`,
   `x^(1/2)/(x^2 + x)`, `sin(x)^5*cos(x)^8`, `x*sin(x)*cos(x)` and `cos(ln(x))`, exact in exact mode where
   the answer is algebraic.  Only integrals that stayed unevaluated are affected.
+- `minimize` no longer declines "unbounded below" from a start where the objective is `0`:
+  `minimize(x^2 - 2*x, [[x]], [[0]], bfgs)` is `[[1]]` by every method (3.8.3 read any decrease below
+  zero there as unbounded).
+- `stationary` of a constant written through a node that does not evaluate, such as
+  `stationary(dot(0, 0), t)`, stays unevaluated; it answered `false`, "no stationary point", where every
+  point is one.
+- The limit algebra applies a function's value at the limit of its argument only to functions declared
+  continuous where they are defined, so a limit through a function with no such declaration (a
+  functional, a sequence) is declined rather than assumed.
 - **New: `nsolve(F, [[x], [y]], x0[, lb, ub])`**, a root of a square nonlinear system by Powell's dogleg trust
   region, answered only when every equation vanishes against the size of its own terms and the Jacobian is
   nonsingular there; a minimum of the residual that is not a root is declined, with the reason in a note.

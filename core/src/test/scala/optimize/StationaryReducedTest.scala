@@ -45,3 +45,19 @@ class StationaryReducedTest extends AnyFlatSpec:
     val bound = env.withBinding("t", _Number(3.0))
     assert(points(s"stationary(dot(derive($q, t), derive($q, t)), t)", bound) == List(Vector(0.0)))
   }
+
+  "a constant written through a node that does not fold" should "leave stationary unevaluated, not false (F_0335)" in {
+    // every point of a constant is stationary; `false` reads "provably none"
+    for src <- Seq("stationary(dot(0, 0), t)", "stationary(dot(derive(p, t), derive(p, t)), t)",
+                   "lagrange(dot(0, 0), x + y - 1, x, y)") do
+      assert(parse(src).eval(env).isLeft, src)
+      assert(parse(src).eval(env) != Right(_Bool(false)), src)
+    // a constant that does fold stays unevaluated too, as before
+    assert(parse("stationary(0, t)").eval(env).isLeft)
+  }
+
+  "a branch whose coefficient vanished" should "still be dropped where it divides by zero (F_0335)" in {
+    // x*y = 1 is divided by y on one branch and the y = 0 branch has no solution: still exactly two points
+    val ps = points("stationary(x^2 + y^2 - 2*x*y + (x*y - 1)^2, x, y)")
+    assert(ps.nonEmpty && ps.forall(p => p.forall(_.isFinite)), ps.toString)
+  }

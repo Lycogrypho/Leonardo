@@ -216,15 +216,20 @@ private def stationarity(g: Vector[Double], x: Vector[Double], x0: Vector[Double
 private val Target: Double = 1e-10
 
 /** How far below the current value a trial value must fall to be read as unbounded: `10¹⁰⁰`
- *  times the current value's magnitude, or `-∞` itself.  **Relative** (F_0258): it was the
- *  absolute `-1e100`, so `minimize((x-1)^2 - 1e101, …)` declined as unbounded and the documented
- *  invariance under `f → f + c` failed.  A genuinely unbounded direction is also caught by the
- *  Wolfe bracket's 60 doublings. */
+ *  times the larger of the current value's magnitude and the first-order change the gradient
+ *  predicts for the step, or `-∞` itself.  **Relative** (F_0258): it was the absolute `-1e100`, so
+ *  `minimize((x-1)^2 - 1e101, …)` declined as unbounded and the documented invariance under
+ *  `f → f + c` failed.  **Not relative to the value alone** (F_0334): at `f(x) = 0` that threshold is
+ *  `0`, so the first step that lowered the objective was "unbounded" and `minimize(x^2 - 2*x, …)`
+ *  from `0` declined; the predicted change `|gᵀs|` cannot vanish while the step moves downhill, and
+ *  scales with `f` as the value does.  A genuinely unbounded direction is also caught by the Wolfe
+ *  bracket's 60 doublings. */
 private val UnboundedRatio: Double = 1e100
 
-/** Whether the trial value `fn` reads as unbounded below from the current value `fx`. */
-private def unboundedBelow(fn: Double, fx: Double): Boolean =
-  fn == Double.NegativeInfinity || fn < fx - UnboundedRatio * math.abs(fx)
+/** Whether the trial value `fn` reads as unbounded below from the current value `fx`, the step's
+ *  first-order change being `linear` (`|gᵀs|`). */
+private def unboundedBelow(fn: Double, fx: Double, linear: Double): Boolean =
+  fn == Double.NegativeInfinity || fn < fx - UnboundedRatio * math.max(math.abs(fx), math.abs(linear))
 
 /** The first trial step of a line search with no curvature information yet: `1/‖d‖∞`, a move of
  *  unit length whatever the scale of `f` (F_0258).  A full step along `−∇f` moves `‖∇f‖` units, so
@@ -467,10 +472,12 @@ private def armijo(p: Problem, x: Vector[Double], fx: Double, g: Vector[Double],
   def search(alpha: Double, k: Int): Either[Int => MinimizeFailure, (Vector[Double], Double)] =
     val xn = project(axpy(alpha, d, x))
     if k > MaxHalvings || xn == x then Left(i => MinimizeFailure.LineSearchFailed(i))
-    else p.value(xn) match
-      case Some(fn) if unboundedBelow(fn, fx) => Left(_ => MinimizeFailure.Unbounded)
-      case Some(fn) if fn <= fx + C1 * dot(g, xn.lazyZip(x).map(_ - _)) => Right((xn, fn))
-      case _ => search(alpha / 2, k + 1)
+    else
+      val change = dot(g, xn.lazyZip(x).map(_ - _))
+      p.value(xn) match
+        case Some(fn) if unboundedBelow(fn, fx, change) => Left(_ => MinimizeFailure.Unbounded)
+        case Some(fn) if fn <= fx + C1 * change => Right((xn, fn))
+        case _ => search(alpha / 2, k + 1)
   search(init, 0)
 
 /** The most halvings a line search makes: enough to pass from a unit step to the smallest
@@ -511,7 +518,7 @@ private def wolfe(p: Problem, x: Vector[Double], fx: Double, g: Vector[Double], 
     else at(alpha) match
       case None => zoom(prev, fprev, alpha, 0)
       case Some((xa, fa, ga, da)) =>
-        if unboundedBelow(fa, fx) then Left(_ => MinimizeFailure.Unbounded)
+        if unboundedBelow(fa, fx, alpha * dphi0) then Left(_ => MinimizeFailure.Unbounded)
         else if fa > fx + C1 * alpha * dphi0 || (k > 0 && fa >= fprev) then zoom(prev, fprev, alpha, 0)
         else if math.abs(da) <= -C2 * dphi0 then Right((alpha, xa, fa, ga))
         else if da >= 0 then zoom(alpha, fa, prev, 0)

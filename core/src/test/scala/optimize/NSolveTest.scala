@@ -89,6 +89,26 @@ class NSolveTest extends AnyFlatSpec:
     assert(r.isLeft, r.toString)
   }
 
+  "a start where the Jacobian is singular" should "still move, by the Cauchy point (F_0333)" in {
+    // J = [[1, 2y], [1, -1]] is singular on y = -1/2, where the gradient of |F|^2 is (-3.25, 3.25): a descent
+    // step exists, and the old full-radius step overshot it and stopped at the start (|F| = 2.79).  Roots:
+    // (2, 1) and (-1, -2).  (A start on a line of symmetry, such as (1, 1) for x^2 + y^2 = 4, x*y = 1, stays
+    // on it under any gradient step and ends at a genuine stationary point of |F|^2: a different case.)
+    val r = answer(solve(Seq("x + y^2 - 3", "x - y - 1"), vars("x", "y"), Vector(0.0, -0.5)))
+    assert(abs(r.x(0) + r.x(1) * r.x(1) - 3) < 1e-9 && abs(r.x(0) - r.x(1) - 1) < 1e-9, r.toString)
+  }
+
+  it should "name a continuum as one, not as a residual minimum (F_0333)" in {
+    // x = y is a line of roots; the Cauchy point reaches it, and the rank test then declines
+    val r = solve(Seq("x - y", "x - y"), vars("x", "y"), Vector(1.0, 2.0))
+    assert(r.left.exists(_.isInstanceOf[RootFailure.SingularJacobian]), r.toString)
+  }
+
+  it should "still decline a genuine stationary point of the residual (F_0333)" in {
+    // x^2 + 1 at 0: J = 0 and F = 1, the gradient of |F|^2 vanishes -- nothing to descend
+    assert(solve(Seq("x^2 + 1"), vars("x"), Vector(0.0)).left.exists(_.isInstanceOf[RootFailure.NotARoot]))
+  }
+
   "bounds" should "keep the root inside the box" in {
     val x = vars("x")
     assert(abs(answer(solve(Seq("x^2 - 4"), x, Vector(-1.0))).x(0) + 2) < 1e-9)

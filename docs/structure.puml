@@ -549,6 +549,9 @@ package "scalar" {
         2. L'Hopital (0/0, inf/inf, c/0)
         3. structural rules at +/-inf
         4. one-sided epsilon fallback
+        5. the limit algebra (F_0286): limits of the parts;
+          a function's value only if continuousWhereDefined
+          (F_0332, an allowlist); floor/ceil/round by side
     }
     class "Derive" <<utility>> [[calculus.html]] {
         + derive(e, v): _Expression

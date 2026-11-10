@@ -173,18 +173,27 @@ private def reduceConstantEquations(eqs: List[_Expression], left: Set[String],
  *
  *  An *undefined* constant (a `1/0` left by a division whose coefficient vanished) is
  *  `Some(false)`: that branch has no solution, and the division's companion branch is the
- *  one that covers the case. */
+ *  one that covers the case.  **Only a division by an evaluated zero is undefined** (F_0335): a
+ *  closed node that merely has no value — `dot` of two numbers, a `_Derivative` with no rule — is
+ *  undecided, and reading it as undefined made `stationary(dot(0, 0), t)` answer "provably none" for
+ *  a constant, every point of which is stationary. */
 private def constantVerdict(e: _Expression, env: Environment, tolerance: Double): Option[Boolean] =
   e.eval(env) match
     case Right(r: _Rational)  => Some(r.isZero)
     case Right(_Number(d))    => Some(!d.isNaN && math.abs(d) <= tolerance)
     case Right(_: _Value)     => Some(false)           // complex, matrix, truth value
     case Left(residue)        =>
-      if residue.freeVars.isEmpty then Some(false)     // undefined, not undecided
+      if residue.freeVars.isEmpty then Option.when(isUndefined(residue, env))(false)   // undefined, or undecided
       else if isZero(simplifyFully(residue)) || vanishesAtSamples(residue, env, tolerance) then Some(true)
       // Non-zero for some parameter values: it may still hold for others (`a = 0`), so
       // the branch's validity depends on the parameters and cannot be decided here.
       else None
+
+/** Whether a closed residue is **undefined** — a division by zero, a logarithm of zero, any requirement
+ *  of the domain analysis it violates — rather than merely unevaluated (F_0335).  The analysis is asked
+ *  at a point of a name the residue does not hold, since a closed residue has no variable. */
+private def isUndefined(residue: _Expression, env: Environment): Boolean =
+  violatedAt(residue, _Variable("__closed"), 0.0, env).isDefined
 
 /** Step 1: an equation linear in an unknown whose coefficient is free of every unknown.
  *
