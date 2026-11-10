@@ -412,6 +412,49 @@ since an input returned unchanged cannot be told from one that was already in no
 (b and (not a))
 ```
 
+## Minimal forms
+
+`toCNF`/`toDNF` drop duplicates and trivial clauses and stop there, so `dnf((p or q) and (not p or r))`
+keeps a third term, the consensus of the other two.  A *minimal* two-level form is a different
+question — the Karnaugh-map exercise — and `minimalForm` answers it by
+[Quine–McCluskey](https://en.wikipedia.org/wiki/Quine%E2%80%93McCluskey_algorithm) and an exact minimum
+cover of the prime implicants: **the fewest terms, then the fewest literals**.  At the prompt it is
+`mindnf(e)` and `mincnf(e)`:
+
+```scala mdoc
+minimalForm(Parser.parse("(p or q) and (not p or r)").get, conjunctive = false)
+minimalForm(Parser.parse("(p or q) and (not p or r)").get, conjunctive = true)
+minimalForm(Parser.parse("p or not p").get, conjunctive = false)
+```
+
+Three points are decided, not defaulted.  **A cyclic cover has several minimal forms**, equal in terms
+and literals; one is answered — the first in a fixed canonical order, terms compared literal by
+literal over the atoms in order of their printed form, a positive literal before a negative one — so
+the answer is identical on the JVM and in the browser, and `count` says how many there are (here two,
+`{ab, a'c', b'c}` and `{a'b', bc', ac}`):
+
+```scala mdoc
+val cyclic = Parser.parse("(not a and not b) or (not a and not c) or (not b and c) or (b and not c) or (a and c) or (a and b)").get
+minimalForm(cyclic, conjunctive = false)
+```
+
+**An atom is any subexpression that is not a connective**, as it is for `cnf` and `dnf`, so a relation
+is one atom: `mindnf(x > 0 and y)` answers.  And **the search is bounded**: past 15 atoms
+(`Limit.MaxMinimiseVars`, a cube packing into one `Int`) or when the work outruns
+`Limit.MaxMinimiseWork` — choosing a minimum cover is NP-hard, and counting every minimal cover costs
+more still: measured, a random function of 8 atoms needs about thirty million units against a default
+of five million, so a random function of seven or eight atoms is declined with the reason while every
+textbook size (up to six atoms) answers in under a hundred thousand.  A graded truth value is declined
+too, since a two-level form is a two-valued notion:
+
+```scala mdoc
+minimalForm(Parser.parse("truth(0.3) and p").get, conjunctive = false)
+```
+
+The search itself keeps every minimal cover, to count them, so it uses no shortcut that could drop
+one: a dominated column is kept, and the bound prunes only what is strictly dearer.  Don't-care sets
+and multi-output minimisation are not offered.
+
 ## Equivalence
 
 `==` between two formulas compares *values*, and a connective is not even an operand of it; whether two

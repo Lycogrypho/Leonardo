@@ -218,6 +218,28 @@ enum Limit(val default: Long):
    *  function in 43 from `(0, 1)` at precision 10; 200 is between four and five times the slowest. */
   case MaxNsolveIterations extends Limit(200)
 
+  // ── logic, continued (F_0325) ──
+
+  /** Atoms a minimal two-level form (`mindnf`/`mincnf`) may range over (F_0325): the table has `2ⁿ` rows
+   *  and Quine–McCluskey's prime implicants number up to about `3ⁿ/n`.  **Capped at 15 whatever the
+   *  value**: a cube packs into one `Int` as `mask << n | value`.  The default is that maximum because the
+   *  work budget, not the atom count, is what bounds the time: measured on the JVM and Node at 6, 8, 10,
+   *  12, 14 and 15 atoms, for a random function (densities 0.2, 0.5, 0.8), parity, majority and
+   *  weight-mod-3, a run at 15 atoms either finished or declined within the default work budget in 0.2–1.6 s
+   *  on Node (JVM 0.2–1.0 s); a parity function of 15 atoms (16 384 primes, no merging) takes 0.2 s. */
+  case MaxMinimiseVars extends Limit(15)
+
+  /** Work a minimal-form search may spend (F_0325): the formula's evaluation (one pass per row), merge
+   *  checks (`n` per cube per level), the cells of the cover table, the canonical sort, and branch-and-bound
+   *  nodes weighted by the rows they still hold and the candidates they scan.  Choosing a minimum cover of
+   *  the primes is NP-hard, so this is what stops a cyclic core.  **Measured, a unit costs 30–100 ns on
+   *  the JVM and 100–300 ns on Node**: ten million units took 0.3–1.0 s on the JVM and 0.4–3.0 s on Node
+   *  across those shapes, the worst a random 8-atom function (about 3 s on Node, and not finished: its
+   *  1103 minimal covers need 3·10⁷ units on the JVM, 2.2 s there).  The cap, half of ten million, is
+   *  about 1.5 s on Node at worst; parity, majority and weight-mod-3 functions of 15 atoms finish well
+   *  inside it, and a random function of 6 atoms uses under 10⁵. */
+  case MaxMinimiseWork extends Limit(5000000)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

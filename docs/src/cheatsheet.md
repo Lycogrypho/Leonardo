@@ -569,6 +569,8 @@ Under `pretty on` a formula is written with the fewest brackets the precedence a
 | `false and (1/0 = 0)` | `false` (short-circuit: right side never evaluated) |
 | `cnf(a xor b)` | Conjunctive normal form: `((a or b) and ((not b) or (not a)))`; stays as written for a graded truth value, or past the clause budget |
 | `dnf((a or b) and not a)` | Disjunctive normal form: `(b and (not a))`; the same limits as `cnf` |
+| `mindnf(f)` | A **minimal** sum of products — the fewest terms, then the fewest literals, as a Karnaugh map reads: `mindnf((p or q) and (not p or r))` is `((p and r) or ((not p) and q))`, where `dnf` keeps a third, redundant term. A cyclic cover has several minimal forms: **one is answered, the first in a fixed order** (identical on the JVM and in the browser), and a note says how many exist. A relation or a call is an atom, as for `cnf`; the atoms are ordered by their printed form. Stays as written, with the reason, for a graded value, past 15 atoms, or when the search outruns its work budget (choosing a minimum cover is NP-hard) |
+| `mincnf(f)` | The dual: a minimal product of sums, by the same search on `not f` with every literal negated |
 
 ### Three-valued (Kleene) logic
 

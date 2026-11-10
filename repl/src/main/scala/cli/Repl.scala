@@ -1186,6 +1186,13 @@ final class Session:
         q.detailed(env).toOption.collect { case d: logic.EquivalenceVerdict.Differ => differNote(d) }
       case (q: logic._Equivalent, Left(_: logic._Equivalent)) =>
         q.detailed(env).left.toOption.map(w => s"equivalent declined: ${describeEquivalence(w)}")
+      // F_0325 step 2: a minimal form says how many equally minimal ones there are (Decision B: one is
+      // answered, so the reader is told it is one of several); a refusal says why.
+      case (m: logic._MinimalForm, Left(_: logic._MinimalForm)) =>
+        m.detailed(env).left.toOption.map(w => s"${m.kind.word} declined: ${describeMinimise(w)}")
+      case (m: logic._MinimalForm, _) =>
+        m.detailed(env).toOption.filter(_.count > 1).map(f =>
+          s"${m.kind.word}: ${f.count} minimal forms exist; this is the first in canonical order")
       // F_0319: a root says how it got there -- iterations, residual, what a bound held -- or why it declined.
       case (r: _NSolve, Left(_: _NSolve)) => r.detailed(env).left.toOption.map(w => s"nsolve declined: ${describeRoot(w)}")
       case (r: _NSolve, _)                => r.detailed(env).toOption.map(rootNote(r.vars, _))
@@ -1310,6 +1317,14 @@ final class Session:
     val at = d.assignment.toList.sortBy(_._1).map((n, v) => s"$n = $v").mkString(", ")
     val sides = s"the left side is ${d.left}, the right side is ${d.right}"
     if at.isEmpty then s"equivalent: not equivalent ($sides)" else s"equivalent: not equivalent at $at ($sides)"
+
+  /** A [[logic.MinimiseFailure]] in prose (F_0325 step 2). */
+  private def describeMinimise(why: logic.MinimiseFailure): String = why match
+    case logic.MinimiseFailure.Graded =>
+      "a graded truth value has no two-level form (the normal forms are crisp)"
+    case logic.MinimiseFailure.TooManyAtoms(n, limit) => s"$n atoms exceed the limit of $limit"
+    case logic.MinimiseFailure.OverBudget =>
+      "the search passed its work budget (choosing a minimum cover is NP-hard)"
 
   /** An [[logic.EquivalenceFailure]] in prose (F_0322). */
   private def describeEquivalence(why: logic.EquivalenceFailure): String = why match
@@ -2860,6 +2875,8 @@ object Session:
       |logic <semantics>    fuzzy t-norm: minmax | product | lukasiewicz (default: minmax)
       |defuzz(e, v, lo, hi[, method])  defuzzify a curve: centroid (default) | mom | bisector
       |cnf(e), dnf(e)       conjunctive / disjunctive normal form
+      |mindnf(e), mincnf(e) a minimal sum of products / product of sums (fewest terms,
+      |                     then fewest literals); a note says when several exist
       |equivalent(f, g)     true when two formulas agree on every row of the truth table
       |floor( ceil( round( mod(   integer parts and the remainder with the divisor's sign;
       |                     round sends a tie away from zero

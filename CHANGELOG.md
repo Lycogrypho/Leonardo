@@ -175,11 +175,20 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
 - `simplify` combines and applies De Morgan where that shrinks the formula: `(p and q) or (p and not q)` is
   `p`, `(p implies q) and p` is `p and q`, `not (not p and not q)` is `p or q`, and `not (a iff b)` is
   `a xor b`.  The first two hold only in classical logic and are gated on crisp operands.
+- **New: `mindnf(f)` and `mincnf(f)`**, a minimal sum of products and product of sums by Quine–McCluskey
+  and an exact minimum cover: the fewest terms, then the fewest literals.  `mindnf((p or q) and (not p or r))`
+  is `(p and r) or (not p and q)`, where `dnf` keeps a third, redundant term.  A cyclic cover has several
+  minimal forms: one is answered, the first in a fixed order that is the same on the JVM and in the browser,
+  and a note says how many exist.  A relation is an atom, as for `cnf`.  The search is bounded by two new
+  budgets, `Limit.MaxMinimiseVars` (15, the most a cube packs into) and `Limit.MaxMinimiseWork`
+  (5 million units, about 1.5 s at worst in a browser); past either, or for a graded value, the call stays as
+  written with the reason.  In a program, `minimalForm(e, conjunctive)` returns the form and its count.
 - Under `pretty on` a formula is written with the fewest brackets the precedence allows, `p and q or r`
   rather than `((p and q) or r)`.  `truth f xor g` heads its table with the formula as typed, `(f xor g)`,
   not the two definitions in full, and a `?` that comes from a relation (`truth x > 0 or y`) says so in a
   note.
-- **Six words are reserved now**: `floor`, `ceil`, `round`, `mod`, `iff` and `equivalent`.  A saved session
+- **Eight words are reserved now**: `floor`, `ceil`, `round`, `mod`, `iff`, `equivalent`, `mindnf` and
+  `mincnf`.  A saved session
   that used one as a variable name must rename it; `:load` reports it as a reserved word.
 
 **New in the library** (additive, no prompt form; requested by an MPC application):

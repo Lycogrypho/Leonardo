@@ -1525,6 +1525,27 @@ package "logic" {
         every row over the free names of both sides
         detailed: Same | Differ(first row) | TooManyNames | NotBoolean
     }
+    class "Minimise" <<utility>> [[logic.html]] {
+        + minimalForm(e, conjunctive, symmetric, limits): Either[MinimiseFailure, MinimalForm]
+        __ F_0325 step 2: Quine-McCluskey + exact minimum cover __
+        fewest terms, then fewest literals; one minimal form answered
+        (the first in canonical order) and the number of them
+        atoms are opaque (as cnf/dnf); mincnf = mindnf of the negation, dualised
+        MaxMinimiseVars + MaxMinimiseWork bound it
+    }
+    class "_MinimalForm" <<case>> [[logic.html]] {
+        __ F_0325: mindnf(e) / mincnf(e) __
+        unevaluated on a refusal, never the input
+    }
+    enum "MinimalKind" <<data>> [[logic.html]] {
+        MinDNF  mindnf
+        MinCNF  mincnf
+    }
+    "_MinimalForm" --|> "_Expression"
+    "_MinimalForm" ..> "Minimise"
+    "_MinimalForm" ..> "MinimalKind"
+    "Minimise"     ..> "SimplifyLogic" : the cnf pre-pass
+    "Minimise"     ..> "Kleene"        : isCrisp gate
     "Iff"          --|> "_Connective"
     "_Equivalent"  --|> "_Expression"
     "_Equivalent"  ..> "TruthTableLogic" : truthTable of each side

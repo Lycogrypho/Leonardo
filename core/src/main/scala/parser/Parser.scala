@@ -129,6 +129,8 @@ object Parser extends JavaTokenParsers:
                                                          // reserved because productions need them
                                                          // (2.13), free to release until 3.9.0
     "cnf", "dnf",                                        // F_0133 normal forms at the prompt
+    "mindnf", "mincnf",                                  // F_0325 step 2 minimal forms; neither is a
+                                                         // plausible variable name
     "truth", "very", "somewhat", "trimf", "trapmf", "gaussmf", "sigmf", "defuzz", // fuzzy tier
     "fact", "dfact", "mfact", "lgamma", "Gamma", "Beta",  // special functions;
     "normal", "uniform", "exponential", "binomial", "poisson",  // distributions
@@ -921,6 +923,9 @@ object Parser extends JavaTokenParsers:
     "equivalent(" ~> guardedMembership ~ ("," ~> guardedMembership) <~ ")" ^^ { case f ~ g => _Equivalent(f, g) } |
     "cnf("      ~> guardedMembership <~ ")" ^^ (e => _NormalForm(NormalKind.CNF, e))                  |
     "dnf("      ~> guardedMembership <~ ")" ^^ (e => _NormalForm(NormalKind.DNF, e))                  |
+    // F_0325 step 2: a minimal sum of products / product of sums, the cnf/dnf node's shape
+    "mindnf("   ~> guardedMembership <~ ")" ^^ (e => _MinimalForm(MinimalKind.MinDNF, e))             |
+    "mincnf("   ~> guardedMembership <~ ")" ^^ (e => _MinimalForm(MinimalKind.MinCNF, e))             |
     "very("     ~> guardedMembership <~ ")"                               ^^ Very.apply                    |
     "somewhat(" ~> guardedMembership <~ ")"                               ^^ Somewhat.apply                |
     "trimf("  ~> guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr ~ "," ~ guardedExpr <~ ")" ^^ {
