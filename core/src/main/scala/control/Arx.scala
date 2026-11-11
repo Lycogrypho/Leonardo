@@ -308,7 +308,7 @@ def arx2ss(model: ArxMimoModel, nk: Int): Either[ArxFailure, (_MatrixValue, _Mat
       Right((am, bm, cm, n0))
   }
 
-/** The non-minimal state-space (NMSS) realisation of a MIMO ARX model (F_0306, APAC L_0009), whose
+/** The non-minimal state-space (NMSS) realisation of a MIMO ARX model (F_0306, AIACE L_0009), whose
  *  state is **measured**: `x(k) = [y(k), y(k−1), …, y(k−nᵧ+1), u(k−1), …, u(k−nᵤ)]` with
  *  `nᵧ = max(na, 1)` and `nᵤ = nk + nb − 2`, exactly the past the recursion reads (Wang and Young's
  *  count; an older input never enters it).  `C` reads `y(k)` off the state and `D = 0`, so a controller

@@ -5,7 +5,7 @@ import core.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-/** F_0299 (APAC L_0002): the condensed MPC quadratic programme. */
+/** F_0299 (AIACE L_0002): the condensed MPC quadratic programme. */
 class MpcQpTest extends AnyFlatSpec:
 
   private def mat(rows: Int, cols: Int, xs: Double*): _MatrixValue = _MatrixValue(rows, cols, xs.toArray)

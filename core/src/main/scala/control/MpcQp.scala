@@ -68,7 +68,7 @@ final case class MpcQp(h: _MatrixValue, f: Vector[Double], ineq: Option[(_Matrix
       MpcSolution(moves, now, r.z.drop(nc * m), r)
     }
 
-/** The terminal cost of an MPC programme (F_0304, APAC L_0007): `‖x(k+Np) − x_s‖²_P`.
+/** The terminal cost of an MPC programme (F_0304, AIACE L_0007): `‖x(k+Np) − x_s‖²_P`.
  *
  *  **The stage cost already weighs `y(k+Np)`**, so the weight that completes the infinite-horizon
  *  (LQR) cost-to-go is `P − CᵀQC` with `P` from [[dare]] / [[dlqr]], not `P` itself; with it an
@@ -84,7 +84,7 @@ final case class MpcQp(h: _MatrixValue, f: Vector[Double], ineq: Option[(_Matrix
 final case class MpcTerminal(weight: _MatrixValue, prediction: MpcPredictionMatrices,
                              target: Option[Vector[Double]] = None)
 
-/** The weights of an MPC programme (F_0304, F_0305; APAC L_0007, L_0008).
+/** The weights of an MPC programme (F_0304, F_0305; AIACE L_0007, L_0008).
  *
  *  @param q           the output weights: one `p×p` for every step, or `Np` of them, step by step
  *  @param r           the move weights: one `m×m` for every move, or `Nc` of them
@@ -101,7 +101,7 @@ final case class MpcWeights(q: Vector[_MatrixValue], r: Vector[_MatrixValue], te
                             inputTarget: Option[Vector[Double]] = None,
                             positionTarget: Option[MpcPositionTarget] = None)
 
-/** A cost on the **position** of the inputs when the moves are increments (F_0329, APAC L_0013):
+/** A cost on the **position** of the inputs when the moves are increments (F_0329, AIACE L_0013):
  *  `Σⱼ ‖u(k+j) − u_s,j‖²_Sⱼ` over the `Nc` decided steps, with `u(k+j) = u(k−1) + Δu(k) + … + Δu(k+j)`.
  *  In those forms `R` weighs the moves and nothing else weighs where the actuator sits, so a plant with
  *  more inputs than setpoints keeps whatever split it started from; this cost settles it (a pump as low
@@ -156,7 +156,7 @@ def mpcAccumulatedTerminalPrediction(a: _MatrixValue, b: _MatrixValue, np: Int, 
   mpcAccumulatedPrediction(a, b, _MatrixValue.identity(a.rows), np, nc, limits)
     .map(p => MpcAccumulatedPrediction(last(p.phi), last(p.gamma)))
 
-/** Builds the condensed MPC quadratic programme (F_0299, APAC L_0002) with one weight for every step:
+/** Builds the condensed MPC quadratic programme (F_0299, AIACE L_0002) with one weight for every step:
  *  [[mpcQp]] with `MpcWeights(Vector(q), Vector(r))`.
  *
  *  @param prediction the prediction matrices, absolute or incremental (F_0298)

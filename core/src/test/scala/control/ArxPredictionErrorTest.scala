@@ -4,7 +4,7 @@ package control
 import core.*
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** F_0330 (APAC L_0014) -- the one-step and the free-run error of an ARX model on a window of data. */
+/** F_0330 (AIACE L_0014) -- the one-step and the free-run error of an ARX model on a window of data. */
 class ArxPredictionErrorTest extends AnyFlatSpec:
 
   private val env = new Environment(Environment.DefaultPrecision, Map.empty)

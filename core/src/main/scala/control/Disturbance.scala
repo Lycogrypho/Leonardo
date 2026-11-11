@@ -6,7 +6,7 @@ import matrix.{numericalRank, rankTolerance, subspaceBasis, Subspace}
 import optimize.qpSolve
 
 
-// Offset-free MPC (F_0300, APAC L_0003).
+// Offset-free MPC (F_0300, AIACE L_0003).
 //
 // A model identified on a nonlinear plant leaves a steady-state offset unless the mismatch is
 // estimated.  The plant is augmented with integrating disturbance states `d(k+1) = d(k)` entering

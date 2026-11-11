@@ -4,9 +4,9 @@ package control
 import core.*
 import org.scalatest.flatspec.AnyFlatSpec
 
-/** F_0328 (APAC L_0012) -- a prediction whose input is already an increment of an accumulated input:
+/** F_0328 (AIACE L_0012) -- a prediction whose input is already an increment of an accumulated input:
  *  `MpcBounds.u` bounds the position, `MpcBounds.du` the moves.
- *  F_0329 (APAC L_0013) -- a weight and a target on that position in the increment forms. */
+ *  F_0329 (AIACE L_0013) -- a weight and a target on that position in the increment forms. */
 class MpcAccumulatedTest extends AnyFlatSpec:
 
   private val env = new Environment(Environment.DefaultPrecision, Map.empty)

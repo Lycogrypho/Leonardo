@@ -47,7 +47,7 @@ final case class MpcIncrementalPrediction(phi: _MatrixValue, psi: _MatrixValue, 
     extends MpcPredictionMatrices
 
 /** The prediction matrices of a model whose **input is already an increment** `Δu` of an accumulated
- *  input (F_0328, APAC L_0012) — [[arx2nmssIncremental]]'s, or any model with `u(k−1)` in its state:
+ *  input (F_0328, AIACE L_0012) — [[arx2nmssIncremental]]'s, or any model with `u(k−1)` in its state:
  *  `Y = Φ·x(k) + Γ·ΔU`.  The moves are increments, as in [[MpcIncrementalPrediction]], so [[mpcQp]]
  *  reads `MpcBounds.u` as bounds on the position `u(k−1) + Δu(k) + … + Δu(k+j)` and `MpcBounds.du` as
  *  bounds on the moves; but the past input is in the state, so there is no `Ψ·u(k−1)` term.
@@ -62,7 +62,7 @@ final case class MpcIncrementalPrediction(phi: _MatrixValue, psi: _MatrixValue, 
  */
 final case class MpcAccumulatedPrediction(phi: _MatrixValue, gamma: _MatrixValue) extends MpcPredictionMatrices
 
-/** The numeric prediction matrices of `(A, B, C)` in absolute inputs (F_0298, APAC L_0001): the dense
+/** The numeric prediction matrices of `(A, B, C)` in absolute inputs (F_0298, AIACE L_0001): the dense
  *  counterpart of [[mpcMatrices]], computed over arrays for a controller that rebuilds them each cycle.
  *
  *  @param a      the state matrix, `n×n`
@@ -80,7 +80,7 @@ def mpcPrediction(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, np: Int, nc
       if i < j then None else if j < nc - 1 then Some(t.markov(i - j)) else Some(t.held(i - j))))
   }
 
-/** The numeric prediction matrices of `(A, B, C)` in increments (F_0298, APAC L_0001).
+/** The numeric prediction matrices of `(A, B, C)` in increments (F_0298, AIACE L_0001).
  *
  *  @param a      the state matrix, `n×n`
  *  @param b      the input matrix, `n×m`
@@ -99,7 +99,7 @@ def mpcIncrementalPrediction(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, 
   }
 
 /** The numeric prediction matrices of a model `(A, B, C)` whose input is an increment of an
- *  accumulated input (F_0328, APAC L_0012): the increments are zero past `Nc`, see
+ *  accumulated input (F_0328, AIACE L_0012): the increments are zero past `Nc`, see
  *  [[MpcAccumulatedPrediction]].  For a plant `(A, B, C)` in absolute inputs, the model
  *  `[[A, B], [0, I]]`, `[[B], [I]]`, `[C, 0]` with the state `[x, u(k−1)]` gives the same programme as
  *  [[mpcIncrementalPrediction]] of the plant.

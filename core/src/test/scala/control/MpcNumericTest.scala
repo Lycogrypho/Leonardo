@@ -5,7 +5,7 @@ import core.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 
-/** F_0298 (APAC L_0001): the numeric MPC prediction matrices, absolute and incremental, checked by
+/** F_0298 (AIACE L_0001): the numeric MPC prediction matrices, absolute and incremental, checked by
  *  simulating the plant over the horizon. */
 class MpcNumericTest extends AnyFlatSpec:
 

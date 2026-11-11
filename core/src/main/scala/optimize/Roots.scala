@@ -6,7 +6,7 @@ import scalar.expand
 import matrix.{_Matrix, numericalRank, rankTolerance}
 
 
-/** Why [[nsolve]] declined (F_0319, APAC L_0011).  The node stays symbolic; the REPL appends why. */
+/** Why [[nsolve]] declined (F_0319, AIACE L_0011).  The node stays symbolic; the REPL appends why. */
 enum RootFailure:
   /** The problem as written is malformed; `detail` says how. */
   case InvalidInput(detail: String)
@@ -45,7 +45,7 @@ private val RootTarget: Double = 1e-10
 
 
 /** Solves the square nonlinear system `F(x) = 0`, `F` an `n x 1` column of expressions in the `n`
- *  unknowns, from `x0`, optionally inside `lb <= x <= ub` (F_0319, APAC L_0011).
+ *  unknowns, from `x0`, optionally inside `lb <= x <= ub` (F_0319, AIACE L_0011).
  *
  *  **Powell's dogleg trust region with More's column scaling** (Decision A, MINPACK's `hybrj`): the
  *  Newton step `J p = -F` when it fits the region, the scaled steepest-descent step when the region is

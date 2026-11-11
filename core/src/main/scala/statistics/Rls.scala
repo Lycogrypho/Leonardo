@@ -119,7 +119,7 @@ def rlsUpdate(theta: _Expression, p: _Expression, phi: _Expression, y: _Expressi
     result       <- inTier(n, m, th ++ pv ++ fv ++ yv :+ lam, env)
   yield result
 
-/** Why the numeric [[rlsUpdate]] declined (F_0308, APAC L_0010). */
+/** Why the numeric [[rlsUpdate]] declined (F_0308, AIACE L_0010). */
 enum RlsFailure:
   /** The forgetting factor is not in `(0, 1]`. */
   case LambdaOutOfRange(lambda: Double)
@@ -130,7 +130,7 @@ enum RlsFailure:
   /** `λ + φᵀPφ` is not positive, so `P` is no covariance. */
   case NonPositiveDenominator(value: Double)
 
-/** One recursive-least-squares update over numbers (F_0308, APAC L_0010): the dense counterpart of the
+/** One recursive-least-squares update over numbers (F_0308, AIACE L_0010): the dense counterpart of the
  *  expression form, for a controller updating each cycle, with the reason a decline carries.  It runs
  *  the same `Double` step the expression form runs on dense operands, so the two agree bit for bit.
  *

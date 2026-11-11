@@ -4,7 +4,7 @@ package optimize
 import core.*
 
 
-// An uncertified derivative-free minimiser over a numeric callback (F_0302, APAC L_0004, the
+// An uncertified derivative-free minimiser over a numeric callback (F_0302, AIACE L_0004, the
 // owner's decision of 2026-11-05).  Library-only.
 
 /** The derivative-free methods, always named by the caller (F_0302; the `c2d` rule). */

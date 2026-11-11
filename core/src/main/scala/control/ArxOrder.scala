@@ -5,7 +5,7 @@ import core.*
 import ArxFailure.*
 
 
-// ARX model-order selection (F_0301, APAC L_0005).
+// ARX model-order selection (F_0301, AIACE L_0005).
 
 /** The information criterion an ARX order search ranks by (F_0301), **always named** (the `c2d`
  *  method rule): with `N` scored equations, `d` coefficients and `V` the determinant of the residual
@@ -152,7 +152,7 @@ private def simulationErrors(model: ArxMimoModel, nk: Int, us: Vector[Vector[Dou
     sim(r)(k) = outputPart(model, (c, t) => sim(c)(t), p, k, r) + inputPart(model, nk, us, k, r)
   Vector.tabulate(n - from)(idx => Vector.tabulate(p)(r => ys(r)(from + idx) - sim(r)(from + idx)))
 
-/** The error of an ARX model on a window of data (F_0330, APAC L_0014).
+/** The error of an ARX model on a window of data (F_0330, AIACE L_0014).
  *
  *  @param rms       the root mean square of each output's residual over the scored samples
  *  @param residuals `p×(N − from)`: row `r` holds output `r`'s residual `y − ŷ` at `k = from … N − 1`
@@ -161,7 +161,7 @@ private def simulationErrors(model: ArxMimoModel, nk: Int, us: Vector[Vector[Dou
  */
 final case class ArxPredictionError(rms: Vector[Double], residuals: _MatrixValue, from: Int)
 
-/** The **one-step** prediction error of an ARX model on a window of data (F_0330, APAC L_0014):
+/** The **one-step** prediction error of an ARX model on a window of data (F_0330, AIACE L_0014):
  *  `y(k) − Σ aᵢ·y(k−1−i) − Σ bₗ·u(k−nk−l)` with the **measured** past outputs, the residual
  *  [[arx]] minimises and [[arxOrderSelection]] ranks by — on any data, the model's own or a window it
  *  was not fitted on.  The data is read as [[arxRegressors]] reads it, in the predictor sign.
@@ -181,7 +181,7 @@ def arxPredictionError(model: ArxMimoModel, nk: Int, u: _MatrixValue, y: _Matrix
                        env: Environment): Either[ArxFailure, ArxPredictionError] =
   modelError(model, nk, u, y, env, predictionErrors)
 
-/** The **free-run** (simulation) error of an ARX model on a window of data (F_0330, APAC L_0014): the
+/** The **free-run** (simulation) error of an ARX model on a window of data (F_0330, AIACE L_0014): the
  *  outputs before sample `max(na, nk + nb − 1)` are the measured ones, and every later output is the
  *  model's own, fed back — the measured inputs drive it, the measured outputs never correct it.  It is
  *  the test of a model used to predict over a horizon: an error the one-step prediction forgets at

@@ -5,7 +5,7 @@ import core.*
 import matrix.{rankTolerance, subspaceBasis, Subspace}
 
 
-// A realisation reduced to its McMillan degree (F_0307, APAC L_0009).
+// A realisation reduced to its McMillan degree (F_0307, AIACE L_0009).
 
 /** Why [[minreal]] declined (F_0307). */
 enum MinrealFailure:
@@ -29,7 +29,7 @@ enum MinrealFailure:
 final case class MinimalRealisation(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, d: _MatrixValue, order: Int)
 
 /** Reduces a discrete- or continuous-time realisation to its controllable and observable part
- *  (F_0307, APAC L_0009): the Kalman decomposition, which removes exactly the states that do not
+ *  (F_0307, AIACE L_0009): the Kalman decomposition, which removes exactly the states that do not
  *  reach the input-output map.
  *
  *  First an orthonormal basis `U` of the controllable subspace (the range of `[B, AB, …, Aⁿ⁻¹B]`),

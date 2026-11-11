@@ -9,7 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.math.{abs, exp, sqrt}
 
 
-/** F_0319 (APAC L_0011) -- a certified root of a square nonlinear system.
+/** F_0319 (AIACE L_0011) -- a certified root of a square nonlinear system.
  *
  *  The certificate is recomputed here independently of the solver: each equation against the size of
  *  its own terms, at the precision's tolerance. */
@@ -30,7 +30,7 @@ class NSolveTest extends AnyFlatSpec:
 
   private def answer(r: Either[RootFailure, RootResult]): RootResult = r.fold(w => fail(s"declined: $w"), identity)
 
-  // APAC Q15's hydraulics: a pump curve, a retentate valve, a Darcy membrane and a permeate valve,
+  // AIACE Q15's hydraulics: a pump curve, a retentate valve, a Darcy membrane and a permeate valve,
   // unknowns the feed and permeate pressures P1, P2
   private val hydraulics = Seq(
     "(maximum(0, 4*0.64 - P1)/0.05)^(1/2) - 2*0.5*P1^(1/2) - (P1 - P2)",
