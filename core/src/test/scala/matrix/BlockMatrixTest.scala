@@ -34,7 +34,7 @@ class BlockMatrixTest extends AnyFlatSpec:
   private def declines(s: String, e: Environment = env): Unit =
     val node = parse(s)
     node.eval(e) match
-      case Left(r) if r.getClass == node.getClass => succeed
+      case Left(r) if r.getClass == node.getClass => ()
       case other                                  => fail(s"\"$s\" should decline, got $other")
 
   // --- hcat / vcat ---

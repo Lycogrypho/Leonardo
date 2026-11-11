@@ -107,20 +107,27 @@ private def positionalLeaves(vars: Seq[_Variable]): Option[Map[String, Kernel]] 
 // spelled out for the four arithmetic operators alone, where a call is a large share of the cost;
 // a special function costs far more than the call that reaches it, so it only gets the folding.
 
+// Scala 3.3.9 warns (E197) that each SAM lambda below is a new anonymous class at every inline site.
+// That duplication IS the design: every operator gets its own kernel class with its `f` inlined, which is
+// what makes the compiled path 7-10x faster than `eval` (F_0058).  Silenced here, and only here.
+@annotation.nowarn("msg=New anonymous class definition will be duplicated")
 private inline def lift1(ka: Kernel)(inline f: Double => Double): Kernel = ka match
   case c: ConstK => ConstK(f(c.d))
   case a: ArgK   => val i = a.i; (_, xs) => f(xs(i))
   case _         => (x, xs) => f(ka.at(x, xs))
 
+@annotation.nowarn("msg=New anonymous class definition will be duplicated")
 private inline def fold2(ka: Kernel, kb: Kernel)(inline f: (Double, Double) => Double): Kernel = (ka, kb) match
   case (a: ConstK, b: ConstK) => ConstK(f(a.d, b.d))
   case _                      => (x, xs) => f(ka.at(x, xs), kb.at(x, xs))
 
+@annotation.nowarn("msg=New anonymous class definition will be duplicated")
 private inline def fold3(ka: Kernel, kb: Kernel, kc: Kernel)
                         (inline f: (Double, Double, Double) => Double): Kernel = (ka, kb, kc) match
   case (p: ConstK, q: ConstK, r: ConstK) => ConstK(f(p.d, q.d, r.d))
   case _                                 => (x, xs) => f(ka.at(x, xs), kb.at(x, xs), kc.at(x, xs))
 
+@annotation.nowarn("msg=New anonymous class definition will be duplicated")
 private inline def lift2(ka: Kernel, kb: Kernel)(inline f: (Double, Double) => Double): Kernel = (ka, kb) match
   case (a: ConstK, b: ConstK) => ConstK(f(a.d, b.d))
   case (a: ConstK, b: ArgK)   => val (c, j) = (a.d, b.i); (_, xs) => f(c, xs(j))

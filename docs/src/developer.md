@@ -1510,7 +1510,7 @@ assert(math.abs(result - expected) < 1e-4)
 
 ## Build system
 
-The project uses SBT 1.13.0.  The version number is derived from git tags via
+The project uses SBT 1.13.1.  The version number is derived from git tags via
 `sbt-dynver` — do not hardcode it.
 
 Key build file sections:
