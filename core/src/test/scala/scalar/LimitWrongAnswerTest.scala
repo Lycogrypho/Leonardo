@@ -106,3 +106,27 @@ class LimitWrongAnswerTest extends AnyFlatSpec:
       is("limit((x^2 - 1)/(x - 1), x, 1)", 2.0)
       is("limit(sin(x), x, pi)", 0.0)
   }
+
+  "a function at the limit of its argument, at infinity" should "not answer a closed node or a pole at its rounding (F_0341)" in {
+    // the growth arm took f(c) as a constant: `digamma(0.0)`, and `sec` at the reading of pi/2 as 1.6E16
+    rightOrDeclined("limit(digamma(1/x), x, inf)", Double.NegativeInfinity)
+    rightOrDeclined("limit(Gamma(1/x), x, inf)", Double.PositiveInfinity)
+    rightOrDeclined("limit(lgamma(1/x), x, inf)", Double.PositiveInfinity)
+    rightOrDeclined("limit(fact(1/x - 1), x, inf)", Double.PositiveInfinity)
+    rightOrDeclined("limit(Ei(1/x), x, inf)", Double.NegativeInfinity)
+    rightOrDeclined("limit(sec(1/x + pi/2), x, inf)", Double.NegativeInfinity)
+    rightOrDeclined("limit(tan(1/x + pi/2), x, inf)", Double.NegativeInfinity)
+  }
+
+  it should "still answer where the function is continuous (F_0341)" in {
+    for exact <- Seq(false, true) do
+      def is(src: String, want: Double): Unit = limitOf(src, exact) match
+        case Some(d) => assert(math.abs(d - want) <= 1e-6 * math.max(1.0, math.abs(want)), s"$src: $d")
+        case None    => fail(s"$src (exact = $exact): declined")
+      is("limit(sin(1 + 1/x), x, inf)", math.sin(1))
+      is("limit(Gamma(2 + 1/x), x, inf)", 1.0)
+      is("limit(digamma(1 + 1/x), x, inf)", -0.5772156649015329)
+      is("limit(x*sin(1/x), x, inf)", 1.0)
+      is("limit(acosh(1 + 1/x), x, inf)", 0.0)
+      is("limit(Gamma(x), x, 2)", 1.0)
+  }

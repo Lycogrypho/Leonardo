@@ -66,3 +66,26 @@ class LimitJumpTest extends AnyFlatSpec:
     // a limit of a transform or an unevaluated derivative is not the transform of the limit
     assert(eval("limit(digamma(x) + floor(x), x, 1)").isLeft)
   }
+
+  "a jump reached within the rounding of the argument" should "still be a jump (F_0342)" in {
+    // 0.3/0.1 is 2.9999999999999996: read exactly, it was no jump and floor of it answered 2.0
+    assert(eval("limit(floor(x/0.1), x, 0.3)").isLeft)
+    assert(eval("limit(ceil(x/0.1), x, 0.3)").isLeft)
+    assert(number(eval("limit(floor(x/0.1), x, 0.3, +)")) == 3.0)
+    assert(number(eval("limit(floor(x/0.1), x, 0.3, -)")) == 2.0)
+    assert(number(eval("limit(ceil(x/0.1), x, 0.3, +)")) == 4.0)
+    assert(number(eval("limit(ceil(x/0.1), x, 0.3, -)")) == 3.0)
+    assert(eval("limit(round(x/0.1), x, 0.25)").isLeft)
+    // beside the jump, nothing changes
+    assert(number(eval("limit(floor(x/0.1), x, 0.35)")) == 3.0)
+    assert(number(eval("limit(floor(x/0.1), x, 0.3 + 1e-9)")) == 3.0)
+  }
+
+  it should "be found by the limit algebra itself" in {
+    // the arm's own jump test, where the other tiers are not consulted
+    val alg = LimitAlgebra(_Variable("x"), env, exact = false)
+    val e   = Parser.parse("floor(x/0.1)").get
+    assert(alg.lim(e, alg.Pt.At(_Number(0.3), 1)).collect { case alg.LVal.Fin(_Number(d), _) => d }.contains(3.0))
+    assert(alg.lim(e, alg.Pt.At(_Number(0.3), -1)).collect { case alg.LVal.Fin(_Number(d), _) => d }.contains(2.0))
+    assert(limitAlgebra(e, _Variable("x"), _Number(0.3), LimitDir.Both, env).isEmpty)
+  }

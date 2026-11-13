@@ -38,12 +38,13 @@ import logic.{And, Or}
  */
 private[equation] def solveInequality(c: _Comparison, v: _Variable,
                                       env: Environment): Option[_Expression] =
-  val answer = absTier(c, v, env).orElse(polynomialOrRational(c, v, env))
-  // F_0337: the bounds found in `Double` written in the comparison's tier, each the exact root it reads
-  if !_Rational.containsExactIn(c, env) then answer
-  else
+  if !_Rational.containsExactIn(c, env) then absTier(c, v, env).orElse(polynomialOrRational(c, v, env))
+  // F_0343: an exact rational function is charted exactly; anything else keeps the `Double` chart, its
+  // bounds written in the comparison's tier where they read an exact root (F_0337)
+  else absTier(c, v, env).orElse(exactChartTier(c, v, env)).orElse {
     val difference = Sum(c.lhs, Product(_Rational.literalLike(-1, c), c.rhs))
-    answer.map(withExactLeaves(_, exactCutPoints(difference, v, 0, env)))
+    polynomialOrRational(c, v, env).map(withExactLeaves(_, exactCutPoints(difference, v, 0, env)))
+  }
 
 /** An absolute value of the unknown against a bound (F_0290): `abs(u) < c` is `-c < u < c`,
  *  `abs(u) > c` is `u < -c or u > c`, `abs(u) < abs(w)` is `u^2 < w^2`; the parts are solved through the

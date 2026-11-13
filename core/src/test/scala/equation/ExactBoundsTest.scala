@@ -56,3 +56,32 @@ class ExactBoundsTest extends AnyFlatSpec:
     assert(plain("domain(1/x, x)") == "((x < 0.0) or (x > 0.0))")
     assert(plain("singularities(1/(x - 1)^2, x)") == "[[1.0], [2.0]]")
   }
+
+  "exact roots close together" should "be separated by the exact sign chart (F_0343)" in {
+    // the Double chart merged them: `x != 1`, and `x > 1` for `x > 1 + 10^-10`
+    assert(exact("solve((x - 1)*(x - 1 - 1/10^10)*(x + 5) > 0, x)") ==
+      "(((x > -5) and (x < 1)) or (x > 10000000001/10000000000))")
+    assert(exact("solve((x - 1)*(x - 1 - 1/10^10) > 0, x)") == "((x < 1) or (x > 10000000001/10000000000))")
+    assert(exact("solve((x - 1)*(x - 1 - 1/10^6) > 0, x)") == "((x < 1) or (x > 1000001/1000000))")
+    assert(exact("solve((x - 1)*(x - 1 - 1/10^6) <= 0, x)") == "((x >= 1) and (x <= 1000001/1000000))")
+    assert(exact("domain(1/((x - 1)*(x - 1 - 1/10^10)), x)") ==
+      "(((x < 1) or ((x > 1) and (x < 10000000001/10000000000))) or (x > 10000000001/10000000000))")
+  }
+
+  it should "answer a non-strict rational inequality, its isolated zero included" in {
+    // the Double chart declines `<=`/`>=` on a rational function; the exact one knows each point
+    assert(exact("solve((x - 1)^2/(x - 2) >= 0, x)") == "(x = 1 or (x > 2))")
+    assert(exact("solve(1/x^2 > 0, x)") == "(x != 0)")
+  }
+
+  it should "read an irrational root from its exact isolation, and a residual quadratic's as surds (F_0347)" in {
+    val cubic = Parser.parse("solve(x^3 - 2*x - 5 > 0, x)", Some(30)) match
+      case Parser.Success(e, _) => e.eval(exactEnv).toExpression
+      case other                => fail(other.toString)
+    cubic match
+      case _Comparison(_, CompareOp.Gt, _Number(r)) => assert(math.abs(r - 2.0945514815423265) <= 4 * math.ulp(r), r.toString)
+      case other                                    => fail(other.toString)
+    val s = exact("singularities(1/((x - 1/3)*(x^2 - 2)), x)")
+    assert(noDecimal(s) && s.contains("√2") && s.contains("1/3"), s)
+    assert(noDecimal(exact("solve((x - 1/3)*(x^2 - 2) > 0, x)")), exact("solve((x - 1/3)*(x^2 - 2) > 0, x)"))
+  }

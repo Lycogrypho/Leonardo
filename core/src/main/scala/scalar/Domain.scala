@@ -150,6 +150,16 @@ private def withSmoothPoints(is: Vector[Interval], e: _Expression, de: _Expressi
   val smooth = gaps.filter(p => smoothAt(e, de, v, p, env))
   if smooth.isEmpty then is else merge(is ++ smooth.map(p => Interval(p, true, p, true)))
 
+/** Whether `e` is differentiable at the isolated point `p` its differentiable domain's constraints
+ *  exclude (F_0278), for a renderer that charts the constraints itself (F_0343).
+ *  @param e   the expression
+ *  @param v   the variable
+ *  @param p   the point
+ *  @param env bindings
+ *  @return whether `p` belongs to the differentiable domain after all */
+private[leonardo] def smoothPointAt(e: _Expression, v: _Variable, p: Double, env: Environment): Boolean =
+  smoothAt(e, derive(e, v), v, p, env)
+
 /** Whether `e` is continuous at `p` and its derivative `de`, as the library computes it there, is the
  *  derivative's two-sided limit (see [[withSmoothPoints]]).  The comparison is relative and has no
  *  floor, so a value that only nears zero disagrees with an exact `0`: the doubt keeps the point out. */

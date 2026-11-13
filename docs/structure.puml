@@ -450,6 +450,16 @@ package "scalar" {
         MaxStaircasePieces (measured)
     }
     "Staircase" ..> "Rounding" : the integer parts' jumps
+    class "ExactRealRoots" <<utility>> [[equations.html]] {
+        __ F_0343 __
+        ~ exactRealRoots(p, maxWork): Option
+        ~ isolateRoots(p, factors, maxWork): Option
+        ~ exactSingularities(e, v, env): Option
+        ~ qFraction(e, v, env): Option
+        Sturm sequence over BigInt, dyadic bisection;
+          rational roots and one quadratic's surds exact
+        MaxExactRootWork (measured)
+    }
     class "GammaP / GammaQ" <<case>> [[expressions.html]] {
         regularised incomplete gamma P / Q
     }
@@ -1350,6 +1360,17 @@ package "equation" {
           root it reads (inequalities, domain)
     }
     "SolveInequality" ..> "ExactBounds" : bounds in the input's tier
+    class "ExactSignChart" <<utility>> [[equations.html]] {
+        __ F_0343 __
+        ~ exactChartTier(c, v, env): Option
+        ~ exactDomainChart(cs, v, env, putBack): Option
+        ~ renderRuns(points, in, v, notEqual)
+        an exact rational function charted
+          with no floating point
+    }
+    "SolveInequality" ..> "ExactSignChart" : the exact tier's chart
+    "ExactSignChart" ..> "ExactRealRoots" : roots, signs, zeros
+    "ExactBounds" ..> "ExactRealRoots" : exact roots
 
     class "_SolveSystem" <<case>> [[equations.html]] {
         + equations : _Expression

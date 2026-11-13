@@ -247,6 +247,15 @@ enum Limit(val default: Long):
    *  `x^2*floor(x)` 0.48 / 0.61 s. */
   case MaxStaircasePieces extends Limit(1000)
 
+  /** Work the exact tier's real-root isolation may spend on one polynomial (F_0343), in word products:
+   *  every `BigInt` product of the Sturm sequence's construction and of its evaluation at a dyadic point
+   *  is charged the product of its operands' sizes in 64-bit words.  Measured (2026-11-12) at 2–25 ns a
+   *  unit on the JVM and **60–165 ns on Node**, so the cap is about 0.8 s there at worst and 0.1 s on
+   *  the JVM.  Inside it: a dense polynomial of degree 12 with 30-bit coefficients (4.3·10⁶), twelve
+   *  linear factors `x − k/7ᵏ` (1.3·10⁶), six cubics multiplied out (2.1·10⁶), three roots `10⁻²⁰` apart
+   *  (5.6·10⁴).  Past it: a dense degree 16 (5.4·10⁷, 4.1 s on Node), 24 linear factors (1.5·10⁷, 1.7 s). */
+  case MaxExactRootWork extends Limit(5000000)
+
 
 /** The budgets an evaluation runs under (F_0124): each [[Limit]]'s default, unless overridden.
  *

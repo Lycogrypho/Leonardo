@@ -117,6 +117,20 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
 - Under `exact on` an inequality's solution set and a domain have exact bounds: `solve(x^2 > 4, x)` is
   `x < -2 or x > 2` (it was `-2.0`, `2.0`, with no note), `domain(ln(x - 1/3), x)` is `x > 1/3` (it was
   `0.33333`), and a quadratic's irrational bound is a surd.  A bound with no exact form stays a decimal.
+- Under `exact on`, exact roots that lie close together are no longer merged: `solve((x - 1)*(x - 1 - 1/10^6) > 0, x)`
+  is `x < 1 or x > 1000001/1000000` (it was `x != 1`), `domain` keeps two close poles apart and `singularities`
+  reports them as two simple poles.  An inequality or a domain over a rational function with exact
+  coefficients is now decided by an exact sign chart: the real roots are counted and isolated with no
+  floating point, the rational ones and the surds of a remaining quadratic factor exact
+  (`singularities(1/((x - 1/3)*(x^2 - 2)), x)` is exact throughout), any other read to full `Double`
+  precision.  A non-strict rational inequality is answered there too: `solve((x - 1)^2/(x - 2) >= 0, x)` is
+  `x = 1 or x > 2`.  New budget `Limit.MaxExactRootWork`; past it, and outside exact mode, the answers are
+  as before.
+- `limit` at infinity through a function no longer answers a call that did not evaluate or a pole read at
+  its rounding: `limit(digamma(1/x), x, inf)` answered `digamma(0.0)` and `limit(sec(1/x + pi/2), x, inf)`
+  `1.6E16`; both now stay unevaluated or answer the limit.
+- `limit(floor(x/0.1), x, 0.3)` stays unevaluated, the two sides being `2` and `3`; it answered `2.0`,
+  because `0.3/0.1` is `2.9999999999999996` in floating point and was not read as a jump.
 - `minimize`, `lsqfit`, `nlp` and `kkt` evaluate their expressions first, as `stationary` does, so an
   objective written through `dot` or `derive` is minimised: `minimize(dot([[x]], [[x]]) - 2*x, [[x]], [[0]], bfgs)`
   is `[[1]]` (it declined as "not a real number").  A session binding of a variable's own name never folds it.

@@ -16,24 +16,28 @@ import scalar.*
 // of the answer are replaced, each by the exact root it is a reading of.  A root with no exact form (a
 // cubic's irrational one) stays a decimal, and the REPL's note says so.
 
-/** The exact real roots of `p` in `v` (F_0337): every rational one, and the surds of a quadratic factor;
- *  empty when `p` is not a polynomial with exact coefficients.
+/** The exact real roots of `p` in `v` (F_0337): every rational one, and the surds of the quadratic left
+ *  after the rational roots are divided out (F_0347: they were found only when the whole polynomial was a
+ *  quadratic); empty when `p` is not a polynomial with exact coefficients, or past `budget`.  Found by
+ *  [[scalar.exactRealRoots]], with no floating point (F_0343).
+ *  @param p      the polynomial
+ *  @param v      the variable
+ *  @param env    bindings and precision
+ *  @param budget the work allowed, in the units of [[core.Limit.MaxExactRootWork]]
+ *  @return the exact roots, as `_Rational` or `_Surd`, and the work spent */
+private def exactRootsWithin(p: _Expression, v: _Variable, env: Environment, budget: Long): (Vector[_Expression], Long) =
+  qFraction(p, v, env).filter((_, d) => d.sizeIs == 1 && budget > 0).fold((Vector.empty[_Expression], 0L)) { (n, _) =>
+    val (roots, spent) = exactRealRootsSpending(n, budget)
+    (roots.fold(Vector.empty[_Expression])(_.collect { case ExactRoot.Exact(x) => x }), spent)
+  }
+
+/** [[exactRootsWithin]] the environment's whole budget.
  *  @param p   the polynomial
  *  @param v   the variable
- *  @param env bindings and precision
+ *  @param env bindings, precision and the budget
  *  @return the exact roots, as `_Rational` or `_Surd` */
 private[leonardo] def exactRootsOf(p: _Expression, v: _Variable, env: Environment): Vector[_Expression] =
-  exactPolynomialRoots(p, v) match
-    case None     => Vector.empty
-    case Some(rs) =>
-      val exact = rs.filter(_Surd.isExact)
-      if exact.size == rs.size then exact
-      else
-        // irrational roots left: a quadratic's are surds, which `solve` forms exactly
-        val surds = solve(_Equation(p, _Rational.literalLike(0, p, env)), v, env).collect {
-          case _Equation(_, r) if _Surd.isExact(r) => r
-        }
-        (exact ++ surds).distinct
+  exactRootsWithin(p, v, env, env.limits(Limit.MaxExactRootWork))._1
 
 /** The exact points where `e = t` can change sign in `v` (F_0337): the roots of `e − t` when it is a
  *  polynomial, and, for every quotient `n/d` in `e`, the roots of `n`, of `d` and of `n − t·d` — the cut
@@ -48,12 +52,14 @@ private[leonardo] def exactCutPoints(e: _Expression, v: _Variable, t: Int, env: 
   def tier(n: Int): _Expression = _Rational.literalLike(n, e, env)
   def ratios(x: _Expression): Vector[Ratio] =
     (x match { case r: Ratio => Vector(r); case _ => Vector.empty }) ++ x.children.toVector.flatMap(ratios)
-  val whole = exactRootsOf(Sum(e, Product(tier(-1), tier(t))), v, env)
-  val parts = ratios(e).flatMap { case Ratio(n, d) =>
-    exactRootsOf(n, v, env) ++ exactRootsOf(d, v, env) ++
-      (if t == 0 then Vector.empty else exactRootsOf(Sum(n, Product(tier(-t), d)), v, env))
+  // one budget for every polynomial read here, so a call costs at most one `MaxExactRootWork`
+  val polys = Sum(e, Product(tier(-1), tier(t))) +: ratios(e).flatMap { case Ratio(n, d) =>
+    Vector(n, d) ++ (if t == 0 then Vector.empty else Vector(Sum(n, Product(tier(-t), d))))
   }
-  (whole ++ parts).distinct
+  polys.foldLeft((Vector.empty[_Expression], env.limits(Limit.MaxExactRootWork))) { case ((found, left), p) =>
+    val (roots, spent) = exactRootsWithin(p, v, env, left)
+    (found ++ roots, left - spent)
+  }._1.distinct
 
 /** `answer` with every decimal leaf that is, to rounding, one of `exact` replaced by it (F_0337).  Only a
  *  `_Number` is replaced — a leaf already exact stays — and only within `10⁻⁹` of the candidate,

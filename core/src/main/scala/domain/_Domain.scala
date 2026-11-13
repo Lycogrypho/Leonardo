@@ -4,7 +4,7 @@ package domain
 import core.*
 import scalar.*
 import matrix._Matrix
-import equation.{_Comparison, CompareOp, _Equation, exactCutPoints, withExactLeaves}
+import equation.{_Comparison, CompareOp, _Equation, exactCutPoints, exactDomainChart, withExactLeaves}
 import logic.{And, Or}
 
 
@@ -28,7 +28,7 @@ case class _Domain(e: _Expression, v: _Variable, kind: DomainKind = DomainKind.R
   override def rebuild(c: List[_Expression]): _Expression = _Domain(c.head, v, kind)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    renderIn(domainOf(e, v, kind, env), e, v, env).fold(Left(this))(r => Left(r))
+    renderIn(domainOf(e, v, kind, env), e, v, env, smooth = false).fold(Left(this))(r => Left(r))
 
 
 /** `differentiable(e, v)` — where `e` is differentiable, written as a relation in `v`. */
@@ -41,7 +41,7 @@ case class _Differentiable(e: _Expression, v: _Variable, kind: DomainKind = Doma
   override def rebuild(c: List[_Expression]): _Expression = _Differentiable(c.head, v, kind)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    renderIn(differentiableDomainOf(e, v, kind, env), e, v, env).fold(Left(this))(r => Left(r))
+    renderIn(differentiableDomainOf(e, v, kind, env), e, v, env, smooth = kind == DomainKind.Real).fold(Left(this))(r => Left(r))
 
 
 /** `singularities(e, v)` — the isolated singularities of a rational `e`.
@@ -78,7 +78,12 @@ case class _Singularities(e: _Expression, v: _Variable) extends _Expression:
                                     case SingularityKind.Removable  => literal(0, exact)
                                     case SingularityKind.Pole(o)    => literal(o, exact)): _Expression)
         val cells  = if exact then locs.map(withExactLeaves(_, exactCutPoints(e, v, 0, env))) else locs
-        Left(_Matrix(2, ss.size, cells ++ orders))
+        // F_0343: an exact rational function's poles and orders are read exactly, so two close poles
+        // are not one double pole
+        val exactly = if exact then exactSingularities(e, v, env).filter(_.nonEmpty) else None
+        exactly match
+          case Some(xs) => Left(_Matrix(2, xs.size, xs.map(_._1.expression) ++ xs.map(x => literal(x._2, true))))
+          case None     => Left(_Matrix(2, ss.size, cells ++ orders))
 
 
 /** Renders a [[scalar.DomainSet]] as a relation in `v`, or `None` when it cannot be written.
@@ -93,7 +98,7 @@ private[domain] def render(d: DomainSet, v: _Variable): Option[_Expression] = re
  *  rendering invents (`0`, `±1`) are exact, and each interval endpoint — a root found in `Double` — is
  *  replaced by the exact root of the constraint it reads, where one exists.  `domain(ln(x - 1/3), x)`
  *  answered `x > 0.33333`. */
-private def renderIn(d: DomainSet, e: _Expression, v: _Variable, env: Environment): Option[_Expression] =
+private def renderIn(d: DomainSet, e: _Expression, v: _Variable, env: Environment, smooth: Boolean): Option[_Expression] =
   if !_Rational.containsExactIn(e, env) then render(d, v)
   else
     def thresholds(r: Requirement): Seq[Int] = r match
@@ -101,7 +106,10 @@ private def renderIn(d: DomainSet, e: _Expression, v: _Variable, env: Environmen
       case Requirement.InClosedUnit                                             => Seq(-1, 1)
       case _                                                                    => Seq.empty
     lazy val candidates = d.constraints.flatMap(c => thresholds(c.req).flatMap(t => exactCutPoints(c.arg, v, t, env))).distinct
-    render(d, v, exact = true).map(withExactLeaves(_, candidates))
+    // F_0343: exact rational constraints are charted exactly, so two close roots are not merged
+    if d.isEmpty || d.isUnrestricted then render(d, v, exact = true)
+    else exactDomainChart(d.constraints, v, env, p => smooth && smoothPointAt(e, v, p, env))
+      .orElse(render(d, v, exact = true).map(withExactLeaves(_, candidates)))
 
 private def render(d: DomainSet, v: _Variable, exact: Boolean): Option[_Expression] =
   if d.isEmpty then Some(_Bool(false))

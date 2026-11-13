@@ -100,9 +100,13 @@ class ToolsTest extends AnyFlatSpec:
     val go = CountDownLatch(1)
     try
       // half a second, not 50 ms: under a full run's load a stall before the lock exceeded 50 ms, and the
-      // "timed out waiting" refusal (F_0316) abandons nothing -- which is why the assertion names the abandonment
-      assert(w.run(_ => blockOn(go), 500.millis).left.exists(_.contains("the request was abandoned")))
-      assert(w.run(_ => blockOn(go), 500.millis).left.exists(_.contains("the request was abandoned")))
+      // "timed out waiting" refusal (F_0316) abandons nothing -- which is why the assertion names the abandonment.
+      // Repeated until two computations are running: under the same load a request can time out before its
+      // worker thread has started it, and one abandoned before it starts is cancelled, not left running --
+      // the full run of 2026-11-12 counted 1 after two abandonments.
+      val tries = Iterator.continually(w.run(_ => blockOn(go), 500.millis)).take(10)
+        .takeWhile { r => assert(r.left.exists(_.contains("the request was abandoned")), r.toString); w.abandonedRunning < 2 }.size
+      info(s"abandonments before two were running: ${tries + 1}")
       assert(w.abandonedRunning == 2, s"abandoned still running: ${w.abandonedRunning}")
       val refused = w.run(_.execute("1 + 1"))
       assert(refused.left.exists(_.contains("2 abandoned computations")), refused.toString)

@@ -142,7 +142,13 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
   Tiers: constant, linear (with the direction flip on a negative coefficient), quadratic
   (discriminant sign chart), and rational (critical points are the zeros *and* the poles).
   A coefficient whose sign cannot be determined leaves the whole relation symbolic —
-  `solve(a*x > b, x)` is refused rather than solved for one sign of `a`.
+  `solve(a*x > b, x)` is refused rather than solved for one sign of `a`.  Under `exact on` a
+  rational function with exact coefficients is decided by an **exact sign chart**: its real roots
+  are counted by a [Sturm sequence](https://en.wikipedia.org/wiki/Sturm%27s_theorem) and isolated
+  with no floating point, so roots `10⁻¹⁰` apart stay two roots, a rational root or a quadratic
+  factor's surd is an exact bound, and a non-strict relation is answered as well
+  (`solve((x - 1)^2/(x - 2) >= 0, x)` is `x = 1 or x > 2`).  `domain` and `singularities` read
+  their points the same way.
 
 - **Domain analysis**: `domain(e, v)`, `differentiable(e, v)` and `singularities(e, v)`
   report where an expression is defined, differentiable, or singular — answered in the
