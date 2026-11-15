@@ -36,9 +36,9 @@ private[leonardo] object Constraints:
 
   /** Equality constraints as `h = 0`: an expression, or an equation `l = r` read as `l − r`.
    *  `None` when a cell is an inequality, which does not belong in this group. */
-  def equalities(group: _Expression): Option[Vector[_Expression]] =
+  def equalities(group: _Expression, env: Environment = new Environment()): Option[Vector[_Expression]] =
     sequence(cells(group).toList.map {
-      case _Equation(l, r)  => Some(difference(l, r))
+      case _Equation(l, r)  => Some(difference(l, r, env))
       case _: _Comparison   => None
       case e                => Some(e)
     }).map(_.toVector.filterNot(vacuous))
@@ -46,16 +46,18 @@ private[leonardo] object Constraints:
   /** Inequality constraints as `g ≤ 0`: an expression, or `l ≤ r` / `l ≥ r` rewritten to that
    *  form.  A strict inequality is refused, not relaxed — the KKT conditions are stated for
    *  closed constraints, and silently reading `<` as `≤` would answer a different problem. */
-  def inequalities(group: _Expression): Option[Vector[_Expression]] =
+  def inequalities(group: _Expression, env: Environment = new Environment()): Option[Vector[_Expression]] =
     sequence(cells(group).toList.map {
-      case _Comparison(l, CompareOp.Le, r) => Some(difference(l, r))
-      case _Comparison(l, CompareOp.Ge, r) => Some(difference(r, l))
+      case _Comparison(l, CompareOp.Le, r) => Some(difference(l, r, env))
+      case _Comparison(l, CompareOp.Ge, r) => Some(difference(r, l, env))
       case _: _Comparison | _: _Equation   => None
       case e                               => Some(e)
     }).map(_.toVector.filterNot(vacuous))
 
-  private def difference(l: _Expression, r: _Expression): _Expression =
-    simplifyFully(Sum(l, Product(_Rational.literalLike(-1, Sum(l, r)), r)))
+  /** `l − r`, its `-1` in the tier of the sides and the environment (F_0345). */
+  private def difference(l: _Expression, r: _Expression, env: Environment): _Expression =
+    val exact = _Rational.containsExactIn(Sum(l, r), env)
+    simplifyFullyInTier(Sum(l, Product(_Rational.literalLike(-1, Sum(l, r), env), r)), exact)
 
   private def vacuous(e: _Expression): Boolean = e match
     case r: _Rational => r.isZero
@@ -85,14 +87,17 @@ def kktConditions(f: _Expression, g: _Expression, h: _Expression, vars: Vector[_
                   env: Environment): Option[_Expression] =
   for
     _   <- Option.when(distinctVariables(vars))(())
-    gs  <- Constraints.inequalities(g)
-    hs  <- Constraints.equalities(h)
+    gs  <- Constraints.inequalities(g, env)
+    hs  <- Constraints.equalities(h, env)
   yield
     val reserved = reservedNames(f +: (gs ++ hs), vars)
     val mus      = freshNames(gs.size, "mu", reserved)
     val lambdas  = freshNames(hs.size, "lambda", reserved ++ mus.map(_.variable))
-    val zero     = _Rational.literalLike(0, f)
-    val stationarity = vars.toList.map(x => _Equation(lagrangian(f, gs.zip(mus) ++ hs.zip(lambdas), x), zero))
+    // the conditions' zeros and derivatives in the tier of the problem AND the environment (F_0345):
+    // under `exact on` a letters-only problem was stated with `= 0.0` and `<= 0.0`
+    val zero     = _Rational.literalLike(0, f, env)
+    val exact    = (f +: (gs ++ hs)).exists(_Rational.containsExactIn(_, env))
+    val stationarity = vars.toList.map(x => _Equation(lagrangian(f, gs.zip(mus) ++ hs.zip(lambdas), x, exact), zero))
     val primal  = gs.map(gj => _Comparison(gj, CompareOp.Le, zero)) ++ hs.map(hk => _Equation(hk, zero))
     val dual    = mus.map(m => _Comparison(m, CompareOp.Ge, zero))
     val slack   = gs.zip(mus).map((gj, m) => _Equation(simplifyFully(Product(m, gj)), zero))
@@ -116,16 +121,18 @@ def kktPoints(f: _Expression, g: _Expression, h: _Expression, vars: Vector[_Vari
               env: Environment): Option[List[SolutionPoint]] =
   for
     _      <- Option.when(distinctVariables(vars))(())
-    gs     <- Constraints.inequalities(g)
-    hs     <- Constraints.equalities(h)
+    gs     <- Constraints.inequalities(g, env)
+    hs     <- Constraints.equalities(h, env)
     _      <- Option.when(gs.size <= env.limits.count(Limit.MaxKKTInequalities))(())
     perSet <- sequence(activeSets(gs.size).map(a => activeSetPoints(f, gs, hs, a, vars, env)))
   yield projected(perSet.flatten, vars, env)
 
 
-/** `∂/∂x` of `f + Σ multiplier·constraint`. */
-private def lagrangian(f: _Expression, terms: Seq[(_Expression, _Variable)], x: _Variable): _Expression =
-  simplifyFully(terms.foldLeft(derive(f, x)) { case (acc, (c, m)) => Sum(acc, Product(m, derive(c, x))) })
+/** `∂/∂x` of `f + Σ multiplier·constraint`, in the tier given (F_0345). */
+private def lagrangian(f: _Expression, terms: Seq[(_Expression, _Variable)], x: _Variable, exact: Boolean): _Expression =
+  simplifyFullyInTier(terms.foldLeft(deriveInTier(f, x, exact)) { case (acc, (c, m)) =>
+    Sum(acc, Product(m, deriveInTier(c, x, exact)))
+  }, exact)
 
 /** Every subset of `0 until m`. */
 private def activeSets(m: Int): List[Set[Int]] =
@@ -141,7 +148,8 @@ private def activeSetPoints(f: _Expression, gs: Vector[_Expression], hs: Vector[
   val mus       = freshNames(act.size, "__mu", reserved)
   val lambdas   = freshNames(hs.size, "__lambda", reserved ++ mus.map(_.variable))
   val terms     = act.map(gs).zip(mus) ++ hs.zip(lambdas)
-  val eqs       = vars.toList.map(x => lagrangian(f, terms, x)) ++ act.map(gs) ++ hs
+  val exact     = (f +: (gs ++ hs)).exists(_Rational.containsExactIn(_, env))
+  val eqs       = vars.toList.map(x => lagrangian(f, terms, x, exact)) ++ act.map(gs) ++ hs
   eliminate(eqs, vars.toList ++ mus ++ lambdas, env).flatMap { points =>
     sequence(points.map { p =>
       val bound = numericBinding(p, env)

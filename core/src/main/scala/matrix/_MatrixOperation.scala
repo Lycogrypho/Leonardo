@@ -36,7 +36,7 @@ private def asLiteral(r: Either[_Expression, _Value]): Option[_Matrix] = r match
  *  reduction policy is the benchmarked default rather than the environment's, since these
  *  helpers take no `Environment` — the policy is a cost knob, never a semantic one.
  */
-private def sumOf(a: _Expression, b: _Expression): _Expression = (a, b) match
+private def sumOf(a: _Expression, b: _Expression): _Expression = (exactly(a), exactly(b)) match
   case (x: _Rational, y: _Rational) => x.add(y, _Rational.DefaultPolicy)
   // F_0231: a surd cell, exact over one radical; otherwise left as a sum, which the matrix's own
   // evaluation answers at the working precision (no environment here to read it).
@@ -52,7 +52,7 @@ private def isComplexPair(x: _Value, y: _Value): Boolean =
     _Complex.parts(x).isDefined && _Complex.parts(y).isDefined
 
 /** Folds two already-reduced operands with `*`, applying the zero short-circuit. */
-private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (a, b) match
+private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (exactly(a), exactly(b)) match
   // An exact zero stays exact: it is the additive identity of the sums this feeds, so
   // demoting it here would make one zero entry infect a whole exact row.
   case (z: _Rational, _) if z.isZero          => z
@@ -63,6 +63,13 @@ private[matrix] def productOf(a: _Expression, b: _Expression): _Expression = (a,
   case (_Number(x), _Number(y))               => _Number(x * y)
   case (x: _Value, y: _Value) if isComplexPair(x, y) => _Complex.mul(x, y).getOrElse(Product(a, b))
   case _                                      => Product(a, b)
+
+/** An exact based integer as its integer (F_0346): every cell operation of a matrix product, scale or
+ *  sum folds its operands here, so `0b11 * [[1, 2]]` is exact as `0b11 * 1` already was (F_0323).  The
+ *  per-site arms F_0336 added could not reach this path, which builds its cells with no `eval`. */
+private def exactly(e: _Expression): _Expression = e match
+  case v: _Value => _Based.unwrapExact(v)
+  case other     => other
 
 /** Collapses a combined [[_Matrix]] literal to a dense value if all elements are `_Number`s.
  *

@@ -36,3 +36,24 @@ class ExactStationaryTest extends AnyFlatSpec:
     val vs = values("stationary(2*x^3 - 6*x*y + 3*y^2, x, y)", None)
     assert(vs.forall(v => !v.isInstanceOf[_Rational]))
   }
+
+  "a letters-only problem under exact on" should "be answered and stated in the exact tier (F_0345)" in {
+    val exactEnv = Environment(workingPrecision = 30, exactMode = true)
+    def under(s: String): _Expression = Parser.parse(s, Some(30)).get.eval(exactEnv).toExpression
+    // `x = 0.0` beside `y = 1`, and `2.0*x` for the derivative of `x^2`
+    under("stationary(x*y - x, x, y)") match
+      case m: _Matrix => assert(m.elems.forall { case _Equation(_, r) => r.isInstanceOf[_Rational]; case _ => false }, m)
+      case other      => fail(other.toString)
+    under("stationary(x^2 + y^2 - 2*x, x, y)") match
+      case m: _Matrix => assert(m.elems == Vector(_Equation(equation_x, _Rational(1)), _Equation(equation_y, _Rational(0))), m)
+      case other      => fail(other.toString)
+    under("lagrange(x*y, x + y - 1, x, y)") match
+      case m: _Matrix => assert(m.elems.forall { case _Equation(_, r) => _Surd.isExact(r); case _ => false }, m)
+      case other      => fail(other.toString)
+    // the conditions are stated with exact zeros: no `0.0` anywhere
+    val k = under("kkt(x*y, x + y - 1, 0, x, y)").toString
+    assert(!k.contains("0.0") && !k.contains("1.0"), k)
+  }
+
+  private val equation_x = _Variable("x")
+  private val equation_y = _Variable("y")

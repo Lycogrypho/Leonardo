@@ -89,9 +89,32 @@ Parser.parse("solve(x^2 - 5*x + 6 = 0, x)").get.eval(env)
 Parser.parse("solve(x^2 + 1 = 0, x)").get.eval(env)
 ```
 
+A double root is recognised only when the discriminant is within its own rounding of zero, so
+`x^2 - 0.6*x + 0.09 = 0` has the one root `0.3`, while two roots `10⁻⁶` apart stay two.
+
+### Polynomials and rational functions
+
+An equation that is a rational function of the unknown with numeric coefficients has **every**
+real root found, of any degree, a repeated one included:
+
+```scala mdoc
+// (x - 1)²(x + 5) = 0  →  x = -5, x = 1
+Parser.parse("solve((x - 1)^2*(x + 5) = 0, x)").get.eval(env)
+```
+
+The roots are read from the **factors as written**: each factor's roots are found alone and a
+written power is a multiplicity, because multiplying the factors out is what makes close roots
+indistinguishable — `(x - 1)*(x - 1.00001)` has its roots exactly in its factors, and only a
+cancellation in its coefficients.  An inequality, `domain` and `singularities` read their points
+the same way, so `solve((x - 1)*(x - 1.00001) > 0, x)` is `x < 1 or x > 1.00001`.  **What this does
+not cover**: a polynomial of degree three or more typed already multiplied out, whose repeated roots
+are found by a square-free factorisation with a tolerance — two of its roots closer than about
+`10⁻⁵` of their size read as one.  Under `exact on` there is no such limit: the roots are isolated
+exactly.
+
 ### Numeric fallback
 
-Transcendental and higher-degree equations fall back to a sign-change scan over
+Transcendental equations fall back to a sign-change scan over
 `[-100, 100]` followed by the
 [bisection method](https://en.wikipedia.org/wiki/Bisection_method), keeping the 8 roots
 **nearest 0**, in ascending order:

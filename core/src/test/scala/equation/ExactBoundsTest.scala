@@ -85,3 +85,10 @@ class ExactBoundsTest extends AnyFlatSpec:
     assert(noDecimal(s) && s.contains("√2") && s.contains("1/3"), s)
     assert(noDecimal(exact("solve((x - 1/3)*(x^2 - 2) > 0, x)")), exact("solve((x - 1/3)*(x^2 - 2) > 0, x)"))
   }
+
+  "a kink of abs under exact on" should "be an exact zero, read through abs (F_0352)" in {
+    // the derivative's abs(x) != 0 was no rational function and fell to the Double chart: `0.0`
+    assert(exact("differentiable(abs(x), x)") == "((x < 0) or (x > 0))")
+    assert(exact("differentiable(abs(x - 1/3), x)") == "((x < 1/3) or (x > 1/3))")
+    assert(exact("domain(ln(abs(x - 1/3)), x)") == "((x < 1/3) or (x > 1/3))")
+  }

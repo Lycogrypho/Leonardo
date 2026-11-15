@@ -345,69 +345,44 @@ private def intervalsFor(c: Constraint, v: _Variable,
     case Constraint(Abs(_), NonNegative)        => Some(Vector(Interval.All))
     case _                                      => plainIntervalsFor(c, v, env)
 
-/** [[intervalsFor]] for an argument read as it stands. */
+/** [[intervalsFor]] for an argument read as it stands.  Each requirement is a condition on a **sign**:
+ *  `-1 <= g <= 1` is `g + 1 >= 0` and `g - 1 <= 0`, whose charts are intersected — the cut points are
+ *  where `g` crosses each threshold, not where it is zero (cutting at the roots of `g` reports
+ *  `asin(x)` as defined on the whole line). */
 private def plainIntervalsFor(c: Constraint, v: _Variable,
                               env: Environment): Option[Vector[Interval]] =
   import Requirement.*
   c.req match
     case Never                                     => Some(Vector.empty)
     case NotOddMultipleOfHalfPi | NotNonPositiveInteger | NotInteger | NotHalfInteger => None   // infinite exclusion set
-    case Positive    => polySatisfying(c.arg, v, env, Vector(0.0), _ > 0)
-    case NonNegative => polySatisfying(c.arg, v, env, Vector(0.0), _ >= 0)
-    case NonZero     => polySatisfying(c.arg, v, env, Vector(0.0), _ != 0)
+    case Positive    => signIntervals(c.arg, v, env, _ > 0)
+    case NonNegative => signIntervals(c.arg, v, env, _ >= 0)
+    case NonZero     => signIntervals(c.arg, v, env, _ != 0)
     case InClosedUnit =>
-      polySatisfying(c.arg, v, env, Vector(-1.0, 1.0), x => x >= -1 && x <= 1)
+      for
+        above <- signIntervals(Sum(c.arg, _Number(1.0)), v, env, _ >= 0)
+        below <- signIntervals(Sum(c.arg, _Number(-1.0)), v, env, _ <= 0)
+      yield intersectSets(above, below)
 
-/** Intervals where a numeric polynomial in `v` satisfies `holds`, via a sign chart.
+/** The intervals where the sign of a numeric polynomial `f` in `v` satisfies `holds`, by the sign
+ *  chart of its written factors ([[factoredIn]], F_0351).
  *
- *  **The cut points are where the polynomial crosses each `threshold`, not where it is
- *  zero.**  Those coincide for `> 0` and friends, which is why the distinction is easy to
- *  miss, but `-1 <= g <= 1` changes truth value where `g = ±1`; cutting at the roots of `g`
- *  instead reports `asin(x)` as defined on the whole line.
+ *  **A cut point is a zero of `f`, so it belongs exactly when `holds(0)`.**  Its membership used to
+ *  be decided by evaluating the polynomial at the computed root, which is `4·10⁻¹⁶` there and not
+ *  `0`: `domain(1/(x^2 - 2), x)` put both poles back and answered `true`, and `ln(x^2 - 2)` kept one
+ *  end closed (F_0353).  The roots come from each written factor alone, at its own scale (F_0121), a
+ *  repeated one from its square-free part (F_0278, the 2.5 rule).
  */
-private def polySatisfying(arg: _Expression, v: _Variable, env: Environment,
-                           thresholds: Vector[Double],
-                           holds: Double => Boolean): Option[Vector[Interval]] =
-  numericCoeffs(arg, v, env).map { cs =>
-    val cuts = thresholds.flatMap { t =>
-      val shifted = shiftBy(cs, -t)                       // roots of p(v) - t
-      // Exact degree and roots at the polynomial's own scale (F_0121): through polyDegree's
-      // absolute 1e-9 the tiny x² of ln(1e-12·x² + x + 1) was dropped, and with it a branch.
-      // Each square-free factor is root-found separately (F_0278, the 2.5 rule): a repeated root
-      // is scattered by the iteration, and the double roots of (1 - x²)² came back as 1 ± 5e-9.
-      if degreeOf(shifted) < 1 then Vector.empty[Double]
-      else squareFreeFactors(shifted).flatMap((part, _) =>
-             rootsAtScale(part).fold(Vector.empty[Double])(_.collect { case _Number(d) if !d.isNaN => d }))
-    }.sorted.distinct
-
-    if cuts.isEmpty then
-      // No crossing anywhere: one sample decides the whole line.
-      if holds(evalCoeffsReal(cs, 0.0)) then Vector(Interval.All) else Vector.empty
-    else
-      // The outer samples step away by the cut's own size: a fixed `±1.0` is lost to rounding
-      // past ~1e16 and lands on the cut itself, where `ln(x - 1e20)` reported no domain (F_0194).
-      val samples = (cuts.head - math.max(1.0, math.abs(cuts.head))) +:
-                    cuts.sliding(2).collect { case Vector(a, b) => (a + b) / 2 }.toVector :+
-                    (cuts.last + math.max(1.0, math.abs(cuts.last)))
-      val pieces  = samples.zipWithIndex.filter((s, _) => holds(evalCoeffsReal(cs, s))).map { (_, i) =>
-        val lo = if i == 0 then Double.NegativeInfinity else cuts(i - 1)
-        val hi = if i == cuts.size then Double.PositiveInfinity else cuts(i)
-        Interval(lo, false, hi, false)
-      }
-      // A crossing point itself belongs when the relation admits equality there.
-      val atCuts = cuts.filter(r => holds(evalCoeffsReal(cs, r))).map(r => Interval(r, true, r, true))
-      merge(pieces ++ atCuts)
-  }
-
-/** `cs` with `delta` added to its constant term, i.e. the coefficients of `p(v) + delta`. */
-private def shiftBy(cs: Vector[Double], delta: Double): Vector[Double] =
-  if cs.isEmpty then Vector(delta) else cs.updated(0, cs(0) + delta)
-
-/** The numeric coefficients of a polynomial in `v`, trimmed by magnitude (F_0121); `None` if
- *  `e` is not a polynomial with numeric coefficients. */
-private def numericCoeffs(e: _Expression, v: _Variable, env: Environment): Option[Vector[Double]] =
-  rationalCoeffsIn(e, v, env).flatMap { (num, den) =>
-    Option.when(degreeOf(den) == 0)(num.map(_ / den(0)))
+private def signIntervals(f: _Expression, v: _Variable, env: Environment,
+                          holds: Int => Boolean): Option[Vector[Interval]] =
+  factoredIn(f, v, env).filter(_.isPolynomial).map { fd =>
+    val cuts = fd.cuts.map(_.at)
+    val open = (0 to cuts.size).toVector.filter(i => holds(fd.intervalSign(i))).map { i =>
+      Interval(if i == 0 then Double.NegativeInfinity else cuts(i - 1), false,
+               if i == cuts.size then Double.PositiveInfinity else cuts(i), false)
+    }
+    val points = if holds(0) then cuts.map(r => Interval(r, true, r, true)) else Vector.empty
+    merge(open ++ points)
   }
 
 /** Intersects two interval sets: every pairwise overlap, coalesced. */

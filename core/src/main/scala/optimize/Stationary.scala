@@ -37,8 +37,11 @@ enum StationaryKind:
  */
 def stationaryPoints(f: _Expression, vars: Vector[_Variable],
                      env: Environment): Option[List[SolutionPoint]] =
+  // the derivatives in the tier of `f` AND the environment (F_0345): under `exact on` a letters-only
+  // objective has no exact content, and `derive` alone built `2.0*x` for `x^2`
+  val exact = _Rational.containsExactIn(f, env)
   if !distinctVariables(vars) then None
-  else eliminate(vars.toList.map(v => derive(f, v)), vars.toList, env)
+  else eliminate(vars.toList.map(v => deriveInTier(f, v, exact)), vars.toList, env)
 
 /** The second-order test at a stationary point: the signs of the Hessian's eigenvalues.
  *
@@ -86,9 +89,10 @@ def lagrangePoints(f: _Expression, constraints: Vector[_Expression], vars: Vecto
   if !distinctVariables(vars) || constraints.isEmpty then None
   else
     val lambdas = freshNames(constraints.size, "__lambda", reservedNames(f +: constraints, vars))
+    val exact   = (f +: constraints).exists(_Rational.containsExactIn(_, env))   // F_0345
     val stationarity = vars.toList.map { x =>
-      constraints.zip(lambdas).foldLeft(derive(f, x)) { case (acc, (g, l)) =>
-        Sum(acc, Product(_Rational.literalLike(-1, f), Product(l, derive(g, x))))
+      constraints.zip(lambdas).foldLeft(deriveInTier(f, x, exact)) { case (acc, (g, l)) =>
+        Sum(acc, Product(_Rational.literalLike(-1, f, env), Product(l, deriveInTier(g, x, exact))))
       }
     }
     eliminate(stationarity ++ constraints.toList, vars.toList ++ lambdas, env)

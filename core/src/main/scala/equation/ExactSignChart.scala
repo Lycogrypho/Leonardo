@@ -109,7 +109,15 @@ private[equation] def exactChartTier(c: _Comparison, v: _Variable, env: Environm
 private[leonardo] def exactDomainChart(cs: Vector[scalar.Constraint], v: _Variable, env: Environment,
                                        putBack: Double => Boolean): Option[_Expression] =
   import scalar.Requirement.*
-  val thresholds: Option[Vector[(scalar.Constraint, Int)]] = core.sequence(cs.toList.map(c => c.req match
+  // `abs(g)` is read through `g`, as the `Double` resolution does (F_0278): `abs(g) != 0` and `abs(g) > 0`
+  // are `g != 0`, and `abs(g) >= 0` always holds.  Without it the kink of `abs` was no rational
+  // function, fell to the `Double` chart, and `differentiable(abs(x), x)` wrote `0.0` (F_0352).
+  val read = cs.flatMap {
+    case scalar.Constraint(scalar.Abs(g), NonZero | Positive) => Vector(scalar.Constraint(g, NonZero))
+    case scalar.Constraint(scalar.Abs(_), NonNegative)        => Vector.empty
+    case c                                                    => Vector(c)
+  }.distinct
+  val thresholds: Option[Vector[(scalar.Constraint, Int)]] = core.sequence(read.toList.map(c => c.req match
     case Positive | NonNegative | NonZero => Some(Vector((c, 0)))
     case InClosedUnit                    => Some(Vector((c, -1), (c, 1)))
     case _                               => None)).map(_.toVector.flatten)

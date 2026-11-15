@@ -21,7 +21,7 @@ import core.*
  *  divisor depends on `v`, when the pieces exceed [[core.Limit.MaxStaircasePieces]], or when a piece
  *  declines.
  */
-private[scalar] object Staircase:
+private[leonardo] object Staircase:
 
   /** An integer part of the integrand: `node`, the linear argument `slope·v + icpt` whose integers (or
    *  half-integers, for `round`) are its jumps, and the expression it is on a piece given the argument's
@@ -90,18 +90,53 @@ private[scalar] object Staircase:
           g => Floor(g).eval(env).toOption.map(c => Sum(p, Product(_Rational.literalLike(-1, c), Product(q, c))))))
       case _ => None
 
+  /** Why a staircase integral of `e` over `[lo, hi]` was not split, or `None` when it does not hold an
+   *  integer part, or was (F_0348): an argument that is not linear, or more pieces than the budget.
+   *  @param e   the integrand
+   *  @param v   the integration variable
+   *  @param lo  the lower limit, evaluated
+   *  @param hi  the upper limit, evaluated
+   *  @param env bindings and the budgets
+   *  @return the reason, as text */
+  def declineReason(e: _Expression, v: _Variable, lo: _Value, hi: _Value, env: Environment): Option[String] =
+    val found = nodes(e, v)
+    val (a, b) = (num(lo), num(hi))
+    if found.isEmpty || !a.isFinite || !b.isFinite || a == b then None
+    else
+      val (l, h) = if a < b then (lo, hi) else (hi, lo)
+      val exact  = _Rational.containsExactIn(e, env) || _Rational.containsExact(lo) || _Rational.containsExact(hi)
+      found.find(part(_, v, exact, env).isEmpty) match
+        case Some(node) =>
+          Some(s"$node jumps where its argument crosses an integer, and those points are enumerated only " +
+               s"for an argument linear in ${v.variable} with numeric coefficients")
+        case None =>
+          sequence(found.map(part(_, v, exact, env))).flatMap { parts =>
+            val n = pieceCount(parts, l, h, env)
+            Option.when(n.isFinite && n > env.limits(Limit.MaxStaircasePieces))(
+              f"the integrand has ${n}%.0f pieces between its jumps, past the budget of " +
+              s"${env.limits(Limit.MaxStaircasePieces)} (Limit.MaxStaircasePieces)")
+          }
+
+  /** For each part, the range of `k` whose jump `k` (`k + 1/2` for `round`) lies strictly inside the
+   *  argument's range over `(l, h)`. */
+  private def jumpRanges(parts: List[Part], l: _Value, h: _Value, env: Environment): List[(Part, Double, Double)] =
+    def at(p: Part, x: _Value): Double = Sum(Product(p.slope, x), p.icpt).eval(env).toOption.fold(Double.NaN)(num)
+    parts.map { p =>
+      val (ga, gb) = (at(p, l), at(p, h))
+      val shift    = if p.halfIntegers then 0.5 else 0.0
+      (p, math.floor(math.min(ga, gb) - shift) + 1, math.ceil(math.max(ga, gb) - shift) - 1)
+    }
+
+  /** How many pieces the jumps cut `(l, h)` into. */
+  private def pieceCount(parts: List[Part], l: _Value, h: _Value, env: Environment): Double =
+    jumpRanges(parts, l, h, env).map((_, first, last) => math.max(0.0, last - first + 1)).sum + 1
+
   /** Every jump strictly inside `(l, h)`, in the tier of the bounds and coefficients, or `None` past the
    *  piece budget. */
   private def jumpPoints(parts: List[Part], l: _Value, h: _Value, env: Environment): Option[Vector[_Value]] =
     val budget = env.limits(Limit.MaxStaircasePieces)
-    def at(p: Part, x: _Value): Double = Sum(Product(p.slope, x), p.icpt).eval(env).toOption.fold(Double.NaN)(num)
-    val ranges = parts.map { p =>
-      val (ga, gb) = (at(p, l), at(p, h))
-      val shift    = if p.halfIntegers then 0.5 else 0.0
-      // the k whose jump value k + shift lies strictly inside the argument's range
-      (p, math.floor(math.min(ga, gb) - shift) + 1, math.ceil(math.max(ga, gb) - shift) - 1)
-    }
-    val count = ranges.map((_, first, last) => math.max(0.0, last - first + 1)).sum
+    val ranges = jumpRanges(parts, l, h, env)
+    val count  = pieceCount(parts, l, h, env) - 1
     if !count.isFinite || count + 1 > budget then None
     else sequence(ranges.flatMap { (p, first, last) =>
       val exact = _Rational.containsExactIn(Sum(p.slope, p.icpt), env) || _Rational.containsExact(l)

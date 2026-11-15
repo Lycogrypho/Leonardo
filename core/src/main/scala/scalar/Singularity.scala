@@ -40,52 +40,12 @@ case class Singularity(at: Double, kind: SingularityKind)
  */
 private[leonardo] def singularitiesOf(e: _Expression, v: _Variable,
                                       env: Environment): Option[Vector[Singularity]] =
-  rationalCoeffsIn(e, v, env).map { (num, den) =>
-    val numRoots = realRootsWithMultiplicity(num)
-    val denRoots = realRootsWithMultiplicity(den)
-    // The roots' own scale (F_0125): a match is measured against it, not against 1.
-    val scale = (numRoots ++ denRoots).map((r, _) => math.abs(r)).maxOption.getOrElse(0.0)
-    denRoots.map { (centre, denMult) =>
-      val numMult = numRoots.collect { case (r, m) if sameRoot(r, centre, scale) => m }.sum
-      if numMult >= denMult then Singularity(centre, SingularityKind.Removable)
-      else Singularity(centre, SingularityKind.Pole(denMult - numMult))
-    }
-  }
-
-/** How far apart two computed roots may be and still count as the same point.
- *
- *  Only ever compares a numerator root against a denominator one now — the *multiplicity*
- *  of each no longer depends on a tolerance at all (see [[realRootsWithMultiplicity]]).
- */
-private val RootClusterTolerance = 1e-6
-
-/** Whether two computed roots are the same point, relative to the scale of all the roots.
- *  It was relative to `max(1, |a|, |b|)`, an absolute `10⁻⁶` below unit scale, so the
- *  numerator root at `10⁻⁷` matched the pole at `3·10⁻⁷` too and that pole was reported
- *  with order 0 (F_0125). */
-private def sameRoot(a: Double, b: Double, scale: Double): Boolean =
-  math.abs(a - b) <= RootClusterTolerance * scale
-
-/** The distinct real roots of `cs` with their multiplicities, in ascending order.
- *
- *  **Multiplicity comes from square-free factorisation, not from counting scattered
- *  roots.**  The original reading — that a repeated root merely *scatters* under
- *  `polyRoots`, so nearby roots could be clustered and counted — understated the problem:
- *  it turned out that the QR iteration can fail to converge on a repeated root
- *  **entirely**, and `(x-2)^5` then produced no roots at all, silently losing the
- *  singularity rather than misreporting its order.
- *
- *  `squareFreeFactors` splits the polynomial by multiplicity arithmetically, so each part
- *  carries only *simple* roots — well conditioned, and located exactly.  The cluster
- *  tolerance disappears from this computation, taking its failure mode with it.
- *
- *  A complex root whose imaginary part is negligible still counts as real: within a
- *  square-free part that is ordinary rounding, not the old repeated-root perturbation.
- */
-private def realRootsWithMultiplicity(cs: Vector[Double]): Vector[(Double, Int)] =
-  if degreeOf(cs) < 1 then Vector.empty
-  else
-    squareFreeFactors(cs).flatMap { (part, mult) =>
-      realParts(rootsOfSquareFree(part).getOrElse(Vector.empty), RootClusterTolerance).map((_, mult))
-    }.sortBy(_._1)
-
+  // Read as written factors (F_0351): each factor's roots are found alone and a written power is a
+  // multiplicity, so `1/((x - 1)*(x - 1.0001))` is two simple poles; expanded first, its
+  // denominator's gcd read them as one double pole.  A numerator root is the same point as a
+  // denominator one when the two computed locations are within their own rounding, not within a
+  // fixed fraction of the roots' scale.
+  factoredIn(e, v, env).map(_.cuts.filter(_.poleOrder > 0).map { c =>
+    if c.zeroOrder >= c.poleOrder then Singularity(c.at, SingularityKind.Removable)
+    else Singularity(c.at, SingularityKind.Pole(c.poleOrder - c.zeroOrder))
+  })

@@ -81,6 +81,12 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
   val prepared  = eqs.map(e => simplifyFully(substitute(e, params)))
   val tolerance = 0.5 * math.pow(10, -env.precision)
   var steps     = 0
+  // `collect` builds a bare `u`'s unit coefficient and the `0` of an absent term in the tier of `u`
+  // alone, so under `exact on` the equation `x = 0` gave `x = 0.0` (F_0345); read with an exact zero
+  // added, the `solveSystem` precedent (F_0242)
+  val exactZero = Option.when(prepared.exists(_Rational.containsExactIn(_, env)))(_Rational(0))
+  def coeffs(e: _Expression, u: _Variable): Option[Vector[_Expression]] =
+    collect(exactZero.fold(e)(Sum(e, _)), u)
 
   // `None` = decline the whole problem; `Some(list)` = every solution of this branch.
   // `basis` is set on the branch that is already a Gröbner basis, so it is never rebuilt.
@@ -115,11 +121,11 @@ def eliminate(eqs: List[_Expression], unknowns: List[_Variable],
                              (u.variable -> value)
               go(nextEqs, left.filterNot(_ == u), nextAsg)
 
-            val stepped = linearConstantStep(rest, left).map((e, u, value) => assign(u, value, e))
+            val stepped = linearConstantStep(rest, left, coeffs).map((e, u, value) => assign(u, value, e))
               .orElse(univariateStep(rest, left).map { (e, u, roots) =>
                 sequence(roots.toList.map(r => assign(u, r, e))).map(_.flatten)
               })
-              .orElse(linearBranchStep(rest, left).map { (e, u, c0, c1) =>
+              .orElse(linearBranchStep(rest, left, coeffs).map { (e, u, c0, c1) =>
                 val divided = assign(u, solveLinear(c0, c1), e)
                 val vanish  = go(c1 :: c0 :: rest.filterNot(_ == e), left, assigned)
                 for a <- divided; b <- vanish yield a ++ b
@@ -193,20 +199,23 @@ private def constantVerdict(e: _Expression, env: Environment, tolerance: Double)
  *  of the domain analysis it violates — rather than merely unevaluated (F_0335).  The analysis is asked
  *  at a point of a name the residue does not hold, since a closed residue has no variable. */
 private def isUndefined(residue: _Expression, env: Environment): Boolean =
-  violatedAt(residue, _Variable("__closed"), 0.0, env).isDefined
+  // the name is invented, so it comes from `freshVar` (the 2.12 rule; F_0348): none can be captured in
+  // a closed residue, but the rule holds where it cannot matter so it holds where it does
+  violatedAt(residue, freshVar(residue.freeVars, "__closed"), 0.0, env).isDefined
 
 /** Step 1: an equation linear in an unknown whose coefficient is free of every unknown.
  *
  *  Such a coefficient is a number or an expression in the parameters, and is assumed
  *  non-zero — `solveSystem`'s convention.  A coefficient that is *provably* zero is not
  *  linear at all and `collect` would not report it. */
-private def linearConstantStep(eqs: List[_Expression],
-                               left: List[_Variable]): Option[(_Expression, _Variable, _Expression)] =
+private def linearConstantStep(eqs: List[_Expression], left: List[_Variable],
+                               coeffs: (_Expression, _Variable) => Option[Vector[_Expression]])
+    : Option[(_Expression, _Variable, _Expression)] =
   val leftNames = left.map(_.variable).toSet
   (for
     e <- eqs.iterator
     u <- left.iterator
-    cs <- collect(e, u).iterator
+    cs <- coeffs(e, u).iterator
     if cs.sizeIs == 2 && cs(1).freeVars.intersect(leftNames).isEmpty && !isZero(cs(1))
   yield (e, u, solveLinear(cs(0), cs(1)))).nextOption()
 
@@ -227,12 +236,13 @@ private def univariateStep(eqs: List[_Expression],
 /** Step 3: an equation linear in an unknown whose coefficient depends on the others.
  *
  *  @return the equation, the unknown, and the constant and linear coefficients */
-private def linearBranchStep(eqs: List[_Expression], left: List[_Variable])
+private def linearBranchStep(eqs: List[_Expression], left: List[_Variable],
+                             coeffs: (_Expression, _Variable) => Option[Vector[_Expression]])
     : Option[(_Expression, _Variable, _Expression, _Expression)] =
   (for
     e <- eqs.iterator
     u <- left.iterator
-    cs <- collect(e, u).iterator
+    cs <- coeffs(e, u).iterator
     if cs.sizeIs == 2 && !isZero(cs(1))
   yield (e, u, cs(0), cs(1))).nextOption()
 

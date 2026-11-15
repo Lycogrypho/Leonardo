@@ -139,8 +139,10 @@ Discretisation `c2d`/`d2c` always names its method ([`Zoh`](https://en.wikipedia
 - **Inequality solving**: `solve` accepts the comparison relations too, and the answer is
   written in the language itself — `solve(x^2 - 4 > 0, x)` is `(x < -2) or (x > 2)`, and a
   conjunction such as `solve(2*x > 2 and x < 5, x)` solves side by side and recombines.
-  Tiers: constant, linear (with the direction flip on a negative coefficient), quadratic
-  (discriminant sign chart), and rational (critical points are the zeros *and* the poles).
+  Tiers: constant, linear (with the direction flip on a negative coefficient), and a sign chart
+  for every rational function with numeric coefficients, read from its **written factors** so
+  that roots `10⁻⁸` apart stay apart (critical points are the zeros *and* the poles; a non-strict
+  relation keeps an isolated zero: `solve((x - 1)^2/(x - 2) >= 0, x)` is `x = 1 or x > 2`).
   A coefficient whose sign cannot be determined leaves the whole relation symbolic —
   `solve(a*x > b, x)` is refused rather than solved for one sign of `a`.  Under `exact on` a
   rational function with exact coefficients is decided by an **exact sign chart**: its real roots

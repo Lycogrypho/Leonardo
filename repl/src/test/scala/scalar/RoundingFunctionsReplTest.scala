@@ -38,3 +38,9 @@ class RoundingFunctionsReplTest extends AnyFlatSpec:
   it should "leave a zero divisor as written" in {
     assert(Session().execute("mod(7, 0)") == "mod(7.0, 0.0)")
   }
+
+  it should "say why a staircase integral was not split (F_0348)" in {
+    val out = Session().execute("integral(floor(1000*x), x, 0, 2)")
+    assert(out.contains("integral declined:") && out.contains("MaxStaircasePieces"), out)
+    assert(!Session().execute("integral(floor(x), x, 0, 3)").contains("declined"))
+  }

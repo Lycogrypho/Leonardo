@@ -97,10 +97,50 @@ private def scalarRoots(eq: _Equation, v: _Variable, env: Environment): List[_Eq
     case Some(cs) if cs.size == 1 => Nil   // constant in v: nothing to solve for
     case Some(cs) if cs.size == 2 =>
       bound(List(simplifyFully(Ratio(Product(minusOne, cs(0)), cs(1)))))
-    case Some(cs) if cs.size == 3 => bound(quadraticRoots(cs(0), cs(1), cs(2), env))
-    // An invertible function of the unknown, inverted (F_0295), before the numeric scan, which
+    // A quadratic with exact or symbolic coefficients keeps its closed forms; a numeric one is read
+    // as its written factors first (F_0351), so `(x - 1)*(x - 1.000001) = 0` is not expanded.
+    case Some(cs) if cs.size == 3 =>
+      val closed = quadraticRoots(cs(0), cs(1), cs(2), env)
+      if _Rational.containsExactIn(eq, env) then bound(closed) else bound(factoredRoots(eq, v, env).getOrElse(closed))
+    // A rational function with numeric coefficients has every real root found (F_0354), then an
+    // invertible function of the unknown is inverted (F_0295), and only then the numeric scan, which
     // looks only in [-100, 100]: `exp(-t/1000) = 1/2` has its root at 693.
-    case _ => inverted(eq, v, env).getOrElse(bound(numericRoots(difference, v, env)))
+    case _ => factoredRoots(eq, v, env).map(bound)
+                .orElse(inverted(eq, v, env)).getOrElse(bound(numericRoots(difference, v, env)))
+
+/** Every real root of `lhs = rhs` when it is a rational function of `v` with numeric coefficients,
+ *  or `None` (F_0354, F_0351).
+ *
+ *  A polynomial of degree three or more used to go to the sign-change scan over `[-100, 100]`, which
+ *  cannot see a root of even multiplicity (`(x - 1)^2*(x + 5) = 0` answered `-5` alone, and
+ *  `x^4 - 2*x^2 + 1 = 0` nothing), two roots in one cell, or a root outside the window — and the
+ *  partial list was bound as the answer.  The roots are those of the **written factors**
+ *  ([[scalar.factoredIn]]): the zeros of the numerator that no denominator factor cancels.  With exact
+ *  coefficients they are isolated exactly ([[scalar.isolateRoots]], F_0343), a rational root or a
+ *  quadratic factor's surd exact and any other read to `Double` precision.
+ *
+ *  @param eq  the equation
+ *  @param v   the unknown
+ *  @param env bindings and the budget
+ *  @return the real roots, ascending, or `None` when the equation is not such a function
+ */
+private def factoredRoots(eq: _Equation, v: _Variable, env: Environment): Option[List[_Expression]] =
+  def zero(e: _Expression): Boolean = !dependsOn(e, v) && (e.eval(env) match
+    case Right(_Number(d)) => d == 0.0
+    case _                 => false)
+  val f =
+    if zero(eq.rhs) then eq.lhs
+    else if zero(eq.lhs) then eq.rhs
+    else Sum(eq.lhs, Product(_Rational.literalLike(-1, eq), eq.rhs))
+  val exactly =
+    if !_Rational.containsExactIn(eq, env) then None
+    else qFraction(f, v, env).filter((n, _) => n.nonEmpty).flatMap { (n, d) =>
+      isolateRoots(qTimesPoly(n, d), Vector(n, d), env.limits(Limit.MaxExactRootWork)).map { iso =>
+        iso.roots.indices.toList.filter(j => iso.vanishes(0)(j) && !iso.vanishes(1)(j)).map(iso.roots(_).expression)
+      }
+    }
+  exactly.orElse(factoredIn(f, v, env).filterNot(_.isZero).map(
+    _.cuts.toList.filter(c => c.poleOrder == 0 && c.zeroOrder > 0).map(c => _Number(c.at): _Expression)))
 
 /** `f(w) = c` solved by inverting `f` where it is `exp`, `ln`, `log_b` or `b^w` for a constant base,
  *  after peeling the constant terms and factors around it; the inner equation goes back through the
@@ -526,20 +566,10 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression,
     case (a0: _Rational, a1: _Rational, a2: _Rational) =>
       exactQuadraticRoots(a0, a1, a2)
         .getOrElse(quadraticRoots(_Number(a0.toDouble), _Number(a1.toDouble), _Number(a2.toDouble), env))
+    // The stable form, and a double root where the discriminant is within its own rounding of zero
+    // (F_0351): the one reading the sign charts share, `scalar.realRoots`.
     case (_Number(a0), _Number(a1), _Number(a2)) =>
-      val delta = a1 * a1 - 4.0 * a2 * a0
-      if delta < 0.0 then Nil
-      else if delta == 0.0 then List(_Number(-a1 / (2.0 * a2)))
-      else
-        val sq = math.sqrt(delta)
-        // signum(0) is 0, which would collapse q; with b = 0 the two terms cannot
-        // cancel anyway, so take the plain form there.
-        val q  = if a1 == 0.0 then -sq / 2.0 else -(a1 + math.signum(a1) * sq) / 2.0
-        // q is never 0 here: delta > 0 forces sq > 0, and a1 + signum(a1)*sq has the
-        // magnitude of |a1| + sq.  So both divisions are safe.
-        val r1 = q / a2
-        val r2 = a0 / q
-        List(_Number(math.min(r1, r2)), _Number(math.max(r1, r2)))
+      realRoots(Vector(a0, a1, a2)).map(r => _Number(r.at)).toList
     case _ =>
       // Symbolic coefficients: both +-sqrt(delta) closed forms (sign of delta unknown).  Every
       // constant in the coefficients' tier (F_0210): `solve(c*x^2 + x/3 = 0, x)` answered
@@ -618,6 +648,8 @@ private[leonardo] def partialRootsNote(eq: _Equation, v: _Variable, env: Environ
   val kept       = env.limits(Limit.MaxNumericRoots)
   collect(difference, v) match
     case Some(cs) if cs.size <= 3 => None
+    // every real root of a rational function is listed (F_0354)
+    case _ if factoredRoots(eq, v, env).isDefined => None
     case _ => periodOf(difference, v, env) match
       case Some(p) =>
         Some(s"the equation is periodic in ${v.variable} with period ${_Number(p).display(env.precision)}: " +

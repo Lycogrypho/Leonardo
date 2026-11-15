@@ -523,3 +523,67 @@ private def isEvenPolynomial(poly: Vector[Double], d: Int): Boolean =
     val terms = Vector.tabulate(d + 1)(i => math.abs(poly(i) / poly(d)) * math.pow(rho, (i - d).toDouble))
     val top   = terms.max
     terms.indices.forall(i => i % 2 == 0 || terms(i) <= RoundingLevel * top)
+
+/** A real root of a polynomial with numeric coefficients (F_0351).
+ *  @param at           where it was computed
+ *  @param multiplicity how often it occurs
+ *  @param uncertainty  how far the true root may lie from `at`, from the rounding of the computation:
+ *                      two roots of different polynomials are one point when they are closer than
+ *                      their uncertainties together */
+private[leonardo] final case class RealRoot(at: Double, multiplicity: Int, uncertainty: Double)
+
+/** How many `ε` of a discriminant's terms its rounding may reach (F_0351): two products and a
+ *  difference, each operand a few ulps from the decimal that was typed.  The discriminant of
+ *  `x² − 0.6x + 0.09` is `10⁻¹⁷`, well inside; that of two roots `10⁻⁶` apart is `10⁻¹³` of its terms,
+ *  well outside.  It was `RationalEps = 10⁻⁹` of them, which read every pair of roots closer than
+ *  `3·10⁻⁵` as one double root. */
+private val DiscriminantUlps = 16.0
+
+/** The real roots of `a·x² + b·x + c`, `a ≠ 0`: a double root when the discriminant is within its own
+ *  rounding of zero, else none or two by the stable form (issue 1.1). */
+private def quadraticRealRoots(p: Vector[Double]): Vector[RealRoot] =
+  val (c, b, a) = (p(0), p(1), p(2))
+  val disc  = b * b - 4 * a * c
+  val tol   = DiscriminantUlps * math.ulp(1.0) * (math.abs(b * b) + math.abs(4 * a * c))
+  if math.abs(disc) <= tol then
+    val r = -b / (2 * a)
+    Vector(RealRoot(r, 2, math.max(math.sqrt(tol) / (2 * math.abs(a)), 4 * math.ulp(r))))
+  else if disc < 0 then Vector.empty
+  else
+    val q = -(b + math.copySign(math.sqrt(disc), b)) / 2
+    Vector(q / a, c / q).sorted.map(simpleRoot(p, 1))
+
+/** A simple root `r` of `part`, with the a-posteriori bound on its error: the rounding of the
+ *  polynomial's evaluation there, `n·ε·Σ|cᵢ||r|ⁱ`, over its slope. */
+private def simpleRoot(part: Vector[Double], multiplicity: Int)(r: Double): RealRoot =
+  val terms = part.zipWithIndex.map((c, i) => math.abs(c) * math.pow(math.abs(r), i.toDouble)).sum
+  val slope = math.abs(evalCoeffsReal(derivCoeffs(part), r))
+  val bound = if slope > 0 && slope.isFinite then 4 * part.size * math.ulp(1.0) * terms / slope else 0.0
+  RealRoot(r, multiplicity, math.max(bound, 4 * math.ulp(r)))
+
+/** The distinct real roots of a polynomial with their multiplicities, ascending (F_0351): the one
+ *  reading every sign chart, `solve`, the domain analysis and `singularities` share.
+ *
+ *  Degrees one and two are solved in closed form — a quadratic never meets a gcd, so two roots are
+ *  one only when its discriminant is rounding ([[DiscriminantUlps]]).  From degree three the
+ *  multiplicities come from [[squareFreeFactors]] (the 2.5 rule: the QR iteration can fail on a
+ *  repeated root outright) and each square-free part's roots from [[rootsAtScale]]; an expanded
+ *  polynomial of that degree therefore still reads roots closer than its gcd's tolerance as one,
+ *  which is why a caller reads **written factors** separately ([[factoredIn]]).
+ *
+ *  @param cs the coefficients, constant term first, trimmed for their provenance
+ *  @return the real roots */
+private[leonardo] def realRoots(cs: Vector[Double]): Vector[RealRoot] =
+  val n = degreeOf(cs)
+  val p = cs.take(n + 1)
+  def ofPart(part0: Vector[Double], mult: Int): Vector[RealRoot] =
+    val part = part0.take(degreeOf(part0) + 1)
+    part.size - 1 match
+      case 1 => Vector(simpleRoot(part, mult)(-part(0) / part(1)))
+      case 2 => quadraticRealRoots(part).map(r => r.copy(multiplicity = r.multiplicity * mult))
+      case d if d >= 3 =>
+        rootsAtScale(part).fold(Vector.empty[RealRoot])(_.collect { case _Number(r) if !r.isNaN => simpleRoot(part, mult)(r) })
+      case _ => Vector.empty
+  if n < 1 then Vector.empty
+  else if n <= 2 then ofPart(p, 1)
+  else squareFreeFactors(p).flatMap(ofPart).sortBy(_.at)

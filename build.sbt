@@ -75,15 +75,13 @@ ThisBuild / developers := List(
 // The release each module is checked against by MiMa. `versionScheme := early-semver` above
 // PROMISES that a patch release stays binary-compatible; MiMa is what makes that promise
 // enforced rather than merely declared, and it only became checkable when 3.7.1 published the
-// first baseline. Bump this on every release, and prefer bumping it in the release commit so
-// the value and the tag cannot drift apart -- 3.7.2 shipped without the bump, which is how it
-// stayed on 3.7.1 for a release.
+// first baseline. Bump this on every release, in a SEPARATE commit once the release resolves from
+// Central (F_0001 step 6): a baseline naming the version being released asks Central for an
+// artifact that does not exist yet, which turns ci.yml red.  Do it promptly -- 3.7.2, 3.8.0, 3.8.1
+// and 3.8.3 each left it a release behind, so the API they first published went unprotected.
 //
-// 3.8.2 since it resolved from Central (2026-10-06), bumped in a separate commit AFTER the
-// release: a baseline naming the version being released asks Central for an artifact that
-// does not exist yet, which turns ci.yml red (F_0001 step 6). 3.8.0 and 3.8.1 had both shipped
-// with the bump pending; the 3.8.2 release branch caught it up to 3.8.1, and this is 3.8.2.
-lazy val mimaBaseline = "3.8.2"
+// 3.8.3 since 2026-11-14 (F_0344), checked green with the filter list empty before the bump.
+lazy val mimaBaseline = "3.8.3"
 
 // The JDK every published module requires (F_0126 Decision A, the owner's choice of 2026-11-06): ONE
 // floor for leonardo, leonardo-repl and leonardo-mcp, emitted with `-release` so the class files say so

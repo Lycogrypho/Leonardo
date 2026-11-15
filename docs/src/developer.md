@@ -1531,7 +1531,7 @@ Key build file sections:
 | `sbt site` | Runs `puml` + `docs/mdoc` + `unidoc` + `injectApiStyles` for the full docs site |
 | `sbt doc` | Per-module Scaladoc — what `packageDoc` publishes as the `-javadoc.jar` |
 | `sbt unidoc` | One combined API across the published modules → `target/scala-<version>/api`; this is what the site publishes, and what keeps `cli` in the reference |
-| `sbt mimaReportBinaryIssues` | Checks the published modules against `mimaBaseline` (currently `3.8.2`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in a **separate commit once the release resolves from Central** -- a baseline naming a version Central does not serve yet turns `ci.yml` red; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
+| `sbt mimaReportBinaryIssues` | Checks the published modules against `mimaBaseline` (currently `3.8.3`).  `versionScheme := early-semver` *promises* binary compatibility across a patch release; this is what enforces it.  Bump the baseline in a **separate commit once the release resolves from Central** -- a baseline naming a version Central does not serve yet turns `ci.yml` red; declare an intentional break in `mimaBinaryIssueFilters` **with a comment** |
 
 The `-Wconf:src=.*package\\.scala:silent` option suppresses the "No class, trait or object
 defined" structural warning for pure package-doc stub files.

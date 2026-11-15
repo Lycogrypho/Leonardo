@@ -65,3 +65,13 @@ class StaircaseIntegralTest extends AnyFlatSpec:
     close("integral(x^2, x, 0, 3)", 9.0)
     assert(exact("integral(x^2, x, 0, 1)") == Right(_Rational.of(BigInt(1), BigInt(3)).getOrElse(fail("1/3"))))
   }
+
+  "a staircase that is not split" should "say why (F_0348)" in {
+    def reason(s: String, lo: Double, hi: Double): Option[String] = Parser.parse(s) match
+      case Parser.Success(e, _) => Staircase.declineReason(e, _Variable("x"), _Number(lo), _Number(hi), env)
+      case other                => fail(other.toString)
+    assert(reason("floor(1000*x)", 0, 2).exists(_.contains("2000 pieces")), reason("floor(1000*x)", 0, 2))
+    assert(reason("floor(x^2)", 0, 2).exists(_.contains("linear")))
+    // a staircase that was split, or none at all, has no reason to give
+    assert(reason("floor(x)", 0, 3).isEmpty && reason("sin(x)", 0, 3).isEmpty)
+  }

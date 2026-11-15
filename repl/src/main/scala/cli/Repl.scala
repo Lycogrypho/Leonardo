@@ -1209,6 +1209,14 @@ final class Session:
       // echoing the call back with no hint that a cap or a non-whole bound was the reason.
       case (r: _Reduction, Left(_: _Reduction)) => r.declineReason(env).map(w => s"${r.kind.word} declined: $w")
       case (t: _Tabulate, Left(_: _Tabulate))   => rangeRefusal(t.lo, t.hi, env).map(w => s"tabulate declined: $w")
+      // F_0348: a staircase integral that was not split says why -- a non-linear argument, or past
+      // MaxStaircasePieces -- as every other budget decline at the prompt does.
+      case (d: _DefIntegral, Left(_: _DefIntegral)) =>
+        for
+          lo <- d.low_limit.eval(env).toOption
+          hi <- d.up_limit.eval(env).toOption
+          w  <- Staircase.declineReason(d.e, d.v, lo, hi, env)
+        yield s"integral declined: $w"
       // F_0077: a series that declined says why -- above all when a derivative outgrew
       // MaxDerivativeNodes, which used to be a hang rather than a refusal.
       case (t: _Taylor, Left(_: _Taylor))   => t.detailed(env).left.toOption.map(w => s"taylor declined: $w")

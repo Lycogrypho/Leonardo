@@ -57,3 +57,13 @@ class ExactBasedReplTest extends AnyFlatSpec:
     t.load(script)
     assert(t.execute("A + 1") == "256", t.execute("A + 1"))
   }
+
+  it should "scale a matrix exactly by a based integer, on either side or through a binding (F_0346)" in {
+    val s = exactSession()
+    assert(s.execute("0b11 * [[1, 2]]") == "[[3, 6]]")
+    assert(s.execute("[[1, 2]] * 0b11") == "[[3, 6]]")
+    assert(s.execute("[[1, 2]] + [[0b1, 0b10]]") == "[[2, 4]]")
+    s.execute("x := 0b11")
+    assert(s.execute("x * [[1, 2]]") == "[[3, 6]]")
+    assert(s.execute("[[1/2, 1]] * 0b10") == "[[1, 2]]")
+  }

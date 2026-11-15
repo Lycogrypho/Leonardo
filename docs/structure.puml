@@ -450,6 +450,13 @@ package "scalar" {
         MaxStaircasePieces (measured)
     }
     "Staircase" ..> "Rounding" : the integer parts' jumps
+    class "Factored" <<utility>> [[equations.html]] {
+        __ F_0351 __
+        ~ factoredIn(e, v, env): Option[Factored]
+        ~ realRoots(cs): Vector[RealRoot]
+        a rational function as its written factors;
+          cut points with orders, signs from roots
+    }
     class "ExactRealRoots" <<utility>> [[equations.html]] {
         __ F_0343 __
         ~ exactRealRoots(p, maxWork): Option
@@ -1349,10 +1356,11 @@ package "equation" {
     class "SolveInequality" <<utility>> [[equations.html]] {
         ~ solveInequality(c, v, env): Option
         __ tiers __
-        constant / linear / quadratic
-        rational: zeros ∪ poles sign chart
+        constant / linear (symbolic coefficients)
+        chartTier: the written factors' sign chart (F_0351)
         answer is _Comparison / or / and / _Bool
     }
+    "SolveInequality" ..> "Factored" : cut points, signs
     class "ExactBounds" <<utility>> [[equations.html]] {
         __ F_0337 __
         ~ exactRootsOf / exactCutPoints

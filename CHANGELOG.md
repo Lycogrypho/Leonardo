@@ -129,6 +129,28 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
 - `limit` at infinity through a function no longer answers a call that did not evaluate or a pole read at
   its rounding: `limit(digamma(1/x), x, inf)` answered `digamma(0.0)` and `limit(sec(1/x + pi/2), x, inf)`
   `1.6E16`; both now stay unevaluated or answer the limit.
+- Close roots are no longer merged in the default mode either, when the polynomial is written as factors:
+  `solve((x - 1)*(x - 1.00001) > 0, x)` is `x < 1 or x > 1.00001` (it was `x != 1.000005`), and `domain` and
+  `singularities` keep two close poles apart.  The roots are read from each written factor separately;
+  a polynomial typed already multiplied out still merges, from degree three, roots closer than about
+  `10⁻⁵`, and a quadratic only within its discriminant's rounding.
+- `domain(1/(x^2 - 2), x)` excludes `±√2` (it answered `true`), `domain(ln(x^2 - 2), x)` excludes them both
+  and `domain((x^2 - 2)^(1/2), x)` includes them both: a point where the argument vanishes was judged by
+  evaluating it at the rounded root.
+- `solve` of a polynomial or rational equation lists every real root: `solve((x - 1)^2*(x + 5) = 0, x)` is
+  `-5` and `1` (it was `-5` alone), `x^4 - 2*x^2 + 1 = 0` has its two roots, and a root outside `[-100, 100]`
+  is found.  A non-strict rational inequality is answered: `solve((x - 1)^2/(x - 2) >= 0, x)` is
+  `x = 1 or x > 2`.
+- Under `exact on`, `stationary`, `lagrange` and `kkt` of an objective written with letters only answer and
+  state their conditions exactly: `stationary(x*y - x, x, y)` is `[[x = 0, y = 1]]` (it mixed `0.0` with `1`)
+  and `kkt(x*y, x + y - 1, 0, x, y)` has no `= 0.0`.
+- Under `exact on`, a based integer scales a matrix exactly: `0b11 * [[1, 2]]` is `[[3, 6]]` (it was
+  `[[3.0, 6.0]]`), on either side and through a binding.
+- Under `exact on`, `differentiable(abs(x), x)` is `x < 0 or x > 0` with exact bounds (it wrote `0.0` and
+  offered `rationalize`).
+- A definite integral of a staircase that is not split says why: `integral(floor(1000*x), x, 0, 2)` notes
+  its 2000 pieces against `Limit.MaxStaircasePieces`, and an integer part of a non-linear argument says
+  its jumps are not enumerated.
 - `limit(floor(x/0.1), x, 0.3)` stays unevaluated, the two sides being `2` and `3`; it answered `2.0`,
   because `0.3/0.1` is `2.9999999999999996` in floating point and was not read as a jump.
 - `minimize`, `lsqfit`, `nlp` and `kkt` evaluate their expressions first, as `stationary` does, so an
