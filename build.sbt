@@ -521,7 +521,7 @@ lazy val mcp = (project in file("mcp"))
     scalacOptions   ++= jdkFloorOptions,
     libraryDependencies ++= Seq(
       "io.modelcontextprotocol.sdk" % "mcp"          % "2.1.0",
-      "org.slf4j"                   % "slf4j-simple" % "2.0.16",
+      "org.slf4j"                   % "slf4j-simple" % "2.0.20",
       "org.scalatest"              %% "scalatest"    % "3.2.20" % Test
     ),
     // F_0309 (audit 2026-11-06): the SDK 2.1.0 resolves Jackson 3.1.4, which carries nine advisories
