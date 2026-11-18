@@ -4061,7 +4061,7 @@ Left(MpcFailure)</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="220.0" width="420.0" x="0.0" y="0.0"/>
+              <y:Geometry height="268.0" width="428.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">MpcQp</y:NodeLabel>
@@ -4075,7 +4075,10 @@ du bounds direct</y:AttributeLabel>
 solve(warm, env) -&gt; first input, moves, slacks
 F_0304/5: MpcWeights (per-step Q, R; terminal P on
 x(k+Np), mpcTerminalPrediction; input target u_s)
-F_0329: MpcPositionTarget (S, u_s on the position)</y:MethodLabel>
+F_0329: MpcPositionTarget (S, u_s on the position)
+F_0357: mpcQpPrepared(prediction, weights, bounds)
+-&gt; MpcQpPrepared; at(r, x, uPrev, bounds) per cycle
+(H, rows, factor of H once; the shape fixed)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -4270,7 +4273,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</y:M
           <data key="d1">https://lycogrypho.github.io/Leonardo/optimization.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="188.0" width="540.0" x="0.0" y="0.0"/>
+              <y:Geometry height="204.0" width="540.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">QP</y:NodeLabel>
@@ -4279,6 +4282,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</y:M
 Goldfarb-Idnani dual active set when H positive DEFINITE;
 KKT-certified at 0.5*10^-precision, relative</y:AttributeLabel>
                 <y:MethodLabel>qpSolve(H, f, ineq, eq, lb, ub, warm, env)
+= qpPrepare(...).solve(...) (F_0357, QpPrepared)
 semidefinite H: primal active set from an lpSolve vertex (F_0074)
 Left(QpFailure) / Right(QpResult incl. active set)
 QpResult.multipliers: QpMultipliers (F_0066)
@@ -8511,7 +8515,7 @@ the cheat sheet (a generated test source)</y:MethodLabel>
         <y:PolyLineEdge>
           <y:LineStyle color="#444466" type="dashed" width="1.0"/>
           <y:Arrows source="none" target="plain"/>
-          <y:EdgeLabel>qpSolve</y:EdgeLabel>
+          <y:EdgeLabel>qpPrepare, once per shape</y:EdgeLabel>
         </y:PolyLineEdge>
       </data>
     </edge>

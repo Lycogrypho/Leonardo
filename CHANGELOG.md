@@ -287,6 +287,13 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   gives each output's RMS and the residual series of the one-step prediction — the loss
   `arxOrderSelection` ranks by — and `arxSimulationError` the same for a free run, the model's own
   outputs fed back, the stricter test of a model used over a horizon.
+- **An MPC programme prepared once per model and tuning**: `mpcQpPrepared(prediction, weights, bounds,
+  limits)` builds the Hessian, the constraint rows and the QP's factor of `H` once, and its
+  `at(reference, x, uPrev, bounds)` forms each cycle's programme from the linear term and the right-hand
+  sides alone - the programme `mpcQp` builds, with the same solution to the last bit.  The bounds given
+  to `mpcQpPrepared` fix which bounds exist and which are finite; `at` refuses another shape.  `qpSolve`
+  also allocates far less, its answers unchanged: on a 6-state, 2-input plant a cycle through `at`
+  allocates 56 KiB where one through `mpcQp` allocated 660 KiB.
 - **Numeric recursive least squares**: `rlsUpdate` over `_MatrixValue`/`Double`, answering
   `Either[RlsFailure, …]` with the reason, bit for bit the expression form's numbers.
 - **An uncertified derivative-free minimiser**: `minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)`

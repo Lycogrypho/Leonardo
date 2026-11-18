@@ -2472,7 +2472,10 @@ F_0304/5: MpcWeights (per-step Q, R; terminal P on
 x(k+Np), mpcTerminalPrediction; input target u_s)
 F_0328: increment forms: u bounds = position rows,
 du bounds direct
-F_0329: MpcPositionTarget (S, u_s on the position)</data>
+F_0329: MpcPositionTarget (S, u_s on the position)
+F_0357: mpcQpPrepared(prediction, weights, bounds)
+-&gt; MpcQpPrepared; at(r, x, uPrev, bounds) per cycle
+(H, rows, factor of H once; the shape fixed)</data>
     </node>
     <node id="n223">
         <data key="n_label">Disturbance</data>
@@ -2596,6 +2599,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</dat
         <data key="n_stereotype">utility</data>
         <data key="n_url">optimization.html</data>
         <data key="n_members">qpSolve(H, f, ineq, eq, lb, ub, warm, env)
+= qpPrepare(...).solve(...) (F_0357, QpPrepared)
 min 1/2 z'Hz + f'z, A z &lt;= b, Aeq z = beq, bounds
 Goldfarb-Idnani dual active set when H positive DEFINITE;
 semidefinite H: primal active set from an lpSolve vertex (F_0074)
@@ -4560,7 +4564,7 @@ the cheat sheet (a generated test source)</data>
     </edge>
     <edge id="e336" source="n222" target="n232">
         <data key="e_relation">dependency</data>
-        <data key="e_label">qpSolve</data>
+        <data key="e_label">qpPrepare, once per shape</data>
     </edge>
     <edge id="e337" source="n223" target="n232">
         <data key="e_relation">dependency</data>

@@ -249,6 +249,13 @@ pieces of an MPC step as Scala functions (no prompt form):
   linear and a quadratic penalty, so a disturbance that makes them unreachable relaxes them instead
   of leaving no answer. `solve(warm, env)` runs `qpSolve` and returns the first input, the moves and
   the slacks.
+- In a control loop, **prepare once per model and tuning**: `mpcQpPrepared(prediction, weights, bounds,
+  limits)` builds the Hessian, the constraint rows and the QP's factor of `H`, and its
+  `at(reference, x, uPrev, bounds)` forms each cycle's programme from the linear term and the
+  right-hand sides alone — the programme `mpcQp` builds, solving to the same bits, for less work and
+  far less allocation. The bounds given to `mpcQpPrepared` fix the **shape**: which of `u`, `Δu` and
+  `y` are bounded, which entries are finite, and the soft outputs; `at` takes new finite values and
+  refuses another shape, since a bound turning finite adds a row and makes another programme.
 - `augmentDisturbance(A, B, C, Bd, Cd, env)` — or `inputDisturbanceModel` / `outputDisturbanceModel`
   — adds integrating disturbances, declining an augmentation the outputs cannot observe (an output
   disturbance on a plant with an integrator, say); `disturbanceObserver` gives its Kalman gain, and

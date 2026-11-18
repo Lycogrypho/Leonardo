@@ -1941,6 +1941,9 @@ package "control" {
         F_0328: increment forms: u bounds = position rows,
           du bounds direct
         F_0329: MpcPositionTarget (S, u_s on the position)
+        F_0357: mpcQpPrepared(prediction, weights, bounds)
+          -> MpcQpPrepared; at(r, x, uPrev, bounds) per cycle
+          (H, rows, factor of H once; the shape fixed)
     }
     class "Disturbance" <<utility>> [[control.html]] {
         __ F_0300: offset-free MPC __
@@ -2034,6 +2037,7 @@ package "optimize" <<Rectangle>> {
 
     class "QP" <<utility>> [[optimization.html]] {
         qpSolve(H, f, ineq, eq, lb, ub, warm, env)
+          = qpPrepare(...).solve(...) (F_0357, QpPrepared)
           min 1/2 z'Hz + f'z, A z <= b, Aeq z = beq, bounds
         Goldfarb-Idnani dual active set when H positive DEFINITE;
         semidefinite H: primal active set from an lpSolve vertex (F_0074)
@@ -2137,7 +2141,7 @@ package "optimize" <<Rectangle>> {
     "Nlp"         ..> "QP"           : SQP subproblems, multipliers
     "Nlp"         ..> "LeastSquares" : evaluator (compiled cells)
     "Nlp"         ..> "_Jacobian"    : one definition of the Jacobian
-    "MpcQp"       ..> "QP"           : qpSolve
+    "MpcQp"       ..> "QP"           : qpPrepare, once per shape
     "Disturbance" ..> "QP"           : steady-state target under bounds
     "Disturbance" ..> "Svd"          : detectability, rank
     "Minreal"     ..> "Svd"          : controllable / observable subspaces
