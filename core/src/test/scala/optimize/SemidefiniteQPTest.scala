@@ -87,6 +87,18 @@ class SemidefiniteQPTest extends AnyFlatSpec:
     assert(hot.iterations <= cold.iterations, s"warm ${hot.iterations} vs cold ${cold.iterations}")
   }
 
+  it should "certify an optimum whose gradient is zero, its curved component reached to the iteration's tolerance (F_0358)" in {
+    // min u1^2 over the slabs 2 ± 2e-10 of u1 + u2 and u2 + u3: the iteration stops with u1 ~ 1e-10, and the
+    // gradient 2·u1 read against its own terms was 100 % of its size, declined Uncertified(1/3)
+    val h = mv(Seq(Seq(2.0, 0.0, 0.0), Seq(0.0, 0.0, 0.0), Seq(0.0, 0.0, 0.0)))
+    val a = mv(Seq(Seq(1.0, 1.0, 0.0), Seq(-1.0, -1.0, 0.0), Seq(0.0, 1.0, 1.0), Seq(0.0, -1.0, -1.0)))
+    val b = Vector(2.0000000002, -1.9999999998, 2.0000000002, -1.9999999998)
+    val free = Vector.fill(3)(Double.NegativeInfinity)
+    qpSolve(h, Vector(0.0, 0.0, 0.0), Some((a, b)), None, free, free.map(-_), Set.empty, env) match
+      case Right(r) => assert(math.abs(r.z(0)) < 1e-8 && math.abs(r.z(0) + r.z(1) - 2.0) < 1e-8, s"${r.z}")
+      case Left(why) => fail(s"$why")
+  }
+
   it should "still decline an indefinite H as not convex" in {
     assert(failure("qp([[1, 0], [0, -1]], [[0], [0]], 0, 0, -inf, inf)") == QpFailure.NotConvex)
   }

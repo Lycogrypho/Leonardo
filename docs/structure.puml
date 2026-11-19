@@ -1950,6 +1950,15 @@ package "control" {
         augmentDisturbance(A, B, C, Bd, Cd); input / output models
         declines a non-detectable augmentation
         disturbanceObserver (kalmanGain), steadyStateTarget
+          (direct, else the one-level target layer)
+    }
+    class "TargetLayer" <<utility>> [[control.html]] {
+        __ F_0358: the steady-state target layer __
+        steadyStateTargets(model, spec, uBounds, u)
+          state space (with d) or a gain y0 + G(u - u0)
+        priority levels of setpoints and output bounds,
+          each held for the next; resting values; the
+          smallest move last -> TargetLayer(x, u, y, unmet)
     }
     class "ArxOrder" <<utility>> [[control.html]] {
         __ F_0301: ARX order selection __
@@ -2142,7 +2151,8 @@ package "optimize" <<Rectangle>> {
     "Nlp"         ..> "LeastSquares" : evaluator (compiled cells)
     "Nlp"         ..> "_Jacobian"    : one definition of the Jacobian
     "MpcQp"       ..> "QP"           : qpPrepare, once per shape
-    "Disturbance" ..> "QP"           : steady-state target under bounds
+    "Disturbance" ..> "TargetLayer"  : least squares, one level
+    "TargetLayer" ..> "QP"           : one qpSolve per level
     "Disturbance" ..> "Svd"          : detectability, rank
     "Minreal"     ..> "Svd"          : controllable / observable subspaces
     "LeastSquares" ..> "_Jacobian"  : one definition of the Jacobian

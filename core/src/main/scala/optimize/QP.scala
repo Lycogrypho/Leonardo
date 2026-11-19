@@ -392,17 +392,23 @@ private final case class QpProblem(n: Int, h: _MatrixValue, f: Array[Double], ro
   def rowScale(r: QpRow, z: Array[Double]): Double =
     math.abs(r.rhs) + r.absSum * math.max(normInfA(z), zScale)
 
-  /** The size of the gradient `Hz + f` at `z`, from its terms: `‖f‖∞ + maxᵢ Σⱼ|Hᵢⱼ zⱼ|`.  The
-   *  terms rather than `‖Hz‖` itself, which cancels to nothing where `z` lies near `H`'s null
-   *  space while its rounding does not. */
+  /** The size of the gradient `Hz + f` at `z`, from its terms at the point's scale:
+   *  `‖f‖∞ + ‖z‖∞·maxᵢ Σⱼ|Hᵢⱼ|`.  The terms rather than `‖Hz‖` itself, which cancels to nothing where
+   *  `z` lies near `H`'s null space while its rounding does not; and **at `‖z‖∞`, not at each `|zⱼ|`**
+   *  (F_0358): a component whose optimum is 0 is reached only to the iteration's tolerance of `‖z‖∞`,
+   *  and measured against its own `|Hᵢⱼ zⱼ|` the gradient it leaves reads as 100 % of the gradient's
+   *  size, so a semidefinite QP whose optimum has a zero gradient (`min u₁²` over a slab of `u₁ + u₂`)
+   *  was declined `Uncertified(1)`.  `‖z‖∞` is the scale the iteration's stopping test and every
+   *  row's slack ([[rowScale]]) already read. */
   def gradientScale(z: Array[Double]): Double =
+    val zMax = normInfA(z)
     var m = 0.0
     var i = 0
     while i < n do
       var s = 0.0
       var j = 0
       while j < n do
-        s += math.abs(h(i, j) * z(j))
+        s += math.abs(h(i, j)) * zMax
         j += 1
       m = math.max(m, s)
       i += 1

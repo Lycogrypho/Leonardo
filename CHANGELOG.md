@@ -294,6 +294,16 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   to `mpcQpPrepared` fix which bounds exist and which are finite; `at` refuses another shape.  `qpSolve`
   also allocates far less, its answers unchanged: on a 6-state, 2-input plant a cycle through `at`
   allocates 56 KiB where one through `mpcQp` allocated 660 KiB.
+- **A steady-state target layer**: `steadyStateTargets(model, spec, uBounds, u, env)` chooses the target
+  of a plant with more inputs than setpoints by priority — levels of setpoints and output bounds (a
+  pressure drop at most 1.8, say) met in order, each without giving up what an earlier one achieved,
+  then the inputs' resting values, then the smallest move from the current input — over a state-space
+  model with its disturbance estimate or a steady-state gain `y_s = y0 + G·(u_s − u0)`.  It reports
+  every goal it could not meet.  `steadyStateTarget` is its one-level case and now answers a unique
+  target where several meet the setpoint.
+- `qpSolve` no longer declines a semidefinite problem whose optimum has a zero gradient (minimising
+  `u₁²` over a band of `u₁ + u₂`, say): it answered `Uncertified`, the iteration having reached `u₁ = 0`
+  only to its tolerance.  Every other answer is unchanged.
 - **Numeric recursive least squares**: `rlsUpdate` over `_MatrixValue`/`Double`, answering
   `Either[RlsFailure, …]` with the reason, bit for bit the expression form's numbers.
 - **An uncertified derivative-free minimiser**: `minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)`

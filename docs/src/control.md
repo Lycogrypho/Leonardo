@@ -262,6 +262,18 @@ pieces of an MPC step as Scala functions (no prompt form):
   `steadyStateTarget` the `(x_s, u_s)` that brings the outputs to the setpoint given the disturbance
   estimate, or the closest reachable one under input bounds. Together they remove the steady-state
   offset a mismatched model leaves.
+- With **more inputs than setpoints**, many steady states meet the setpoints, and `steadyStateTargets`
+  is the **target layer** that chooses one: `steadyStateTargets(model, spec, uBounds, u, env)` takes a
+  state-space model (`StateSpaceSteadyState`, the disturbance estimate included) or a steady-state gain
+  (`GainSteadyState(G, y0, u0)`, `y_s = y0 + G·(u_s − u0)`), and a `TargetSpec` of **priority levels**,
+  each a group of `Setpoint`s and **output bounds** (`OutputBound`, such as a pressure drop at most
+  1.8) with weights inside the level. The first level is met as closely as the input bounds allow, each
+  later one without giving up anything an earlier one achieved; then the inputs' **resting values**
+  (`RestingValues(u_rest, S)`); last the smallest move from the current input `u`, so the target is
+  unique and does not jump between equivalent points from cycle to cycle. `TargetSpec.of` puts every
+  output bound first. The answer `TargetLayer(x, u, y, unmet)` names every goal it could not meet — a
+  setpoint a fouled filter cannot hold, say — which is a report, not a failure. `steadyStateTarget` is
+  its one-level case.
 - `mpcQp` also takes an `MpcWeights` record: a weight per step or one for all, a **terminal cost** on
   `x(k+Np)` (its prediction from `mpcTerminalPrediction`) and, in the absolute form, an **input target**
   `u_s`. Without `u_s` the absolute form's `R` pulls every input towards zero, so a plant that needs a

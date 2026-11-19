@@ -3,7 +3,6 @@ package control
 
 import core.*
 import matrix.{numericalRank, rankTolerance, subspaceBasis, Subspace}
-import optimize.qpSolve
 
 
 // Offset-free MPC (F_0300, AIACE L_0003).
@@ -102,9 +101,12 @@ def disturbanceObserver(model: DisturbanceModel, qw: _MatrixValue, rv: _MatrixVa
  *  `x_s = A·x_s + B·u_s + Bd·d` and `C·x_s + Cd·d = r`.
  *
  *  Solved directly when `[[A − I, B], [C, 0]]` is square and invertible and the answer lies within the
- *  input bounds; otherwise by [[optimize.qpSolve]], minimising `‖C·x_s + Cd·d − r‖²` under the steady
- *  state equation and the bounds, so the closest reachable target is returned, `reached` saying
- *  whether it meets the setpoint (each output to `0.5·10⁻ᵖ` of its own terms).
+ *  input bounds; otherwise by minimising `‖C·x_s + Cd·d − r‖²` under the steady state equation and
+ *  the bounds, so the closest reachable target is returned, `reached` saying
+ *  whether it meets the setpoint (each output to `0.5·10⁻ᵖ` of its own terms).  That path is the
+ *  one-level case of [[steadyStateTargets]] (F_0358): where several targets meet the setpoint (more
+ *  inputs than outputs) the one with the smallest input, each input in its own scale, is chosen;
+ *  resting values, priorities and output bounds are that function's.
  *
  *  @param a       the state matrix, `n×n`
  *  @param b       the input matrix, `n×m`
@@ -146,16 +148,12 @@ def steadyStateTarget(a: _MatrixValue, b: _MatrixValue, c: _MatrixValue, bd: _Ma
     direct match
       case Some(w) => Right(SteadyStateTarget(w.take(n), w.drop(n), reachedAt(w.take(n))))
       case None =>
-        // min ‖C·x + Cd·d − r‖² = wᵀ[[CᵀC, 0], [0, 0]]w + 2(Cd·d − r)ᵀC·x + const
-        val ctc = c.transpose.multiply(c).scale(2.0)
-        val h   = Dense.blocks(Vector(Vector(ctc, Dense.zeros(n, m)), Vector(Dense.zeros(m, n), Dense.zeros(m, m))))
-        val f   = Dense.times(c.transpose, cdd.zip(r).map(_ - _)).map(2.0 * _) ++ Vector.fill(m)(0.0)
-        val eq  = (Dense.blocks(Vector(Vector(iMinusA.scale(-1.0), b))), bdd.map(-_))
-        val lb  = Vector.fill(n)(Double.NegativeInfinity) ++ uBounds.fold(Vector.fill(m)(Double.NegativeInfinity))(_._1)
-        val ub  = Vector.fill(n)(Double.PositiveInfinity) ++ uBounds.fold(Vector.fill(m)(Double.PositiveInfinity))(_._2)
-        qpSolve(h, f, None, Some(eq), lb, ub, Set.empty, env).left.map(MpcFailure.Qp(_)).map { s =>
-          val (x, u) = (s.z.take(n), s.z.drop(n))
-          SteadyStateTarget(x, u, reachedAt(x))
+        // min ‖C·x + Cd·d − r‖², the one-level case of the target layer (F_0358, Decision A1): among
+        // several targets that meet the setpoint, the smallest input in each input's own scale
+        val spec = TargetSpec(Vector(Vector.tabulate(p)(i => TargetGoal.Setpoint(i, r(i)))))
+        steadyStateTargets(StateSpaceSteadyState(a, b, c, bd, cd, d), spec, uBounds, Vector.fill(m)(0.0), env).map { t =>
+          val x = t.x.getOrElse(Vector.empty)
+          SteadyStateTarget(x, t.u, reachedAt(x))
         }
 
 /** `(A, C)` detectable: the unobservable part of `A` strictly inside the unit circle. */
