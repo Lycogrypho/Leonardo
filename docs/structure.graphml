@@ -2614,6 +2614,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</dat
         <data key="n_url">optimization.html</data>
         <data key="n_members">qpSolve(H, f, ineq, eq, lb, ub, warm, env)
 = qpPrepare(...).solve(...) (F_0357, QpPrepared)
+solve(..., start): semidefinite path from a feasible point (F_0359)
 min 1/2 z'Hz + f'z, A z &lt;= b, Aeq z = beq, bounds
 Goldfarb-Idnani dual active set when H positive DEFINITE;
 semidefinite H: primal active set from an lpSolve vertex (F_0074)

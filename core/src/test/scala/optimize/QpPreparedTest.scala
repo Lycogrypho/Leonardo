@@ -61,6 +61,26 @@ class QpPreparedTest extends AnyFlatSpec:
       == Left(QpFailure.InvalidInput("the bounds' finite entries differ from the prepared ones")))
   }
 
+  it should "start a semidefinite problem from a feasible point, and from the LP otherwise, with the same optimum (F_0359)" in {
+    // min (x + y - 2)^2 + (x - 1)^2 under x <= 0.5, y <= 3, with a third variable z that carries no cost,
+    // tied by x + y + z = 4: H is semidefinite, so the primal method runs and the start matters
+    val h = mat(3, 3, (i, j) => Seq(Seq(4.0, 2.0, 0.0), Seq(2.0, 2.0, 0.0), Seq(0.0, 0.0, 0.0))(i)(j))
+    val f = Vector(-6.0, -4.0, 0.0)
+    val a = mat(2, 3, (i, j) => if i == j then 1.0 else 0.0)
+    val b = Vector(0.5, 3.0)
+    val aeq = mat(1, 3, (_, _) => 1.0)
+    val free = Vector.fill(3)(Double.NegativeInfinity)
+    val prepared = qpPrepare(h, Some(a), Some(aeq), free, free.map(-_))
+    def run(start: Option[Array[Double]]) = prepared.solve(f, Some(b), Some(Vector(4.0)), free, free.map(-_), Set.empty, env, start)
+    val reference = run(None).fold(w => fail(s"$w"), identity)
+    assert(math.abs(reference.z(0) - 0.5) < 1e-9 && math.abs(reference.z(1) - 1.5) < 1e-9, s"${reference.z}")
+    // a feasible start, and an infeasible one (x = 3 breaks x <= 0.5), give the same optimum
+    for start <- Seq(Array(0.0, 0.0, 4.0), Array(3.0, 0.0, 1.0)) do
+      run(Some(start)) match
+        case Right(r) => assert(r.z.zip(reference.z).forall((p, q) => math.abs(p - q) < 1e-9), s"${start.toVector}: ${r.z}")
+        case Left(why) => fail(s"${start.toVector}: $why")
+  }
+
   it should "report qpSolve's checks with qpSolve's messages" in {
     val h = mat(2, 2, (i, j) => if i == j then 1.0 else 0.5 * (i + 1))
     val free = Vector.fill(2)(Double.NegativeInfinity)

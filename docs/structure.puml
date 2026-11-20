@@ -2047,6 +2047,7 @@ package "optimize" <<Rectangle>> {
     class "QP" <<utility>> [[optimization.html]] {
         qpSolve(H, f, ineq, eq, lb, ub, warm, env)
           = qpPrepare(...).solve(...) (F_0357, QpPrepared)
+          solve(..., start): semidefinite path from a feasible point (F_0359)
           min 1/2 z'Hz + f'z, A z <= b, Aeq z = beq, bounds
         Goldfarb-Idnani dual active set when H positive DEFINITE;
         semidefinite H: primal active set from an lpSolve vertex (F_0074)

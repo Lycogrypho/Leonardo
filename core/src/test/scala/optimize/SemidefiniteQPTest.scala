@@ -99,6 +99,75 @@ class SemidefiniteQPTest extends AnyFlatSpec:
       case Left(why) => fail(s"$why")
   }
 
+  it should "answer a bounded problem under equalities, not take its optimum's rounding for a ray (F_0359)" in {
+    // a target-layer level: a rank-one cost (H = 2w·FᵀF, symmetric to an ulp) under three equalities, Unbounded
+    // while the ray test read a null direction's share of the vanishing gradient against that gradient's norm
+    val hv = Seq(1.650023308830626, -0.49677112621327213, -1.139576269455828, 0.0, 0.0, -0.49677112621327224, 0.1495624640685211,
+                 0.34309126650137634, 0.0, 0.0, -1.139576269455828, 0.3430912665013763, 0.7870398357143245, 0.0, 0.0) ++ Seq.fill(10)(0.0)
+    val e = Seq(-0.4999021145799545, -0.02229092058112854, -0.01624065263815933, -0.28451368016552536, -0.4380436973469921,
+                0.061159784478232386, -0.24381830314178654, -0.042571764907324276, 2.313006328968705, 1.7213222203655203,
+                -0.0019294488557940184, 0.06419795774144459, -0.23351152956409393, -0.9260519909771605, 1.8875580262360896)
+    val free = Vector.fill(5)(Double.NegativeInfinity)
+    val r = qpSolve(_MatrixValue(5, 5, hv.toArray), Vector(1.7400124235137355, -0.5238640730879108, -1.2017265791232032, 0.0, 0.0), None,
+                    Some((_MatrixValue(3, 5, e.toArray), Vector(-0.05249067764310096, -0.24176425724620756, -0.08882810900763119))),
+                    free, free.map(-_), Set.empty, env)
+    assert(r.isRight, s"$r")
+  }
+
+  it should "answer an unconstrained rank-one problem, not take its optimum's rounding for a ray (F_0359)" in {
+    // min w·(g·u − c)²: at the optimum the gradient is rounding, and a null direction's share of it read as a ray
+    val g = Seq(0.50951, 0.55139, -0.13523)
+    val h = mv(Seq.tabulate(3)(i => Seq.tabulate(3)(j => 2.0 * g(i) * g(j))))
+    val f = Vector.tabulate(3)(i => 2.0 * (-0.8) * g(i))
+    val free = Vector.fill(3)(Double.NegativeInfinity)
+    qpSolve(h, f, None, None, free, free.map(-_), Set.empty, env) match
+      case Right(r) => assert(math.abs(g.indices.map(i => g(i) * r.z(i)).sum - 0.8) < 1e-8, s"${r.z}")
+      case Left(why) => fail(s"$why")
+  }
+
+  it should "not cross a working-set bound along a face that is flat to rounding (F_0359)" in {
+    // min 4.27(x − 1.2043)² under x ≤ −0.0476 and one equality in (x, u1, u2): the face left by the bound
+    // and the equality is flat, its basis carrying x only to 4e-17; read against its own rounding that
+    // curvature took a step of 3e16 in u and put x at 1.2043, through the bound, and certified it
+    val h = mv(Seq(Seq(8.537605828033643, 0.0, 0.0), Seq(0.0, 0.0, 0.0), Seq(0.0, 0.0, 0.0)))
+    val a = mv(Seq(Seq(-0.2748547184880934, 0.0, 0.0), Seq(0.2748547184880934, 0.0, 0.0)))
+    val e = mv(Seq(Seq(-0.601100726743524, -0.6704497241870666, 0.288080976176568)))
+    val free = Vector.fill(3)(Double.NegativeInfinity)
+    qpSolve(h, Vector(-10.281864520109403, 0.0, 0.0), Some((a, Vector(0.8938755367590219, -0.013092361820549016))),
+            Some((e, Vector(0.0780227028635841))), free, free.map(-_), Set.empty, env) match
+      case Right(r) =>
+        assert(math.abs(r.z(0) + 0.047633753179013194) < 1e-9, s"${r.z}")
+        assert(r.z.forall(v => math.abs(v) < 1e3), s"${r.z}")
+      case Left(why) => fail(s"$why")
+  }
+
+  it should "meet every constraint it answers under, each against its own terms, on random semidefinite problems (F_0359)" in {
+    // a row's slack is certified against ‖z‖∞ over every variable, so a step that blows up unrelated variables
+    // can hide a violated row; this reads each row against its own terms instead
+    val rnd = new java.util.Random(359)
+    var answered = 0
+    for _ <- 0 until 200 do
+      val n = 2 + rnd.nextInt(6)
+      val k = 1 + rnd.nextInt(n - 1)
+      val gm = Seq.fill(k)(Seq.fill(n)(rnd.nextGaussian()))
+      val h = mv(Seq.tabulate(n)(i => Seq.tabulate(n)(j => gm.map(r => r(i) * r(j)).sum)))
+      val f = Vector.fill(n)(rnd.nextGaussian())
+      val m = rnd.nextInt(2 * n + 1)
+      val a = Seq.fill(m)(Seq.fill(n)(rnd.nextGaussian()))
+      val b = Vector.fill(m)(rnd.nextGaussian())
+      val lb = Vector.fill(n)(if rnd.nextBoolean() then -2.0 else Double.NegativeInfinity)
+      val ub = Vector.fill(n)(if rnd.nextBoolean() then 2.0 else Double.PositiveInfinity)
+      qpSolve(h, f, Option.when(m > 0)((mv(a), b)), None, lb, ub, Set.empty, env).foreach { r =>
+        answered += 1
+        a.indices.foreach { i =>
+          val terms = a(i).indices.map(j => math.abs(a(i)(j) * r.z(j))).sum + math.abs(b(i))
+          assert(a(i).indices.map(j => a(i)(j) * r.z(j)).sum - b(i) <= 1e-7 * terms, s"row $i of ${r.z}")
+        }
+        r.z.indices.foreach(j => assert(r.z(j) >= lb(j) - 1e-9 * (1 + math.abs(lb(j))) && r.z(j) <= ub(j) + 1e-9 * (1 + math.abs(ub(j)))))
+      }
+    assert(answered > 50, s"only $answered answered")
+  }
+
   it should "still decline an indefinite H as not convex" in {
     assert(failure("qp([[1, 0], [0, -1]], [[0], [0]], 0, 0, -inf, inf)") == QpFailure.NotConvex)
   }

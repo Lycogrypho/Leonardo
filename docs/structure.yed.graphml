@@ -4293,7 +4293,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</y:M
           <data key="d1">https://lycogrypho.github.io/Leonardo/optimization.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="204.0" width="540.0" x="0.0" y="0.0"/>
+              <y:Geometry height="220.0" width="556.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">QP</y:NodeLabel>
@@ -4303,6 +4303,7 @@ Goldfarb-Idnani dual active set when H positive DEFINITE;
 KKT-certified at 0.5*10^-precision, relative</y:AttributeLabel>
                 <y:MethodLabel>qpSolve(H, f, ineq, eq, lb, ub, warm, env)
 = qpPrepare(...).solve(...) (F_0357, QpPrepared)
+solve(..., start): semidefinite path from a feasible point (F_0359)
 semidefinite H: primal active set from an lpSolve vertex (F_0074)
 Left(QpFailure) / Right(QpResult incl. active set)
 QpResult.multipliers: QpMultipliers (F_0066)

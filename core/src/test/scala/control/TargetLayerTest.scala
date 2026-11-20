@@ -129,6 +129,34 @@ class TargetLayerTest extends AnyFlatSpec:
     assert(math.abs(t.y(0) - 2.0) <= 3e-10, s"${t.y}")
   }
 
+  it should "keep an output bound when a later setpoint on the same state cannot be met (F_0359)" in {
+    // one state drives both outputs: y0 >= -0.19 caps x, so the setpoint on y1 is given up, not the bound
+    val ss = StateSpaceSteadyState(m(1, 1, 0.3989), m(1, 2, -0.67045, 0.28808), m(2, 1, -0.27485, -1.78397), m(1, 1, 0.65622),
+                                   m(2, 1, 1.71165, 0.76904), Vector(-0.11889644684252212))
+    val spec = TargetSpec(Vector(Vector(OutputBound(0, -0.19041706075894105, 0.6903661140481331, 1.4118214604098875)),
+                                 Vector(Setpoint(1, -2.2398746571050423, 1.3413180151879085))))
+    val t = ok(steadyStateTargets(ss, spec, None, Vector(-0.2420998211523564, -0.015753210683391812), env))
+    assert(t.unmet == Vector(spec.levels(1).head), s"${t.unmet}")
+    assert(t.y(0) >= -0.19041706075894105 - 1e-9, s"${t.y}")
+  }
+
+  it should "answer random problems, every level from the one before it (F_0359)" in {
+    val rnd = new java.util.Random(359)
+    for i <- 0 until 60 do
+      val (mm, p) = (1 + rnd.nextInt(4), 1 + rnd.nextInt(3))
+      val n = 1 + rnd.nextInt(5)
+      val model = StateSpaceSteadyState(m(n, n, Seq.tabulate(n * n)(k => if k / n == k % n then 0.3 + 0.5 * rnd.nextDouble() else 0.1 * rnd.nextGaussian())*),
+                                        m(n, mm, Seq.fill(n * mm)(rnd.nextGaussian())*), m(p, n, Seq.fill(p * n)(rnd.nextGaussian())*),
+                                        m(n, 1, Seq.fill(n)(rnd.nextGaussian())*), m(p, 1, Seq.fill(p)(rnd.nextGaussian())*), Vector(0.2 * rnd.nextGaussian()))
+      val goals = (0 until p).toVector.map(o =>
+        if rnd.nextInt(3) == 0 then OutputBound(o, -rnd.nextDouble(), rnd.nextDouble()) else Setpoint(o, rnd.nextGaussian()))
+      val rest = Option.when(rnd.nextBoolean())(RestingValues(Vector.fill(mm)(rnd.nextGaussian()), eye(mm)))
+      val bounds = Option.when(rnd.nextBoolean())((Vector.fill(mm)(-2.0), Vector.fill(mm)(2.0)))
+      steadyStateTargets(model, TargetSpec(goals.map(Vector(_)), rest), bounds, Vector.fill(mm)(0.0), env) match
+        case Right(t)  => assert(t.u.forall(v => v.isFinite && bounds.forall(_ => math.abs(v) <= 2.0 + 1e-9)), s"case $i: ${t.u}")
+        case Left(why) => fail(s"case $i: $why")
+  }
+
   "steadyStateTarget" should "choose the smallest input among several that meet the setpoint (F_0358)" in {
     // two inputs, one output: x = 0.5x + u1 + u2 and x + 0.2 = 1, so u1 + u2 = 0.4, split evenly
     val t = ok(steadyStateTarget(m(1, 1, 0.5), m(1, 2, 1, 1), m(1, 1, 1), m(1, 1, 0), m(1, 1, 1), Vector(1.0), Vector(0.2),

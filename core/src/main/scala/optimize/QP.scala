@@ -202,6 +202,20 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
   def solve(f: Vector[Double], b: Option[Vector[Double]], beq: Option[Vector[Double]],
             lb: Vector[Double], ub: Vector[Double],
             warm: Set[QpConstraint], env: Environment): Either[QpFailure, QpResult] =
+    solve(f, b, beq, lb, ub, warm, env, None)
+
+  /** [[solve]] from a starting point (F_0359): a semidefinite problem's primal active-set method starts
+   *  from `start` when it is feasible to that method's own iteration tolerance, and from an exact LP
+   *  vertex otherwise; the definite path is dual and needs none.  A caller solving a sequence of
+   *  problems whose previous answer is feasible for the next (the target layer's levels) saves an LP
+   *  per problem.  Only the iteration's path depends on the start, never the certificate.
+   *
+   *  @param start a point of `n` entries, or `None` for the LP's
+   *  @return as [[solve]]
+   */
+  def solve(f: Vector[Double], b: Option[Vector[Double]], beq: Option[Vector[Double]],
+            lb: Vector[Double], ub: Vector[Double],
+            warm: Set[QpConstraint], env: Environment, start: Option[Array[Double]]): Either[QpFailure, QpResult] =
     val (maxVars, maxRows) = (env.limits.count(Limit.MaxQpVariables), env.limits.count(Limit.MaxQpConstraints))
     def bad(detail: String): Either[QpFailure, QpResult] = Left(QpFailure.InvalidInput(detail))
     def finite(xs: Iterable[Double]) = xs.forall(d => d.isFinite)
@@ -235,8 +249,10 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
             case Right(hinv) => QpSolver(prob, hinv, directions, env.precision, env.limits).solve(warm)
             // F_0074: a semidefinite H goes to the primal active-set method, from an exact LP vertex.
             case Left(QpFailure.NotStrictlyConvex) =>
-              feasiblePoint(n, a.zip(b), aeq.zip(beq), lb, ub, env.limits)
-                .flatMap(PrimalActiveSet(prob, env.precision, env.limits).solve(_, warm))
+              val primal = PrimalActiveSet(prob, env.precision, env.limits)
+              start.filter(primal.feasible) match
+                case Some(z) => primal.solve(z.clone(), warm)
+                case None    => feasiblePoint(n, a.zip(b), aeq.zip(beq), lb, ub, env.limits).flatMap(primal.solve(_, warm))
             case Left(other) => Left(other)
 
   /** The rows with this solve's right-hand sides, in [[templates]]' order. */
@@ -670,10 +686,21 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int, limits: Lim
   private val certTol = 0.5 * math.pow(10.0, -precision)
   private val iterTol = math.max(1e-14, math.min(1e-10, certTol / 10))
 
+  /** Whether `z` may start the iteration (F_0359): finite, and every row met to this method's own
+   *  tolerance of its terms — an equality within it either side, an inequality short by at most it. */
+  def feasible(z: Array[Double]): Boolean =
+    z.length == n && z.forall(_.isFinite) && rows.forall { r =>
+      val sl = r.slack(z)
+      val tol = iterTol * prob.rowScale(r, z)
+      if r.isEquality then math.abs(sl) <= tol else sl >= -tol
+    }
+
   // `H`'s rows as arrays, read once: `hTimes` runs once per face direction per move, and a boxed
   // fold over `prob.h(i, j)` there broke the file's own rule for inner loops (F_0108).
   private val hRows: Array[Array[Double]] = Array.tabulate(n)(i => Array.tabulate(n)(j => prob.h(i, j)))
   private def hTimes(v: Array[Double]): Array[Double] = Array.tabulate(n)(i => dotA(hRows(i), v))
+  /** `‖H‖∞`, the largest a reduced Hessian `ZᵀHZ` on an orthonormal basis can be. */
+  private val hNorm: Double = hRows.map(row => row.map(math.abs).sum).maxOption.getOrElse(0.0)
   private def gradient(x: Array[Double]): Array[Double] =
     val hx = hTimes(x)
     Array.tabulate(n)(i => hx(i) + prob.f(i))
@@ -715,10 +742,18 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int, limits: Lim
         else m.svd(limits).map((_, sigma, v) => (sigma, v))
       decomposition.map { (sigma, v) =>
         val top  = sigma.headOption.getOrElse(0.0)
-        val gNorm = math.sqrt(dotA(g, g))
+        // The gradient's scale at the point (F_0359), not its own norm: at an optimum the gradient is
+        // rounding, and against its own norm a null direction's share of that rounding read as a ray, so
+        // an unconstrained semidefinite QP (`min (Gu − r)²`) was declined `Unbounded`.
+        val gNorm = prob.gradientScale(x)
         val cols = sigma.indices.map(i => Array.tabulate(k)(row => v(row, i)))
         val coef = cols.map(c => dotA(c, r))
-        val nul  = sigma.indices.filter(i => sigma(i) <= 1e-12 * top || top == 0.0)
+        // A curvature is null below 1e-12 of `‖H‖`, not of the reduced Hessian's own top (F_0359): with
+        // orthonormal `Z`, `ZᵀHZ` is never larger than `H`, and where every face direction is flat the
+        // reduced Hessian is rounding (`10⁻³²` from a basis vector's `10⁻¹⁷` share of a curved variable),
+        // which read against itself as curvature: the step `coef/10⁻³²` crossed a working-set bound by
+        // `10¹⁶`, and the certificate's slack, scaled by that `‖z‖∞`, passed it.
+        val nul  = sigma.indices.filter(i => sigma(i) <= 1e-12 * math.max(top, hNorm) || top == 0.0)
         val falling = nul.filter(i => math.abs(coef(i)) > 1e-10 * math.max(gNorm, Double.MinPositiveValue))
         def lift(w: Array[Double]): Array[Double] = combine(new Array[Double](n), w, z, 1.0)
         if falling.nonEmpty then

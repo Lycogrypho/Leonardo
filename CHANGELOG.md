@@ -301,9 +301,14 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   model with its disturbance estimate or a steady-state gain `y_s = y0 + G·(u_s − u0)`.  It reports
   every goal it could not meet.  `steadyStateTarget` is its one-level case and now answers a unique
   target where several meet the setpoint.
-- `qpSolve` no longer declines a semidefinite problem whose optimum has a zero gradient (minimising
-  `u₁²` over a band of `u₁ + u₂`, say): it answered `Uncertified`, the iteration having reached `u₁ = 0`
-  only to its tolerance.  Every other answer is unchanged.
+- `qpSolve` on a semidefinite problem (an `H` with zero curvature in some directions):
+  - **no longer answers a point that violates a constraint.**  Where every direction the active
+    constraints leave free was flat, rounding was read as curvature, and the step crossed a bound,
+    sending the free variables to `10¹⁶` or beyond.  Some unbounded problems were "answered" this way
+    with an objective near `−10³⁴`; they now report `Unbounded`.
+  - no longer declares a bounded problem `Unbounded` at an optimum whose gradient is rounding, nor declines
+    one whose optimum has a zero gradient as `Uncertified` (minimising `u₁²` over a band of `u₁ + u₂`).
+  - Positive-definite problems are unaffected.
 - **Numeric recursive least squares**: `rlsUpdate` over `_MatrixValue`/`Double`, answering
   `Either[RlsFailure, …]` with the reason, bit for bit the expression form's numbers.
 - **An uncertified derivative-free minimiser**: `minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)`

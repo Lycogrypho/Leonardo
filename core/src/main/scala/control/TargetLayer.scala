@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package control
 
 import core.*
-import optimize.qpSolve
+import optimize.qpPrepare
 import scalar.RoundingLevel
 
 
@@ -216,7 +216,7 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
   def onU(row: Int => Double) = Array.tabulate(nw)(j => if j >= uAt && j < uAt + m then row(j - uAt) else 0.0)
 
   /** One output level: its cost, a slack per finite side of each output bound, then what it achieved. */
-  def outputLevel(goals: Vector[TargetGoal], held: Vector[Held]): Either[MpcFailure, (Vector[Held], Array[Double])] =
+  def outputLevel(goals: Vector[TargetGoal], held: Vector[Held], from: Option[Array[Double]]): Either[MpcFailure, (Vector[Held], Array[Double])] =
     val (h, f) = zeroCost
     // a slack's side: (output, upper?, bound)
     val sides = goals.flatMap {
@@ -232,7 +232,7 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
     val slacks = sides.map { (i, upper, bound, wt) =>
       if upper then (rel.f(i), bound - rel.g(i), wt) else (rel.f(i).map(-_), rel.g(i) - bound, wt)
     }
-    solveLevel(rel, h, f, slacks, held, lbW, ubW, env).map { (w, s) =>
+    solveLevel(rel, h, f, slacks, held, lbW, ubW, from, env).map { (w, s) =>
       val kept = goals.collect { case Setpoint(i, _, _) =>
         val v = dot(rel.f(i), w)
         val delta = hold * (terms(rel.f(i), w) + math.abs(rel.g(i)))
@@ -247,13 +247,13 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
     }
 
   /** The resting values: `‖u − u_rest‖²_S`, then `S·u` held where it ended. */
-  def restLevel(r: RestingValues, held: Vector[Held]): Either[MpcFailure, Vector[Held]] =
+  def restLevel(r: RestingValues, held: Vector[Held], from: Option[Array[Double]]): Either[MpcFailure, (Vector[Held], Array[Double])] =
     val (h, f) = zeroCost
     val s = r.weight
     for j <- 0 until m; k <- 0 until m do h(uAt + j)(uAt + k) += 2.0 * s(j, k)
     for j <- 0 until m do f(uAt + j) -= 2.0 * (0 until m).map(k => s(j, k) * r.target(k)).sum
-    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, env).map { (w, _) =>
-      held ++ (0 until m).flatMap { j =>
+    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, from, env).map { (w, _) =>
+      val kept = (0 until m).flatMap { j =>
         val row = onU(k => s(j, k))
         Option.when(row.exists(_ != 0.0)) {
           val v = dot(row, w)
@@ -261,10 +261,11 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
           Held(row, v - delta, v + delta)
         }
       }
+      (held ++ kept, w)
     }
 
   /** The smallest move from `u`, each input in its own scale. */
-  def tieBreak(held: Vector[Held]): Either[MpcFailure, Array[Double]] =
+  def tieBreak(held: Vector[Held], from: Option[Array[Double]]): Either[MpcFailure, Array[Double]] =
     val (h, f) = zeroCost
     for k <- 0 until m do
       val width = uBounds.fold(Double.PositiveInfinity)((lo, hi) => hi(k) - lo(k))
@@ -272,15 +273,19 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
       val c = 1.0 / (scale * scale)
       h(uAt + k)(uAt + k) += 2.0 * c
       f(uAt + k) -= 2.0 * c * u(k)
-    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, env).map(_._1)
+    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, from, env).map(_._1)
 
-  val outputs = spec.levels.filter(_.nonEmpty).foldLeft[Either[MpcFailure, Vector[Held]]](Right(Vector.empty)) {
-    (acc, goals) => acc.flatMap(held => outputLevel(goals, held).map(_._1))
+  // Each level starts from the one before it (F_0359): that point meets every held band and every bound,
+  // so only the first level's semidefinite QP needs an exact LP to find a feasible start.
+  type Reached = (Vector[Held], Option[Array[Double]])
+  val outputs = spec.levels.filter(_.nonEmpty).foldLeft[Either[MpcFailure, Reached]](Right((Vector.empty, None))) {
+    (acc, goals) => acc.flatMap((held, from) => outputLevel(goals, held, from).map((h, w) => (h, Some(w))))
   }
   for
     afterOutputs <- outputs
-    afterRest    <- spec.rest.fold[Either[MpcFailure, Vector[Held]]](Right(afterOutputs))(restLevel(_, afterOutputs))
-    w            <- tieBreak(afterRest)
+    afterRest    <- spec.rest.fold[Either[MpcFailure, Reached]](Right(afterOutputs))(r =>
+                      restLevel(r, afterOutputs._1, afterOutputs._2).map((h, w) => (h, Some(w))))
+    w            <- tieBreak(afterRest._1, afterRest._2)
   yield
     val tol = 0.5 * math.pow(10.0, -env.precision)
     val y   = Vector.tabulate(rel.p)(i => dot(rel.f(i), w) + rel.g(i))
@@ -293,11 +298,13 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
     TargetLayer(Option.when(rel.hasState)(w.take(uAt).toVector), w.slice(uAt, uAt + m).toVector, y, unmet)
 
 /** One level's QP over `z = [w; s]`: `½zᵀHz + fᵀz`, the slacks' rows `row·w − sₖ ≤ rhs` costing
- *  `weightₖ·sₖ²`, `sₖ ≥ 0`, under the steady-state equalities, the held rows and the bounds of `w`.
+ *  `weightₖ·sₖ²`, `sₖ ≥ 0`, under the steady-state equalities, the held rows and the bounds of `w`;
+ *  from the previous level's `w` when there is one, each slack at the excess it leaves there.
  *  @return `(w, s)` at the certified optimum, or why the QP declined */
 private def solveLevel(rel: SteadyRelation, hw: Array[Array[Double]], fw: Array[Double],
                        slacks: Vector[(Array[Double], Double, Double)], held: Vector[Held],
-                       lbW: Vector[Double], ubW: Vector[Double], env: Environment): Either[MpcFailure, (Array[Double], Array[Double])] =
+                       lbW: Vector[Double], ubW: Vector[Double], from: Option[Array[Double]],
+                       env: Environment): Either[MpcFailure, (Array[Double], Array[Double])] =
   val nw = rel.nw
   val ns = slacks.size
   val nz = nw + ns
@@ -322,6 +329,12 @@ private def solveLevel(rel: SteadyRelation, hw: Array[Array[Double]], fw: Array[
     Option.when(rows.nonEmpty)((_MatrixValue(rows.size, nz, rows.flatMap(_._1).toArray), rows.map(_._2)))
   val lb = lbW ++ Vector.fill(ns)(0.0)
   val ub = ubW ++ Vector.fill(ns)(Double.PositiveInfinity)
-  qpSolve(h, f, block(ineq.result()), block(eqs.result()), lb, ub, Set.empty, env)
+  val (ineqs, eqRows) = (block(ineq.result()), block(eqs.result()))
+  val start = from.map { w =>
+    val excess = slacks.map((row, rhs, _) => math.max(0.0, row.indices.map(j => row(j) * w(j)).sum - rhs))
+    w ++ excess
+  }
+  qpPrepare(h, ineqs.map(_._1), eqRows.map(_._1), lb, ub)
+    .solve(f, ineqs.map(_._2), eqRows.map(_._2), lb, ub, Set.empty, env, start)
     .left.map(MpcFailure.Qp(_))
     .map(r => (r.z.take(nw).toArray, r.z.drop(nw).toArray))
