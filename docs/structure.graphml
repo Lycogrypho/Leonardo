@@ -2619,6 +2619,7 @@ min 1/2 z'Hz + f'z, A z &lt;= b, Aeq z = beq, bounds
 Goldfarb-Idnani dual active set when H positive DEFINITE;
 semidefinite H: primal active set from an lpSolve vertex (F_0074)
 KKT-certified at 0.5*10^-precision, relative
+every term at its own variable's size (F_0361)
 Left(QpFailure) / Right(QpResult incl. active set)
 QpResult.multipliers: QpMultipliers (F_0066)
 MaxQpIterations 2000, MaxQpVariables 500 (measured)</data>

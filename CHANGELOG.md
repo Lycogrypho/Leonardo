@@ -309,6 +309,9 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   - no longer declares a bounded problem `Unbounded` at an optimum whose gradient is rounding, nor declines
     one whose optimum has a zero gradient as `Uncertified` (minimising `u₁²` over a band of `u₁ + u₂`).
   - Positive-definite problems are unaffected.
+- `qpSolve`'s certificate measures each constraint, and the gradient, against the variables it involves.
+  A large value of an unrelated variable could hide a violated bound or a non-zero gradient, and such a
+  point was certified.  No answer the solver gives changes; such points are now declined.
 - **Numeric recursive least squares**: `rlsUpdate` over `_MatrixValue`/`Double`, answering
   `Either[RlsFailure, …]` with the reason, bit for bit the expression form's numbers.
 - **An uncertified derivative-free minimiser**: `minimizeDerivativeFree(f, x0, lo, hi[, integer], method, env)`

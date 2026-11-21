@@ -141,6 +141,39 @@ class SemidefiniteQPTest extends AnyFlatSpec:
       case Left(why) => fail(s"$why")
   }
 
+  it should "refuse a point violating a bound, however large the variables the bound does not involve (F_0361)" in {
+    // F_0359's crossing point: x at its unconstrained minimum 1.2043, through x <= -0.0476 by 1.25, and the two
+    // free variables at 1e16 holding the equality.  Against ||z||inf the violation read as 4.5e-17 and passed.
+    val h = mv(Seq(Seq(8.537605828033643, 0.0, 0.0), Seq(0.0, 0.0, 0.0), Seq(0.0, 0.0, 0.0)))
+    val f = Array(-10.281864520109403, 0.0, 0.0)
+    val e = Array(-0.601100726743524, -0.6704497241870666, 0.288080976176568)
+    val x = 10.281864520109403 / 8.537605828033643
+    val u1 = -1.18209e16
+    val z = Array(x, u1, (0.0780227028635841 - e(0) * x - e(1) * u1) / e(2))
+    val rows = Vector(QpRow(e, 0.0780227028635841, None),
+                      QpRow(Array(0.2748547184880934, 0.0, 0.0), -0.8938755367590219, Some(QpConstraint.Row(0))),
+                      QpRow(Array(-0.2748547184880934, 0.0, 0.0), 0.013092361820549016, Some(QpConstraint.Row(1))))
+    qpCertificate(QpProblem(3, h, f, rows, 8.537605828033643), z, Vector.empty, Array.emptyDoubleArray, 1, 0.5e-5) match
+      case Left(QpFailure.Uncertified(r)) => assert(r > 0.1, s"$r")
+      case other                          => fail(s"certified: $other")
+  }
+
+  it should "refuse a point that is not stationary, however large a variable H does not touch (F_0361)" in {
+    // min (x - 1)^2 + 0*y: x = 1.001 leaves a gradient of 2e-3, which y = 1e16 hid against ||z||inf (2e-19)
+    val prob = QpProblem(2, mv(Seq(Seq(2.0, 0.0), Seq(0.0, 0.0))), Array(-2.0, 0.0), Vector.empty, 2.0)
+    qpCertificate(prob, Array(1.001, 1e16), Vector.empty, Array.emptyDoubleArray, 1, 0.5e-5) match
+      case Left(QpFailure.Uncertified(r)) => assert(r > 1e-4, s"$r")
+      case other                          => fail(s"certified: $other")
+    // and the optimum itself still passes, the far variable included
+    assert(qpCertificate(prob, Array(1.0, 1e16), Vector.empty, Array.emptyDoubleArray, 1, 0.5e-5).isRight)
+  }
+
+  it should "answer under a far bound, which inflates zScale but not the gradient's floor (F_0361)" in {
+    // min (x - 1)^2 on x + y = 3, |x|, |y| <= 1e6: zScale is 1e6, the answer (1, 2)
+    val r = solved("qp([[2, 0], [0, 0]], [[-2], [0]], 0, 0, [[1, 1]], [[3]], -1e6, 1e6)")
+    assert(math.abs(r.z(0) - 1.0) < 1e-9 && math.abs(r.z(1) - 2.0) < 1e-9, s"${r.z}")
+  }
+
   it should "meet every constraint it answers under, each against its own terms, on random semidefinite problems (F_0359)" in {
     // a row's slack is certified against ‖z‖∞ over every variable, so a step that blows up unrelated variables
     // can hide a violated row; this reads each row against its own terms instead
