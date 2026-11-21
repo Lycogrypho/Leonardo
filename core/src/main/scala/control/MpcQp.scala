@@ -272,7 +272,7 @@ def mpcQpPrepared(prediction: MpcPredictionMatrices, weights: MpcWeights, bounds
     val qBar = Dense.blockDiagonal(Vector.tabulate(np)(i => weights.q(if weights.q.size == 1 then 0 else i)))
     val rBar = Dense.blockDiagonal(Vector.tabulate(nc)(j => weights.r(if weights.r.size == 1 then 0 else j)))
     val gtq  = g.transpose.multiply(qBar)
-    // the input target's part of the linear term, R̄·u_s
+    // the input target's part of the linear term, R̄·u_s; `at` forms it again for a cycle's own target
     val rTarget = weights.inputTarget.map(v => Dense.times(rBar, if v.size == nz then v else Vector.fill(nc)(v).flatten))
     // the terminal cost: x(k+Np) = d0 + Gx·Z, its d0 formed each cycle by `at`
     val term = weights.terminal.map { t =>
@@ -336,8 +336,8 @@ def mpcQpPrepared(prediction: MpcPredictionMatrices, weights: MpcWeights, bounds
       val h    = _MatrixValue(size, size, hData)
       val ineq = Option.when(built.nonEmpty)(_MatrixValue(built.size, size, built.flatten.toArray))
       val (lb, ub) = zBounds(bounds, incremental, nz, ns, m)
-      Right(new MpcQpPrepared(phi, psi, gtq, rTarget, term.map(_._2), position.map(_._2), h, ineq, bounds,
-                              n, m, p, np, nc, incremental, qpPrepare(h, ineq, None, lb, ub)))
+      Right(new MpcQpPrepared(phi, psi, gtq, Option.when(!incremental)(rBar), rTarget, term.map(_._2), position.map(_._2),
+                              h, ineq, bounds, n, m, p, np, nc, incremental, qpPrepare(h, ineq, None, lb, ub)))
 
 /** The bounds of `z`: the decision variable's own (`u` for an absolute prediction, `du` for an
  *  increment form), then the slacks', `[0, ∞)`. */
@@ -376,28 +376,51 @@ private[control] final case class MpcTerminalPart(phi: _MatrixValue, psi: Option
  *  prepared QP.  Immutable, so one may serve several threads.
  */
 final class MpcQpPrepared private[control] (phi: _MatrixValue, psi: Option[_MatrixValue], gtq: _MatrixValue,
-                                            rTarget: Option[Vector[Double]], term: Option[MpcTerminalPart],
+                                            rBar: Option[_MatrixValue], rTarget: Option[Vector[Double]],
+                                            term: Option[MpcTerminalPart],
                                             position: Option[(_MatrixValue, Vector[Double])], h: _MatrixValue,
                                             ineq: Option[_MatrixValue], shape: MpcBounds,
                                             n: Int, m: Int, p: Int, np: Int, nc: Int, incremental: Boolean,
                                             qp: QpPrepared):
 
   /** The programme for one cycle: the same as [[mpcQp]] with these arguments and the prepared
-   *  prediction and weights.
+   *  prediction and weights, each target given here replacing the prepared one.
    *
-   *  @param reference the reference: `p` entries held over the horizon, or `Np·p` stacked
-   *  @param x         the current state, `n` entries
-   *  @param uPrev     `u(k−1)`, `m` entries
-   *  @param bounds    the bounds, in the prepared shape: the same groups, finite at the same entries,
-   *                   the same soft outputs; their finite values may differ
+   *  **The targets enter only the linear term** (F_0360, AIACE L_0080), never the Hessian, the rows or the
+   *  prepared QP, so a controller whose steady state moves every cycle (a target layer's `x_s` and `u_s`)
+   *  still prepares once.  A target is accepted only where the prepared weights carry its cost: the input
+   *  target in the absolute form (whose `R` always weighs `u − u_s`), the position target where
+   *  [[MpcWeights.positionTarget]] was given, the terminal target where [[MpcWeights.terminal]] was.
+   *
+   *  @param reference      the reference: `p` entries held over the horizon, or `Np·p` stacked
+   *  @param x              the current state, `n` entries
+   *  @param uPrev          `u(k−1)`, `m` entries
+   *  @param bounds         the bounds, in the prepared shape: the same groups, finite at the same entries,
+   *                        the same soft outputs; their finite values may differ
+   *  @param inputTarget    this cycle's `u_s` for the absolute form, `m` or `Nc·m` entries; `None` for the
+   *                        prepared one
+   *  @param positionTarget this cycle's position target `u_s`, `m` or `Nc·m` entries; `None` for the
+   *                        prepared one
+   *  @param terminalTarget this cycle's `x_s`, `n` entries; `None` for the prepared one
    *  @return the programme, or why it cannot be built
    */
-  def at(reference: Vector[Double], x: Vector[Double], uPrev: Vector[Double],
-         bounds: MpcBounds): Either[MpcFailure, MpcQp] =
+  def at(reference: Vector[Double], x: Vector[Double], uPrev: Vector[Double], bounds: MpcBounds,
+         inputTarget: Option[Vector[Double]] = None, positionTarget: Option[Vector[Double]] = None,
+         terminalTarget: Option[Vector[Double]] = None): Either[MpcFailure, MpcQp] =
     val rowsY = phi.rows
     val nz    = nc * m
     def bad(d: String) = Left(MpcFailure.InvalidInput(d))
-    if x.size != n then bad(s"the state has ${x.size} entries for $n states")
+    def stacked(v: Vector[Double]) = v.size == m || v.size == nz
+    if inputTarget.isDefined && rBar.isEmpty then bad("an input target has no meaning for increments")
+    else if inputTarget.exists(v => !stacked(v) || v.exists(!_.isFinite)) then
+      bad(s"the input target needs $m or $nz finite entries")
+    else if positionTarget.isDefined && position.isEmpty then bad("the prepared weights have no position cost")
+    else if positionTarget.exists(v => !stacked(v) || v.exists(!_.isFinite)) then
+      bad(s"the position target needs $m or $nz finite entries")
+    else if terminalTarget.isDefined && term.isEmpty then bad("the prepared weights have no terminal cost")
+    else if terminalTarget.exists(v => v.size != n || v.exists(!_.isFinite)) then
+      bad(s"the terminal target needs $n finite entries")
+    else if x.size != n then bad(s"the state has ${x.size} entries for $n states")
     else if uPrev.size != m then bad(s"u(k-1) has ${uPrev.size} entries for $m inputs")
     else if reference.size != p && reference.size != rowsY then bad(s"the reference must have $p or $rowsY entries")
     else if !boundsOk(bounds, m, p) then bad("a bound has the wrong length, a NaN, or a lower above its upper")
@@ -420,7 +443,10 @@ final class MpcQpPrepared private[control] (phi: _MatrixValue, psi: Option[_Matr
         dev(i) = c0(i) - ref(i)
         i += 1
       val fq = gtq.multiply(_MatrixValue(rowsY, 1, dev))
-      val fp = position.map { (lts, us) =>
+      def spread(v: Vector[Double]) = if v.size == nz then v else Vector.fill(nc)(v).flatten
+      val rt = inputTarget.fold(rTarget)(v => rBar.map(rb => Dense.times(rb, spread(v))))
+      val fp = position.map { (lts, prepared) =>
+        val us = positionTarget.fold(prepared)(spread)
         val v = new Array[Double](nz)
         for k <- 0 until nz do v(k) = ua(k % m) - us(k)
         Vector.tabulate(nz)(k => rowDot(lts, k, v, nz))
@@ -429,13 +455,13 @@ final class MpcQpPrepared private[control] (phi: _MatrixValue, psi: Option[_Matr
         val d = new Array[Double](n)
         for k <- 0 until n do
           val d0 = rowDot(t.phi, k, xa, n) + (t.psi match { case Some(ps) => rowDot(ps, k, ua, m); case None => 0.0 })
-          d(k) = t.target.fold(d0)(xs => d0 - xs(k))
+          d(k) = terminalTarget.orElse(t.target).fold(d0)(xs => d0 - xs(k))
         t.gtp.multiply(_MatrixValue(n, 1, d))
       }
       // the same element-wise steps as the one-shot assembly: −R̄u_s, + the position, + the terminal, ×2
       val fz = Vector.tabulate(nz) { j =>
         val f0 = fq(j, 0)
-        val f1 = rTarget.fold(f0)(rt => f0 - rt(j))
+        val f1 = rt.fold(f0)(v => f0 - v(j))
         val f2 = fp.fold(f1)(v => f1 + v(j))
         val f3 = ft.fold(f2)(v => f2 + v(j, 0))
         2.0 * f3

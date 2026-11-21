@@ -1942,7 +1942,8 @@ package "control" {
           du bounds direct
         F_0329: MpcPositionTarget (S, u_s on the position)
         F_0357: mpcQpPrepared(prediction, weights, bounds)
-          -> MpcQpPrepared; at(r, x, uPrev, bounds) per cycle
+          -> MpcQpPrepared; at(r, x, uPrev, bounds[, targets]) per cycle
+          (F_0360: the input, position and terminal targets per cycle)
           (H, rows, factor of H once; the shape fixed)
     }
     class "Disturbance" <<utility>> [[control.html]] {

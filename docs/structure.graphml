@@ -2474,7 +2474,8 @@ F_0328: increment forms: u bounds = position rows,
 du bounds direct
 F_0329: MpcPositionTarget (S, u_s on the position)
 F_0357: mpcQpPrepared(prediction, weights, bounds)
--&gt; MpcQpPrepared; at(r, x, uPrev, bounds) per cycle
+-&gt; MpcQpPrepared; at(r, x, uPrev, bounds[, targets]) per cycle
+(F_0360: the input, position and terminal targets per cycle)
 (H, rows, factor of H once; the shape fixed)</data>
     </node>
     <node id="n223">

@@ -4061,7 +4061,7 @@ Left(MpcFailure)</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="268.0" width="428.0" x="0.0" y="0.0"/>
+              <y:Geometry height="284.0" width="516.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">MpcQp</y:NodeLabel>
@@ -4077,7 +4077,8 @@ F_0304/5: MpcWeights (per-step Q, R; terminal P on
 x(k+Np), mpcTerminalPrediction; input target u_s)
 F_0329: MpcPositionTarget (S, u_s on the position)
 F_0357: mpcQpPrepared(prediction, weights, bounds)
--&gt; MpcQpPrepared; at(r, x, uPrev, bounds) per cycle
+-&gt; MpcQpPrepared; at(r, x, uPrev, bounds[, targets]) per cycle
+(F_0360: the input, position and terminal targets per cycle)
 (H, rows, factor of H once; the shape fixed)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>

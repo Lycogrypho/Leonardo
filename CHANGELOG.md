@@ -291,7 +291,9 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   limits)` builds the Hessian, the constraint rows and the QP's factor of `H` once, and its
   `at(reference, x, uPrev, bounds)` forms each cycle's programme from the linear term and the right-hand
   sides alone - the programme `mpcQp` builds, with the same solution to the last bit.  The bounds given
-  to `mpcQpPrepared` fix which bounds exist and which are finite; `at` refuses another shape.  `qpSolve`
+  to `mpcQpPrepared` fix which bounds exist and which are finite; `at` refuses another shape.  `at` also
+  takes the cycle's input, position and terminal targets, so a controller whose steady state moves every
+  cycle still prepares once; a target replaces the prepared one only for that cycle.  `qpSolve`
   also allocates far less, its answers unchanged: on a 6-state, 2-input plant a cycle through `at`
   allocates 56 KiB where one through `mpcQp` allocated 660 KiB.
 - **A steady-state target layer**: `steadyStateTargets(model, spec, uBounds, u, env)` chooses the target
