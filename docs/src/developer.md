@@ -1670,6 +1670,11 @@ docs site's gems.  Steward proposes what is **newer**.  It says nothing about wh
 *vulnerable*, and `spire` sits on its `updates.ignore` list unconditionally, pinned for a reason
 that still holds — so a security release of it would have been skipped in silence.
 (`scala-parser-combinators` sat beside it until the JDK floor that held it at 2.4.0 rose to 25.)
+`scala-library` is ignored too: Steward reads it off sbt's own runtime, not off any module.  Four
+lines are **pinned** (`updates.pin`, which still lets the updates inside the line through):
+`scala3-library` to 3.3 LTS, `jline` to 3, sbt to 1, and Jackson to the 3.2 line the MCP SDK is
+built against, since the MCP module overrides the SDK's own Jackson (it carried advisories) and a
+jump of line would run ahead of the SDK.
 
 **Alerts** come from the dependency graph.  `dependency-graph.yml` submits the sbt graph to
 GitHub on any push that touches `build.sbt` or `project/**`, which switches Dependabot alerts

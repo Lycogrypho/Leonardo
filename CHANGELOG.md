@@ -311,6 +311,8 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   - no longer declares a bounded problem `Unbounded` at an optimum whose gradient is rounding, nor declines
     one whose optimum has a zero gradient as `Uncertified` (minimising `u₁²` over a band of `u₁ + u₂`).
   - Positive-definite problems are unaffected.
+- **`leonardo-mcp` runs on the MCP Java SDK 2.2.0**, with Jackson 3.2.4 and Reactor 3.9.0.  The SDK's own
+  choices were Jackson 3.2.1, which carries seven advisories, and a Reactor release candidate.
 - `qpSolve`'s certificate measures each constraint, and the gradient, against the variables it involves.
   A large value of an unrelated variable could hide a violated bound or a non-zero gradient, and such a
   point was certified.  No answer the solver gives changes; such points are now declined.

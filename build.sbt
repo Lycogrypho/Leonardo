@@ -520,19 +520,23 @@ lazy val mcp = (project in file("mcp"))
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
     scalacOptions   ++= jdkFloorOptions,
     libraryDependencies ++= Seq(
-      "io.modelcontextprotocol.sdk" % "mcp"          % "2.1.0",
+      "io.modelcontextprotocol.sdk" % "mcp"          % "2.2.0",
       "org.slf4j"                   % "slf4j-simple" % "2.0.16",
       "org.scalatest"              %% "scalatest"    % "3.2.20" % Test
     ),
-    // F_0309 (audit 2026-11-06): the SDK 2.1.0 resolves Jackson 3.1.4, which carries nine advisories
-    // (GHSA-cxp5-3px4-pw24, GHSA-q4xh-88c3-wmh7, GHSA-wv8q-qhhj-9h54, GHSA-7hhh-6rmp-j9qf and
-    // GHSA-p6pp-m3f8-5c89 high: parsing DoS, reachable since the server parses its client's JSON).  All
-    // are fixed on the 3.1 line by 3.1.7; 3.1.8 is what the SDK's own main branch uses.  F_0253's
-    // pattern: REMOVE these once the SDK itself depends on Jackson >= 3.1.7, or they pin an old version.
+    // F_0309 (audit 2026-11-06), F_0367 (audit 2026-11-21): the SDK's own Jackson carries advisories --
+    // 2.1.0 resolved 3.1.4 (nine), 2.2.0 resolves 3.2.1 (seven: GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89,
+    // GHSA-cxp5-3px4-pw24, GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf, GHSA-wv8q-qhhj-9h54;
+    // parsing DoS among them, reachable since the server parses its client's JSON).  3.2.4, the latest
+    // release of the SDK's 3.2 line, carries none (osv.dev, 2026-11-21).  And the SDK 2.2.0's mcp-core asks for
+    // reactor-core 3.9.0-RC1, a release candidate; 3.9.0 is its GA.  F_0253's pattern: REMOVE each once the
+    // SDK itself depends on Jackson >= 3.2.4 and on a released Reactor, or it pins an old version.
+    // mcp/RuntimeVersionsTest checks what the classpath actually carries.
     dependencyOverrides ++= Seq(
-      "tools.jackson.core"       % "jackson-core"            % "3.1.8",
-      "tools.jackson.core"       % "jackson-databind"        % "3.1.8",
-      "tools.jackson.dataformat" % "jackson-dataformat-yaml" % "3.1.8"
+      "tools.jackson.core"       % "jackson-core"            % "3.2.4",
+      "tools.jackson.core"       % "jackson-databind"        % "3.2.4",
+      "tools.jackson.dataformat" % "jackson-dataformat-yaml" % "3.2.4",
+      "io.projectreactor"        % "reactor-core"            % "3.9.0"
     ),
     Compile / mainClass := Some("it.grypho.scala.leonardo.mcp.leonardoMcp"),
     // The grammar resource (the cheat sheet) and the version, bundled at build time.

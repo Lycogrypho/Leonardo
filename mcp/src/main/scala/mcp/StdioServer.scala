@@ -43,7 +43,7 @@ object StdioServer:
     case v  => v
 
   /** A tool's JSON schema, an object of string properties, as the plain map the SDK serialises (its
-   *  `JsonSchema` record is deprecated in 2.1.0). */
+   *  `JsonSchema` record is deprecated since 2.1.0). */
   private def schemaOf(t: ToolDef): java.util.Map[String, Object] =
     val props: java.util.Map[String, Object] = t.params.map(p =>
       p.name -> (Map[String, Object]("type" -> "string", "description" -> p.description).asJava: Object)).toMap.asJava
