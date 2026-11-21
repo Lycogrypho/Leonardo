@@ -20,8 +20,8 @@ addSbtPlugin("com.github.sbt"     % "sbt-ci-release"   % "1.12.1")
 // reaches a published POM -- so the override costs nothing a consumer sees.  REMOVE IT once
 // sbt-pgp itself depends on BC >= 1.84: an override left behind would pin an old version later.
 dependencyOverrides ++= Seq(
-  "org.bouncycastle" % "bcpg-jdk18on"   % "1.86",
-  "org.bouncycastle" % "bcprov-jdk18on" % "1.86",
+  "org.bouncycastle" % "bcpg-jdk18on"   % "1.87",
+  "org.bouncycastle" % "bcprov-jdk18on" % "1.87",
 )
 // One combined Scaladoc across both modules (issue 5.2 phase 1.1). Without it the module
 // split would fragment the published /api into two disjoint trees, and `cli` would drop out
