@@ -520,7 +520,7 @@ lazy val mcp = (project in file("mcp"))
     idePackagePrefix := Some("it.grypho.scala.leonardo"),
     scalacOptions   ++= jdkFloorOptions,
     libraryDependencies ++= Seq(
-      "io.modelcontextprotocol.sdk" % "mcp"          % "2.1.0",
+      "io.modelcontextprotocol.sdk" % "mcp"          % "2.2.0",
       "org.slf4j"                   % "slf4j-simple" % "2.0.16",
       "org.scalatest"              %% "scalatest"    % "3.2.20" % Test
     ),
