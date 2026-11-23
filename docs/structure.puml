@@ -453,7 +453,7 @@ package "scalar" {
     class "Factored" <<utility>> [[equations.html]] {
         __ F_0351 __
         ~ factoredIn(e, v, env): Option[Factored]
-        ~ realRoots(cs): Vector[RealRoot]
+        ~ realRoots(cs): Option[Vector[RealRoot]] (F_0370)
         a rational function as its written factors;
           cut points with orders, signs from roots
     }
@@ -1960,6 +1960,7 @@ package "control" {
         priority levels of setpoints and output bounds,
           each held for the next; resting values; the
           smallest move last -> TargetLayer(x, u, y, unmet)
+        an input's scale: bound width, |u|, the gain's (F_0368)
     }
     class "ArxOrder" <<utility>> [[control.html]] {
         __ F_0301: ARX order selection __
@@ -2718,6 +2719,7 @@ package "mcp" <<Rectangle>> {
         + serve(transport, worker): McpSyncServer
         resources: leonardo://grammar, leonardo://session/script
         leonardoMcp: --timeout <seconds>; logs to stderr
+        end of input: answers the requests read first (F_0373)
     }
     class "ToScala" <<utility>> [[mcp.html]] {
         __ Decision D: Scala source for a result __

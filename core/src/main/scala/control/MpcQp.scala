@@ -261,7 +261,7 @@ def mpcQpPrepared(prediction: MpcPredictionMatrices, weights: MpcWeights, bounds
     bad(s"the position target needs $m or ${nc * m} finite entries")
   else if terminalError.isDefined then bad(terminalError.getOrElse(""))
   else if !boundsOk(bounds, m, p) then
-    bad("a bound has the wrong length, a NaN, or a lower above its upper")
+    bad("a bound has the wrong length, a NaN, a lower above its upper, or is infinite on the wrong side")
   else if bounds.soft.exists(s => s.linear.size != p || s.quadratic.size != p ||
                                   s.linear.exists(w => !(w >= 0)) || s.quadratic.exists(w => !(w > 0))) then
     bad("soft outputs need one linear weight >= 0 and one quadratic weight > 0 per output")
@@ -346,10 +346,12 @@ private def zBounds(bounds: MpcBounds, incremental: Boolean, nz: Int, ns: Int, m
   (Vector.tabulate(nz)(j => direct.fold(Double.NegativeInfinity)(_._1(j % m))) ++ Vector.fill(ns)(0.0),
    Vector.tabulate(nz)(j => direct.fold(Double.PositiveInfinity)(_._2(j % m))) ++ Vector.fill(ns)(Double.PositiveInfinity))
 
-/** Every bound pair the right length, with no NaN and no lower above its upper. */
+/** Every bound pair the right length, with no NaN, no lower above its upper, and no lower at `+∞` or upper at
+ *  `−∞` (F_0369): a non-finite bound adds no row, so an infeasible one would vanish rather than be refused. */
 private def boundsOk(b: MpcBounds, m: Int, p: Int): Boolean =
   def pairOk(x: Option[(Vector[Double], Vector[Double])], k: Int) =
-    x.forall((lo, hi) => lo.size == k && hi.size == k && lo.zip(hi).forall((l, h) => !l.isNaN && !h.isNaN && l <= h))
+    x.forall((lo, hi) => lo.size == k && hi.size == k && lo.zip(hi).forall((l, h) =>
+      !l.isNaN && !h.isNaN && l <= h && l != Double.PositiveInfinity && h != Double.NegativeInfinity))
   pairOk(b.u, m) && pairOk(b.du, m) && pairOk(b.y, p)
 
 /** `Σⱼ mᵢⱼ·vⱼ` over `j < k`, summed from the first term the way `Seq.sum` reduces a sequence of known
@@ -423,7 +425,7 @@ final class MpcQpPrepared private[control] (phi: _MatrixValue, psi: Option[_Matr
     else if x.size != n then bad(s"the state has ${x.size} entries for $n states")
     else if uPrev.size != m then bad(s"u(k-1) has ${uPrev.size} entries for $m inputs")
     else if reference.size != p && reference.size != rowsY then bad(s"the reference must have $p or $rowsY entries")
-    else if !boundsOk(bounds, m, p) then bad("a bound has the wrong length, a NaN, or a lower above its upper")
+    else if !boundsOk(bounds, m, p) then bad("a bound has the wrong length, a NaN, a lower above its upper, or is infinite on the wrong side")
     else if !sameShape(bounds) then
       bad("the bounds must have the prepared shape: the same groups, finite at the same entries, the same soft outputs")
     else if (x ++ uPrev ++ reference).exists(!_.isFinite) then bad("every entry must be finite")

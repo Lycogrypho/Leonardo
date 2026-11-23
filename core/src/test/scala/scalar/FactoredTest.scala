@@ -17,18 +17,30 @@ class FactoredTest extends AnyFlatSpec:
 
   private def read(src: String): Factored = factored(src).fold(fail(s"not read: $src"))(identity)
 
+  private def roots(cs: Vector[Double]): Vector[RealRoot] = realRoots(cs).fold(fail(s"declined: $cs"))(identity)
+
   "a quadratic" should "have a double root only when its discriminant is rounding" in {
-    realRoots(Vector(0.09, -0.6, 1.0)) match
+    roots(Vector(0.09, -0.6, 1.0)) match
       case Vector(RealRoot(r, 2, _)) => assert(math.abs(r - 0.3) < 1e-15)
       case other                     => fail(other.toString)
-    assert(realRoots(Vector(1.000001, -2.000001, 1.0)).map(_.multiplicity) == Vector(1, 1))
-    assert(realRoots(Vector(1.0, 0.0, 1.0)).isEmpty)
+    assert(roots(Vector(1.000001, -2.000001, 1.0)).map(_.multiplicity) == Vector(1, 1))
+    assert(roots(Vector(1.0, 0.0, 1.0)).isEmpty)
     // the stable form: the small root of x^2 + 1e8*x + 1
-    assert(realRoots(Vector(1.0, 1e8, 1.0)).map(_.at) == Vector(-1e8, -1e-8))
+    assert(roots(Vector(1.0, 1e8, 1.0)).map(_.at) == Vector(-1e8, -1e-8))
     // and the verdict does not move with the units of x or of the polynomial
     for k <- Seq(1e-9, 1e9) do
-      assert(realRoots(Vector(0.09 * k * k, -0.6 * k, 1.0)).map(_.multiplicity) == Vector(2), k.toString)
-      assert(realRoots(Vector(1.000001, -2.000001, 1.0).map(_ * k)).size == 2, k.toString)
+      assert(roots(Vector(0.09 * k * k, -0.6 * k, 1.0)).map(_.multiplicity) == Vector(2), k.toString)
+      assert(roots(Vector(1.000001, -2.000001, 1.0).map(_ * k)).size == 2, k.toString)
+  }
+
+  "a failed reading" should "decline rather than read as no roots (F_0370)" in {
+    // x^3 + 1e308*x + 1 has a real root near -1e-308, which the companion at the roots' scale (1e154) loses:
+    // no real root at all for a cubic contradicts its odd degree.  1 + 1e-320*x^3 gave a NaN root.
+    assert(realRoots(Vector(1.0, 1e308, 0.0, 1.0)).isEmpty)
+    assert(realRoots(Vector(1.0, 0.0, 0.0, 1e-320)).isEmpty)
+    assert(factored("x^3 + 1e308*x + 1").isEmpty)
+    // an ordinary cubic still reads, its one real root kept with the conjugate pair dropped
+    assert(roots(Vector(1.0, 0.0, 0.0, 1.0)).map(_.at).map(r => math.abs(r + 1.0) < 1e-12) == Vector(true))
   }
 
   "the written factors" should "give each root its multiplicity and the sign between them" in {

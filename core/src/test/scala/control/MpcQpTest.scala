@@ -101,3 +101,14 @@ class MpcQpTest extends AnyFlatSpec:
     assert(mpcQp(absolute, q, r, Vector(1.0), Vector(0.0), Vector(0.0),
                  MpcBounds(soft = Some(MpcSoftOutputs(Vector(1.0), Vector(0.0)))), env.limits).isLeft)   // rho2 = 0
   }
+
+  "an infinite bound on the wrong side" should "be refused, not dropped (F_0369)" in {
+    // y >= +inf (or y <= -inf) is infeasible; a non-finite bound adds no row, so it used to vanish and the
+    // programme solved as if the output were unbounded
+    val inf = Double.PositiveInfinity
+    for bounds <- Seq(MpcBounds(y = Some((Vector(inf), Vector(inf)))), MpcBounds(y = Some((Vector(-inf), Vector(-inf)))),
+                      MpcBounds(u = Some((Vector(inf), Vector(inf)))), MpcBounds(du = Some((Vector(-inf), Vector(-inf))))) do
+      mpcQp(absolute, q, r, Vector(1.0), Vector(0.0), Vector(0.0), bounds, env.limits) match
+        case Left(MpcFailure.InvalidInput(why)) => assert(why.contains("infinite on the wrong side"), why)
+        case other                              => fail(s"$bounds: $other")
+  }

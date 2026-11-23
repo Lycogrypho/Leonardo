@@ -118,7 +118,8 @@ final case class TargetLayer(x: Option[Vector[Double]], u: Vector[Double], y: Ve
  *  floating point is exactly inconsistent with the steady-state equations whenever it depends on
  *  them, and a semidefinite QP starts from an exact LP.)  The resting values are
  *  held the same way (`S·u_s` unchanged).  **The last level is exact** (Decision E): the smallest
- *  move `Σₖ ((u_s,k − u_k)/sₖ)²`, `sₖ` an input's bound width, else `|u_k|`, else 1, so the target is
+ *  move `Σₖ ((u_s,k − u_k)/sₖ)²`, `sₖ` an input's bound width, else `|u_k|`, else the move that changes
+ *  some output by its own size through the steady-state gain (F_0368), else 1, so the target is
  *  unique and does not jump between equivalent points from cycle to cycle; no level is regularised,
  *  the `H + εI` the QP tier refuses.
  *
@@ -141,10 +142,13 @@ def steadyStateTargets(model: SteadyStateModel, spec: TargetSpec, uBounds: Optio
       case None      => targetLayer(rel, spec, uBounds, u, env)
   }
 
-/** `y = F·w + g` over the unknowns `w`, with `E·w = e`; `u_s` is `w(uAt until uAt + m)`. */
+/** `y = F·w + g` over the unknowns `w`, with `E·w = e`; `u_s` is `w(uAt until uAt + m)`.  `gain` is the
+ *  steady-state gain `∂y/∂u`, `p×m`, when the model states one: the gain itself, or `C(I − A)⁻¹B` when
+ *  `I − A` is invertible (a plant with an integrator has none). */
 private final class SteadyRelation(val nw: Int, val uAt: Int, val m: Int, val p: Int,
                                    val f: Array[Array[Double]], val g: Array[Double],
-                                   val eq: Option[(Array[Array[Double]], Array[Double])], val hasState: Boolean)
+                                   val eq: Option[(Array[Array[Double]], Array[Double])], val hasState: Boolean,
+                                   val gain: Option[_MatrixValue])
 
 /** `lo ≤ row·w ≤ hi`, what a level achieved, held for the levels after it. */
 private final case class Held(row: Array[Double], lo: Double, hi: Double)
@@ -165,7 +169,8 @@ private def steadyRelation(model: SteadyStateModel): Either[MpcFailure, SteadyRe
         val e = Array.tabulate(n)(i => Array.tabulate(nw)(j =>
           if j < n then a(i, j) - (if i == j then 1.0 else 0.0) else b(i, j - n)))
         val f = Array.tabulate(p)(i => Array.tabulate(nw)(j => if j < n then c(i, j) else 0.0))
-        Right(SteadyRelation(nw, n, m, p, f, times(cd, d), Some((e, times(bd, d).map(-_))), hasState = true))
+        val gain = _MatrixValue.identity(n).add(a.scale(-1.0)).inverse.map(inv => c.multiply(inv).multiply(b)).filter(_.isFinite)
+        Right(SteadyRelation(nw, n, m, p, f, times(cd, d), Some((e, times(bd, d).map(-_))), hasState = true, gain))
     case GainSteadyState(g, y0, u0) =>
       val (p, m) = (g.rows, g.cols)
       if y0.size != p || u0.size != m then bad(s"y0 needs $p entries and u0 $m")
@@ -173,7 +178,7 @@ private def steadyRelation(model: SteadyStateModel): Either[MpcFailure, SteadyRe
       else
         val gu0 = times(g, u0)
         Right(SteadyRelation(m, 0, m, p, Array.tabulate(p, m)((i, j) => g(i, j)), Array.tabulate(p)(i => y0(i) - gu0(i)),
-                             None, hasState = false))
+                             None, hasState = false, Some(g)))
 
 /** Why the specification, the bounds or the current input do not fit the model, or `None`. */
 private def targetSpecError(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(Vector[Double], Vector[Double])],
@@ -264,13 +269,38 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
       (held ++ kept, w)
     }
 
-  /** The smallest move from `u`, each input in its own scale. */
+  // Each output's size, in its own units: the largest setpoint or finite bound the levels give it.
+  val outputSize = Vector.tabulate(rel.p) { i =>
+    spec.levels.flatten.collect {
+      case Setpoint(`i`, v, _)          => math.abs(v)
+      case OutputBound(`i`, lo, hi, _) => Seq(lo, hi).filter(_.isFinite).map(math.abs).maxOption.getOrElse(0.0)
+    }.maxOption.getOrElse(0.0)
+  }
+  /** An input's scale from the model (F_0368, the owner's choice): the move of input `k` that changes some
+   *  output by its own size, `min_i r_i/|G_ik|` — in the input's units, each output read in its own; `None`
+   *  without a gain (an integrator), or when no output with a size depends on the input. */
+  def modelScale(k: Int): Option[Double] = rel.gain.flatMap { gm =>
+    (0 until rel.p).collect { case i if outputSize(i) > 0.0 && gm(i, k) != 0.0 => outputSize(i) / math.abs(gm(i, k)) }
+      .filter(s => s > 0.0 && s.isFinite).minOption
+  }
+
+  /** The smallest move from `u`, each input in its own scale: its bound width, else `|u_k|`, else the scale
+   *  the model gives it ([[modelScale]], F_0368; a unit scale was a claim about the input's units, and
+   *  `steadyStateTarget` always passes `u = 0`), else 1.  The weights `1/scale²` are taken relative to the
+   *  largest, `(s_min/s_k)² ≤ 1` (F_0368): absolute, a scale below `~10⁻¹⁵⁴` overflowed the weight to `∞`
+   *  (the QP declined its `H`).  Only the weights' ratios choose the target, so that changes no answer. */
   def tieBreak(held: Vector[Held], from: Option[Array[Double]]): Either[MpcFailure, Array[Double]] =
     val (h, f) = zeroCost
-    for k <- 0 until m do
+    val scales = Vector.tabulate(m) { k =>
       val width = uBounds.fold(Double.PositiveInfinity)((lo, hi) => hi(k) - lo(k))
-      val scale = if width.isFinite && width > 0.0 then width else if u(k) != 0.0 then math.abs(u(k)) else 1.0
-      val c = 1.0 / (scale * scale)
+      if width.isFinite && width > 0.0 then width
+      else if u(k) != 0.0 then math.abs(u(k))
+      else modelScale(k).getOrElse(1.0)
+    }
+    val smallest = scales.min
+    for k <- 0 until m do
+      val ratio = smallest / scales(k)
+      val c = ratio * ratio
       h(uAt + k)(uAt + k) += 2.0 * c
       f(uAt + k) -= 2.0 * c * u(k)
     solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, from, env).map(_._1)

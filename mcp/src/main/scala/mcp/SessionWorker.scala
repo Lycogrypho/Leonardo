@@ -42,6 +42,10 @@ final class SessionWorker(timeout: FiniteDuration, init: Seq[String] = SessionWo
   private var session: Session          = SessionWorker.fresh(None, init)
   private var abandoned: Vector[ExecutorService] = Vector.empty
 
+  /** The wall-clock limit of one request, counted from its arrival (F_0316): what a caller waiting for
+   *  every request in flight to be answered may wait (F_0373). */
+  private[mcp] def requestLimit: FiniteDuration = timeout
+
   /** How many abandoned computations are still running. */
   private[mcp] def abandonedRunning: Int = synchronized {
     abandoned = abandoned.filterNot(_.isTerminated)

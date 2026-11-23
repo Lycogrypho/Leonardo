@@ -109,6 +109,28 @@ class TargetLayerTest extends AnyFlatSpec:
     near(ok(steadyStateTargets(g, TargetSpec.of(Vector(2.0)), bounds, Vector(0.0, 0.0), env)).u, Vector(1.0, 1.0))
   }
 
+  it should "give the same target whatever an input's units, with no bounds and the input at 0 (F_0368)" in {
+    // y = u1 + u2 = 2: the nearest target to (0, 0) is (1, 1).  With u2 in units 1000 times larger (its gain
+    // 1000), the same physical target is (1, 0.001); with a unit scale for each input it was (2e-6, 0.002).
+    val zero2 = Vector(0.0, 0.0)
+    near(ok(steadyStateTargets(GainSteadyState(m(1, 2, 1, 1), Vector(0.0), zero2), TargetSpec.of(Vector(2.0)), None, zero2, env)).u,
+         Vector(1.0, 1.0))
+    near(ok(steadyStateTargets(GainSteadyState(m(1, 2, 1, 1000), Vector(0.0), zero2), TargetSpec.of(Vector(2.0)), None, zero2, env)).u,
+         Vector(1.0, 0.001))
+    // the same through a state-space model, whose gain is C(I - A)^-1 B: x+ = 0.5x + 0.5u1 + 500u2, y = x
+    val ss = StateSpaceSteadyState(m(1, 1, 0.5), m(1, 2, 0.5, 500), m(1, 1, 1), m(1, 1, 0), m(1, 1, 0), Vector(0.0))
+    near(ok(steadyStateTargets(ss, TargetSpec.of(Vector(2.0)), None, zero2, env)).u, Vector(1.0, 0.001))
+  }
+
+  it should "take an input as small as 1e-200 into the tie-break (F_0368)" in {
+    // the weight 1/scale^2 overflowed to infinity below ~1e-154: declined, "H and f must be finite"
+    val g = GainSteadyState(m(1, 2, 1, 1), Vector(0.0), Vector(0.0, 0.0))
+    near(ok(steadyStateTargets(g, TargetSpec.of(Vector(2.0)), None, Vector(1e-200, 1e-200), env)).u, Vector(1.0, 1.0))
+    // inputs on scales 1e-200 apart: moving the first costs 1e400 times more in its own units, so the second
+    // takes the whole move -- the weights' ratio decides, and it stays finite
+    near(ok(steadyStateTargets(g, TargetSpec.of(Vector(2.0)), None, Vector(1e-200, 1.0), env)).u, Vector(0.0, 2.0))
+  }
+
   it should "decline what it cannot read" in {
     def bad(spec: TargetSpec, u: Vector[Double] = zero3) =
       steadyStateTargets(gain3, spec, None, u, env).left.exists(_.isInstanceOf[MpcFailure.InvalidInput])

@@ -311,6 +311,16 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   - no longer declares a bounded problem `Unbounded` at an optimum whose gradient is rounding, nor declines
     one whose optimum has a zero gradient as `Uncertified` (minimising `u₁²` over a band of `u₁ + u₂`).
   - Positive-definite problems are unaffected.
+- `solve`, `domain` and `singularities` no longer answer for a polynomial whose real roots the root finder
+  could not read (`solve(x^3 + 1e308*x + 1 > 0, x)` answered `true`; `1e-320*x^3 + 1 = 0` bound `x := NaN`).
+  They stay unevaluated, or fall back to the numeric scan.
+- An MPC output, input or rate bound with its lower side at `+∞` (or its upper side at `−∞`) is refused as
+  invalid; an output bound of this kind was silently dropped.
+- The steady-state target layer's smallest move is measured in each input's own units also when the input
+  has no bounds and is at 0 (from the model's steady-state gain), and an input on a scale below `10⁻¹⁵⁴` no
+  longer makes the call decline.
+- The MCP server answers every request it has read before it exits at the end of its input: a caller that
+  writes its requests and closes stdin at once got only the first answer.
 - **`leonardo-mcp` runs on the MCP Java SDK 2.2.0**, with Jackson 3.2.4 and Reactor 3.9.0.  The SDK's own
   choices were Jackson 3.2.1, which carries seven advisories, and a Reactor release candidate.
 - `qpSolve`'s certificate measures each constraint, and the gradient, against the variables it involves.

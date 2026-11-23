@@ -571,19 +571,32 @@ private def simpleRoot(part: Vector[Double], multiplicity: Int)(r: Double): Real
  *  polynomial of that degree therefore still reads roots closer than its gcd's tolerance as one,
  *  which is why a caller reads **written factors** separately ([[factoredIn]]).
  *
+ *  **A reading that cannot be right declines** (F_0370): the root finder declining, a root that is not
+ *  a finite number, or a square-free part whose count of real roots has another parity than its
+ *  degree (complex roots come in conjugate pairs, so a cubic has at least one real root).  Each was
+ *  read as "no roots here" until then: `x^3 + 1e308*x + 1`, whose real root near `-10⁻³⁰⁸` the
+ *  companion at the roots' scale `10¹⁵⁴` cannot see, made `solve(… > 0, x)` answer `true`, and
+ *  `1e-320*x^3 + 1` gave a `NaN` root.  A parity check cannot prove a list complete — two lost roots
+ *  keep it — but it turns the commonest loss, the one real root of an odd part, into a refusal.
+ *
  *  @param cs the coefficients, constant term first, trimmed for their provenance
- *  @return the real roots */
-private[leonardo] def realRoots(cs: Vector[Double]): Vector[RealRoot] =
+ *  @return the real roots, or `None` when they could not be read */
+private[leonardo] def realRoots(cs: Vector[Double]): Option[Vector[RealRoot]] =
   val n = degreeOf(cs)
   val p = cs.take(n + 1)
-  def ofPart(part0: Vector[Double], mult: Int): Vector[RealRoot] =
+  def ofPart(part0: Vector[Double], mult: Int): Option[Vector[RealRoot]] =
     val part = part0.take(degreeOf(part0) + 1)
-    part.size - 1 match
-      case 1 => Vector(simpleRoot(part, mult)(-part(0) / part(1)))
-      case 2 => quadraticRealRoots(part).map(r => r.copy(multiplicity = r.multiplicity * mult))
-      case d if d >= 3 =>
-        rootsAtScale(part).fold(Vector.empty[RealRoot])(_.collect { case _Number(r) if !r.isNaN => simpleRoot(part, mult)(r) })
-      case _ => Vector.empty
-  if n < 1 then Vector.empty
+    val d    = part.size - 1
+    val read: Option[Vector[RealRoot]] = d match
+      case 1 => Some(Vector(simpleRoot(part, mult)(-part(0) / part(1))))
+      case 2 => Some(quadraticRealRoots(part).map(r => r.copy(multiplicity = r.multiplicity * mult)))
+      case _ if d >= 3 =>
+        rootsAtScale(part).flatMap { vs =>
+          val reals = vs.collect { case _Number(r) => r }
+          Option.when(reals.size % 2 == d % 2)(reals.map(simpleRoot(part, mult)))
+        }
+      case _ => Some(Vector.empty)
+    read.filter(_.forall(r => r.at.isFinite))
+  if n < 1 then Some(Vector.empty)
   else if n <= 2 then ofPart(p, 1)
-  else squareFreeFactors(p).flatMap(ofPart).sortBy(_.at)
+  else sequence(squareFreeFactors(p).map(ofPart)).map(_.flatten.sortBy(_.at))

@@ -609,7 +609,7 @@ MaxStaircasePieces (measured)</data>
         <data key="n_url">equations.html</data>
         <data key="n_members">__ F_0351 __
 ~ factoredIn(e, v, env): Option[Factored]
-~ realRoots(cs): Vector[RealRoot]
+~ realRoots(cs): Option[Vector[RealRoot]] (F_0370)
 a rational function as its written factors;
 cut points with orders, signs from roots</data>
     </node>
@@ -2501,7 +2501,8 @@ steadyStateTargets(model, spec, uBounds, u)
 state space (with d) or a gain y0 + G(u - u0)
 priority levels of setpoints and output bounds,
 each held for the next; resting values; the
-smallest move last -&gt; TargetLayer(x, u, y, unmet)</data>
+smallest move last -&gt; TargetLayer(x, u, y, unmet)
+an input's scale: bound width, |u|, the gain's (F_0368)</data>
     </node>
     <node id="n225">
         <data key="n_label">ArxOrder</data>
@@ -3383,7 +3384,8 @@ timed out: abandoned, restored from :save</data>
         <data key="n_members">__ the MCP Java SDK wiring __
 + serve(transport, worker): McpSyncServer
 resources: leonardo://grammar, leonardo://session/script
-leonardoMcp: --timeout &lt;seconds&gt;; logs to stderr</data>
+leonardoMcp: --timeout &lt;seconds&gt;; logs to stderr
+end of input: answers the requests read first (F_0373)</data>
     </node>
     <node id="n304">
         <data key="n_label">ToScala</data>

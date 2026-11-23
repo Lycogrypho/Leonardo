@@ -993,7 +993,7 @@ MaxStaircasePieces (measured)</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/equations.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="140.0" width="364.0" x="0.0" y="0.0"/>
+              <y:Geometry height="140.0" width="420.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">Factored</y:NodeLabel>
@@ -1002,7 +1002,7 @@ MaxStaircasePieces (measured)</y:MethodLabel>
 a rational function as its written factors;
 cut points with orders, signs from roots</y:AttributeLabel>
                 <y:MethodLabel>~ factoredIn(e, v, env): Option[Factored]
-~ realRoots(cs): Vector[RealRoot]</y:MethodLabel>
+~ realRoots(cs): Option[Vector[RealRoot]] (F_0370)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -4106,7 +4106,7 @@ disturbanceObserver (kalmanGain), steadyStateTarget
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="156.0" width="412.0" x="0.0" y="0.0"/>
+              <y:Geometry height="172.0" width="460.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">TargetLayer</y:NodeLabel>
@@ -4116,7 +4116,8 @@ priority levels of setpoints and output bounds,
 each held for the next; resting values; the</y:AttributeLabel>
                 <y:MethodLabel>steadyStateTargets(model, spec, uBounds, u)
 state space (with d) or a gain y0 + G(u - u0)
-smallest move last -&gt; TargetLayer(x, u, y, unmet)</y:MethodLabel>
+smallest move last -&gt; TargetLayer(x, u, y, unmet)
+an input's scale: bound width, |u|, the gain's (F_0368)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -5638,7 +5639,7 @@ timed out: abandoned, restored from :save</y:AttributeLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/mcp.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="124.0" width="468.0" x="0.0" y="0.0"/>
+              <y:Geometry height="140.0" width="468.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">StdioServer</y:NodeLabel>
@@ -5646,7 +5647,8 @@ timed out: abandoned, restored from :save</y:AttributeLabel>
                 <y:AttributeLabel>-- the MCP Java SDK wiring --
 resources: leonardo://grammar, leonardo://session/script
 leonardoMcp: --timeout &lt;seconds&gt;; logs to stderr</y:AttributeLabel>
-                <y:MethodLabel>+ serve(transport, worker): McpSyncServer</y:MethodLabel>
+                <y:MethodLabel>+ serve(transport, worker): McpSyncServer
+end of input: answers the requests read first (F_0373)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>

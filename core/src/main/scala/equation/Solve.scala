@@ -568,8 +568,9 @@ private def quadraticRoots(c0: _Expression, c1: _Expression, c2: _Expression,
         .getOrElse(quadraticRoots(_Number(a0.toDouble), _Number(a1.toDouble), _Number(a2.toDouble), env))
     // The stable form, and a double root where the discriminant is within its own rounding of zero
     // (F_0351): the one reading the sign charts share, `scalar.realRoots`.
+    // A reading that fails (a non-finite root, F_0370) gives no roots, so `solve` stays unevaluated.
     case (_Number(a0), _Number(a1), _Number(a2)) =>
-      realRoots(Vector(a0, a1, a2)).map(r => _Number(r.at)).toList
+      realRoots(Vector(a0, a1, a2)).fold(Nil)(_.map(r => _Number(r.at)).toList)
     case _ =>
       // Symbolic coefficients: both +-sqrt(delta) closed forms (sign of delta unknown).  Every
       // constant in the coefficients' tier (F_0210): `solve(c*x^2 + x/3 = 0, x)` answered

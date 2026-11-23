@@ -28,9 +28,12 @@ private[leonardo] final case class Factor(coeffs: Vector[Double], power: Int)
  *                   when the numerator cancels it (a removable point) */
 private[leonardo] final case class CutPoint(at: Double, zeroOrder: Int, poleOrder: Int)
 
-/** A rational function as written factors, with its cut points and its sign between them.
- *  @param factors the factors, constants included (their sign counts) */
-private[leonardo] final class Factored(val factors: Vector[Factor]):
+/** A rational function as written factors, with its cut points and its sign between them.  Built by
+ *  [[factoredIn]], which has read every factor's real roots ([[realRoots]]) and declines when one
+ *  cannot be read (F_0370).
+ *  @param factors the factors, constants included (their sign counts)
+ *  @param roots   each factor's real roots, aligned with `factors` */
+private[leonardo] final class Factored private[scalar] (val factors: Vector[Factor], roots: Vector[Vector[RealRoot]]):
 
   /** Whether the function is identically zero: a numerator factor is the zero polynomial. */
   val isZero: Boolean = factors.exists(f => f.power > 0 && degreeOf(f.coeffs) < 0)
@@ -41,7 +44,7 @@ private[leonardo] final class Factored(val factors: Vector[Factor]):
   // every factor's roots, tagged with the factor, in one ascending list; two roots are one point when
   // they are closer than their uncertainties together (a root of the same point computed twice)
   private val clusters: Vector[Vector[(RealRoot, Int)]] =
-    val all = factors.zipWithIndex.flatMap((f, i) => realRoots(f.coeffs).map((_, i))).sortBy(_._1.at)
+    val all = roots.zipWithIndex.flatMap((rs, i) => rs.map((_, i))).sortBy(_._1.at)
     all.foldLeft(Vector.empty[Vector[(RealRoot, Int)]]) { (acc, r) =>
       acc.lastOption match
         case Some(c) if c.exists((q, _) => math.abs(r._1.at - q.at) <= r._1.uncertainty + q.uncertainty) =>
@@ -78,7 +81,8 @@ private[leonardo] final class Factored(val factors: Vector[Factor]):
     }
 
 /** `e` as written factors in `v`, or `None` when a factor is not a rational function with numeric
- *  coefficients, the denominator is identically zero, or the degrees pass [[MaxRationalDegree]].
+ *  coefficients, the denominator is identically zero, the degrees pass [[MaxRationalDegree]], or a
+ *  factor's real roots cannot be read ([[realRoots]], F_0370).
  *  @param e   the expression
  *  @param v   the variable
  *  @param env bindings, folded into the coefficients
@@ -103,4 +107,4 @@ private[leonardo] def factoredIn(e: _Expression, v: _Variable, env: Environment)
   go(e, 1).filter { fs =>
     !fs.exists(f => f.power < 0 && degreeOf(f.coeffs) < 0) &&
       fs.map(f => math.max(degreeOf(f.coeffs), 0).toLong * math.abs(f.power)).sum <= MaxRationalDegree
-  }.map(Factored(_))
+  }.flatMap(fs => sequence(fs.map(f => realRoots(f.coeffs))).map(Factored(fs, _)))

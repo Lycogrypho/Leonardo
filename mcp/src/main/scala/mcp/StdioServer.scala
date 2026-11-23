@@ -90,6 +90,32 @@ object StdioServer:
           () => worker.run(_.script).fold(why => s"# unavailable: $why", identity)))
       .build()
 
+  /** The ids of the requests read and not yet answered, kept from the lines that pass through the two
+   *  streams (F_0373): a request is a message with an `id` and a `method`, its answer one with the same
+   *  `id` and no `method`.  Notifications carry no `id`; a line that is not a JSON object is the SDK's to
+   *  refuse and is not counted. */
+  private final class InFlight:
+    private val open = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    private def fields(line: String): Option[java.util.Map[?, ?]] =
+      scala.util.Try(McpJsonDefaults.getMapper().readValue(line, classOf[java.util.Map[?, ?]])).toOption.flatMap(Option(_))
+    private def idOf(m: java.util.Map[?, ?]): Option[String] = Option(m.get("id")).map(_.toString)
+    def read(line: String): Unit = fields(line).foreach(m => if m.containsKey("method") then idOf(m).foreach(open.add))
+    def written(line: String): Unit = fields(line).foreach(m => if !m.containsKey("method") then idOf(m).foreach(open.remove))
+    def answered: Boolean = open.isEmpty
+
+  /** Splits the bytes passing through a stream into lines, each handed to `line` (UTF-8). */
+  private final class Lines(line: String => Unit):
+    private val buffer = java.io.ByteArrayOutputStream()
+    def bytes(b: Array[Byte], off: Int, len: Int): Unit = synchronized {
+      var i = off
+      while i < off + len do
+        if b(i) == '\n'.toByte then
+          line(buffer.toString(java.nio.charset.StandardCharsets.UTF_8))
+          buffer.reset()
+        else buffer.write(b(i))
+        i += 1
+    }
+
   /** Serves over the given streams until the client closes `in` (F_0310), then closes the server.
    *
    *  The transport reads `in` on its own thread, so the end of the input is observed by wrapping it:
@@ -97,25 +123,60 @@ object StdioServer:
    *  client — `main` waited on a latch nothing released — and a client that only closes the pipe left
    *  one stray JVM per session.
    *
+   *  **The requests already read are answered first** (F_0373): a caller that writes its requests and
+   *  closes the input at once (a script, not an assistant) had every answer after `initialize` dropped.
+   *  **The end of the input is held back from the transport**, not merely waited for after it: the SDK's
+   *  transport stops dispatching once its reader sees end-of-stream, so a wait outside it ran its whole
+   *  bound with the tool call never answered (measured, 35 s).  The read that meets the end blocks until
+   *  every request read has been answered ([[InFlight]]), bounded by the worker's request limit plus a
+   *  margin: every request is answered or refused within that limit of its arrival (F_0316), so the bound
+   *  is only reached by a request the transport never answers at all.
+   *
    *  @param in     the client's messages
    *  @param out    the server's messages
    *  @param worker the session behind its timeout */
   def runUntilClosed(in: java.io.InputStream, out: java.io.OutputStream, worker: SessionWorker): Unit =
-    val closed = CountDownLatch(1)
+    val closed   = CountDownLatch(1)
+    val inFlight = InFlight()
+    val inLines  = Lines(inFlight.read)
+    val outLines = Lines(inFlight.written)
+    def drained(): Unit =
+      val deadline = System.nanoTime() + (worker.requestLimit + AnswerMargin).toNanos
+      while !inFlight.answered && System.nanoTime() < deadline do Thread.sleep(10)
     val watched = new java.io.FilterInputStream(in):
       private def seen(n: Int): Int =
-        if n < 0 then closed.countDown()
+        if n < 0 then
+          drained()
+          closed.countDown()
         n
-      override def read(): Int = seen(super.read())
+      override def read(): Int =
+        val c = seen(super.read())
+        if c >= 0 then inLines.bytes(Array(c.toByte), 0, 1)
+        c
       override def read(b: Array[Byte], off: Int, len: Int): Int =
-        try seen(super.read(b, off, len))
+        try
+          val n = seen(super.read(b, off, len))
+          if n > 0 then inLines.bytes(b, off, n)
+          n
         catch
           case e: java.io.IOException =>
             closed.countDown()
             throw e
-    val server = serve(StdioServerTransportProvider(McpJsonDefaults.getMapper(), watched, out), worker)
+    val sink = out
+    val tapped = new java.io.FilterOutputStream(sink):
+      override def write(c: Int): Unit =
+        sink.write(c)
+        outLines.bytes(Array(c.toByte), 0, 1)
+      override def write(b: Array[Byte], off: Int, len: Int): Unit =
+        sink.write(b, off, len)
+        outLines.bytes(b, off, len)
+    val server = serve(StdioServerTransportProvider(McpJsonDefaults.getMapper(), watched, tapped), worker)
     try closed.await()
     finally server.closeGracefully()
+
+  /** How long past the worker's request limit the end of the input waits for an answer still missing
+   *  (F_0373): time for the SDK to serialise and write one, not a computation's. */
+  private val AnswerMargin: FiniteDuration = 5.seconds
 
   /** Reads `--timeout <seconds>` from the command line.
    *  @param args the arguments
