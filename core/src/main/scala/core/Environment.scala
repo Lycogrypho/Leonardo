@@ -121,6 +121,13 @@ class Environment(val precision: Int = Environment.DefaultPrecision,
   def withExactMode(on: Boolean): Environment =
     new Environment(precision, variables, symmetricLogic, semantics, workingPrecision, limits, on)
 
+  /** This environment at another working precision (F_0364): how a caller tells an exact value from the
+   *  working-precision reading of an irrational, which moves when it is read again more finely.
+   *  @param digits the working precision, at least 1
+   *  @return the same bindings and settings with [[workingPrecision]] at `digits` */
+  private[leonardo] def withWorkingPrecision(digits: Int): Environment =
+    new Environment(precision, variables, symmetricLogic, semantics, math.max(1, digits), limits, exactMode)
+
   /** This environment with one budget set (F_0124): `env.withLimit(Limit.MaxQpVariables, 2000)`.
    *  @param limit the budget
    *  @param value its new value, at least 1

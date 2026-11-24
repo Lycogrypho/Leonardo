@@ -105,7 +105,10 @@ case class _DefIntegral(e: _Expression, v: _Variable, low_limit: _Expression, up
         if a == b then Left(this)
         else QuadratureWork.within(byAntiderivative(lo, hi, a, b, env)).toRight(this)
       case (Right(lo @ _Number(a)), Right(hi @ _Number(b))) if a.isFinite && b.isFinite =>
-        if a == b then Right(_Rational.literalLike(0, e, env))
+        // an empty interval only when the bounds are equal, exactly where both are exact (F_0365):
+        // `4` and `4 + 1/10^20` are one `Double`, and the integral over them answered `0`
+        val empty = if _Surd.isExact(lo) && _Surd.isExact(hi) then _Surd.compareExact(lo, hi).contains(0) else a == b
+        if empty then Right(_Rational.literalLike(0, e, env))
         else QuadratureWork.within {
           // One evaluation's setup — the antiderivative attempt and the domain analysis — is charged
           // to the outermost integral's budget too: inside a nested integral it runs per outer sample.

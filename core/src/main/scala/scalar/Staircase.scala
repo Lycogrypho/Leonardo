@@ -43,21 +43,30 @@ private[leonardo] object Staircase:
   def integral(e: _Expression, v: _Variable, lo: _Value, hi: _Value, env: Environment): Option[_Value] =
     val found = nodes(e, v)
     val (a, b) = (num(lo), num(hi))
-    if found.isEmpty || !a.isFinite || !b.isFinite || a == b then None
+    val order  = compareBounds(lo, hi)
+    if found.isEmpty || !a.isFinite || !b.isFinite || order == 0 then None
     else
-      val (l, h) = if a < b then (lo, hi) else (hi, lo)
+      val (l, h) = if order < 0 then (lo, hi) else (hi, lo)
       // the tier of the whole computation: the integrand's, or the bounds' (a bare `x` has no exact
       // content, and `collect` builds its unit slope in its own tier, so it is read with an exact zero)
       val exact = _Rational.containsExactIn(e, env) || _Rational.containsExact(lo) || _Rational.containsExact(hi)
       for
         parts  <- sequence(found.map(part(_, v, exact, env)))
         jumps  <- jumpPoints(parts, l, h, env)
-        cuts    = l +: jumps.sortBy(num).distinctBy(num) :+ h
+        sorted  = jumps.sortWith((p, q) => compareBounds(p, q) < 0)
+        cuts    = l +: sorted.foldLeft(Vector.empty[_Value])((acc, p) =>
+                    if acc.lastOption.exists(compareBounds(_, p) == 0) then acc else acc :+ p) :+ h
         values <- sequence(cuts.sliding(2).toList.map(pq => piece(e, v, parts, pq(0), pq(1), env)))
         total  <- values.reduceLeftOption((x, y) => Sum(x, y).eval(env).toOption.getOrElse(_Number(Double.NaN)))
         if num(total).isFinite
-      yield if a < b then total
+      yield if order < 0 then total
             else Product(_Rational.literalLike(-1, total), total).eval(env).toOption.getOrElse(total)
+
+  /** The order of two bounds, `-1`, `0` or `1`: exactly when both are exact (F_0365), since `4` and
+   *  `4 + 1/10^20` are one `Double`. */
+  private def compareBounds(lo: _Value, hi: _Value): Int =
+    val exact = if _Surd.isExact(lo) && _Surd.isExact(hi) then _Surd.compareExact(lo, hi) else None
+    exact.getOrElse { val (a, b) = (num(lo), num(hi)); if a < b then -1 else if a > b then 1 else 0 }
 
   /** The integer-part nodes of `e` depending on `v`. */
   private def nodes(e: _Expression, v: _Variable): List[_Expression] =
@@ -101,9 +110,10 @@ private[leonardo] object Staircase:
   def declineReason(e: _Expression, v: _Variable, lo: _Value, hi: _Value, env: Environment): Option[String] =
     val found = nodes(e, v)
     val (a, b) = (num(lo), num(hi))
-    if found.isEmpty || !a.isFinite || !b.isFinite || a == b then None
+    val order  = compareBounds(lo, hi)
+    if found.isEmpty || !a.isFinite || !b.isFinite || order == 0 then None
     else
-      val (l, h) = if a < b then (lo, hi) else (hi, lo)
+      val (l, h) = if order < 0 then (lo, hi) else (hi, lo)
       val exact  = _Rational.containsExactIn(e, env) || _Rational.containsExact(lo) || _Rational.containsExact(hi)
       found.find(part(_, v, exact, env).isEmpty) match
         case Some(node) =>
@@ -118,13 +128,24 @@ private[leonardo] object Staircase:
           }
 
   /** For each part, the range of `k` whose jump `k` (`k + 1/2` for `round`) lies strictly inside the
-   *  argument's range over `(l, h)`. */
+   *  argument's range over `(l, h)`.  **Exact where the argument's values at the bounds are** (F_0365):
+   *  read through `Double`, `4 + 1/10^20` is `4`, the jump at `4` was not seen as inside, and the piece
+   *  beyond it was lost from an exact answer. */
   private def jumpRanges(parts: List[Part], l: _Value, h: _Value, env: Environment): List[(Part, Double, Double)] =
-    def at(p: Part, x: _Value): Double = Sum(Product(p.slope, x), p.icpt).eval(env).toOption.fold(Double.NaN)(num)
+    def at(p: Part, x: _Value): Option[_Value] = Sum(Product(p.slope, x), p.icpt).eval(env).toOption
+    def whole(e: _Expression): Option[Double] = e.eval(env).toOption.collect { case r: _Rational => num(r) }
     parts.map { p =>
-      val (ga, gb) = (at(p, l), at(p, h))
-      val shift    = if p.halfIntegers then 0.5 else 0.0
-      (p, math.floor(math.min(ga, gb) - shift) + 1, math.ceil(math.max(ga, gb) - shift) - 1)
+      (at(p, l), at(p, h)) match
+        case (Some(ga), Some(gb)) if _Surd.isExact(ga) && _Surd.isExact(gb) && _Surd.compareExact(ga, gb).isDefined =>
+          val (lo, hi) = if _Surd.compareExact(ga, gb).exists(_ <= 0) then (ga, gb) else (gb, ga)
+          val shift    = if p.halfIntegers then _Rational.of(BigInt(-1), BigInt(2)).getOrElse(_Rational(0)) else _Rational(0)
+          (whole(Floor(Sum(lo, shift))), whole(Ceil(Sum(hi, shift)))) match
+            case (Some(first), Some(last)) => (p, first + 1, last - 1)
+            case _                         => (p, Double.NaN, Double.NaN)
+        case (ga, gb) =>
+          val (a, b) = (ga.fold(Double.NaN)(num), gb.fold(Double.NaN)(num))
+          val shift  = if p.halfIntegers then 0.5 else 0.0
+          (p, math.floor(math.min(a, b) - shift) + 1, math.ceil(math.max(a, b) - shift) - 1)
     }
 
   /** How many pieces the jumps cut `(l, h)` into. */

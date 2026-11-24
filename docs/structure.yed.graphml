@@ -399,7 +399,7 @@ the fuzzy t-norm/t-conorm family (issue 4.H)</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/expressions.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="236.0" width="412.0" x="0.0" y="0.0"/>
+              <y:Geometry height="252.0" width="412.0" x="0.0" y="0.0"/>
               <y:Fill color="#ECECEC" transparent="false"/>
               <y:BorderStyle color="#999999" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">Environment</y:NodeLabel>
@@ -414,7 +414,8 @@ DefaultWorkingPrecision: Int = 30</y:AttributeLabel>
 + limits: Limits  (work and size budgets, F_0124)
 + get(name: String): Option
 + withBinding(name, v): Environment
-+ withLimit(l, n) / withLimits(ls): Environment</y:MethodLabel>
++ withLimit(l, n) / withLimits(ls): Environment
+~ withWorkingPrecision(n): Environment  (F_0364)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -975,7 +976,7 @@ Double: exact remainder (x % y), not the formula</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/calculus.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="140.0" width="340.0" x="0.0" y="0.0"/>
+              <y:Geometry height="156.0" width="340.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">Staircase</y:NodeLabel>
@@ -984,6 +985,7 @@ Double: exact remainder (x % y), not the formula</y:MethodLabel>
 split at the jumps of a linear argument;
 each piece through _DefIntegral</y:AttributeLabel>
                 <y:MethodLabel>~ integral(e, v, lo, hi, env): Option
+exact bounds ordered exactly (F_0365)
 MaxStaircasePieces (measured)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>

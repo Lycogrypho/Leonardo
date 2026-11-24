@@ -236,6 +236,7 @@ package "core" {
         + get(name: String): Option
         + withBinding(name, v): Environment
         + withLimit(l, n) / withLimits(ls): Environment
+        ~ withWorkingPrecision(n): Environment  (F_0364)
         __ companion __
         DefaultPrecision: Int = 5
         DefaultWorkingPrecision: Int = 30
@@ -447,6 +448,7 @@ package "scalar" {
         ~ integral(e, v, lo, hi, env): Option
         split at the jumps of a linear argument;
           each piece through _DefIntegral
+        exact bounds ordered exactly (F_0365)
         MaxStaircasePieces (measured)
     }
     "Staircase" ..> "Rounding" : the integer parts' jumps

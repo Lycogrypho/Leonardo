@@ -100,7 +100,8 @@ def kktConditions(f: _Expression, g: _Expression, h: _Expression, vars: Vector[_
     val stationarity = vars.toList.map(x => _Equation(lagrangian(f, gs.zip(mus) ++ hs.zip(lambdas), x, exact), zero))
     val primal  = gs.map(gj => _Comparison(gj, CompareOp.Le, zero)) ++ hs.map(hk => _Equation(hk, zero))
     val dual    = mus.map(m => _Comparison(m, CompareOp.Ge, zero))
-    val slack   = gs.zip(mus).map((gj, m) => _Equation(simplifyFully(Product(m, gj)), zero))
+    // in the problem's tier too (F_0366): by content alone `mu0 * x^2` was written with the exponent `2.0`
+    val slack   = gs.zip(mus).map((gj, m) => _Equation(simplifyFullyInTier(Product(m, gj), exact), zero))
     (stationarity ++ primal ++ dual ++ slack).reduceLeft(And(_, _))
 
 /** The KKT points of `min f` subject to `g ≤ 0`, `h = 0`, by active-set enumeration.

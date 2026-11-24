@@ -46,6 +46,16 @@ class StaircaseIntegralTest extends AnyFlatSpec:
     assert(exact("integral(mod(x, 1), x, 0, 10)") == Right(_Rational(5)))
   }
 
+  it should "keep the jump beside a bound within 10^-16 of it, exactly (F_0365)" in {
+    // the jump range was read off a Double reading of the bounds, so the piece past the jump was lost
+    def value(s: String): _Value = exact(s).fold(l => fail(s"no value: $l"), identity)
+    def rational(s: String): _Value = value(s)
+    assert(value("integral(floor(x), x, 0, 4 + 1/10^20)") == rational("6 + 4/10^20"))
+    assert(value("integral(floor(x), x, 3 - 1/10^20, 4)") == rational("3 + 2/10^20"))
+    assert(value("integral(ceil(x), x, 0, 4 + 1/10^20)") == rational("10 + 5/10^20"))
+    assert(value("integral(round(x), x, 0, 1/2 + 1/10^20)") == rational("1/10^20"))
+  }
+
   it should "decline what it cannot split, and past the piece budget" in {
     val x = _Variable("x")
     def split(s: String) = Staircase.integral(Parser.parse(s).get, x, _Number(0.5), _Number(3.0), env)

@@ -50,6 +50,7 @@ private def limitTiers(e: _Expression, v: _Variable, point: _Expression, dir: Li
     // A surd point too (F_0263): `limit(x^2, x, 2^(1/2))` answered `2.0`.
     case Right(r @ _Number(d)) if _Surd.isExact(r) =>
       exactLimit(e, v, r, dir, env, env.limits.count(Limit.MaxHopitalSteps))
+        .orElse(exactJumpLimit(e, v, point, dir, env))
         .getOrElse(orComplex(limitFinite(e, v, d, dir, env, env.limits.count(Limit.MaxHopitalSteps)), e, v, d, dir, env))
     case Right(_Number(p)) =>
       if p.isInfinite then limitInfinity(e, v, p, env)
@@ -78,6 +79,18 @@ private def exactLimit(e: _Expression, v: _Variable, p: _Value, dir: LimitDir, e
       case Ratio(num, den) if stepsLeft > 0 && zero(at(num)) && zero(at(den)) =>
         exactLimit(Ratio(derive(num, v), derive(den, v)), v, p, dir, env, stepsLeft - 1)
       case _ => None
+
+/** The limit at an exact point of an expression holding an integer part, from the limit algebra, when
+ *  it is exact (F_0364): at a jump [[exactLimit]] declines, and the `Double` tiers answered the one-sided
+ *  `limit(floor(x^3), x, 3^(1/3), +)` as `3.0` in the exact tier.  The algebra reads the side and the
+ *  jump exactly; an answer that is not exact, or none, leaves the call to the `Double` tiers as before. */
+private def exactJumpLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir,
+                           env: Environment): Option[_Expression] =
+  def integerPart(x: _Expression): Boolean = x match
+    case _: Floor | _: Ceil | _: Round | _: Mod => true
+    case _                                     => x.children.exists(integerPart)
+  if !integerPart(e) then None
+  else limitAlgebra(e, v, point, dir, env).map(_._1).filter(_Surd.isExact)
 
 /** The principal complex value at `p` when the real tiers declined (F_0297, the owner's decision):
  *  `x^(1/3)` at `-8` is `1 + 1.732i`, the value `Power` computes there, and is the limit when the samples

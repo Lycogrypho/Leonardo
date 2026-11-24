@@ -326,6 +326,15 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   the size of the variables it involves, and a semidefinite problem whose feasible region is far wider than
   its data starts from its smallest feasible point; a multiplier of the wrong sign larger than rounding is no
   longer certified.  Answers that were right move by at most `2·10⁻⁹` relatively.
+- Under `exact on`, a limit of `floor`, `ceil` or `round` at an irrational jump no longer answers a limit
+  that does not exist: `limit(floor(x^3), x, 3^(1/3))` stays unevaluated (it answered `2`), and the
+  one-sided limits are exact (`3` from above, `2` from below; the first was `3.0`).
+- Under `exact on`, a definite integral whose bounds differ by less than a `Double` can tell is no longer `0`,
+  and a staircase integral keeps the jump beside such a bound: `integral(floor(x), x, 0, 4 + 1/10^20)` is
+  `6 + 4/10^20` (it was `6`).
+- Under `exact on`, `kkt` states its complementary-slackness rows exactly (`mu0 * x^2 = 0`, not
+  `x ^ 2.0`), so no `rationalize` offer appears, and the `stationary` note writes its points as the answer
+  does (`(x, y) = (0, 0)`, not `(0.0, 0.0)`).
 - Under `exact on`, a root beside a multiple root is no longer lost: `solve(x^2*(x^2 + 10*x - 1) = 0, x)`
   binds all three roots (it bound two), `>=` keeps the bound `-5 + √26`, and `singularities` and `domain` of
   `1/(x^2*(x^2 + 10*x - 1))` see the pole there.

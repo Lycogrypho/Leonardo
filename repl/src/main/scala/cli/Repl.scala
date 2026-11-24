@@ -10,7 +10,7 @@ import logic.{_Connective, And, Or, Not, Implies, Xor, Iff, asTruth, simplifyLog
 import latex.ToLatex
 import parser.Parser
 import optimize.{_Stationary, _Minimize, MinimizeFailure, MinimizeMethod, StationaryKind,
-                 classifyStationary, numericPoints, _QP, QpFailure, QpConstraint,
+                 classifyStationary, _QP, QpFailure, QpConstraint,
                  _LsqFit, _CurveFit, LsqFailure, LsqResult, _Nlp, NlpFailure, NlpResult, _LP, LpFailure,
                  _NSolve, RootFailure, RootResult}
 import ode.{_ODE, _ODESystem, _OdeStep, _OdeSolve, OdeFailure}
@@ -1289,8 +1289,15 @@ final class Session:
    *  local minimum of `2x³ − 6xy + 3y²`, a function unbounded below. */
   private def classification(s: _Stationary, points: _Matrix): Option[String] =
     val names = s.vars.map(_.variable).mkString("(", ", ", ")")
-    val parts = numericPoints(points).map { p =>
-      val at = s.vars.map(v => formatExpression(_Number(p(v.variable)), false)).mkString("(", ", ", ")")
+    // each numeric row's own values, so the note writes a coordinate as the answer does (F_0366: under
+    // `exact on` the answer read `x = 0` and the note `(0.0, 0.0)`)
+    val rows = points.elems.grouped(points.cols).toList.take(points.rows).flatMap { row =>
+      val coords = row.collect { case equation._Equation(v: _Variable, n @ _Number(_)) => v.variable -> n }
+      Option.when(coords.size == row.size)(coords.toMap)
+    }
+    val parts = rows.map { cells =>
+      val p  = cells.map((k, n) => k -> (n match { case _Number(d) => d; case _ => Double.NaN }))
+      val at = s.vars.map(v => cells.get(v.variable).fold(v.variable)(formatExpression(_, false))).mkString("(", ", ", ")")
       // the objective the node analysed (F_0321): as written it may hold a `dot` or a `derive` whose
       // Hessian `derive` cannot take, and the second derivative of a rule-less node looped
       val what = classifyStationary(optimize.reduced(s.f, s.vars, env), s.vars, p, env) match

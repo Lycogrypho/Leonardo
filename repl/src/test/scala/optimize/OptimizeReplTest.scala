@@ -24,6 +24,18 @@ class OptimizeReplTest extends AnyFlatSpec:
     assert(s.lastLatex.isEmpty)
   }
 
+  it should "write the note's coordinates as the answer does, exact under exact mode (F_0366)" in
+  {
+    val s = session
+    s.execute("exact on")
+    val out = s.execute("stationary(x*x + y*y, x, y)")
+    assert(out.linesIterator.next() == "[[x = 0, y = 0]]", out)
+    assert(out.contains("(x, y) = (0, 0) is a local minimum"), out)
+    // and kkt's conditions no longer hold a decimal the rationalize offer could turn into `false`
+    val kkt = s.execute("kkt(y, x*x, 0, x, y)")
+    assert(!kkt.contains("rationalize") && !kkt.contains("2.0"), kkt)
+  }
+
   it should "call an extremum local, since the test is (F_0229)" in
   {
     // Unbounded below, so (1, 1) is no minimum of f; the second-order test reads only the point.

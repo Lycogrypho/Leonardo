@@ -81,6 +81,26 @@ class LimitJumpTest extends AnyFlatSpec:
     assert(number(eval("limit(floor(x/0.1), x, 0.3 + 1e-9)")) == 3.0)
   }
 
+  "a jump at an irrational point in the exact tier" should "be seen through the point's reading (F_0364)" in {
+    def exactValue(src: String): _Value = eval(src, exactEnv, exact = true) match
+      case Right(r) if _Surd.isExact(r) => r
+      case other                       => fail(s"$src: not exact: $other")
+    // (3^(1/3))^3 is 10^-30 from 3 at the working precision: read exactly, no jump, and both sides gave 2
+    for src <- Seq("limit(floor(x^3), x, 3^(1/3))", "limit(ceil(x^3), x, 2^(1/3))",
+                   "limit(round(x^3), x, (5/2)^(1/3))") do
+      assert(eval(src, exactEnv, exact = true).isLeft, src)
+    // the one-sided limits are the values from each side, in the exact tier
+    assert(exactValue("limit(floor(x^3), x, 3^(1/3), +)") == _Rational(3))
+    assert(exactValue("limit(floor(x^3), x, 3^(1/3), -)") == _Rational(2))
+    assert(exactValue("limit(ceil(x^3), x, 2^(1/3), +)") == _Rational(3))
+    assert(exactValue("limit(ceil(x^3), x, 2^(1/3), -)") == _Rational(2))
+    assert(exactValue("limit(round(x^3), x, (5/2)^(1/3), +)") == _Rational(3))
+    assert(exactValue("limit(round(x^3), x, (5/2)^(1/3), -)") == _Rational(2))
+    // a true exact point next to an integer is no jump, however close
+    assert(exactValue("limit(floor(x), x, 1 + 1/10^40)") == _Rational(1))
+    assert(exactValue("limit(floor(x^3), x, 3/2)") == _Rational(3))
+  }
+
   it should "be found by the limit algebra itself" in {
     // the arm's own jump test, where the other tiers are not consulted
     val alg = LimitAlgebra(_Variable("x"), env, exact = false)

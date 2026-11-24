@@ -115,7 +115,12 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
       lazy val magnitude = pt match
         case At(p, _) => magnitudeOf(substitute(u, Map(v.variable -> p)), env)
         case _        => None
-      lim(u, pt, depth).flatMap(integerPart(f, _, magnitude))
+      // the argument at the point read again at twice the working precision (F_0364): an exact value
+      // stays where it is, the reading of an irrational moves
+      lazy val refined = pt match
+        case At(p, _) => substitute(u, Map(v.variable -> p)).eval(env.withWorkingPrecision(2 * env.workingPrecision)).toOption
+        case _        => None
+      lim(u, pt, depth).flatMap(integerPart(f, _, magnitude, refined))
     // Any other function on the allowlist, continuous at a finite value it is defined at (F_0332, the
     // owner's decision: continuity is declared, so a function added later is declined by default).
     case f: _Function if f.children.sizeIs == 1 && continuousWhereDefined(f) => lim(f.children.head, pt, depth).flatMap {
@@ -155,13 +160,14 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
    *  there; at a jump `j`, the side decides — from above `floor` is `j`, `ceil` `j + 1`, `round` `j + 1/2`;
    *  from below `j − 1`, `j` and `j − 1/2` — and with no side known, or a value that is not a number,
    *  `None`.  The answer is locally constant, so its side is `0`.
-   *  @param magnitude the size of the terms that form the argument at the point, when known */
-  private def integerPart(f: _Function, l: LVal, magnitude: => Option[Double]): Option[LVal] = l match
+   *  @param magnitude the size of the terms that form the argument at the point, when known
+   *  @param refined   the argument at the point read at a finer working precision, when known */
+  private def integerPart(f: _Function, l: LVal, magnitude: => Option[Double], refined: => Option[_Value]): Option[LVal] = l match
     case Inf(_) => None
     case Fin(c, s) => numeric(c).flatMap { d =>
       def at(x: _Expression) = Some(Fin(fold(x), Some(0)))
       val half = Ratio(lit(1), lit(2))
-      jumpAt(f, c, d, magnitude) match
+      jumpAt(f, c, d, magnitude, refined) match
         case Some(j) if !s.contains(0) => (f, s) match
           case (_: Floor, Some(1))  => at(j)
           case (_: Floor, Some(-1)) => at(Sum(j, lit(-1)))
@@ -177,20 +183,30 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
    *  does not jump there.  An exact `c` is tested exactly; a `Double` reading `d` is at a jump when it lies
    *  within four ulps of one, at the size of the terms that formed it (F_0342: `0.3/0.1` is
    *  `2.9999999999999996`, which an exact comparison read as no jump, so `limit(floor(x/0.1), x, 0.3)`
-   *  answered `2.0` where the sides give `2` and `3`). */
-  private def jumpAt(f: _Function, c: _Expression, d: Double, magnitude: => Option[Double]): Option[_Expression] =
+   *  answered `2.0` where the sides give `2` and `3`).  **An exact `c` may itself be a reading** (F_0364):
+   *  the working-precision reading of an irrational point, `(3^(1/3))^3` being `10⁻³⁰` from `3`, so the
+   *  exact test saw no jump and both sides answered `2`.  An exact `c` that is no jump but lies within the
+   *  `Double` test of one is read again at a finer working precision (`refined`): a true exact value does
+   *  not move, and stays no jump; a reading moves, and is read as the jump, built exact. */
+  private def jumpAt(f: _Function, c: _Expression, d: Double, magnitude: => Option[Double],
+                     refined: => Option[_Value]): Option[_Expression] =
     val round = f.isInstanceOf[Round]
-    if _Surd.isExact(c) then
-      val t     = if round then fold(Product(_Rational(2), c)) else c
-      val whole = isZeroLiteral(fold(Sum(t, Product(_Rational(-1), Floor(t)))))
-      val odd   = !round || !isZeroLiteral(fold(Mod(t, _Rational(2))))
-      Option.when(whole && odd)(c)
-    else
+    /** The jump within four ulps of `d` at the terms' size, as `k` (twice the jump for `round`). */
+    def nearJump: Option[Double] =
       val t     = if round then 2 * d else d
       val k     = math.rint(t)
       val scale = math.max(math.abs(t), magnitude.getOrElse(0.0) * (if round then 2 else 1))
       val near  = math.abs(t - k) <= 4 * math.ulp(scale)
-      Option.when(near && (!round || math.abs(k % 2) == 1))(_Number(if round then k / 2 else k))
+      Option.when(near && (!round || math.abs(k % 2) == 1))(k)
+    c match
+      case cv: _Value if _Surd.isExact(cv) =>
+        val t     = if round then fold(Product(_Rational(2), c)) else c
+        val whole = isZeroLiteral(fold(Sum(t, Product(_Rational(-1), Floor(t)))))
+        val odd   = !round || !isZeroLiteral(fold(Mod(t, _Rational(2))))
+        if whole && odd then Some(c)
+        else nearJump.filter(_ => refined.exists(r => !_Surd.compareExact(r, cv).contains(0)))
+          .flatMap(k => _Rational.fromDouble(if round then k / 2 else k))
+      case _ => nearJump.map(k => _Number(if round then k / 2 else k))
 
   /** `sin c` or `cos c`; a zero (to the function's range) is read with its side from the derivative. */
   private def trig(l: LVal, cosine: Boolean): Option[LVal] = l match
@@ -282,9 +298,17 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
             Some(if kv > 0 then Fin(lit(0), Some(if odd then -1 else 1)) else if kv < 0 then Inf(if odd then -1 else 1)
                  else Fin(lit(1), Some(0)))
           case _ => None
-        case Fin(c, _) => numeric(c) match
+        case Fin(c, s) => numeric(c) match
           case Some(d) if d < 0 && !whole => None          // the principal value is complex (F_0297)
-          case _                         => Some(Fin(fold(Power(c, k)), None))
+          case nd =>
+            // the side carried across: the sign of the slope k·c^(k−1) at a non-zero base (F_0364, so a
+            // jump of `floor(x^3)` is read from the side `x` comes from)
+            val side =
+              if kv == 0 then Some(0)
+              else for sd <- s; d <- nd yield
+                val base = if d > 0 || ((kv - 1).toLong % 2) == 0 then 1 else -1
+                sd * sgn(kv) * base
+            Some(Fin(fold(Power(c, k)), side))
         case Inf(1)  => Some(if kv > 0 then Inf(1) else if kv < 0 then Fin(lit(0), Some(1)) else Fin(lit(1), Some(0)))
         case Inf(_) if whole =>
           val odd = (kv.toLong % 2) != 0

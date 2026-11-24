@@ -276,6 +276,7 @@ __ companion __
 + get(name: String): Option
 + withBinding(name, v): Environment
 + withLimit(l, n) / withLimits(ls): Environment
+~ withWorkingPrecision(n): Environment  (F_0364)
 __ companion __
 DefaultPrecision: Int = 5
 DefaultWorkingPrecision: Int = 30</data>
@@ -599,6 +600,7 @@ Double: exact remainder (x % y), not the formula</data>
 ~ integral(e, v, lo, hi, env): Option
 split at the jumps of a linear argument;
 each piece through _DefIntegral
+exact bounds ordered exactly (F_0365)
 MaxStaircasePieces (measured)</data>
     </node>
     <node id="n55">

@@ -18,6 +18,14 @@ class ExactStationaryTest extends AnyFlatSpec:
       case Left(m: _Matrix) => m.elems.map { case _Equation(_, rhs) => rhs; case o => fail(s"not an equation: $o") }
       case other            => fail(s"no points: $other")
 
+  "kkt under exact mode" should "state the complementarity rows in the exact tier (F_0366)" in {
+    // `mu0 * x^2` was simplified by content alone, which in exact mode wrote the exponent as 2.0
+    val exactEnv = Environment().withExactMode(true)
+    val stated   = Parser.parse("kkt(y, x*x, 0, x, y)", Some(30)).get.eval(exactEnv).fold(identity, identity).toString
+    assert(!stated.contains(".0"), stated)
+    assert(stated.contains("(mu0 * (x ^ 2)) = 0"), stated)
+  }
+
   "stationary on exact input with rational points" should "answer every coordinate exactly" in {
     val vs = values("stationary(2*x^3 - 6*x*y + 3*y^2, x, y)", Some(30))
     assert(vs.size == 4)
