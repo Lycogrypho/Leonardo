@@ -192,7 +192,7 @@ display: &quot;unknown&quot; at 0.5, else &quot;truth(d)&quot;</y:MethodLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/developer.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="348.0" width="524.0" x="0.0" y="0.0"/>
+              <y:Geometry height="348.0" width="604.0" x="0.0" y="0.0"/>
               <y:Fill color="#FBEBD0" transparent="false"/>
               <y:BorderStyle color="#C9963B" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">_Rational</y:NodeLabel>
@@ -209,7 +209,7 @@ equality by cross-multiplication: 2/6 == 1/3</y:AttributeLabel>
 + approximate(maxDen): _Rational
 + approximateToDigits(digits): _Rational
 + of(n, d, policy): Option[_Rational]
-+ fromDouble(d): Option[_Rational]  (exact dyadic)
++ fromDouble(d): Option[_Rational]  (exact dyadic, from the bits, F_0374)
 DefaultPolicy = Threshold(256)      chosen by the 4.M benchmark
 + thresholdFor(digits) = max(256, 8 * digits)
 sibling _Value of _Number (issue 4.L)
@@ -4295,7 +4295,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</y:M
           <data key="d1">https://lycogrypho.github.io/Leonardo/optimization.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="236.0" width="556.0" x="0.0" y="0.0"/>
+              <y:Geometry height="268.0" width="556.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">QP</y:NodeLabel>
@@ -4308,6 +4308,8 @@ KKT-certified at 0.5*10^-precision, relative</y:AttributeLabel>
 solve(..., start): semidefinite path from a feasible point (F_0359)
 semidefinite H: primal active set from an lpSolve vertex (F_0074)
 every term at its own variable's size (F_0361)
+a row at its variables' own data, bounds excluded (F_0362)
+far LP vertex -&gt; the smallest feasible start (F_0362)
 Left(QpFailure) / Right(QpResult incl. active set)
 QpResult.multipliers: QpMultipliers (F_0066)
 MaxQpIterations 2000, MaxQpVariables 500 (measured)</y:MethodLabel>

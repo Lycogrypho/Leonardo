@@ -74,6 +74,8 @@ class IntervalTest extends AnyFlatSpec:
       case s => assert(s == "[0.33333, 0.66667]", s)
     interval(-2.0 / 3, -1.0 / 3).display(5) match
       case s => assert(s == "[-0.66667, -0.33333]", s)
+    // F_0374: a negative endpoint past 2^63 displays as itself in the browser too.
+    assert(interval(-1e20, 1).display(5) == s"[${_Number(-1e20).display(5)}, 1.0]", interval(-1e20, 1).display(5))
   }
 
   it should "be exact in exact mode" in {

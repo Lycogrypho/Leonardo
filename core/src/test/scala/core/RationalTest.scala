@@ -194,6 +194,23 @@ class RationalTest extends AnyFlatSpec:
         assert(v != r(1, 10))
   }
 
+  it should "convert a large negative Double exactly on every platform (F_0374)" in
+  {
+    // Scala.js's `new java.math.BigDecimal(-1e19)` answered 37768931862957161709568.
+    val cases = Seq(1e19 -> "10000000000000000000", 1e30 -> "1000000000000000019884624838656",
+                    9.223372036854775807e18 -> "9223372036854775808")
+    for (d, digits) <- cases; sign <- Seq(1, -1) do
+      assert(_Rational.fromDouble(sign * d).contains(_Rational.make(BigInt(sign) * BigInt(digits), BigInt(1), GcdPolicy.Eager)),
+             s"${sign * d}")
+    assert(_Rational.fromDouble(-0.75).contains(r(-3, 4)))
+    assert(_Rational.fromDouble(-Double.MinPositiveValue).contains(_Rational.make(BigInt(-1), BigInt(2).pow(1074), GcdPolicy.Eager)))
+    assert(_Rational.fromDouble(-Double.MaxValue).contains(
+      _Rational.make(-(BigInt(2).pow(53) - 1) * BigInt(2).pow(971), BigInt(1), GcdPolicy.Eager)))
+    assert(_Rational.fromDouble(-0.0).contains(r(0, 1)))
+    assert(_Rational.exactDecimal(-1e19).toPlainString == "-10000000000000000000")
+    assert(_Rational.exactDecimal(-0.1).compareTo(new java.math.BigDecimal("-0.1000000000000000055511151231257827021181583404541015625")) == 0)
+  }
+
   it should "return None for the non-finite Doubles" in
   {
     assert(_Rational.fromDouble(Double.NaN).isEmpty)

@@ -288,7 +288,13 @@ private[scalar] def isolateRootsMeasured(p: QPoly, factors: Vector[QPoly], maxWo
         }
         val samples = (lo0 +: between) :+ hi0
         val signs   = fz.map(f => samples.map(signAt(f, _)))
-        // the narrowed ends of an irrational root are no roots of `p`, so none of a factor's
+        /** The Sturm sequence of `f`'s square-free part `f / gcd(f, f′)`, built as `chain` is.  Counting over
+         *  `f`'s own sequence fails at a multiple root of `f`, where every element vanishes; an irrational
+         *  root's interval may start at one, since its left end can be an earlier dyadic root (F_0363). */
+        def squareFreeChain(f: ZPoly, c: Vector[ZPoly]): Vector[ZPoly] =
+          if zDeg(c.last) == 0 then c else zSturm(zPseudoDivide(f, c.last, charge)._1, charge)
+        /** Whether `f` vanishes at the root found as `r`: exactly at a rational one, and by `f`'s square-free
+         *  Sturm count over `(l, h]` at an irrational one, which holds only that root. */
         def zeroAt(f: ZPoly, fc: => Vector[ZPoly])(r: Either[(BigInt, BigInt), (Dyadic, Dyadic)]): Boolean = r match
           case Left((h, k))  => zSignAt(f, h, k, charge) == 0
           case Right((l, h)) => variations(fc, l) - variations(fc, h) > 0
@@ -296,12 +302,17 @@ private[scalar] def isolateRootsMeasured(p: QPoly, factors: Vector[QPoly], maxWo
           if f.isEmpty then found.map(_ => true)
           else if f.length == 1 then found.map(_ => false)
           else
-            lazy val fc = zSturm(f, charge)
+            lazy val fc = squareFreeChain(f, zSturm(f, charge))
             found.map(zeroAt(f, fc))
         }
         // a root's multiplicity in f: how many of f, gcd(f, f′), gcd of that with its derivative, … vanish there
         val mult = if !multiplicities then Vector.empty else fz.map { f =>
-          val tower = Vector.unfold(f) { g => Option.when(zDeg(g) >= 1) { val c = zSturm(g, charge); ((c.head, c), c.last) } }
+          val tower = Vector.unfold(f) { g =>
+            Option.when(zDeg(g) >= 1) {
+              val c = zSturm(g, charge)
+              ((g, squareFreeChain(g, c)), c.last)
+            }
+          }
           found.map(r => tower.count((g, c) => zeroAt(g, c)(r)))
         }
         Some(RootIsolation(roots, signs, vanish, mult))

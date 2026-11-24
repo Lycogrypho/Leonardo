@@ -167,6 +167,15 @@ class LpTest extends AnyFlatSpec:
     assert(s < 10, s"$s s")
   }
 
+  it should "find a box past 2^63 feasible on every platform (F_0374)" in {
+    // A wrong conversion of the negative bound made the browser call this box infeasible.
+    for big <- Seq(1e19, 1e100, 1e200) do
+      lpSolve(Vector(_Number(1), _Number(-1)), None, None, Vector(_Number(-big), _Number(-big)),
+              Vector(_Number(big), _Number(big))) match
+        case Right(r)  => assert(r.x == Vector(_Number(-big), _Number(big)), s"$big")
+        case Left(why) => fail(s"$big: $why")
+  }
+
   "the lp production" should "answer a column, round-trip, and reserve lp" in {
     val e = parse("lp([[-3], [-5]], [[1, 0], [0, 2], [3, 2]], [[4], [12], [18]], 0, inf)")
     e.eval(env) match

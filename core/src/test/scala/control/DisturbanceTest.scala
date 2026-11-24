@@ -138,3 +138,12 @@ class DisturbanceTest extends AnyFlatSpec:
           xhat = 0.85 * xhat + 0.4 * u
         assert(math.abs(y - 1.0) > 0.01, s"y = $y")
   }
+
+  it should "answer the steady-state target under input bounds of any width (F_0362)" in {
+    // x+ = 0.5x + u1 + u2, y = x, setpoint 1: with bounds at +-1e12 it declined Uncertified(0.29)
+    val (a, b, c, z) = (m(1, 1, 0.5), m(1, 2, 1.0, 1.0), m(1, 1, 1.0), m(1, 1, 0.0))
+    for big <- Seq(1e3, 1e12) do
+      steadyStateTarget(a, b, c, z, z, Vector(1.0), Vector(0.0), Some((Vector(-big, -big), Vector(big, big))), env) match
+        case Right(t) => assert(t.reached && math.abs(t.u.sum - 0.5) < 1e-6, s"$big: $t")
+        case Left(why) => fail(s"$big: $why")
+  }

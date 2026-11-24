@@ -102,6 +102,22 @@ class MpcQpTest extends AnyFlatSpec:
                  MpcBounds(soft = Some(MpcSoftOutputs(Vector(1.0), Vector(0.0)))), env.limits).isLeft)   // rho2 = 0
   }
 
+  "an output bound" should "hold whatever the width of the input bounds (F_0362)" in {
+    // x+ = 0.5x + u, y = x, reference 10, y <= 1: with u bounded by +-1e12 (a common way to write "no bound")
+    // the predicted y ran to 10, certified at 9e-12
+    val (am, bm, cm) = (mat(1, 1, 0.5), mat(1, 1, 1.0), mat(1, 1, 1.0))
+    val pr = mpcPrediction(am, bm, cm, 5, 2, Limits.Default).fold(f => fail(s"$f"), identity)
+    for big <- Seq(1e3, 1e12) do
+      val bounds = MpcBounds(u = Some((Vector(-big), Vector(big))), y = Some((Vector(Double.NegativeInfinity), Vector(1.0))))
+      mpcQp(pr, mat(1, 1, 1.0), mat(1, 1, 1e-3), Vector(10.0), Vector(0.0), Vector(0.0), bounds, env.limits)
+        .flatMap(_.solve(Set.empty, env)) match
+        case Right(s) =>
+          val moves = s.moves.map(_.head) ++ Vector.fill(3)(s.moves.last.head)
+          val ys = moves.scanLeft(0.0)((x, u) => 0.5 * x + u).tail
+          assert(ys.forall(_ <= 1.0 + 1e-9), s"$big: $ys")
+        case Left(why) => fail(s"$big: $why")
+  }
+
   "an infinite bound on the wrong side" should "be refused, not dropped (F_0369)" in {
     // y >= +inf (or y <= -inf) is infeasible; a non-finite bound adds no row, so it used to vanish and the
     // programme solved as if the output were unbounded

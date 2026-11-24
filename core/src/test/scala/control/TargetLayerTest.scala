@@ -122,6 +122,17 @@ class TargetLayerTest extends AnyFlatSpec:
     near(ok(steadyStateTargets(ss, TargetSpec.of(Vector(2.0)), None, zero2, env)).u, Vector(1.0, 0.001))
   }
 
+  it should "meet a reachable setpoint whatever the input bounds' width (F_0362)" in {
+    // y = u1 + u2 = 1: with bounds at +-1e12 (or 1e200) the first level started at the bounds' far corner and
+    // answered u = (0, 0), the setpoint reported unmet
+    val g = GainSteadyState(m(1, 2, 1, 1), Vector(0.0), Vector(0.0, 0.0))
+    for big <- Seq(1e3, 1e12, 1e200) do
+      val t = steadyStateTargets(g, TargetSpec.of(Vector(1.0)), Some((Vector(-big, -big), Vector(big, big))), Vector(0.0, 0.0), env)
+        .fold(f => fail(s"$big: $f"), identity)
+      assert(t.reached, s"$big: $t")
+      near(t.u, Vector(0.5, 0.5), 1e-6)
+  }
+
   it should "take an input as small as 1e-200 into the tie-break (F_0368)" in {
     // the weight 1/scale^2 overflowed to infinity below ~1e-154: declined, "H and f must be finite"
     val g = GainSteadyState(m(1, 2, 1, 1), Vector(0.0), Vector(0.0, 0.0))

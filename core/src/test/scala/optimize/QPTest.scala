@@ -191,3 +191,16 @@ class QPTest extends AnyFlatSpec:
       assert(parse(e.toString) == e, e.toString)
     assert(!Parser.parse("qp + 1").successful)
   }
+
+  it should "hold a small constraint beside a far bound or a large linear term (F_0362)" in {
+    // one problem-wide scale, the largest |rhs|/|n| or |f|/|H|, floored every row's test: z2 >= 1 was
+    // certified violated at (0, 0) beside z1 >= -1e12, beside f1 = -1e12, and in units of 1e-12
+    val i2 = _MatrixValue(2, 2, Array(1.0, 0.0, 0.0, 1.0))
+    def z(f: Vector[Double], ineq: Option[(_MatrixValue, Vector[Double])], lb: Vector[Double]) =
+      qpSolve(i2, f, ineq, None, lb, Vector(Inf, Inf), Set.empty, env).fold(w => fail(s"$w"), _.z)
+    assert(math.abs(z(Vector(0.0, 0.0), None, Vector(-1e12, 1.0))(1) - 1.0) < 1e-12)
+    assert(math.abs(z(Vector(-1e12, 0.0), None, Vector(Double.NegativeInfinity, 1.0))(1) - 1.0) < 1e-12)
+    assert(math.abs(z(Vector(0.0, 0.0), None, Vector(-1.0, 1e-12))(1) - 1e-12) < 1e-24)
+    val row = Some((_MatrixValue(1, 2, Array(0.0, -1.0)), Vector(-1.0)))
+    assert(math.abs(z(Vector(0.0, 0.0), row, Vector(-1e12, Double.NegativeInfinity))(1) - 1.0) < 1e-12)
+  }

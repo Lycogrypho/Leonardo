@@ -243,6 +243,30 @@ class SemidefiniteQPTest extends AnyFlatSpec:
       case Left(why) => fail(s"declined: $why")
   }
 
+  it should "not stop at the far corner of wide bounds (F_0362)" in {
+    // min (z1 + z2 - 1)^2 under |z| <= big: the exact LP's zero-cost vertex is the bounds' corner, where a step of
+    // size 1 is below the step test and a multiplier of -2 below the gradient's terms (4e12); (1e12, -1e12) was
+    // certified with objective 0 for a minimum of -1
+    val h = mv(Seq(Seq(2.0, 2.0), Seq(2.0, 2.0)))
+    for big <- Seq(1e6, 1e9, 1e12) do
+      qpSolve(h, Vector(-2.0, -2.0), None, None, Vector(-big, -big), Vector(big, big), Set.empty, env) match
+        case Right(r) =>
+          assert(math.abs(r.z(0) + r.z(1) - 1.0) < 1e-9 && math.abs(r.objective + 1.0) < 1e-9, s"$big: ${r.z}")
+        case Left(why) => fail(s"$big: $why")
+  }
+
+  it should "refuse a multiplier of the wrong sign at a far point, however large the gradient's terms (F_0362)" in {
+    // the far point itself, handed to the certificate: z1 at its upper bound, z2 at its lower one, the lower
+    // multiplier -2 against terms of 4e12 -- 5e-13 relative, and well above the rounding of those terms
+    val big = 1e12
+    val prob = QpProblem(2, mv(Seq(Seq(2.0, 2.0), Seq(2.0, 2.0))), Array(-2.0, -2.0),
+                         Vector(QpRow(Array(0.0, 1.0), -big, Some(QpConstraint.Lower(1))),
+                                QpRow(Array(-1.0, 0.0), -big, Some(QpConstraint.Upper(0)))), 2.0)
+    qpCertificate(prob, Array(big, -big), Vector(0, 1), Array(-2.0, 2.0), 2, 0.5e-5) match
+      case Left(QpFailure.Uncertified(r)) => assert(r > 0.5e-5, s"$r")
+      case other                          => fail(s"certified: $other")
+  }
+
   it should "leave the definite path to Goldfarb–Idnani: the acceptance problem is unchanged" in {
     val r = solved("qp([[1, -1], [-1, 2]], [[-2], [-6]], [[1, 1], [-1, 2], [2, 1]], [[2], [2], [3]], 0, inf)")
     assert(near(r.z, Seq(2.0 / 3, 4.0 / 3)))

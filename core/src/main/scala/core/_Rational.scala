@@ -125,11 +125,43 @@ object _Rational:
    *  cannot be repaired after the fact — hence the parser's own exact mode, and hence
    *  [[fromDecimalString]] beside this.
    *
+   *  The value is read off the `Double`'s own bits, `±m·2^e`, never through
+   *  `new java.math.BigDecimal(d)`: Scala.js's emulation of that constructor answers a wrong,
+   *  positive value for a negative `Double` of magnitude past about `2⁶³` (`-1e19` came back
+   *  `37768931862957161709568`), which made `lp` call a box of `±1e19` infeasible in the
+   *  browser alone (F_0374).
+   *
    *  @param d the value to convert
    *  @return the exact rational, or `None` when `d` is NaN or infinite
    */
   def fromDouble(d: Double): Option[_Rational] =
-    if !d.isFinite then None else Some(fromBigDecimal(new java.math.BigDecimal(d)))
+    dyadicOf(d).map((m, e) => if e >= 0 then make(m << e, BigInt(1), GcdPolicy.Eager)
+                              else make(m, BigInt(1) << -e, GcdPolicy.Eager))
+
+  /** A finite `Double` as `m·2^e` with `m` an integer carrying the sign, from its IEEE bits;
+   *  `None` for NaN or an infinity.  Exact on both platforms, since it touches no library
+   *  conversion (F_0374). */
+  private def dyadicOf(d: Double): Option[(BigInt, Int)] =
+    Option.when(d.isFinite) {
+      val bits     = java.lang.Double.doubleToRawLongBits(d)
+      val biased   = ((bits >>> 52) & 0x7ffL).toInt
+      val fraction = bits & 0xfffffffffffffL
+      val mantissa = if biased == 0 then fraction else fraction | (1L << 52)
+      val m        = BigInt(mantissa)
+      (if bits < 0 then -m else m, (if biased == 0 then 1 else biased) - 1075)
+    }
+
+  /** A finite `Double` as the exact `BigDecimal` it denotes, `m·5^k / 10^k` for `m / 2^k`.
+   *  The portable replacement for `new java.math.BigDecimal(d)`, which Scala.js gets wrong for
+   *  a large negative value (F_0374).
+   *  @param d the value, finite
+   *  @return its exact decimal expansion
+   */
+  private[leonardo] def exactDecimal(d: Double): java.math.BigDecimal =
+    dyadicOf(d).fold(java.math.BigDecimal.ZERO) { (m, e) =>
+      if e >= 0 then new java.math.BigDecimal((m << e).bigInteger)
+      else new java.math.BigDecimal((m * BigInt(5).pow(-e)).bigInteger, -e)
+    }
 
   /** Converts a *decimal literal* to the exact rational it denotes.
    *

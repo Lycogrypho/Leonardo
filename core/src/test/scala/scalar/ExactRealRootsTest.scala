@@ -94,3 +94,34 @@ class ExactRealRootsTest extends AnyFlatSpec:
     assert(sing("1/((x - 1)*(x - 1 - 1/10^10))").contains(Vector((exact("1"), 1), (exact("1 + 1/10^10"), 1))))
     assert(sing("sin(x)/x").isEmpty)
   }
+
+  "a factor's zero at an irrational root" should "be seen beside a multiple root at a bisection point (F_0363)" in {
+    // the bisection leaves the multiple root at 0, 1 or 1/2 as the left end of the next root's interval;
+    // the factor's own Sturm sequence vanishes there identically, and the zero beside it was read as none
+    for s <- Seq("x^2*(x^2 + 10*x - 1)", "(x - 1)^2*(x^2 - 2)", "(2*x - 1)^2*(4*x^2 - 2)") do
+      val f   = poly(s)
+      val iso = isolateRoots(f, Vector(f), Big, multiplicities = true).fold(fail(s"declined: $s"))(identity)
+      assert(iso.roots.size == 3, s)
+      assert(iso.vanishes == Vector(Vector.fill(3)(true)), s"$s: ${iso.vanishes}")
+      assert(iso.multiplicity.head.sum == qDeg(f), s"$s: ${iso.multiplicity}")
+  }
+
+  "solve, domain and singularities" should "keep a root beside a multiple root at a bisection point (F_0363)" in {
+    def eval(s: String): _Expression = Parser.parse(s, Some(30)) match
+      case Parser.Success(e, _) => e.eval(env).fold(identity, identity)
+      case other                => fail(other.toString)
+    // b = -5 + 26^(1/2), the root of x^2 + 10x - 1 beside the double root at 0
+    val atB = env.withBinding("x", exact("-5 + 26^(1/2)"))
+    def holdsAtB(answer: _Expression): Boolean = answer.eval(atB) match
+      case Right(_Bool(v)) => v
+      case other           => fail(s"$answer at b: $other")
+    assert(holdsAtB(eval("solve(x^2*(x^2 + 10*x - 1) >= 0, x)")))
+    assert(!holdsAtB(eval("solve(1/(x^2*(x^2 + 10*x - 1)) < 0, x)")))
+    assert(!holdsAtB(eval("domain(1/(x^2*(x^2 + 10*x - 1)), x)")))
+    def columns(s: String): Int = eval(s) match
+      case m: matrix._Matrix => m.cols
+      case other             => fail(s"$s: $other")
+    assert(columns("singularities(1/(x^2*(x^2 + 10*x - 1)), x)") == 3)
+    assert(columns("solve(x^2*(x^2 + 10*x - 1) = 0, x)") == 3)
+    assert(columns("solve(x^2*(x^3 + 10*x - 1) = 0, x)") == 2)
+  }

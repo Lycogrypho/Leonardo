@@ -120,7 +120,7 @@ package "core" {
         + maxBitLength: Int
         __ companion __
         + of(n, d, policy): Option[_Rational]
-        + fromDouble(d): Option[_Rational]  (exact dyadic)
+        + fromDouble(d): Option[_Rational]  (exact dyadic, from the bits, F_0374)
         DefaultPolicy = Threshold(256)      chosen by the 4.M benchmark
         + thresholdFor(digits) = max(256, 8 * digits)
         sibling _Value of _Number (issue 4.L)
@@ -2055,6 +2055,8 @@ package "optimize" <<Rectangle>> {
         semidefinite H: primal active set from an lpSolve vertex (F_0074)
         KKT-certified at 0.5*10^-precision, relative
           every term at its own variable's size (F_0361)
+          a row at its variables' own data, bounds excluded (F_0362)
+          far LP vertex -> the smallest feasible start (F_0362)
         Left(QpFailure) / Right(QpResult incl. active set)
         QpResult.multipliers: QpMultipliers (F_0066)
         MaxQpIterations 2000, MaxQpVariables 500 (measured)

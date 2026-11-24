@@ -159,7 +159,7 @@ object _Interval:
           .divide(new java.math.BigDecimal(r.den.bigInteger), precision + 2, mode)
         _Number(exact.setScale(precision, mode).doubleValue).display(precision)
       case _Number(d) =>
-        _Number(new java.math.BigDecimal(d).setScale(precision, mode).doubleValue).display(precision)
+        _Number(_Rational.exactDecimal(d).setScale(precision, mode).doubleValue).display(precision)
       case other => other.toString
 
   // ── directed Double arithmetic ──

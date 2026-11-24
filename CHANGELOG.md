@@ -319,6 +319,19 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
 - The steady-state target layer's smallest move is measured in each input's own units also when the input
   has no bounds and is at 0 (from the model's steady-state gain), and an input on a scale below `10⁻¹⁵⁴` no
   longer makes the call decline.
+- **`qpSolve` no longer certifies a point that violates a small constraint beside a far bound or a large
+  linear term.**  A bound written as a large number (an MPC input at `±10¹²`, "no bound") made every
+  constraint read in that number's units: the MPC's `y ≤ 1` was ignored, a `z₂ ≥ 1` beside `z₁ ≥ −10¹²`
+  answered `z₂ = 0`, and a reachable target-layer setpoint was reported unmet.  Each constraint is now read at
+  the size of the variables it involves, and a semidefinite problem whose feasible region is far wider than
+  its data starts from its smallest feasible point; a multiplier of the wrong sign larger than rounding is no
+  longer certified.  Answers that were right move by at most `2·10⁻⁹` relatively.
+- Under `exact on`, a root beside a multiple root is no longer lost: `solve(x^2*(x^2 + 10*x - 1) = 0, x)`
+  binds all three roots (it bound two), `>=` keeps the bound `-5 + √26`, and `singularities` and `domain` of
+  `1/(x^2*(x^2 + 10*x - 1))` see the pole there.
+- A negative `Double` of magnitude above about `2⁶³` converts to the right exact rational in the browser
+  build: `lp` called a box of `±10¹⁹` infeasible there, and an interval endpoint of that kind displayed
+  wrongly.  The JVM was not affected.
 - The MCP server answers every request it has read before it exits at the end of its input: a caller that
   writes its requests and closes stdin at once got only the first answer.
 - **`leonardo-mcp` runs on the MCP Java SDK 2.2.0**, with Jackson 3.2.4 and Reactor 3.9.0.  The SDK's own
