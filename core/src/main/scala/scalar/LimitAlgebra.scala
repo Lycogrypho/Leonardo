@@ -187,7 +187,10 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
    *  the working-precision reading of an irrational point, `(3^(1/3))^3` being `10⁻³⁰` from `3`, so the
    *  exact test saw no jump and both sides answered `2`.  An exact `c` that is no jump but lies within the
    *  `Double` test of one is read again at a finer working precision (`refined`): a true exact value does
-   *  not move, and stays no jump; a reading moves, and is read as the jump, built exact. */
+   *  not move, and stays no jump; the reading of a jump moves **towards it**, by about the precision gained,
+   *  and is read as the jump, built exact.  **Moving is not enough** (F_0376): a point merely beside the
+   *  jump that holds an irrational (`1 + 3^(1/3)/10^20`) moves too, but keeps its distance, and reading it as
+   *  the jump answered `0` for `limit(floor(x), x, 1 + 3^(1/3)/10^20, -)`. */
   private def jumpAt(f: _Function, c: _Expression, d: Double, magnitude: => Option[Double],
                      refined: => Option[_Value]): Option[_Expression] =
     val round = f.isInstanceOf[Round]
@@ -204,8 +207,18 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
         val whole = isZeroLiteral(fold(Sum(t, Product(_Rational(-1), Floor(t)))))
         val odd   = !round || !isZeroLiteral(fold(Mod(t, _Rational(2))))
         if whole && odd then Some(c)
-        else nearJump.filter(_ => refined.exists(r => !_Surd.compareExact(r, cv).contains(0)))
-          .flatMap(k => _Rational.fromDouble(if round then k / 2 else k))
+        else nearJump.flatMap(k => _Rational.fromDouble(if round then k / 2 else k)).filter { jump =>
+          // the distance to the jump at this precision and at the finer one: a reading of the jump shrinks
+          // it by about the digits gained, a point beside the jump keeps it
+          def distance(x: _Expression): Option[Double] =
+            fold(Sum(x, Product(_Rational(-1), jump))) match
+              case dv @ _Number(d) if _Surd.isExact(dv) => Some(math.abs(d))
+              case _                                   => None
+          val gained = math.pow(10.0, -env.workingPrecision / 2.0)
+          (distance(c), refined.flatMap(distance)) match
+            case (Some(now), Some(finer)) => now > 0.0 && finer <= now * gained
+            case _                        => false
+        }
       case _ => nearJump.map(k => _Number(if round then k / 2 else k))
 
   /** `sin c` or `cos c`; a zero (to the function's range) is read with its side from the derivative. */

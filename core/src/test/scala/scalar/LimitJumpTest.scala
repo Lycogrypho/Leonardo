@@ -101,6 +101,20 @@ class LimitJumpTest extends AnyFlatSpec:
     assert(exactValue("limit(floor(x^3), x, 3/2)") == _Rational(3))
   }
 
+  it should "not read a point beside a jump as the jump because it holds an irrational (F_0376)" in {
+    def exactValue(src: String): _Value = eval(src, exactEnv, exact = true) match
+      case Right(r) if _Surd.isExact(r) => r
+      case other                       => fail(s"$src: not exact: $other")
+    // the point is 1 + 1.44e-20, above the jump: its reading moves when read more finely, but not towards 1
+    assert(exactValue("limit(floor(x), x, 1 + 3^(1/3)/10^20, -)") == _Rational(1))
+    assert(exactValue("limit(floor(x), x, 1 + 3^(1/3)/10^20)") == _Rational(1))
+    assert(exactValue("limit(ceil(x), x, 1 + 3^(1/3)/10^20, -)") == _Rational(2))
+    assert(exactValue("limit(floor(x), x, 1 - 3^(1/3)/10^20, +)") == _Rational(0))
+    assert(exactValue("limit(round(x), x, 1/2 + 3^(1/3)/10^20, -)") == _Rational(1))
+    assert(exactValue("limit(floor(x^3), x, 3^(1/3) + 1/10^25, -)") == _Rational(3))
+    assert(exactValue("limit(floor(x^3), x, 3^(1/3) + 1/10^25)") == _Rational(3))
+  }
+
   it should "be found by the limit algebra itself" in {
     // the arm's own jump test, where the other tiers are not consulted
     val alg = LimitAlgebra(_Variable("x"), env, exact = false)
