@@ -1,5 +1,5 @@
 addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.4")
-addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.1.1")
+addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.2.0")
 // Publishing to Maven Central (issue 5.2 phase 2). One plugin: it brings sbt-dynver and sbt-pgp,
 // and reads its whole configuration from four environment variables -- so no credential is ever
 // written into this repository.  Since 1.11 it uploads through sbt's OWN Central Portal support
@@ -45,7 +45,7 @@ addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.9.2")
 // The JVM build is unaffected: `coreJVM` compiles exactly the sources `core` did, and the
 // only platform-specific file is the parallel-multiply shim (see build.sbt).
 // Check https://mvnrepository.com/artifact/org.scala-js/sbt-scalajs for the latest.
-addSbtPlugin("org.scala-js"       % "sbt-scalajs"                % "1.22.0")
+addSbtPlugin("org.scala-js"       % "sbt-scalajs"                % "1.23.0")
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject"   % "1.4.0")
 
 // The MCP server's runnable jar (F_0126, the owner's choice of 2026-11-06 over a zip of jars from a
