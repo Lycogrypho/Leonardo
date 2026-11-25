@@ -45,7 +45,7 @@ addSbtPlugin("org.scalameta"      % "sbt-mdoc"         % "2.9.2")
 // The JVM build is unaffected: `coreJVM` compiles exactly the sources `core` did, and the
 // only platform-specific file is the parallel-multiply shim (see build.sbt).
 // Check https://mvnrepository.com/artifact/org.scala-js/sbt-scalajs for the latest.
-addSbtPlugin("org.scala-js"       % "sbt-scalajs"                % "1.22.0")
+addSbtPlugin("org.scala-js"       % "sbt-scalajs"                % "1.23.0")
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject"   % "1.4.0")
 
 // The MCP server's runnable jar (F_0126, the owner's choice of 2026-11-06 over a zip of jars from a
