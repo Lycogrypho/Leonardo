@@ -2504,7 +2504,10 @@ state space (with d) or a gain y0 + G(u - u0)
 priority levels of setpoints and output bounds,
 each held for the next; resting values; the
 smallest move last -&gt; TargetLayer(x, u, y, unmet)
-an input's scale: bound width, |u|, the gain's (F_0368)</data>
+an input's scale: bound width, |u|, the gain's (F_0368)
+F_0375: steadyStateTargetsPrepared -&gt; TargetLayerPrepared
+at(model, spec, uBounds, u, from = None): to the bit;
+from = previous target: the exact LP only if infeasible</data>
     </node>
     <node id="n225">
         <data key="n_label">ArxOrder</data>

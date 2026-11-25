@@ -2,7 +2,7 @@ package it.grypho.scala.leonardo
 package control
 
 import core.*
-import optimize.qpPrepare
+import optimize.{qpPrepare, QpPrepared}
 import scalar.RoundingLevel
 
 
@@ -139,8 +139,111 @@ def steadyStateTargets(model: SteadyStateModel, spec: TargetSpec, uBounds: Optio
   steadyRelation(model).flatMap { rel =>
     targetSpecError(rel, spec, uBounds, u) match
       case Some(why) => Left(MpcFailure.InvalidInput(why))
-      case None      => targetLayer(rel, spec, uBounds, u, env)
+      case None      => targetLayer(rel, spec, uBounds, u, env, qpPrepare, None)
   }
+
+/** The target layer prepared once for a model and a specification (F_0375, AIACE L_0087), for a caller
+ *  that asks for a target every cycle: [[TargetLayerPrepared.at]] answers each cycle as
+ *  [[steadyStateTargets]] does, to the bit, reusing every level's prepared QP from the cycles before.
+ *
+ *  **What the preparation fixes**: the model's matrices (`G`, or `A`, `B`, `C`, `Bd`, `Cd`), the levels'
+ *  shape (each goal's kind, output and weight, and which sides of an output bound are finite), the resting
+ *  weight `S`, and which input bounds are finite.  A cycle may change everything else: `y0` and `u0`, the
+ *  disturbance estimate `d`, the setpoints and the output bounds' values, the resting values, the input
+ *  bounds' values and the current input.
+ *
+ *  @param model   the steady-state relation, as the cycles will give it
+ *  @param spec    the priority levels and the resting values, likewise
+ *  @param uBounds `(lower, upper)` on `u_s`, or `None`
+ *  @param env     the precision and the budgets
+ *  @return the prepared layer, or why `steadyStateTargets` would refuse these arguments
+ */
+def steadyStateTargetsPrepared(model: SteadyStateModel, spec: TargetSpec, uBounds: Option[(Vector[Double], Vector[Double])],
+                               env: Environment): Either[MpcFailure, TargetLayerPrepared] =
+  steadyRelation(model).flatMap { rel =>
+    targetSpecError(rel, spec, uBounds, Vector.fill(rel.m)(0.0)) match
+      case Some(why) => Left(MpcFailure.InvalidInput(why))
+      case None      => Right(TargetLayerPrepared(TargetShape.of(model, spec, uBounds)))
+  }
+
+/** What a prepared target layer fixes ([[steadyStateTargetsPrepared]]): the model's matrices, each goal's
+ *  kind, output, weight and finite sides, the resting weight, and the input bounds' finite entries. */
+private final case class TargetShape(matrices: Vector[_MatrixValue], gain: Boolean,
+                                     goals: Vector[Vector[(Int, Int, Double, Boolean, Boolean)]],
+                                     rest: Option[_MatrixValue], bounds: Option[(Vector[Boolean], Vector[Boolean])])
+
+private object TargetShape:
+  def of(model: SteadyStateModel, spec: TargetSpec, uBounds: Option[(Vector[Double], Vector[Double])]): TargetShape =
+    import TargetGoal.*
+    val (matrices, gain) = model match
+      case GainSteadyState(g, _, _)                 => (Vector(g), true)
+      case StateSpaceSteadyState(a, b, c, bd, cd, _) => (Vector(a, b, c, bd, cd), false)
+    val goals = spec.levels.map(_.map {
+      case Setpoint(i, _, w)          => (0, i, w, true, true)
+      case OutputBound(i, lo, hi, w)  => (1, i, w, lo.isFinite, hi.isFinite)
+    })
+    TargetShape(matrices, gain, goals, spec.rest.map(_.weight),
+                uBounds.map((lo, hi) => (lo.map(_.isFinite), hi.map(_.isFinite))))
+
+/** A target layer prepared for one model and one specification (F_0375): [[at]] per cycle.
+ *
+ *  Every level's QP is built from the cycle's data, and the prepared QP for its matrices is kept, so a later
+ *  cycle with the same matrices reuses its checks of `H`, its rows and its inverse attempt; a level whose
+ *  matrices change (the tie-break reads `|u_k|` for an input with no bound width) is prepared afresh.  At
+ *  most 64 are kept, the store emptied past that.  Thread-safe.
+ */
+final class TargetLayerPrepared private[control] (shape: TargetShape):
+
+  /** How many prepared QPs are kept before the store is emptied. */
+  private val MaxPrepared = 64
+  private val store = scala.collection.mutable.HashMap.empty[(_MatrixValue, Option[_MatrixValue], Option[_MatrixValue],
+                                                             Vector[Boolean], Vector[Boolean]), QpPrepared]
+
+  private def prepare(h: _MatrixValue, a: Option[_MatrixValue], aeq: Option[_MatrixValue],
+                      lb: Vector[Double], ub: Vector[Double]): QpPrepared =
+    val key = (h, a, aeq, lb.map(_ > Double.NegativeInfinity), ub.map(_ < Double.PositiveInfinity))
+    store.synchronized {
+      store.getOrElse(key, {
+        if store.size >= MaxPrepared then store.clear()
+        val p = qpPrepare(h, a, aeq, lb, ub)
+        store.update(key, p)
+        p
+      })
+    }
+
+  /** The target for one cycle: [[steadyStateTargets]] of these arguments, to the bit when `from` is `None`.
+   *
+   *  **The first level's start is the caller's choice** (F_0375, the owner's decision): with `from` empty its
+   *  semidefinite QP starts from an exact LP vertex, as `steadyStateTargets` does, so the answer depends on
+   *  this cycle's data alone; with `from` the previous cycle's target, that point is the start when it is
+   *  feasible to the QP's own tolerance, and the exact LP only when it is not, which in steady operation
+   *  saves the LP.  The two are certified to the same tolerance; the second also depends on the previous
+   *  answer, so it may differ from the first inside the held band, and an infeasible cycle is still proved
+   *  so by the LP.
+   *
+   *  @param model   the steady-state relation, its matrices the prepared ones
+   *  @param spec    the levels and resting values, its shape the prepared one
+   *  @param uBounds the input bounds, finite where the prepared ones were
+   *  @param u       the current input
+   *  @param env     the precision and the budgets
+   *  @param from    the previous cycle's target, or `None` for the exact LP's start
+   *  @return the target, or why there is none (a cycle whose fixed parts differ is refused)
+   */
+  def at(model: SteadyStateModel, spec: TargetSpec, uBounds: Option[(Vector[Double], Vector[Double])],
+         u: Vector[Double], env: Environment, from: Option[TargetLayer] = None): Either[MpcFailure, TargetLayer] =
+    if TargetShape.of(model, spec, uBounds) != shape then
+      Left(MpcFailure.InvalidInput("the model's matrices, the specification's shape or the input bounds' finite entries " +
+                                   "differ from the prepared ones"))
+    else steadyRelation(model).flatMap { rel =>
+      targetSpecError(rel, spec, uBounds, u) match
+        case Some(why) => Left(MpcFailure.InvalidInput(why))
+        case None =>
+          val start = from.map(t => t.x.getOrElse(Vector.empty) ++ t.u)
+          if from.exists(t => t.x.isDefined != rel.hasState || t.u.size != rel.m) || start.exists(_.size != rel.nw) then
+            Left(MpcFailure.InvalidInput(s"the previous target needs ${rel.m} inputs" +
+                                         (if rel.hasState then s" and ${rel.uAt} states" else " and no state")))
+          else targetLayer(rel, spec, uBounds, u, env, prepare, start.map(_.toArray))
+    }
 
 /** `y = F·w + g` over the unknowns `w`, with `E·w = e`; `u_s` is `w(uAt until uAt + m)`.  `gain` is the
  *  steady-state gain `∂y/∂u`, `p×m`, when the model states one: the gain itself, or `C(I − A)⁻¹B` when
@@ -149,6 +252,9 @@ private final class SteadyRelation(val nw: Int, val uAt: Int, val m: Int, val p:
                                    val f: Array[Array[Double]], val g: Array[Double],
                                    val eq: Option[(Array[Array[Double]], Array[Double])], val hasState: Boolean,
                                    val gain: Option[_MatrixValue])
+
+/** How a level's QP is prepared: [[optimize.qpPrepare]] afresh, or a prepared layer's store (F_0375). */
+private type Prepare = (_MatrixValue, Option[_MatrixValue], Option[_MatrixValue], Vector[Double], Vector[Double]) => QpPrepared
 
 /** `lo ≤ row·w ≤ hi`, what a level achieved, held for the levels after it. */
 private final case class Held(row: Array[Double], lo: Double, hi: Double)
@@ -204,7 +310,8 @@ private def targetSpecError(rel: SteadyRelation, spec: TargetSpec, uBounds: Opti
 
 /** The levels in order, the resting values, the tie-break; the report at the final target. */
 private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(Vector[Double], Vector[Double])],
-                        u: Vector[Double], env: Environment): Either[MpcFailure, TargetLayer] =
+                        u: Vector[Double], env: Environment, prepare: Prepare,
+                        start: Option[Array[Double]]): Either[MpcFailure, TargetLayer] =
   import TargetGoal.*
   val (nw, uAt, m) = (rel.nw, rel.uAt, rel.m)
   /** A held output's relaxation, relative to its terms: the rounding level. */
@@ -237,7 +344,7 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
     val slacks = sides.map { (i, upper, bound, wt) =>
       if upper then (rel.f(i), bound - rel.g(i), wt) else (rel.f(i).map(-_), rel.g(i) - bound, wt)
     }
-    solveLevel(rel, h, f, slacks, held, lbW, ubW, from, env).map { (w, s) =>
+    solveLevel(rel, h, f, slacks, held, lbW, ubW, from, env, prepare).map { (w, s) =>
       val kept = goals.collect { case Setpoint(i, _, _) =>
         val v = dot(rel.f(i), w)
         val delta = hold * (terms(rel.f(i), w) + math.abs(rel.g(i)))
@@ -257,7 +364,7 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
     val s = r.weight
     for j <- 0 until m; k <- 0 until m do h(uAt + j)(uAt + k) += 2.0 * s(j, k)
     for j <- 0 until m do f(uAt + j) -= 2.0 * (0 until m).map(k => s(j, k) * r.target(k)).sum
-    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, from, env).map { (w, _) =>
+    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, from, env, prepare).map { (w, _) =>
       val kept = (0 until m).flatMap { j =>
         val row = onU(k => s(j, k))
         Option.when(row.exists(_ != 0.0)) {
@@ -303,12 +410,13 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
       val c = ratio * ratio
       h(uAt + k)(uAt + k) += 2.0 * c
       f(uAt + k) -= 2.0 * c * u(k)
-    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, from, env).map(_._1)
+    solveLevel(rel, h, f, Vector.empty, held, lbW, ubW, from, env, prepare).map(_._1)
 
   // Each level starts from the one before it (F_0359): that point meets every held band and every bound,
-  // so only the first level's semidefinite QP needs an exact LP to find a feasible start.
+  // so only the first level's semidefinite QP needs an exact LP to find a feasible start -- or the caller's
+  // `start`, the previous cycle's target (F_0375), when it is feasible.
   type Reached = (Vector[Held], Option[Array[Double]])
-  val outputs = spec.levels.filter(_.nonEmpty).foldLeft[Either[MpcFailure, Reached]](Right((Vector.empty, None))) {
+  val outputs = spec.levels.filter(_.nonEmpty).foldLeft[Either[MpcFailure, Reached]](Right((Vector.empty, start))) {
     (acc, goals) => acc.flatMap((held, from) => outputLevel(goals, held, from).map((h, w) => (h, Some(w))))
   }
   for
@@ -334,7 +442,7 @@ private def targetLayer(rel: SteadyRelation, spec: TargetSpec, uBounds: Option[(
 private def solveLevel(rel: SteadyRelation, hw: Array[Array[Double]], fw: Array[Double],
                        slacks: Vector[(Array[Double], Double, Double)], held: Vector[Held],
                        lbW: Vector[Double], ubW: Vector[Double], from: Option[Array[Double]],
-                       env: Environment): Either[MpcFailure, (Array[Double], Array[Double])] =
+                       env: Environment, prepare: Prepare): Either[MpcFailure, (Array[Double], Array[Double])] =
   val nw = rel.nw
   val ns = slacks.size
   val nz = nw + ns
@@ -364,7 +472,7 @@ private def solveLevel(rel: SteadyRelation, hw: Array[Array[Double]], fw: Array[
     val excess = slacks.map((row, rhs, _) => math.max(0.0, row.indices.map(j => row(j) * w(j)).sum - rhs))
     w ++ excess
   }
-  qpPrepare(h, ineqs.map(_._1), eqRows.map(_._1), lb, ub)
+  prepare(h, ineqs.map(_._1), eqRows.map(_._1), lb, ub)
     .solve(f, ineqs.map(_._2), eqRows.map(_._2), lb, ub, Set.empty, env, start)
     .left.map(MpcFailure.Qp(_))
     .map(r => (r.z.take(nw).toArray, r.z.drop(nw).toArray))

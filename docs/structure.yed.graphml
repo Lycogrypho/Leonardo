@@ -4108,18 +4108,21 @@ disturbanceObserver (kalmanGain), steadyStateTarget
           <data key="d1">https://lycogrypho.github.io/Leonardo/control.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="172.0" width="460.0" x="0.0" y="0.0"/>
+              <y:Geometry height="220.0" width="476.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">TargetLayer</y:NodeLabel>
               <y:UML stereotype="utility">
                 <y:AttributeLabel>-- F_0358: the steady-state target layer --
 priority levels of setpoints and output bounds,
-each held for the next; resting values; the</y:AttributeLabel>
+each held for the next; resting values; the
+F_0375: steadyStateTargetsPrepared -&gt; TargetLayerPrepared
+from = previous target: the exact LP only if infeasible</y:AttributeLabel>
                 <y:MethodLabel>steadyStateTargets(model, spec, uBounds, u)
 state space (with d) or a gain y0 + G(u - u0)
 smallest move last -&gt; TargetLayer(x, u, y, unmet)
-an input's scale: bound width, |u|, the gain's (F_0368)</y:MethodLabel>
+an input's scale: bound width, |u|, the gain's (F_0368)
+at(model, spec, uBounds, u, from = None): to the bit;</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>

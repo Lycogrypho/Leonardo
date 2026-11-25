@@ -1963,6 +1963,9 @@ package "control" {
           each held for the next; resting values; the
           smallest move last -> TargetLayer(x, u, y, unmet)
         an input's scale: bound width, |u|, the gain's (F_0368)
+        F_0375: steadyStateTargetsPrepared -> TargetLayerPrepared
+          at(model, spec, uBounds, u, from = None): to the bit;
+          from = previous target: the exact LP only if infeasible
     }
     class "ArxOrder" <<utility>> [[control.html]] {
         __ F_0301: ARX order selection __

@@ -326,6 +326,12 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   the size of the variables it involves, and a semidefinite problem whose feasible region is far wider than
   its data starts from its smallest feasible point; a multiplier of the wrong sign larger than rounding is no
   longer certified.  Answers that were right move by at most `2·10⁻⁹` relatively.
+- **A target layer prepared once per model and specification**: `steadyStateTargetsPrepared(model, spec,
+  uBounds, env)` and its `at(model, spec, uBounds, u, env, from)` per cycle answer as `steadyStateTargets`
+  does, to the bit, reusing each level's prepared QP.  With `from` the previous cycle's target, the first
+  level starts there when it is feasible and needs the exact LP only when it is not: in a three-input,
+  three-setpoint layer a cycle then allocates 151 KiB instead of 266 KiB.  The default is the exact LP
+  every cycle, whose answer depends on the cycle's data alone.
 - Under `exact on`, a limit of `floor`, `ceil` or `round` at an irrational jump no longer answers a limit
   that does not exist: `limit(floor(x^3), x, 3^(1/3))` stays unevaluated (it answered `2`), and the
   one-sided limits are exact (`3` from above, `2` from below; the first was `3.0`).
