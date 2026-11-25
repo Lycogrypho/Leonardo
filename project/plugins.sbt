@@ -1,5 +1,5 @@
 addSbtPlugin("org.jetbrains.scala" % "sbt-ide-settings" % "1.1.4")
-addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.1.1")
+addSbtPlugin("com.github.sbt"     % "sbt-dynver"       % "5.2.0")
 // Publishing to Maven Central (issue 5.2 phase 2). One plugin: it brings sbt-dynver and sbt-pgp,
 // and reads its whole configuration from four environment variables -- so no credential is ever
 // written into this repository.  Since 1.11 it uploads through sbt's OWN Central Portal support
