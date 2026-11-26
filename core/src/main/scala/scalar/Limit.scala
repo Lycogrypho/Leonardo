@@ -409,12 +409,17 @@ private val GoldenRatio = (1 + math.sqrt(5)) / 2
  *  whenever the expression's scales lie inside them, so every other answer is unchanged. */
 private val FeatureMargin = 1e-6
 
-/** The magnitudes of the constants `e` is written with, and of the numbers its other free names
- *  are bound to: the scales at which it can change. */
+/** The magnitudes of the constants `e` is written with, of the numbers its other free names are bound to,
+ *  and of every subexpression free of `v` that evaluates to a number: the scales at which it can change.
+ *  **The last is F_0386's**: `10^20` is written with `10` and `20`, so `limit(floor(10^20*x), x, 1/10^20, -)` was
+ *  sampled `10⁻⁸` away and answered `1.0` for `0`, where `1e20` was right.  It only adds scales, so a window
+ *  can only shrink, and an expression whose scales were all literals samples as before. */
 private def scalesOf(e: _Expression, v: _Variable, env: Environment): Iterable[Double] =
   def leaves(x: _Expression): Iterable[Double] = x match
     case _Number(d)              => Seq(math.abs(d))
     case w: _Variable if w != v  => env.get(w.variable).collect { case _Number(d) => math.abs(d) }
+    case other if other.children.nonEmpty && !dependsOn(other, v) =>
+      other.eval(env).toOption.collect { case _Number(d) => math.abs(d) } ++ other.children.flatMap(leaves)
     case other                   => other.children.flatMap(leaves)
   leaves(e).filter(m => m > 0.0 && m.isFinite)
 

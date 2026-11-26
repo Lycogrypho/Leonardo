@@ -115,6 +115,16 @@ class LimitJumpTest extends AnyFlatSpec:
     assert(exactValue("limit(floor(x^3), x, 3^(1/3) + 1/10^25)") == _Rational(3))
   }
 
+  "a limit at a tiny point" should "sample at the point's scale when that scale is written as an expression (F_0386)" in {
+    // 10^20 contributed the scales 10 and 20, so the samples sat 1e-8 away from a point at 1e-20
+    assert(number(eval("limit(floor(10^20*x), x, 1/10^20, -)")) == 0.0)
+    assert(number(eval("limit(floor(10^20*x), x, 1/10^20, +)")) == 1.0)
+    assert(number(eval("limit(step(10^20*x - 1), x, 1/10^20, -)")) == 0.0)
+    assert(eval("limit(floor(10^20*x), x, 1/10^20, -)", exactEnv, exact = true) == Right(_Rational(0)))
+    // the literal spelling was already right, and stays so
+    assert(number(eval("limit(floor(1e20*x), x, 1e-20, -)")) == 0.0)
+  }
+
   it should "be found by the limit algebra itself" in {
     // the arm's own jump test, where the other tiers are not consulted
     val alg = LimitAlgebra(_Variable("x"), env, exact = false)

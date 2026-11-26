@@ -264,6 +264,13 @@ package "core" {
         one definition each (F_0147)
     }
 
+    class "Readings" <<utility>> [[developer.html]] {
+        + gridPointRead(e, v, offset, env): Option[_Rational]
+        + gridPointOf(e, offset, env): Option[_Rational]
+        a reading of an integer is the integer (F_0384)
+    }
+    "Readings"     ..>  "Environment"  : withWorkingPrecision, read again
+
     class "OperandText" <<utility>> [[developer.html]] {
         + tight(text, asBase): String
         __ F_0241 __
@@ -313,7 +320,7 @@ package "core" {
 
     class "_Heaviside" <<case>> [[expressions.html]] {
         + arg: _Expression
-        + eval: 0 or 1 when arg is _Number; symbolic otherwise
+        + eval: 0 or 1 when arg is a number, exact on exact input; symbolic otherwise
         + toString: "step(arg)"
     }
     "_Heaviside"   ..|> "_Expression"
@@ -377,6 +384,7 @@ package "scalar" {
     class "LogBase" <<case>> [[expressions.html]] {
         e : _Expression
         base : _Expression   (log(x)=LogBase(x,10))
+        exact operands at the working precision, exact when rational (F_0384)
     }
     class "Sin" <<case>> [[expressions.html]] {
         e : _Expression

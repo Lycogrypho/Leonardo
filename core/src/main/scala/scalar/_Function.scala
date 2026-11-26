@@ -335,8 +335,13 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
       // F_0008: an interval argument (or base), as ln(x) / ln(b) over rigorous bounds.
       case (Right(ev: _Value), Right(bv: _Value)) if ev.isInstanceOf[_Interval] || bv.isInstanceOf[_Interval] =>
         _Interval.logBase(ev, bv, env).toRight(LogBase(ev, bv))
-      // Exact tier: two cases, not a guard -- the first catches an exact argument under
-      // any base, so by the second the argument is known inexact and only the base is exact.
+      // F_0384: an exact argument under an exact base is read at the working precision.
+      case (Right(xv: _Value), Right(bv: _Value)) if _Surd.isExact(xv) && _Surd.isExact(bv) =>
+        LogBase.exactLog(xv, bv, env) match
+          case Some(r) => Right(r)
+          case None    => viaDouble(List(xv, bv).map { case _Number(d) => _Number(d); case v => v }, env)
+      // Exact tier, one side inexact: two cases, not a guard -- the first catches an exact argument
+      // under any base, so by the second the argument is known inexact and only the base is exact.
       case (Right(re: _Rational), Right(bv: _Value)) => viaDouble(List(_Number(re.toDouble), bv), env)
       case (Right(ev: _Value), Right(rb: _Rational)) => viaDouble(List(ev, _Number(rb.toDouble)), env)
       case (Right(se: _Surd), Right(bv: _Value))     => viaDouble(List(_Number(se.toDouble), bv), env)
@@ -347,6 +352,53 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
             _Complex.div(le, lb).toRight(this)
           case _ => Left(this)
       case (re, rb) => Left(LogBase(re.toExpression, rb.toExpression))
+
+/** The exact tier of [[LogBase]] (F_0384). */
+object LogBase:
+  /** The largest power, in bits, the rational-logarithm check forms: a cost bound on a check, not a
+   *  budget on an answer -- past it the working-precision reading answers, still correct to it. */
+  private val MaxLogCheckBits: Long = 1L << 14
+
+  /** The largest denominator a rational logarithm is looked for with. */
+  private val MaxLogDenominator: Int = 64
+
+  /** `log_b(x)` for an exact positive `x` and an exact positive base other than one, at the working
+   *  precision: `ln(x)/ln(b)` in spire's `Real`.  It was read through `Double` until F_0384, so in
+   *  exact mode `log(x)` kept 15 digits where `ln(x)/ln(10)` kept the working precision, and a
+   *  reading such as `log(10^15)` could not be refined.  A **rational** logarithm -- `x^q = b^p` --
+   *  is answered exactly, verified by forming both powers, so `log(100)` is `2` and `log(8, 4)` is
+   *  `3/2`.  A surd is read at the working precision first.
+   *
+   *  @param x   the exact argument
+   *  @param b   the exact base
+   *  @param env supplies the working precision
+   *  @return the logarithm, or `None` outside the real domain or at a working precision within
+   *          `Double`'s reach (where the `Double` kernel answers, the `viaExact` rule)
+   */
+  private[scalar] def exactLog(x: _Value, b: _Value, env: Environment): Option[_Rational] =
+    val wp = env.workingPrecision
+    if wp <= _Rational.DoubleReliableDigits then None
+    else
+      for
+        xr <- _Surd.exactOf(x, wp + GuardDigits)
+        br <- _Surd.exactOf(b, wp + GuardDigits)
+        if xr.signum > 0 && br.signum > 0 && br != _Rational.One
+        reading <- if xr == _Rational.One then Some(_Rational.Zero)
+                   else fromReal(Real.log(toReal(xr)) / Real.log(toReal(br)), wp)
+      yield (x, b) match
+        case (xq: _Rational, bq: _Rational) => rationalLog(xq, bq, reading).getOrElse(reading)
+        case _                              => reading
+
+  /** `p/q` when `x^q = b^p` exactly, for the fraction nearest `reading` with `q` at most 64. */
+  private def rationalLog(x: _Rational, b: _Rational, reading: _Rational): Option[_Rational] =
+    val c = reading.approximate(BigInt(MaxLogDenominator))
+    for
+      p  <- Option.when(c.num.isValidInt)(c.num.toInt)
+      q  <- Option.when(c.den.isValidInt)(c.den.toInt)
+      xq <- x.pow(q, _Rational.DefaultPolicy, MaxLogCheckBits)
+      bp <- b.pow(p, _Rational.DefaultPolicy, MaxLogCheckBits)
+      if xq == bp
+    yield c
 
 
 /** The absolute value `abs(e)` — on a complex argument, the modulus (issue F_0036).

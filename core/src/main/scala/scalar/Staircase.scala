@@ -121,53 +121,61 @@ private[leonardo] object Staircase:
                s"for an argument linear in ${v.variable} with numeric coefficients")
         case None =>
           sequence(found.map(part(_, v, exact, env))).flatMap { parts =>
-            val n = pieceCount(parts, l, h, env)
-            Option.when(n.isFinite && n > env.limits(Limit.MaxStaircasePieces))(
-              f"the integrand has ${n}%.0f pieces between its jumps, past the budget of " +
-              s"${env.limits(Limit.MaxStaircasePieces)} (Limit.MaxStaircasePieces)")
+            pieceCount(parts, l, h, env) match
+              case Some(n) => Option.when(n > BigInt(env.limits(Limit.MaxStaircasePieces)))(
+                s"the integrand has $n pieces between its jumps, past the budget of " +
+                s"${env.limits(Limit.MaxStaircasePieces)} (Limit.MaxStaircasePieces)")
+              case None => Some("its jumps lie past 2^53, where a Double no longer tells consecutive ones apart")
           }
 
   /** For each part, the range of `k` whose jump `k` (`k + 1/2` for `round`) lies strictly inside the
    *  argument's range over `(l, h)`.  **Exact where the argument's values at the bounds are** (F_0365):
    *  read through `Double`, `4 + 1/10^20` is `4`, the jump at `4` was not seen as inside, and the piece
-   *  beyond it was lost from an exact answer. */
-  private def jumpRanges(parts: List[Part], l: _Value, h: _Value, env: Environment): List[(Part, Double, Double)] =
+   *  beyond it was lost from an exact answer.  **The indices are `BigInt`s** (F_0383): as `Double`s enumerated
+   *  through `toLong` the jumps past `2^53` were no longer distinct, and `integral(floor(x), x, 10^20, 10^20 + 5/2)`
+   *  answered `227305843009213693953` for `250000000000000000002`.  `None` for a part whose range cannot be read:
+   *  in `Double`, an index past `2^53`, where consecutive jumps are one number. */
+  private def jumpRanges(parts: List[Part], l: _Value, h: _Value, env: Environment): List[(Part, Option[(BigInt, BigInt)])] =
     def at(p: Part, x: _Value): Option[_Value] = Sum(Product(p.slope, x), p.icpt).eval(env).toOption
-    def whole(e: _Expression): Option[Double] = e.eval(env).toOption.collect { case r: _Rational => num(r) }
+    def whole(e: _Expression): Option[BigInt] = e.eval(env).toOption.collect {
+      case r: _Rational if (r.num % r.den).signum == 0 => r.num / r.den
+    }
+    val exactLimit = math.pow(2.0, 53)
     parts.map { p =>
       (at(p, l), at(p, h)) match
         case (Some(ga), Some(gb)) if _Surd.isExact(ga) && _Surd.isExact(gb) && _Surd.compareExact(ga, gb).isDefined =>
           val (lo, hi) = if _Surd.compareExact(ga, gb).exists(_ <= 0) then (ga, gb) else (gb, ga)
           val shift    = if p.halfIntegers then _Rational.of(BigInt(-1), BigInt(2)).getOrElse(_Rational(0)) else _Rational(0)
-          (whole(Floor(Sum(lo, shift))), whole(Ceil(Sum(hi, shift)))) match
-            case (Some(first), Some(last)) => (p, first + 1, last - 1)
-            case _                         => (p, Double.NaN, Double.NaN)
+          (p, for first <- whole(Floor(Sum(lo, shift))); last <- whole(Ceil(Sum(hi, shift))) yield (first + 1, last - 1))
         case (ga, gb) =>
           val (a, b) = (ga.fold(Double.NaN)(num), gb.fold(Double.NaN)(num))
           val shift  = if p.halfIntegers then 0.5 else 0.0
-          (p, math.floor(math.min(a, b) - shift) + 1, math.ceil(math.max(a, b) - shift) - 1)
+          val (first, last) = (math.floor(math.min(a, b) - shift) + 1, math.ceil(math.max(a, b) - shift) - 1)
+          (p, Option.when(first.isFinite && last.isFinite && math.abs(first) < exactLimit && math.abs(last) < exactLimit)(
+            (BigInt(first.toLong), BigInt(last.toLong))))
     }
 
-  /** How many pieces the jumps cut `(l, h)` into. */
-  private def pieceCount(parts: List[Part], l: _Value, h: _Value, env: Environment): Double =
-    jumpRanges(parts, l, h, env).map((_, first, last) => math.max(0.0, last - first + 1)).sum + 1
+  /** How many pieces the jumps cut `(l, h)` into, or `None` when a part's range cannot be read. */
+  private def pieceCount(parts: List[Part], l: _Value, h: _Value, env: Environment): Option[BigInt] =
+    sequence(jumpRanges(parts, l, h, env).map(_._2)).map(_.map((first, last) => (last - first + 1).max(BigInt(0))).sum + 1)
 
   /** Every jump strictly inside `(l, h)`, in the tier of the bounds and coefficients, or `None` past the
    *  piece budget. */
   private def jumpPoints(parts: List[Part], l: _Value, h: _Value, env: Environment): Option[Vector[_Value]] =
-    val budget = env.limits(Limit.MaxStaircasePieces)
-    val ranges = jumpRanges(parts, l, h, env)
-    val count  = pieceCount(parts, l, h, env) - 1
-    if !count.isFinite || count + 1 > budget then None
-    else sequence(ranges.flatMap { (p, first, last) =>
-      val exact = _Rational.containsExactIn(Sum(p.slope, p.icpt), env) || _Rational.containsExact(l)
-      def lit(n: BigInt): _Value = if exact then _Rational(n) else _Number(n.toDouble)
-      (first.toLong to last.toLong).map { k =>
-        // v = (k + shift − icpt)/slope; the half of `round` written in the same tier
-        val jump = if p.halfIntegers then Sum(lit(BigInt(k)), Ratio(lit(1), lit(2))) else lit(BigInt(k))
-        Ratio(Sum(jump, Product(lit(-1), p.icpt)), p.slope).eval(env).toOption
-      }
-    }).map(_.toVector)
+    val budget = BigInt(env.limits(Limit.MaxStaircasePieces))
+    for
+      count  <- pieceCount(parts, l, h, env) if count <= budget
+      ranges <- sequence(jumpRanges(parts, l, h, env).map((p, r) => r.map(p -> _)))
+      points <- sequence(ranges.flatMap { case (p, (first, last)) =>
+        val exact = _Rational.containsExactIn(Sum(p.slope, p.icpt), env) || _Rational.containsExact(l)
+        def lit(n: BigInt): _Value = if exact then _Rational(n) else _Number(n.toDouble)
+        Iterator.iterate(first)(_ + 1).takeWhile(_ <= last).map { k =>
+          // v = (k + shift − icpt)/slope; the half of `round` written in the same tier
+          val jump = if p.halfIntegers then Sum(lit(k), Ratio(lit(1), lit(2))) else lit(k)
+          Ratio(Sum(jump, Product(lit(-1), p.icpt)), p.slope).eval(env).toOption
+        }.toList
+      })
+    yield points.toVector
 
   /** The integral over one piece `[p, q]`, every integer part replaced by what it is there. */
   private def piece(e: _Expression, v: _Variable, parts: List[Part], p: _Value, q: _Value,

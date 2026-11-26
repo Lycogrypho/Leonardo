@@ -149,7 +149,12 @@ case class _Tabulate(e: _Expression, v: _Variable, lo: _Expression, hi: _Express
 
 /** A bound as an integer, or `None` when it is not a concrete whole number. */
 private def indexOf(b: _Expression, env: Environment): Option[Int] =
+  def small(n: BigInt): Option[Int] = Option.when(n.abs <= Int.MaxValue)(n.toInt)
   b.eval(env) match
+    // an exact bound is whole when it is an integer or a reading of one (F_0384), never through its Double:
+    // `4 + 1/10^20` read as `4.0` had summed to `4`; placed before the widening `_Number` arm
+    case Right(r: _Rational) if (r.num % r.den).signum == 0 => small(r.num / r.den)
+    case Right(v) if _Surd.isExact(v) => gridPointRead(b, v, _Rational.Zero, env).flatMap(g => small(g.num / g.den))
     case Right(_Number(d)) if d.isFinite && d == Math.floor(d) &&
                               math.abs(d) <= Int.MaxValue => Some(d.toInt)
     case _                                                => None

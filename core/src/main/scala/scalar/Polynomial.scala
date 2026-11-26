@@ -489,7 +489,7 @@ private[leonardo] def rootsOfSquareFree(poly: Vector[Double]): Option[Vector[(Do
   polyDegree(poly) match
     case 1 => Some(Vector((-poly(0) / poly(1), 0.0)))
     case 2 =>
-      val a = poly(2); val b = poly(1); val c = poly(0)
+      val Vector(c, b, a) = atUnitSize(poly.take(3))
       val disc = b * b - 4 * a * c
       if disc >= 0 then
         // The stable form (issue 1.1, F_0193): `(-b ± √Δ)/2a` cancels in the root whose sign
@@ -542,7 +542,7 @@ private val DiscriminantUlps = 16.0
 /** The real roots of `a·x² + b·x + c`, `a ≠ 0`: a double root when the discriminant is within its own
  *  rounding of zero, else none or two by the stable form (issue 1.1). */
 private def quadraticRealRoots(p: Vector[Double]): Vector[RealRoot] =
-  val (c, b, a) = (p(0), p(1), p(2))
+  val Vector(c, b, a) = atUnitSize(p)
   val disc  = b * b - 4 * a * c
   val tol   = DiscriminantUlps * math.ulp(1.0) * (math.abs(b * b) + math.abs(4 * a * c))
   if math.abs(disc) <= tol then
@@ -553,11 +553,31 @@ private def quadraticRealRoots(p: Vector[Double]): Vector[RealRoot] =
     val q = -(b + math.copySign(math.sqrt(disc), b)) / 2
     Vector(q / a, c / q).sorted.map(simpleRoot(p, 1))
 
+/** The coefficients times the power of two that brings the largest to `[1, 2)` (F_0381): the same roots, and a
+ *  discriminant `b² − 4ac` that can neither overflow nor underflow.  Formed from the raw coefficients, `b²`
+ *  of `x² + 10²⁰⁰x + 1` is infinite and read the two roots `−10²⁰⁰`, `−10⁻²⁰⁰` as one double root, and the
+ *  products of `10⁻¹⁷⁰`-sized coefficients underflow to `0`.  A power of two scales exactly. */
+private def atUnitSize(p: Vector[Double]): Vector[Double] =
+  val top = p.map(math.abs).max
+  if top == 0.0 || !top.isFinite then p else p.map(x => math.scalb(x, -math.getExponent(top)))
+
 /** A simple root `r` of `part`, with the a-posteriori bound on its error: the rounding of the
- *  polynomial's evaluation there, `n·ε·Σ|cᵢ||r|ⁱ`, over its slope. */
+ *  polynomial's evaluation there, `n·ε·Σ|cᵢ||r|ⁱ`, over its slope.  Beyond `|r| = 1` both are taken divided
+ *  by `|r|^(d−1)`, which leaves their ratio unchanged (F_0381): formed as written, `|c₂|·r²` at `r = −10²⁰⁰`
+ *  overflowed, the bound was infinite, and the root merged with every other one. */
 private def simpleRoot(part: Vector[Double], multiplicity: Int)(r: Double): RealRoot =
-  val terms = part.zipWithIndex.map((c, i) => math.abs(c) * math.pow(math.abs(r), i.toDouble)).sum
-  val slope = math.abs(evalCoeffsReal(derivCoeffs(part), r))
+  val d  = part.size - 1
+  val ar = math.abs(r)
+  val (terms, slope) =
+    if ar <= 1.0 then
+      (part.zipWithIndex.map((c, i) => math.abs(c) * math.pow(ar, i.toDouble)).sum,
+       math.abs(evalCoeffsReal(derivCoeffs(part), r)))
+    else
+      // every power at most |r|¹, so nothing overflows; the sign of r^(i−1) is kept in the slope
+      val sign = math.signum(r)
+      (part.zipWithIndex.map((c, i) => math.abs(c) * math.pow(ar, (i - d + 1).toDouble)).sum,
+       math.abs(part.zipWithIndex.drop(1).map((c, i) =>
+         i * c * math.pow(sign, (i - 1).toDouble) * math.pow(ar, (i - d).toDouble)).sum))
   val bound = if slope > 0 && slope.isFinite then 4 * part.size * math.ulp(1.0) * terms / slope else 0.0
   RealRoot(r, multiplicity, math.max(bound, 4 * math.ulp(r)))
 
@@ -597,6 +617,30 @@ private[leonardo] def realRoots(cs: Vector[Double]): Option[Vector[RealRoot]] =
         }
       case _ => Some(Vector.empty)
     read.filter(_.forall(r => r.at.isFinite))
+  // Every root read must be a root of `p` (F_0382): the square-free split runs at one root scale, so roots far
+  // below it merge in its gcd -- `1e-6x³ − x² + 1` read `±1` as one double root near `4.5·10⁻⁶`, which `solve`
+  // bound.  A failed reading is retried as one square-free part, the roots polished on the coefficients
+  // ([[rootsAtScale]], what `tfpoles` reads), and declines when that fails the check too.
+  def allRoots(rs: Vector[RealRoot]): Boolean = rs.forall(r => relativeResidual(p, r.at) <= RootResidualLevel)
   if n < 1 then Some(Vector.empty)
   else if n <= 2 then ofPart(p, 1)
-  else sequence(squareFreeFactors(p).map(ofPart)).map(_.flatten.sortBy(_.at))
+  else sequence(squareFreeFactors(p).map(ofPart)).map(_.flatten.sortBy(_.at)).filter(allRoots)
+    .orElse(ofPart(p, 1).map(_.sortBy(_.at)).filter(allRoots))
+
+/** How far a reading of a root may miss, `|p(r)|` against the terms `Σ|cᵢ||r|ⁱ` it cancels (F_0382): far above
+ *  the rounding of a simple root (a few `ε`) and of a multiple root read from the square-free split (whose
+ *  position error `ε^(1/m)` leaves a residual of order `ε`), far below a value that is no root at all (the merged
+ *  pair of F_0382 missed by `1`). */
+private val RootResidualLevel = 1e-8
+
+/** `|p(r)| / Σ|cᵢ||r|ⁱ`, evaluated divided by `|r|^d` beyond `|r| = 1` so that neither sum overflows (F_0381). */
+private def relativeResidual(p: Vector[Double], r: Double): Double =
+  val d  = p.size - 1
+  val ar = math.abs(r)
+  val (value, terms) =
+    if ar <= 1.0 then (evalCoeffsReal(p, r), p.zipWithIndex.map((c, i) => math.abs(c) * math.pow(ar, i.toDouble)).sum)
+    else
+      val sign = math.signum(r)
+      (p.zipWithIndex.map((c, i) => c * math.pow(sign, i.toDouble) * math.pow(ar, (i - d).toDouble)).sum,
+       p.zipWithIndex.map((c, i) => math.abs(c) * math.pow(ar, (i - d).toDouble)).sum)
+  if terms == 0.0 then 0.0 else math.abs(value) / terms

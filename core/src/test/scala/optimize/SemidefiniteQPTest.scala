@@ -271,3 +271,32 @@ class SemidefiniteQPTest extends AnyFlatSpec:
     val r = solved("qp([[1, -1], [-1, 2]], [[-2], [-6]], [[1, 1], [-1, 2], [2, 1]], [[2], [2], [3]], 0, inf)")
     assert(near(r.z, Seq(2.0 / 3, 4.0 / 3)))
   }
+
+  it should "not answer Infeasible from the dual method when the exact LP finds a point (F_0379)" in {
+    // H of rank 2 to rounding, four rows all slack at z = 0: the dual method reported Infeasible at every box
+    val h = mv(Seq(Seq(1.2630448895738053, -0.7090994485990942, 0.29046431094391956),
+                   Seq(-0.7090994485990942, 0.39810586749780513, -0.16232008154200897),
+                   Seq(0.29046431094391956, -0.16232008154200897, 0.2681087069698576)))
+    val f = Vector(-14.629057169011205, 8.209976779566023, -4.187513774416011)
+    val a = Seq(Seq(-0.7521154674968699, -1.1296354486385696, -0.6930483745380793), Seq(0.0, 0.0, 0.6488587843537224),
+                Seq(1.1527546947472311, -0.001291523444851007, -0.021677455864169543), Seq(0.28494652117603686, 0.0, -0.44223713981566154))
+    val b = Vector(0.05080598104520062, 3.1487228816683297, 9.852132521064581, 2.85451149919626)
+    for box <- Seq(50.0, 1e12, Inf) do
+      qpSolve(h, f, Some((mv(a), b)), None, Vector.fill(3)(-box), Vector.fill(3)(box), Set.empty, env) match
+        case Right(r) =>
+          for (row, k) <- a.zipWithIndex do
+            val lhs = row.indices.map(j => row(j) * r.z(j)).sum
+            assert(lhs <= b(k) + 1e-9 * (math.abs(b(k)) + row.indices.map(j => math.abs(row(j) * r.z(j))).sum), s"row $k at $box")
+        case Left(QpFailure.Infeasible) => fail(s"box $box: Infeasible, though z = 0 is strictly feasible")
+        case Left(_)                    => succeed
+  }
+
+  it should "not start from a far vertex it cannot replace by the smallest point (F_0380)" in {
+    // min (sum z - 1)^2 over |z| <= 1e12, 30 variables: past the smallest-point LP's caps the zero-cost vertex
+    // is a corner 1e12 away, and a wrong-signed multiplier there read as rounding: certified at objective 0
+    val n = 30
+    qpSolve(_MatrixValue(n, n, Array.fill(n * n)(2.0)), Vector.fill(n)(-2.0), None, None,
+            Vector.fill(n)(-1e12), Vector.fill(n)(1e12), Set.empty, env) match
+      case Right(r) => assert(math.abs(r.objective + 1.0) <= 1e-9, s"certified at objective ${r.objective}")
+      case Left(_)  => succeed
+  }

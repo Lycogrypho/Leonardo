@@ -245,22 +245,38 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
         else if templates.size > maxRows then bad(s"at most $maxRows constraints are accepted, not ${templates.size}")
         else
           val prob = QpProblem(n, h, f.toArray, filled(b, beq, lb, ub), maxH, 0.5 * math.pow(10.0, -env.precision))
+          // The primal active-set method (F_0074), from a feasible start: the caller's when it is feasible and not
+          // far beyond the data (F_0380: a previous target 1e12 away was taken as it was), else the exact LP's
+          // vertex, else the smallest feasible point when that vertex is far (F_0362).  **Past the smallest-point
+          // LP's caps a far vertex declines** (F_0380): from a corner 1e12 away the method's tests no longer see a
+          // step of the data's size, and a 30-variable problem was certified at a corner, objective 0 for -1.
+          // Only a vertex the smallest LP could not replace is refused: where the bounds put every feasible point
+          // far, the smallest point is legitimately far too.
+          lazy val primal = PrimalActiveSet(prob, env.precision, env.limits)
+          def primalPath: Either[QpFailure, QpResult] =
+            start.filter(z => primal.feasible(z) && !primal.far(z)) match
+              case Some(z) => primal.solve(z.clone(), warm)
+              case None    =>
+                val weights = prob.ownScale.map(s => if s > 0.0 then 1.0 / s else 1.0).toVector
+                val rows    = a.fold(0)(_.rows) + aeq.fold(0)(_.rows)
+                val smallestFits = 2 * n <= env.limits.count(Limit.MaxLpVariables) &&
+                                   rows + 2 * n <= env.limits.count(Limit.MaxLpConstraints)
+                feasiblePoint(n, a.zip(b), aeq.zip(beq), lb, ub, env.limits).flatMap { z0 =>
+                  if !primal.far(z0) then Right(z0)
+                  else if smallestFits then
+                    feasiblePoint(n, a.zip(b), aeq.zip(beq), lb, ub, env.limits, Some(weights)).orElse(Right(z0))
+                  else Left(QpFailure.FeasibleStart(LpFailure.InvalidInput(
+                    s"every feasible start found is far beyond the data, and the smallest feasible point needs at most " +
+                    s"${env.limits.count(Limit.MaxLpVariables) / 2} variables")))
+                }.flatMap(primal.solve(_, warm))
           inverse match
-            case Right(hinv) => QpSolver(prob, hinv, directions, env.precision, env.limits).solve(warm)
-            // F_0074: a semidefinite H goes to the primal active-set method, from an exact LP vertex.
-            // F_0362: from the smallest feasible point instead when that vertex is far, where the method's
-            // tests no longer see a step of the data's own size; the vertex if the smaller LP declines.
-            case Left(QpFailure.NotStrictlyConvex) =>
-              val primal = PrimalActiveSet(prob, env.precision, env.limits)
-              start.filter(primal.feasible) match
-                case Some(z) => primal.solve(z.clone(), warm)
-                case None    =>
-                  val weights = prob.ownScale.map(s => if s > 0.0 then 1.0 / s else 1.0).toVector
-                  feasiblePoint(n, a.zip(b), aeq.zip(beq), lb, ub, env.limits).flatMap { z0 =>
-                    if primal.far(z0) then
-                      feasiblePoint(n, a.zip(b), aeq.zip(beq), lb, ub, env.limits, Some(weights)).orElse(Right(z0))
-                    else Right(z0)
-                  }.flatMap(primal.solve(_, warm))
+            // F_0379: the dual method's `Infeasible` is a numerical verdict (a dependent constraint no step reaches,
+            // which a nearly singular H that passed the Cholesky test can produce); the exact LP decides it, and the
+            // primal method continues from the LP's point when it finds one
+            case Right(hinv) => QpSolver(prob, hinv, directions, env.precision, env.limits).solve(warm) match
+              case Left(QpFailure.Infeasible) => primalPath
+              case other                      => other
+            case Left(QpFailure.NotStrictlyConvex) => primalPath
             case Left(other) => Left(other)
 
   /** The rows with this solve's right-hand sides, in [[templates]]' order. */

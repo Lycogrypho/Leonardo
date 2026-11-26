@@ -56,6 +56,19 @@ class StaircaseIntegralTest extends AnyFlatSpec:
     assert(value("integral(round(x), x, 0, 1/2 + 1/10^20)") == rational("1/10^20"))
   }
 
+  it should "count its jumps past 2^53 exactly, and not guess them in Double (F_0383)" in {
+    def value(s: String): _Value = exact(s).fold(l => fail(s"no value: $l"), identity)
+    // 10^20 on [10^20, 10^20 + 1], 10^20 + 1 on the next unit, 10^20 + 2 on the last half
+    assert(value("integral(floor(x), x, 10^20, 10^20 + 5/2)") == value("250000000000000000002"))
+    assert(value("integral(floor(x), x, 2^53 + 1/2, 2^53 + 5/2) - 2*2^53 - 2") == _Rational(0))
+    assert(value("integral(floor(x), x, 2^60 + 1/2, 2^60 + 5/2) - 2*2^60 - 2") == _Rational(0))
+    // in Double the jumps past 2^53 are no longer distinct numbers: an answer must be right, or there is none
+    plain("integral(floor(x), x, 1e17, 1e17 + 64)") match
+      case Right(_Number(d)) => assert(math.abs(d - 6.400000000000002016e18) <= 1e-12 * 6.4e18, s"$d")
+      case Left(_)           => succeed
+      case other             => fail(other.toString)
+  }
+
   it should "decline what it cannot split, and past the piece budget" in {
     val x = _Variable("x")
     def split(s: String) = Staircase.integral(Parser.parse(s).get, x, _Number(0.5), _Number(3.0), env)

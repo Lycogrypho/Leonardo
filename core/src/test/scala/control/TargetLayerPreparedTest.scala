@@ -73,6 +73,23 @@ class TargetLayerPreparedTest extends AnyFlatSpec:
     }
   }
 
+  it should "not start from a previous target far beyond the data (F_0380)" in {
+    // feasible, but 1e12 away under bounds of 1e12: as a start it was taken as it was, and a reachable
+    // setpoint was reported unmet
+    val g2   = m(2, 3, 1.0, 0.5, 0.2, 0.3, 1.0, 0.4)
+    val mdl  = GainSteadyState(g2, Vector(1.0, 0.5), Vector(0.3, 0.3, 0.3))
+    val sp   = TargetSpec(Vector(Vector(Setpoint(0, 1.0)), Vector(Setpoint(1, 1.0))))
+    val wide = Some((Vector.fill(3)(-1e12), Vector.fill(3)(1e12)))
+    val u    = Vector(0.3, 0.3, 0.3)
+    val prepared = ok(steadyStateTargetsPrepared(mdl, sp, wide, env))
+    val cold = ok(prepared.at(mdl, sp, wide, u, env))
+    assert(cold.reached, cold.toString)
+    for far <- Seq(Vector(1e12, -1e12, 1e12), Vector(1e12, 1e12, 1e12), Vector(-3e11, 7e11, 1e10)) do
+      val warm = ok(prepared.at(mdl, sp, wide, u, env, from = Some(TargetLayer(None, far, Vector(0.0, 0.0), Vector.empty))))
+      assert(warm.unmet == cold.unmet, s"from $far: $warm")
+      near(warm.u, cold.u, 1e-6)
+  }
+
   it should "refuse a cycle whose fixed parts differ from the prepared ones" in {
     val (model, sp, u) = cycles(1).head
     val prepared = ok(steadyStateTargetsPrepared(model, sp, box, env))

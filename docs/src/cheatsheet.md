@@ -138,12 +138,12 @@ Outside exact mode each evaluates to its `Double`; in exact mode it stays symbol
 | Expression | Meaning |
 |---|---|
 | `abs(x)` | Absolute value; on a complex value, the modulus (`abs(3 + 4i)` is `5`) |
-| `floor(x)` / `ceil(x)` | The greatest integer not above `x` / the least not below it. **Exact on exact input** (`floor(7/2)` is `3` in exact mode; a surd is decided by integer arithmetic, `floor((10^80 - 1)^(1/2))` is `10^40 - 1`); element-wise on a matrix; a complex or interval argument stays as written. `derive` is `0` between the jumps and `differentiable` excludes them — infinitely many, so the answer stays symbolic, like `tan`'s |
+| `floor(x)` / `ceil(x)` | The greatest integer not above `x` / the least not below it. **Exact on exact input** (`floor(7/2)` is `3` in exact mode; a surd is decided by integer arithmetic, `floor((10^80 - 1)^(1/2))` is `10^40 - 1`); **a value that is an integer only as a working-precision reading is that integer** (`floor((3^(1/3))^3)` is `3`, `floor(log(10^15))` is `15`: read again at twice the precision, a reading converges to the integer), while a true exact value beside one keeps its side (`floor(3 - 1/10^40)` is `2`); the same for `round` at its half-integer jumps and for `step`; element-wise on a matrix; a complex or interval argument stays as written. `derive` is `0` between the jumps and `differentiable` excludes them — infinitely many, so the answer stays symbolic, like `tan`'s |
 | `round(x)` | The nearest integer, **a tie going away from zero**: `round(2.5)` is `3`, `round(-2.5)` is `-3` (Python and numpy go half to even; MATLAB and Excel agree with this) |
-| `mod(a, b)` | `a - b*floor(a/b)`, the remainder **with the sign of the divisor** (Python's convention). On `Double`s it is the exact remainder of the two values, not that formula, which loses every digit once `a/b` passes 2⁵³; exact on exact input; `b = 0`, an infinite operand or a matrix stays as written |
+| `mod(a, b)` | `a - b*floor(a/b)`, the remainder **with the sign of the divisor** (Python's convention). On `Double`s it is the exact remainder of the two values, not that formula, which loses every digit once `a/b` passes 2⁵³; exact on exact input, and `0` when `a/b` is an integer only as a working-precision reading (`mod((3^(1/3))^3, 3)`); `b = 0`, an infinite operand or a matrix stays as written |
 | `exp(x)` | eˣ |
 | `ln(x)` | Natural logarithm |
-| `log(x)` | log₁₀(x) |
+| `log(x)` | log₁₀(x); in exact mode at the working precision, and exact when the logarithm is rational (`log(100)` is `2`, `log(8, 4)` is `3/2`) |
 | `log(x, b)` | log_b(x) |
 | `sin(x)` | Sine |
 | `cos(x)` | Cosine |

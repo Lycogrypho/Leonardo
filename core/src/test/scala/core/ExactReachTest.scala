@@ -13,6 +13,18 @@ class ExactReachTest extends AnyFlatSpec:
   private def value(s: String): Either[_Expression, _Value] = exact(s).eval(env)
   private def q(n: Int, d: Int): _Rational = _Rational(n).divide(_Rational(d)).getOrElse(fail("no rational"))
 
+  "step" should "answer in its argument's tier, its sign decided exactly (F_0385)" in {
+    assert(value("step(1/2)") == Right(_Rational(1)))
+    assert(value("step(0)") == Right(_Rational(1)))
+    assert(value("step(-1/3)") == Right(_Rational(0)))
+    // a surd's sign, exactly: 2^(1/2) - 1 > 0, 1 - 2^(1/2) < 0
+    assert(value("step(2^(1/2) - 1)") == Right(_Rational(1)))
+    assert(value("step(1 - 2^(1/2))") == Right(_Rational(0)))
+    // and the Double tier is unchanged
+    assert(Parser.parse("step(0.5)").get.eval(env) == Right(_Number(1.0)))
+    assert(Parser.parse("step(-0.5)").get.eval(env) == Right(_Number(0.0)))
+  }
+
   "limit" should "substitute an exact point exactly" in {
     assert(value("limit(x^2, x, 1/3)") == Right(q(1, 9)))
   }

@@ -254,6 +254,21 @@ than `0`.  So `sin(pi)` reads as the sine of `pi`'s thirty-digit approximation, 
 agree to the working precision, with a note saying so.  A value more than 500 decades below one
 reads as `0`.
 
+**An integer part of a reading is the integer's.**  A product or quotient of readings lands about
+`10⁻³⁰` beside the value it stands for: `(3^(1/3))^3` is `3` less `3.6·10⁻⁴³`, and `log(10^15)` lies
+just as close to `15`.  `==` already calls such a value the integer, and so do `floor`, `ceil`,
+`round` (whose jumps are the half-integers), `mod` (a remainder of `0`), `step` and the bounds of
+`sum`, `product` and `tabulate`: the expression is read again at twice the working precision, and
+a value that moves towards an integer by about the digits gained is a reading of it.  A true exact
+value beside an integer does not move and keeps its side, `floor(3 - 1/10^40)` is `2`; nor does a
+point merely beside one that holds an irrational, such as `1 + 3^(1/3)/10^20`, which moves but keeps
+its distance.  So `1 + floor(log(10^15))` counts sixteen digits:
+
+```scala mdoc
+e.execute("1 + floor(log(10^15))")
+e.execute("floor(3 - 1/10^40)")
+```
+
 Those kernels are genuinely arbitrary-precision, so raising the working precision sharpens
 the `sin()` itself and not merely the arithmetic around it:
 

@@ -326,6 +326,29 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   the size of the variables it involves, and a semidefinite problem whose feasible region is far wider than
   its data starts from its smallest feasible point; a multiplier of the wrong sign larger than rounding is no
   longer certified.  Answers that were right move by at most `2·10⁻⁹` relatively.
+- `solve`, a sign chart, `domain` and `singularities` keep a quadratic's two roots whatever the size of its
+  coefficients: `solve(x^2 + 1e200*x + 1 = 0, x)` binds `-1e200` and `-1e-200` (it bound one root, `-5e199`), and
+  `1e-170*x^2 - 3e-170*x + 2e-170` has the roots `1` and `2` (it gave `1.5`).
+- A polynomial whose roots lie decades apart keeps its small roots: `solve(1e-6*x^3 - x^2 + 1 = 0, x)` binds
+  `-1`, `1` and `1e6`; it bound `4.5e-6`, which is no root.  A root reading that fails the polynomial's own
+  residual is retried, and declines rather than answer.
+- A staircase integral whose jumps lie beyond `2^53` is right in exact mode (`integral(floor(x), x, 10^20,
+  10^20 + 5/2)` is `250000000000000000002`) and is no longer guessed in `Double`, where those jumps are no longer
+  distinct numbers.
+- `step(x)` of an exact argument is exact (`step(1/2)` is `1`, it was `1.0`), the sign of a surd decided exactly.
+- In exact mode an integer part of a value that is an integer only as a working-precision reading is that
+  integer, as `==` already said: `1 + floor(log(10^15))` is `16` (it was `15`), `floor((3^(1/3))^3)` is `3`,
+  `ceil(atan(1)*4/pi)` is `1`, `mod((3^(1/3))^3, 3)` is `0`, and the bounds of `sum`/`product`/`tabulate` read
+  the same way.  A true exact value beside an integer keeps its side (`floor(3 - 1/10^40)` is `2`), and a bound
+  that is a true exact non-integer is no longer taken as whole (`sum(1, k, 1, 4 + 1/10^20)` stays as written).
+- `log(x)` and `log(x, b)` of exact operands carry the working precision in exact mode (they were read through
+  `Double`, fifteen digits), and are exact when the logarithm is rational: `log(100)` is `2`, `log(8, 4)` is `3/2`.
+- A limit at a tiny point is sampled at its own scale when that scale is written as an expression:
+  `limit(floor(10^20*x), x, 1/10^20, -)` is `0` (it was `1`).
+- `qpSolve` no longer answers `Infeasible` for a problem with a feasible point when a nearly singular `H` passes
+  the definite method's test: the exact LP decides.  A semidefinite problem's start is not taken from a point far
+  beyond the data, the caller's included (a target layer's `from` 10¹² away gave a wrong target), and a far
+  vertex that the smallest-point start cannot replace (past 20 variables) declines instead of being certified.
 - **A target layer prepared once per model and specification**: `steadyStateTargetsPrepared(model, spec,
   uBounds, env)` and its `at(model, spec, uBounds, u, env, from)` per cycle answer as `steadyStateTargets`
   does, to the bit, reusing each level's prepared QP.  With `from` the previous cycle's target, the first

@@ -113,8 +113,10 @@ case class Floor(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Floor(c.head)
 
+  // a value whole only as a reading is that integer's (F_0384, the owner's decision)
   override def eval(env: Environment): Either[_Expression, _Value] =
-    evalUnary(e, env)(Rounding.real(Rounding.floorD), exact = { case r => Right(_Rational(Rounding.floorOf(r))) })
+    gridPointOf(e, _Rational.Zero, env).fold(
+      evalUnary(e, env)(Rounding.real(Rounding.floorD), exact = { case r => Right(_Rational(Rounding.floorOf(r))) }))(Right(_))
 
   override protected def surdKernel: PartialFunction[_Surd, Either[_Expression, _Value]] =
     case s => Right(_Rational(Rounding.floorS(s)))
@@ -130,7 +132,8 @@ case class Ceil(e: _Expression) extends _Function with NamedFunction:
   override def rebuild(c: List[_Expression]): _Expression = Ceil(c.head)
 
   override def eval(env: Environment): Either[_Expression, _Value] =
-    evalUnary(e, env)(Rounding.real(Rounding.ceilD), exact = { case r => Right(_Rational(Rounding.ceilOf(r))) })
+    gridPointOf(e, _Rational.Zero, env).fold(
+      evalUnary(e, env)(Rounding.real(Rounding.ceilD), exact = { case r => Right(_Rational(Rounding.ceilOf(r))) }))(Right(_))
 
   override protected def surdKernel: PartialFunction[_Surd, Either[_Expression, _Value]] =
     case s => Right(_Rational(Rounding.ceilS(s)))
@@ -146,8 +149,12 @@ case class Round(e: _Expression) extends _Function with NamedFunction:
   override def children: List[_Expression] = List(e)
   override def rebuild(c: List[_Expression]): _Expression = Round(c.head)
 
+  // round jumps at the half-integers, so a reading of one of them is that half-integer, rounded away from zero
   override def eval(env: Environment): Either[_Expression, _Value] =
-    evalUnary(e, env)(Rounding.real(Rounding.roundD), exact = { case r => Right(_Rational(Rounding.roundOf(r))) })
+    val half = _Rational.of(BigInt(1), BigInt(2)).getOrElse(_Rational.Zero)
+    gridPointOf(e, half, env).fold(
+      evalUnary(e, env)(Rounding.real(Rounding.roundD), exact = { case r => Right(_Rational(Rounding.roundOf(r))) }))(
+      g => Right(_Rational(Rounding.roundOf(g))))
 
   override protected def surdKernel: PartialFunction[_Surd, Either[_Expression, _Value]] =
     case s => Right(_Rational(Rounding.roundS(s)))
@@ -178,6 +185,8 @@ case class Mod(a: _Expression, b: _Expression) extends _Function with NamedFunct
       case (Right(x: _Value), Right(y: _Value)) if _Surd.isExact(x) && _Surd.isExact(y) =>
         y match
           case r: _Rational if r.isZero => Left(Mod(x, y))
+          // a dividend that is a reading of a multiple of the divisor leaves no remainder (F_0384)
+          case _ if gridPointOf(Ratio(a, b), _Rational.Zero, env).isDefined => Right(_Rational.Zero)
           case _ =>
             Sum(x, Product(_Rational(-1), Product(y, Floor(Ratio(x, y))))).eval(env) match
               case done @ Right(_) => done

@@ -13,6 +13,12 @@ case class _Heaviside(arg: _Expression) extends _Expression:
   override def toString: String = s"step($arg)"
   override def eval(env: Environment): Either[_Expression, _Value] =
     arg.eval(env) match
+      // an exact argument's sign decided exactly, and the value built in its tier (F_0385: `step(1/2)` was `1.0`
+      // in exact mode); placed before the widening `_Number` arm, which would read it as a `Double`
+      // a reading of zero is zero (F_0384)
+      case Right(v) if _Surd.isExact(v) && gridPointRead(arg, v, _Rational.Zero, env).exists(_.isZero) => Right(_Rational(1))
+      case Right(v) if _Surd.isExact(v) =>
+        _Surd.signum(v).fold[Either[_Expression, _Value]](Left(this))(s => Right(_Rational(if s >= 0 then 1 else 0)))
       case Right(_Number(d)) => Right(_Number(if d >= 0 then 1.0 else 0.0))
       case _                 => Left(this)
   override def children: List[_Expression] = List(arg)
