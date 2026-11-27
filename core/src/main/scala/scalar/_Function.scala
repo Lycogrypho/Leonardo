@@ -328,7 +328,7 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
       // Matrix argument with a real base: distribute log_b element-wise.
       case (Right(mv: _MatrixValue), Right(_Number(b))) =>
         val lb = log(b)
-        if !lb.isFinite then Left(this) else mapMatrix(mv, x => log(x) / lb)
+        if !lb.isFinite then Left(this) else mapMatrix(mv, x => LogBase.snapped(log(x) / lb, x, b))
       // Symbolic matrix argument (any base): distribute log_base element-wise.
       case (Left(m: _MatrixShaped), rb) =>
         m.rebuild(m.children.map(el => LogBase(el, rb.toExpression))).eval(env)
@@ -349,7 +349,11 @@ case class LogBase(e: _Expression, base: _Expression) extends _Function with Nam
       case (Right(ev: _Value), Right(bv: _Value)) =>
         (_Complex.logc(ev), _Complex.logc(bv)) match
           case (Some(le), Some(lb)) =>
-            _Complex.div(le, lb).toRight(this)
+            _Complex.div(le, lb).toRight(this).map { q =>
+              (q, ev, bv) match
+                case (n: _Number, x: _Number, b: _Number) => _Number(LogBase.snapped(n.d, x.d, b.d))
+                case _                                    => q
+            }
           case _ => Left(this)
       case (re, rb) => Left(LogBase(re.toExpression, rb.toExpression))
 
@@ -361,6 +365,31 @@ object LogBase:
 
   /** The largest denominator a rational logarithm is looked for with. */
   private val MaxLogDenominator: Int = 64
+
+  /** How many ulps of an integer `k` a `Double` quotient `ln(x)/ln(b)` may lie from it and still be checked as the
+   *  exponent of an exact power (F_0387): one division and two logarithms, each correctly rounded or nearly. */
+  private val PowerUlps: Double = 4.0
+
+  /** `ln(x)/ln(b)` read as the integer `k` it lies within [[PowerUlps]] of, when `b^k == x` **exactly** (F_0387):
+   *  `log(1000)` was `2.9999999999999996`, so `floor(log(1000))` was `2.0` and a digit count one short.  The power is
+   *  formed over the rationals from the two `Double`s' own bits, so the check is the same on both platforms and never
+   *  asks `Math.log10` or `Math.pow`, whose accuracy JavaScript does not specify; a quotient that is not near an
+   *  integer, or whose power is not exact (`0.001` is not `10⁻³` in binary), is returned as it is.
+   *
+   *  @param q the quotient as computed
+   *  @param x the argument
+   *  @param b the base
+   *  @return `k`, or `q` */
+  private[scalar] def snapped(q: Double, x: Double, b: Double): Double =
+    val k = math.rint(q)
+    if k == q || !(math.abs(q - k) <= PowerUlps * math.ulp(math.max(math.abs(k), 1.0))) || math.abs(k) > 2000.0 then q
+    else
+      val exact = for
+        xr <- _Rational.fromDouble(x)
+        br <- _Rational.fromDouble(b)
+        p  <- br.pow(k.toInt, _Rational.DefaultPolicy, MaxLogCheckBits)
+      yield p == xr
+      if exact.contains(true) then k else q
 
   /** `log_b(x)` for an exact positive `x` and an exact positive base other than one, at the working
    *  precision: `ln(x)/ln(b)` in spire's `Real`.  It was read through `Double` until F_0384, so in

@@ -51,8 +51,10 @@ class SemidefiniteQPTest extends AnyFlatSpec:
   }
 
   it should "report the exact LP's own decline as FeasibleStart, not as the user's input (F_0106)" in {
-    // 41 variables: inside qp's caps (500), past the LP phase's (40). The minimum is z = 0.
-    failure("qp(zeros(41), ones(41, 1), 0, 0, 0, inf)") match
+    // 41 variables: inside qp's caps (500), past the LP phase's (40).  Since F_0388 a feasible one answers from the
+    // smallest point, a definite QP (the minimum is z = 0); only an infeasible one still needs the LP, to prove it
+    assert(solved("qp(zeros(41), ones(41, 1), 0, 0, 0, inf)").z.forall(_ == 0.0))
+    failure("qp(zeros(41), ones(41, 1), ones(1, 41), [[-1]], 0, inf)") match
       case QpFailure.FeasibleStart(LpFailure.InvalidInput(detail)) => assert(detail.contains(s"$MaxLpVariables"), detail)
       case other => fail(s"expected FeasibleStart(InvalidInput), got $other")
     // The definite path never reaches the LP, so the same size is answered there.
@@ -289,6 +291,19 @@ class SemidefiniteQPTest extends AnyFlatSpec:
             assert(lhs <= b(k) + 1e-9 * (math.abs(b(k)) + row.indices.map(j => math.abs(row(j) * r.z(j))).sum), s"row $k at $box")
         case Left(QpFailure.Infeasible) => fail(s"box $box: Infeasible, though z = 0 is strictly feasible")
         case Left(_)                    => succeed
+  }
+
+  it should "answer past 20 variables from the smallest feasible point, a definite QP (F_0388)" in {
+    // min (sum z - 1)^2 over |z| <= 1e12: the zero-cost vertex is a corner 1e12 away, and the smallest point was an
+    // exact LP over doubled variables, which declined past 20 variables
+    for n <- Seq(21, 30, 60) do
+      qpSolve(_MatrixValue(n, n, Array.fill(n * n)(2.0)), Vector.fill(n)(-2.0), None, None,
+              Vector.fill(n)(-1e12), Vector.fill(n)(1e12), Set.empty, env) match
+        case Right(r) => assert(math.abs(r.objective + 1.0) <= 1e-9 && math.abs(r.z.sum - 1.0) <= 1e-9, s"n=$n: ${r.objective}")
+        case Left(why) => fail(s"n=$n declined: $why")
+    // and an infeasible one is still proved so
+    assert(qpSolve(_MatrixValue(2, 2, Array(1.0, 0.0, 0.0, 0.0)), Vector(0.0, -1.0), Some((mv(Seq(Seq(1.0, 1.0), Seq(-1.0, -1.0))), Vector(1.0, -2.0))),
+                   None, Vector.fill(2)(-1e12), Vector.fill(2)(1e12), Set.empty, env) == Left(QpFailure.Infeasible))
   }
 
   it should "not start from a far vertex it cannot replace by the smallest point (F_0380)" in {

@@ -343,6 +343,8 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   that is a true exact non-integer is no longer taken as whole (`sum(1, k, 1, 4 + 1/10^20)` stays as written).
 - `log(x)` and `log(x, b)` of exact operands carry the working precision in exact mode (they were read through
   `Double`, fifteen digits), and are exact when the logarithm is rational: `log(100)` is `2`, `log(8, 4)` is `3/2`.
+  Outside exact mode the logarithm of an exact power is its exponent: `log(1000)` is `3.0` (it was
+  `2.9999999999999996`), so `floor(log(1000))` is `3.0`, and likewise `log(8, 2)`, on the JVM and in the browser alike.
 - A limit at a tiny point is sampled at its own scale when that scale is written as an expression:
   `limit(floor(10^20*x), x, 1/10^20, -)` is `0` (it was `1`).
 - `qp` answers a problem whatever the units of its variables: with variables in units of `1e-4`, `1` and `1e4` it
@@ -351,6 +353,12 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   equality or a large cost entry no longer hides the violation of another constraint: `min |z - (10, 10)|^2` under
   `z1 + z2 <= 1e12` and `z1 + z2 <= 1` answered `(10, 10)`, and an MPC whose late output rows have tiny
   coefficients could answer a move that violates an input-rate row.  Answers that were right move by rounding.
+- A semidefinite `qp` (a linear program included) starts from its smallest feasible point, found as a definite QP,
+  rather than from an exact linear program: it no longer declines past 20 variables under wide bounds, nor past
+  `lp`'s 40-variable cap when it is feasible, and a target layer's cycle is faster.  The exact linear program still
+  proves a problem infeasible.  Where many points are optimal, the one answered may differ from before; it is
+  optimal and certified.  A prepared target layer on a state-space model now uses the previous target as its start
+  after the disturbance estimate moves.
 - `qpSolve` no longer answers `Infeasible` for a problem with a feasible point when a nearly singular `H` passes
   the definite method's test: the exact LP decides.  A semidefinite problem's start is not taken from a point far
   beyond the data, the caller's included (a target layer's `from` 10¹² away gave a wrong target), and a far

@@ -719,14 +719,15 @@ mixed into the 41 uniformly-printed nodes</y:AttributeLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/expressions.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="108.0" width="572.0" x="0.0" y="0.0"/>
+              <y:Geometry height="124.0" width="572.0" x="0.0" y="0.0"/>
               <y:Fill color="#E6F4EA" transparent="false"/>
               <y:BorderStyle color="#4C9A63" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">LogBase</y:NodeLabel>
               <y:UML stereotype="case">
                 <y:AttributeLabel>e : _Expression</y:AttributeLabel>
                 <y:MethodLabel>base : _Expression   (log(x)=LogBase(x,10))
-exact operands at the working precision, exact when rational (F_0384)</y:MethodLabel>
+exact operands at the working precision, exact when rational (F_0384)
+Double: an exact power's logarithm is its exponent (F_0387)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>
@@ -4318,7 +4319,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</y:M
           <data key="d1">https://lycogrypho.github.io/Leonardo/optimization.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="284.0" width="748.0" x="0.0" y="0.0"/>
+              <y:Geometry height="300.0" width="844.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">QP</y:NodeLabel>
@@ -4330,6 +4331,7 @@ KKT-certified at 0.5*10^-precision, relative</y:AttributeLabel>
 = qpPrepare(...).solve(...) (F_0357, QpPrepared)
 solve(..., start): semidefinite path from a feasible point (F_0359)
 each variable in its own length (Jacobi, powers of two), re-certified in z (F_0377, F_0378)
+semidefinite start: the smallest feasible point, a definite QP; the exact LP proves Infeasible (F_0388)
 semidefinite H: primal active set from an lpSolve vertex (F_0074)
 every term at its own variable's size (F_0361)
 a row at its variables' own data, bounds excluded (F_0362)

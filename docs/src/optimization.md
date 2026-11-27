@@ -257,10 +257,13 @@ needs no feasible starting point, and finds infeasibility by itself. A merely **
 starts from a feasible point found by the exact linear program below, and follows a direction
 of zero curvature until a constraint stops it, or reports the problem `Unbounded` when none
 does. `H = 0` is a linear program. Neither method regularises `H`, which would solve a
-different problem. Because that start comes from the exact linear program, **a semidefinite `qp`
-inherits `lp`'s caps** — 40 variables, 80 rows of `A` and `Aeq`, coefficients of 2048 bits —
-where a definite one accepts 500 variables and 2000 constraints; past them it declines and says
-that the linear program did. Like `minimize`, an answer is **certified**: the KKT conditions are checked,
+different problem. The start is the **smallest feasible point**, itself a definite QP the dual
+method solves, so a semidefinite `qp` accepts as many variables as a definite one. The exact
+linear program below is still what **proves** a semidefinite problem infeasible, and what starts
+one whose smallest point cannot be found; there `qp` inherits `lp`'s caps — 40 variables, 80 rows
+of `A` and `Aeq`, coefficients of 2048 bits — and past them it declines and says that the linear
+program did. Where a semidefinite problem has many optimal points, the one answered is the one
+its start leads to: optimal and certified, but not chosen among the others. Like `minimize`, an answer is **certified**: the KKT conditions are checked,
 relative to the problem's scale, against the tolerance `=` uses, and a point that fails is not
 returned.
 

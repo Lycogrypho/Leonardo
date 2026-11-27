@@ -86,9 +86,12 @@ class OptimizeReplTest extends AnyFlatSpec:
              .contains("note: qp declined: H has a negative eigenvalue"))
     assert(s.execute("qp(eye(2), [[0], [0]], [[1, 0], [-1, 0]], [[-1], [-1]], -inf, inf)")
              .contains("note: qp declined: the constraints admit no point"))
-    // F_0106: the semidefinite path's LP cap is named as such, in prose, not as an enum spelling.
-    val lp = s.execute("qp(zeros(41), ones(41, 1), 0, 0, 0, inf)")
-    assert(lp.contains("note: qp declined: a semidefinite H starts from an exact linear program"), lp)
+    // F_0106: the semidefinite path's LP cap is named as such, in prose, not as an enum spelling.  Since F_0388 a
+    // feasible problem past it starts from its smallest point, a definite QP, and answers; an infeasible one still
+    // needs the LP to prove it
+    assert(s.execute("qp(zeros(41), ones(41, 1), 0, 0, 0, inf)").startsWith("[[0.0]"))
+    val lp = s.execute("qp(zeros(41), ones(41, 1), ones(1, 41), [[-1]], 0, inf)")
+    assert(lp.contains("note: qp declined: a semidefinite H needed an exact linear program"), lp)
     assert(lp.contains(s"at most $MaxLpVariables variables") && !lp.contains("InvalidInput"), lp)
   }
 

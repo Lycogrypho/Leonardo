@@ -196,6 +196,14 @@ final class TargetLayerPrepared private[control] (shape: TargetShape):
 
   /** How many prepared QPs are kept before the store is emptied. */
   private val MaxPrepared = 64
+
+  /** `(I − A)⁻¹` of a state-space model, when it exists (F_0388): what recomputes a previous target's state for this
+   *  cycle's disturbance, the matrices being fixed by the preparation. */
+  private lazy val steadyInverse: Option[_MatrixValue] =
+    if shape.gain then None
+    else
+      val a = shape.matrices(0)
+      _MatrixValue.identity(a.rows).add(a.scale(-1.0)).inverse.filter(_.isFinite)
   private val store = scala.collection.mutable.HashMap.empty[(_MatrixValue, Option[_MatrixValue], Option[_MatrixValue],
                                                              Vector[Boolean], Vector[Boolean]), QpPrepared]
 
@@ -214,19 +222,21 @@ final class TargetLayerPrepared private[control] (shape: TargetShape):
   /** The target for one cycle: [[steadyStateTargets]] of these arguments, to the bit when `from` is `None`.
    *
    *  **The first level's start is the caller's choice** (F_0375, the owner's decision): with `from` empty its
-   *  semidefinite QP starts from an exact LP vertex, as `steadyStateTargets` does, so the answer depends on
-   *  this cycle's data alone; with `from` the previous cycle's target, that point is the start when it is
-   *  feasible to the QP's own tolerance, and the exact LP only when it is not, which in steady operation
-   *  saves the LP.  The two are certified to the same tolerance; the second also depends on the previous
-   *  answer, so it may differ from the first inside the held band, and an infeasible cycle is still proved
-   *  so by the LP.
+   *  semidefinite QP starts from the smallest feasible point (since F_0388 a definite QP, before it an exact LP),
+   *  as `steadyStateTargets` does, so the answer depends on this cycle's data alone; with `from` the previous
+   *  cycle's target, that point is the start when it is feasible to the QP's own tolerance, and the smallest
+   *  point only when it is not.  For a state-space model the previous target's state is first recomputed for this
+   *  cycle's disturbance from the previous input (F_0388), since the state that answered the last `d` misses this
+   *  cycle's equations.  The two are certified to the same tolerance; the second also depends on the previous
+   *  answer, so it may differ from the first inside the held band, and an infeasible cycle is still proved so by
+   *  the exact LP.
    *
    *  @param model   the steady-state relation, its matrices the prepared ones
    *  @param spec    the levels and resting values, its shape the prepared one
    *  @param uBounds the input bounds, finite where the prepared ones were
    *  @param u       the current input
    *  @param env     the precision and the budgets
-   *  @param from    the previous cycle's target, or `None` for the exact LP's start
+   *  @param from    the previous cycle's target, or `None` for the smallest feasible point's start
    *  @return the target, or why there is none (a cycle whose fixed parts differ is refused)
    */
   def at(model: SteadyStateModel, spec: TargetSpec, uBounds: Option[(Vector[Double], Vector[Double])],
@@ -238,7 +248,15 @@ final class TargetLayerPrepared private[control] (shape: TargetShape):
       targetSpecError(rel, spec, uBounds, u) match
         case Some(why) => Left(MpcFailure.InvalidInput(why))
         case None =>
-          val start = from.map(t => t.x.getOrElse(Vector.empty) ++ t.u)
+          // F_0388: a previous state-space target's state answered the previous disturbance, so after `d` moves it misses
+          // this cycle's steady-state equations and the start was never used; the state is recomputed from the previous
+          // input, `x = (I - A)^-1 (B u + Bd d)`, when `I - A` is invertible
+          def stateFor(t: TargetLayer): Vector[Double] = (model, steadyInverse) match
+            case (StateSpaceSteadyState(_, b, _, bd, _, d), Some(inv)) if t.x.isDefined && t.u.size == b.cols && d.size == bd.cols =>
+              val rhs = b.multiply(_MatrixValue(b.cols, 1, t.u.toArray)).add(bd.multiply(_MatrixValue(bd.cols, 1, d.toArray)))
+              Some(inv.multiply(rhs).toVector).filter(_.forall(_.isFinite)).getOrElse(t.x.getOrElse(Vector.empty))
+            case _ => t.x.getOrElse(Vector.empty)
+          val start = from.map(t => stateFor(t) ++ t.u)
           if from.exists(t => t.x.isDefined != rel.hasState || t.u.size != rel.m) || start.exists(_.size != rel.nw) then
             Left(MpcFailure.InvalidInput(s"the previous target needs ${rel.m} inputs" +
                                          (if rel.hasState then s" and ${rel.uAt} states" else " and no state")))

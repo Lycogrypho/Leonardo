@@ -164,7 +164,7 @@ private[leonardo] def qpPrepare(h: _MatrixValue, a: Option[_MatrixValue], aeq: O
  */
 private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue], aeq: Option[_MatrixValue],
                                          lowerFinite: Vector[Boolean], upperFinite: Vector[Boolean],
-                                         jacobi: Boolean = true):
+                                         jacobi: Boolean = true, smallestStart: Boolean = true):
   private val n = h.rows
   private lazy val maxH: Double = h.toVector.map(math.abs).maxOption.getOrElse(0.0)
   private lazy val hFinite: Boolean = h.isFinite
@@ -237,7 +237,7 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
   private lazy val scaled: Option[(Array[Double], QpPrepared)] = lengths.map { d =>
     def cols(m: _MatrixValue) = _MatrixValue(m.rows, m.cols, Array.tabulate(m.rows * m.cols)(k => m(k / m.cols, k % m.cols) * d(k % m.cols)))
     val hy = _MatrixValue(n, n, Array.tabulate(n * n)(k => d(k / n) * h(k / n, k % n) * d(k % n)))
-    (d, QpPrepared(hy, a.map(cols), aeq.map(cols), lowerFinite, upperFinite, jacobi = false))
+    (d, QpPrepared(hy, a.map(cols), aeq.map(cols), lowerFinite, upperFinite, jacobi = false, smallestStart = smallestStart))
   }
 
   /** `H⁻¹·nⱼ` for every row. */
@@ -345,7 +345,7 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
           // far, the smallest point is legitimately far too.
           lazy val primal = PrimalActiveSet(prob, env.precision, env.limits)
           def primalPath: Either[QpFailure, QpResult] =
-            start.filter(z => primal.feasible(z) && !primal.far(z)) match
+            start.filter(z => primal.feasible(z) && !primal.far(z)).orElse(smallestPoint(prob, primal, b, beq, lb, ub, env)) match
               case Some(z) => primal.solve(z.clone(), warm)
               case None    =>
                 val weights = prob.dataScale.map(s => if s > 0.0 then 1.0 / s else 1.0).toVector
@@ -369,6 +369,27 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
               case other                      => other
             case Left(QpFailure.NotStrictlyConvex) => primalPath
             case Left(other) => Left(other)
+
+  /** The smallest feasible point as the semidefinite path's start (F_0388): `min ½Σ(zⱼ/sⱼ)²` under this problem's own
+   *  rows and bounds, `sⱼ` each variable's [[QpProblem.dataScale]], a **definite** QP the dual method solves with no
+   *  start, at a precision two digits finer than the caller's (to 15) so that its point is feasible to the primal
+   *  method's own tolerance.  It replaced an exact LP per semidefinite solve: the zero-cost vertex, then when that was
+   *  far a weighted LP over doubled variables, which declined past 20 variables (F_0380) and cost a target layer an LP
+   *  per cycle.  `None` when it declines or its point is infeasible to the primal method or far, and the exact LP's
+   *  path then runs unchanged, which also proves an `Infeasible`.  Its own semidefinite fallback, should `H`'s
+   *  diagonal underflow, never asks for another smallest point. */
+  private def smallestPoint(prob: QpProblem, primal: PrimalActiveSet, b: Option[Vector[Double]], beq: Option[Vector[Double]],
+                            lb: Vector[Double], ub: Vector[Double], env: Environment): Option[Array[Double]] =
+    Option.when(smallestStart && n > 0)(()).flatMap { _ =>
+      val w = prob.dataScale.map(s => if s > 0.0 && s.isFinite then 1.0 / s else 1.0)
+      val hs = _MatrixValue(n, n, Array.tabulate(n * n)(k => if k / n == k % n then w(k / n) * w(k / n) else 0.0))
+      val fine = new Environment(math.min(15, math.max(env.precision + 2, 11)), limits = env.limits)
+      Option.when(hs.isFinite && hs.toVector.exists(_ > 0.0))(()).flatMap { _ =>
+        QpPrepared(hs, a, aeq, lowerFinite, upperFinite, smallestStart = false)
+          .solve(Vector.fill(n)(0.0), b, beq, lb, ub, Set.empty, fine).toOption
+          .map(_.z.toArray).filter(z => primal.feasible(z) && !primal.far(z))
+      }
+    }
 
   /** The rows with this solve's right-hand sides, in [[templates]]' order. */
   private def filled(b: Option[Vector[Double]], beq: Option[Vector[Double]],

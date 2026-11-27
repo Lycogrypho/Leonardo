@@ -73,6 +73,31 @@ class TargetLayerPreparedTest extends AnyFlatSpec:
     }
   }
 
+  it should "start a state-space layer from the previous target after its disturbance moves (F_0388)" in {
+    // the previous state answered the previous d; recomputed from the previous input for this d it meets the
+    // steady-state equations again, and the warm answer is the cold one within the held band
+    val rnd = new java.util.Random(388)
+    val (n, mm, p) = (4, 2, 2)
+    def model(d: Double) = StateSpaceSteadyState(
+      m(n, n, Seq.tabulate(n * n)(k => if k / n == k % n then 0.6 else if k % n == k / n + 1 then 0.1 else 0.0)*),
+      m(n, mm, Seq.tabulate(n * mm)(_ => rnd.nextGaussian())*), m(p, n, Seq.tabulate(p * n)(_ => rnd.nextGaussian())*),
+      m(n, 1, Seq.fill(n)(1.0)*), m(p, 1, Seq.fill(p)(0.5)*), Vector(d))
+    val first  = model(0.0)
+    val sp     = TargetSpec(Vector(Vector(Setpoint(0, 0.4)), Vector(Setpoint(1, -0.2))), Some(RestingValues(Vector.fill(mm)(0.1), eye(mm))))
+    val bounds = Some((Vector.fill(mm)(-3.0), Vector.fill(mm)(3.0)))
+    val prepared = ok(steadyStateTargetsPrepared(first, sp, bounds, env))
+    (0 until 30).foldLeft(Option.empty[TargetLayer]) { (previous, _) =>
+      val mdl = first.copy(d = Vector(0.2 * rnd.nextGaussian()))
+      val u   = Vector.fill(mm)(0.2 * rnd.nextGaussian())
+      val warm = ok(prepared.at(mdl, sp, bounds, u, env, from = previous))
+      val cold = ok(steadyStateTargets(mdl, sp, bounds, u, env))
+      near(warm.u, cold.u, 1e-6)
+      near(warm.y, cold.y, 1e-6)
+      assert(warm.unmet == cold.unmet)
+      Some(warm)
+    }
+  }
+
   it should "not start from a previous target far beyond the data (F_0380)" in {
     // feasible, but 1e12 away under bounds of 1e12: as a start it was taken as it was, and a reachable
     // setpoint was reported unmet
