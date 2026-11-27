@@ -49,12 +49,15 @@ private def limitTiers(e: _Expression, v: _Variable, point: _Expression, dir: Li
     // Placed before the widening `_Number` arm, which would read the rational as a Double.
     // A surd point too (F_0263): `limit(x^2, x, 2^(1/2))` answered `2.0`.
     case Right(r @ _Number(d)) if _Surd.isExact(r) =>
-      exactLimit(e, v, r, dir, env, env.limits.count(Limit.MaxHopitalSteps))
-        .orElse(exactJumpLimit(e, v, point, dir, env))
+      // an integer part's jumps are read by the algebra first (F_0390): substitution's continuity test samples, and
+      // near an extremum of the argument those samples sit inside its rounding
+      exactJumpLimit(e, v, point, dir, env)
+        .orElse(exactLimit(e, v, r, dir, env, env.limits.count(Limit.MaxHopitalSteps)))
         .getOrElse(orComplex(limitFinite(e, v, d, dir, env, env.limits.count(Limit.MaxHopitalSteps)), e, v, d, dir, env))
     case Right(_Number(p)) =>
       if p.isInfinite then limitInfinity(e, v, p, env)
-      else orComplex(limitFinite(e, v, p, dir, env, env.limits.count(Limit.MaxHopitalSteps)), e, v, p, dir, env)
+      else jumpLimit(e, v, point, dir, env)
+        .getOrElse(orComplex(limitFinite(e, v, p, dir, env, env.limits.count(Limit.MaxHopitalSteps)), e, v, p, dir, env))
     case _ => _Limit(e, v, point, dir)   // symbolic point — stay symbolic
 
 /** The limit at an exact point, exactly, or `None` to leave it to the `Double` tiers (F_0210):
@@ -86,11 +89,24 @@ private def exactLimit(e: _Expression, v: _Variable, p: _Value, dir: LimitDir, e
  *  jump exactly; an answer that is not exact, or none, leaves the call to the `Double` tiers as before. */
 private def exactJumpLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir,
                            env: Environment): Option[_Expression] =
-  def integerPart(x: _Expression): Boolean = x match
-    case _: Floor | _: Ceil | _: Round | _: Mod => true
-    case _                                     => x.children.exists(integerPart)
-  if !integerPart(e) then None
+  if !holdsIntegerPart(e) then None
   else limitAlgebra(e, v, point, dir, env).map(_._1).filter(_Surd.isExact)
+
+/** Whether `e` holds an integer part, whose jumps the sampling tiers cannot see reliably. */
+private def holdsIntegerPart(x: _Expression): Boolean = x match
+  case _: Floor | _: Ceil | _: Round | _: Mod => true
+  case _                                     => x.children.exists(holdsIntegerPart)
+
+/** The limit at a `Double` point of an expression holding an integer part, from the limit algebra before the
+ *  sampling tiers (F_0390), as [[exactJumpLimit]] does in the exact tier.  Samples see a jump only where the
+ *  argument's change exceeds its rounding: near the maximum of `x·(2 − x)` that change is `h²`, so a sample at
+ *  `10⁻¹⁰` read `1.0` exactly and `limit(floor(x*(2 - x)), x, 1, +)` answered `1.0`, where the argument tends to 1
+ *  from below and the limit is `0`.  The algebra reads the jump and the side by rule; an answer that carries a
+ *  condition, or none, leaves the call to the tiers as before. */
+private def jumpLimit(e: _Expression, v: _Variable, point: _Expression, dir: LimitDir,
+                      env: Environment): Option[_Expression] =
+  if !holdsIntegerPart(e) then None
+  else limitAlgebra(e, v, point, dir, env).filter(_._2.isEmpty).map(_._1)
 
 /** The principal complex value at `p` when the real tiers declined (F_0297, the owner's decision):
  *  `x^(1/3)` at `-8` is `1 + 1.732i`, the value `Power` computes there, and is the limit when the samples

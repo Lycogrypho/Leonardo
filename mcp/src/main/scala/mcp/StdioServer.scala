@@ -106,6 +106,8 @@ object StdioServer:
   /** Splits the bytes passing through a stream into lines, each handed to `line` (UTF-8). */
   private final class Lines(line: String => Unit):
     private val buffer = java.io.ByteArrayOutputStream()
+    /** Whether bytes after the last newline are waiting for one (F_0389). */
+    def pending: Boolean = synchronized(buffer.size() > 0 && buffer.toString(java.nio.charset.StandardCharsets.UTF_8).trim.nonEmpty)
     def bytes(b: Array[Byte], off: Int, len: Int): Unit = synchronized {
       var i = off
       while i < off + len do
@@ -130,7 +132,10 @@ object StdioServer:
    *  bound with the tool call never answered (measured, 35 s).  The read that meets the end blocks until
    *  every request read has been answered ([[InFlight]]), bounded by the worker's request limit plus a
    *  margin: every request is answered or refused within that limit of its arrival (F_0316), so the bound
-   *  is only reached by a request the transport never answers at all.
+   *  is only reached by a request the transport never answers at all.  **A last line with no newline is ended
+   *  with one** before the end is reported (F_0389), or it is neither counted nor dispatched before the wait.  A
+   *  cancelled request keeps its place: the SDK registers no handler for `notifications/cancelled` and answers it
+   *  (measured, `StdioEndOfInputTest`).
    *
    *  @param in     the client's messages
    *  @param out    the server's messages
@@ -144,20 +149,35 @@ object StdioServer:
       val deadline = System.nanoTime() + (worker.requestLimit + AnswerMargin).toNanos
       while !inFlight.answered && System.nanoTime() < deadline do Thread.sleep(10)
     val watched = new java.io.FilterInputStream(in):
+      // F_0389: a last line with no newline after it is returned by the transport's reader only once it has seen the
+      // end, which is the read that waits; it is ended with a newline first, so that the line is counted and
+      // dispatched before the end is reported
+      private def ending(): Boolean = synchronized { inLines.pending }
       private def seen(n: Int): Int =
         if n < 0 then
           drained()
           closed.countDown()
         n
       override def read(): Int =
-        val c = seen(super.read())
-        if c >= 0 then inLines.bytes(Array(c.toByte), 0, 1)
-        c
+        val raw = super.read()
+        if raw < 0 && ending() then
+          inLines.bytes(Array('\n'.toByte), 0, 1)
+          '\n'.toInt
+        else
+          val c = seen(raw)
+          if c >= 0 then inLines.bytes(Array(c.toByte), 0, 1)
+          c
       override def read(b: Array[Byte], off: Int, len: Int): Int =
         try
-          val n = seen(super.read(b, off, len))
-          if n > 0 then inLines.bytes(b, off, n)
-          n
+          val raw = super.read(b, off, len)
+          if raw < 0 && len > 0 && ending() then
+            b(off) = '\n'.toByte
+            inLines.bytes(b, off, 1)
+            1
+          else
+            val n = seen(raw)
+            if n > 0 then inLines.bytes(b, off, n)
+            n
         catch
           case e: java.io.IOException =>
             closed.countDown()

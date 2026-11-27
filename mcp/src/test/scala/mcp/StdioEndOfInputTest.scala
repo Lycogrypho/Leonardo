@@ -27,3 +27,35 @@ class StdioEndOfInputTest extends AnyFlatSpec:
       assert(answered.exists(_.contains(s""""id":$id,"result"""")), s"no answer to $id in:\n${answered.mkString("\n")}")
     assert(answered.exists(_.contains("cos(x)")), answered.mkString("\n"))
   }
+
+  it should "answer a last request with no newline after it (F_0389)" in {
+    // the request was counted when its newline passed, so one ended by the end of the input was not waited for
+    val in  = ByteArrayInputStream(requests.mkString("\n").getBytes(UTF_8))
+    val out = ByteArrayOutputStream()
+    StdioServer.runUntilClosed(in, out, SessionWorker(30.seconds))
+    val answered = out.toString(UTF_8).linesIterator.toVector
+    for id <- Seq(1, 2, 3) do
+      assert(answered.exists(_.contains(s""""id":$id,"result"""")), s"no answer to $id in:\n${answered.mkString("\n")}")
+  }
+
+  it should "answer a request the client cancelled, which the SDK does not honour (F_0389)" in {
+    // the audit reasoned that a cancelled request is never answered and holds the exit for the request limit plus
+    // the margin; measured, the SDK registers no handler for notifications/cancelled and answers it, so the wait is
+    // right to keep its id.  Should a later SDK skip the answer, this fails: the id must then be dropped on the
+    // cancellation
+    val slow = Seq(
+      requests(0), requests(1),
+      """{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"evaluate","arguments":{"line":"exact precision 1000"}}}""",
+      """{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"evaluate","arguments":{"line":"exact on"}}}""",
+      """{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"evaluate","arguments":{"line":"pi*e*exp(1/3)*ln(7)"}}}""",
+      """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":9,"reason":"test"}}""")
+    val in  = ByteArrayInputStream(slow.mkString("", "\n", "\n").getBytes(UTF_8))
+    val out = ByteArrayOutputStream()
+    val t0 = System.nanoTime()
+    StdioServer.runUntilClosed(in, out, SessionWorker(20.seconds))
+    val seconds = (System.nanoTime() - t0) / 1e9
+    val answered = out.toString(UTF_8).linesIterator.toVector
+    val gotNine = answered.exists(_.contains(""""id":9"""))
+    info(f"returned after $seconds%.1f s; the cancelled request ${if gotNine then "was" else "was not"} answered")
+    assert(gotNine, f"the cancelled request was not answered (returned after $seconds%.1f s)")
+  }

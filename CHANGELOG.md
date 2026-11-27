@@ -347,6 +347,11 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   `2.9999999999999996`), so `floor(log(1000))` is `3.0`, and likewise `log(8, 2)`, on the JVM and in the browser alike.
 - A limit at a tiny point is sampled at its own scale when that scale is written as an expression:
   `limit(floor(10^20*x), x, 1/10^20, -)` is `0` (it was `1`).
+- A limit of an integer part at a jump reads the side its argument comes from through quotients, products, `exp`,
+  `ln` and the other monotone functions, and `mod`: in exact mode `limit(floor(1/x), x, 1/2, +)` is `1` and
+  `limit(floor(exp(x)), x, ln(3), -)` is `2`, exactly (they were decimals).  At a maximum or minimum of the argument
+  the limit is no longer read from samples that rounding makes equal to the value at the point:
+  `limit(floor(x*(2 - x)), x, 1)` is `0` (it was `1.0`).
 - `qp` answers a problem whatever the units of its variables: with variables in units of `1e-4`, `1` and `1e4` it
   certified points away from the optimum (about a third of random problems) and called some strictly convex ones
   `Unbounded`; it now solves each variable in its own length.  A constraint with a very large right-hand side, an
@@ -385,7 +390,8 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   build: `lp` called a box of `±10¹⁹` infeasible there, and an interval endpoint of that kind displayed
   wrongly.  The JVM was not affected.
 - The MCP server answers every request it has read before it exits at the end of its input: a caller that
-  writes its requests and closes stdin at once got only the first answer.
+  writes its requests and closes stdin at once got only the first answer.  A last request with no newline after it
+  is answered too.
 - **`leonardo-mcp` runs on the MCP Java SDK 2.2.0**, with Jackson 3.2.4 and Reactor 3.9.0.  The SDK's own
   choices were Jackson 3.2.1, which carries seven advisories, and a Reactor release candidate.
 - `qpSolve`'s certificate measures each constraint, and the gradient, against the variables it involves.

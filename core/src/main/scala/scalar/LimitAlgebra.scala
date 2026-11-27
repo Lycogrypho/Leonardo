@@ -71,18 +71,19 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
     case Ratio(a, b)   => for la <- lim(a, pt, depth); lb <- lim(b, pt, depth); r <- over(a, b, la, lb, pt, depth) yield r
     case Power(b, k) if !dependsOn(k, v) => lim(b, pt, depth).flatMap(power(_, fold(k)))
     case Power(b, k)   => lim(Exp(Product(k, Ln(b))), pt, depth)
+    // an increasing function keeps the side its argument comes from (F_0390: `floor(exp(x))` at `ln(3)`)
     case Exp(u)        => lim(u, pt, depth).map {
       case Inf(1)     => Inf(1)
       case Inf(_)     => Fin(lit(0), Some(1))
-      case Fin(c, _)  => Fin(fold(Exp(c)), None)
+      case Fin(c, s)  => Fin(fold(Exp(c)), s)
     }
     case Ln(u)         => lim(u, pt, depth).flatMap {
       case Inf(1)                         => Some(Inf(1))
       case Fin(c, s) if isZero(c)         => Option.when(s.contains(1))(Inf(-1))
-      case Fin(c, _) => numeric(c) match
-        case Some(d) if d > 0 => Some(Fin(fold(Ln(c)), None))
+      case Fin(c, s) => numeric(c) match
+        case Some(d) if d > 0 => Some(Fin(fold(Ln(c)), s))
         case Some(_)          => None
-        case None             => conditions += s"$c > 0"; Some(Fin(fold(Ln(c)), None))
+        case None             => conditions += s"$c > 0"; Some(Fin(fold(Ln(c)), s))
       case _ => None
     }
     case Sin(u) => lim(u, pt, depth).flatMap(trig(_, cosine = false))
@@ -93,20 +94,20 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
     case Cot(u) => lim(Ratio(Cos(u), Sin(u)), pt, depth)
     case Atan(u) => lim(u, pt, depth).map {
       case Inf(s)    => Fin(fold(Product(lit(s), Ratio(_Number(math.Pi), lit(2)))), None)
-      case Fin(c, _) => Fin(fold(Atan(c)), None)
+      case Fin(c, s) => Fin(fold(Atan(c)), s)
     }
     // The values at an infinity of the functions that have one (F_0288: ∫ e^(−x²) over ℝ needs erf(±∞)).
     case Erf(u)  => lim(u, pt, depth).flatMap {
       case Inf(s)    => Some(Fin(lit(s), None))
-      case Fin(c, _) => Some(Fin(fold(Erf(c)), None))
+      case Fin(c, s) => Some(Fin(fold(Erf(c)), s))
     }
     case Erfc(u) => lim(u, pt, depth).flatMap {
       case Inf(s)    => Some(Fin(lit(if s > 0 then 0 else 2), None))
-      case Fin(c, _) => Some(Fin(fold(Erfc(c)), None))
+      case Fin(c, s) => Some(Fin(fold(Erfc(c)), s.map(-_)))
     }
     case Tanh(u) => lim(u, pt, depth).flatMap {
       case Inf(s)    => Some(Fin(lit(s), None))
-      case Fin(c, _) => Some(Fin(fold(Tanh(c)), None))
+      case Fin(c, s) => Some(Fin(fold(Tanh(c)), s))
     }
     // F_0332: the integer parts jump, so the side the argument comes from decides.
     case f @ (_: Floor | _: Ceil | _: Round) =>
@@ -120,11 +121,13 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
       lazy val refined = pt match
         case At(p, _) => substitute(u, Map(v.variable -> p)).eval(env.withWorkingPrecision(2 * env.workingPrecision)).toOption
         case _        => None
-      lim(u, pt, depth).flatMap(integerPart(f, _, magnitude, refined))
+      lim(u, pt, depth).flatMap(l => integerPart(f, l, magnitude, refined, seriesSide(u, pt)))
     // Any other function on the allowlist, continuous at a finite value it is defined at (F_0332, the
     // owner's decision: continuity is declared, so a function added later is declined by default).
+    // `mod` by its definition (F_0390), so its jumps are the floor's, read with the side
+    case Mod(a, b) => lim(Sum(a, Product(lit(-1), Product(b, Floor(Ratio(a, b))))), pt, depth)
     case f: _Function if f.children.sizeIs == 1 && continuousWhereDefined(f) => lim(f.children.head, pt, depth).flatMap {
-      case Fin(c, s) => valueAt(f, c, s).map(Fin(_, None))
+      case Fin(c, s) => valueAt(f, c, s).map(Fin(_, sideThrough(f, c, s)))
       case _         => None
     }
     case _ => None
@@ -162,9 +165,12 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
    *  `None`.  The answer is locally constant, so its side is `0`.
    *  @param magnitude the size of the terms that form the argument at the point, when known
    *  @param refined   the argument at the point read at a finer working precision, when known */
-  private def integerPart(f: _Function, l: LVal, magnitude: => Option[Double], refined: => Option[_Value]): Option[LVal] = l match
+  private def integerPart(f: _Function, l: LVal, magnitude: => Option[Double], refined: => Option[_Value],
+                          fallbackSide: => Option[Int]): Option[LVal] = l match
     case Inf(_) => None
-    case Fin(c, s) => numeric(c).flatMap { d =>
+    case Fin(c, s0) => numeric(c).flatMap { d =>
+      // a jump with the side unknown: read it from the argument's derivatives (F_0390), only here, where it decides
+      lazy val s = s0.orElse(fallbackSide)
       def at(x: _Expression) = Some(Fin(fold(x), Some(0)))
       val half = Ratio(lit(1), lit(2))
       jumpAt(f, c, d, magnitude, refined) match
@@ -229,7 +235,9 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
         val value = if cosine then math.cos(d) else math.sin(d)
         val slope = if cosine then -math.sin(d) else math.cos(d)
         if math.abs(value) <= 1e-12 then Some(Fin(lit(0), s.map(_ * sgn(slope))))
-        else Some(Fin(fold(if cosine then Cos(c) else Sin(c)), None))
+        // away from a zero the side through the slope, unknown at an extremum (F_0390)
+        else Some(Fin(fold(if cosine then Cos(c) else Sin(c)),
+                      if math.abs(slope) > 1e-12 then s.map(_ * sgn(slope)) else s.filter(_ == 0)))
       case None => Some(Fin(fold(if cosine then Cos(c) else Sin(c)), None))
 
   private def add(la: LVal, lb: LVal): Option[LVal] = (la, lb) match
@@ -252,9 +260,10 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
           case (Some(0.0), Some(q)) if q != 0 => sx.map(_ * sgn(q))
           case (Some(p), Some(0.0)) if p != 0 => sy.map(_ * sgn(p))
           case (Some(0.0), Some(0.0))        => for s <- sx; t <- sy yield s * t
-          // a constant factor scales the other's side by its sign (F_0342: `x/0.1` from above)
-          case (Some(_), Some(q)) if sy.contains(0) && q != 0 => sx.map(_ * sgn(q))
-          case (Some(p), Some(_)) if sx.contains(0) && p != 0 => sy.map(_ * sgn(p))
+          // two non-zero limits: d(xy) = y·dx + x·dy, each term's sign the factor's side times the other's sign;
+          // a constant factor (side 0) scales the other's side by its sign (F_0342: `x/0.1` from above), and
+          // two variable factors give the side they agree on (F_0390: `x*x` at -2 from the right is below 4)
+          case (Some(p), Some(q)) if p != 0 && q != 0 => towards(sx.map(_ * sgn(q)), sy.map(_ * sgn(p)))
           case _                              => None
         Some(Fin(fold(Product(x, y)), side))
       case (Inf(s), Inf(t)) => Some(Inf(s * t))
@@ -288,8 +297,11 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
         if numeric(d).isEmpty then conditions += s"${fold(d)} != 0"
         val side = (sn, numeric(d)) match
           case (Some(s), Some(q)) if isZero(n) => Some(s * sgn(q))
-          // over a constant, the numerator's side scaled by its sign (F_0342)
-          case (Some(s), Some(q)) if sd.contains(0) && q != 0 => Some(s * sgn(q))
+          // d(n/d) = (d·dn − n·dd)/d²: over a constant the numerator's side scaled by its sign (F_0342), and a
+          // moving denominator's side reversed by the numerator's sign (F_0390: `1/x` at 1/2 from the right is
+          // below 2), the two taken where they agree
+          case (_, Some(q)) if q != 0 => numeric(n).filter(_ != 0).flatMap(p =>
+            towards(sn.map(_ * sgn(q)), sd.map(t => -t * sgn(p))))
           case _                  => None
         Some(Fin(fold(Ratio(n, d)), side))
       case (Inf(s), Fin(d, _)) => numeric(d) match
@@ -299,6 +311,40 @@ private[scalar] final class LimitAlgebra(v: _Variable, env: Environment, exact: 
         val side = numeric(n).filter(_ != 0).map(q => sgn(q) * s)
         Some(Fin(lit(0), side))
       case (Inf(_), Inf(_)) => indeterminate(a, b, pt, depth)
+
+  /** The side the argument `u` of an integer part comes from at a jump, when its limit did not say (F_0390), as its
+   *  first non-vanishing derivative at the point decides: `u(c + s·h) − u(c)` has the sign of `u⁽ᵏ⁾(c)·sᵏ` for the first `k` with `u⁽ᵏ⁾(c) ≠ 0`.  Where the
+   *  first-order contributions of a product or quotient disagree they may cancel, as at the maximum of `x·(2 − x)`,
+   *  which tends to `1` from below on both sides; the derivatives are read up to the fourth.  Only at a finite
+   *  point, and only for a limit whose side was unknown. */
+  private def seriesSide(u: _Expression, pt: Pt): Option[Int] = pt match
+    case At(p, s) =>
+      numeric(p).orElse(evalNumeric(p, env).toOption.collect { case _Number(x) if x.isFinite => x }).flatMap { x =>
+        val scale = math.max(math.abs(x), 1.0)
+        (1 to 4).iterator
+          .map(k => k -> numericAt(deriveN(u, v, k), v, x, env))
+          .takeWhile((_, d) => d.exists(_.isFinite))
+          .collectFirst { case (k, Some(d)) if math.abs(d) > 1e-9 * scale => sgn(d) * (if k % 2 == 0 then 1 else s) }
+      }
+    case _ => None
+
+  /** The side two contributions to a change give (F_0390): either alone when the other is `0`, the one they agree
+   *  on, else unknown (their rates decide, which a side does not record). */
+  private def towards(a: Option[Int], b: Option[Int]): Option[Int] = (a, b) match
+    case (Some(0), s)                 => s
+    case (s, Some(0))                 => s
+    case (Some(x), Some(y)) if x == y => Some(x)
+    case _                            => None
+
+  /** The side `f(u)` comes from where `u` tends to `c` from `side` (F_0390): `side` times the sign of `f′(c)`, which
+   *  a strictly monotone stretch keeps; unknown where `f′(c)` is zero or not a number, `0` for a constant `u`. */
+  private def sideThrough(f: _Function, c: _Expression, side: Option[Int]): Option[Int] = side match
+    case Some(0) => Some(0)
+    // a closed `c` that stays a symbol (`ln(3)` in the exact tier) read at its value, as `valueAt` does
+    case Some(s) => numeric(c).orElse(evalNumeric(c, env).toOption.collect { case _Number(x) if x.isFinite => x })
+                      .flatMap(cd => numericAt(derive(f.rebuild(List(v)), v), v, cd, env))
+                      .filter(sl => sl != 0 && sl.isFinite).map(sl => s * sgn(sl))
+    case None    => None
 
   private def power(lb: LVal, k: _Expression): Option[LVal] =
     numeric(k).flatMap { kv =>

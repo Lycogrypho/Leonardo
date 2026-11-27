@@ -3406,7 +3406,7 @@ timed out: abandoned, restored from :save</data>
 + serve(transport, worker): McpSyncServer
 resources: leonardo://grammar, leonardo://session/script
 leonardoMcp: --timeout &lt;seconds&gt;; logs to stderr
-end of input: answers the requests read first (F_0373)</data>
+end of input: answers the requests read first (F_0373), a last line with no newline too (F_0389)</data>
     </node>
     <node id="n305">
         <data key="n_label">ToScala</data>

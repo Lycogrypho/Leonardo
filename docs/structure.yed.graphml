@@ -5667,7 +5667,7 @@ timed out: abandoned, restored from :save</y:AttributeLabel>
           <data key="d1">https://lycogrypho.github.io/Leonardo/mcp.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="140.0" width="468.0" x="0.0" y="0.0"/>
+              <y:Geometry height="140.0" width="788.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">StdioServer</y:NodeLabel>
@@ -5676,7 +5676,7 @@ timed out: abandoned, restored from :save</y:AttributeLabel>
 resources: leonardo://grammar, leonardo://session/script
 leonardoMcp: --timeout &lt;seconds&gt;; logs to stderr</y:AttributeLabel>
                 <y:MethodLabel>+ serve(transport, worker): McpSyncServer
-end of input: answers the requests read first (F_0373)</y:MethodLabel>
+end of input: answers the requests read first (F_0373), a last line with no newline too (F_0389)</y:MethodLabel>
               </y:UML>
             </y:UMLClassNode>
           </data>

@@ -2737,7 +2737,7 @@ package "mcp" <<Rectangle>> {
         + serve(transport, worker): McpSyncServer
         resources: leonardo://grammar, leonardo://session/script
         leonardoMcp: --timeout <seconds>; logs to stderr
-        end of input: answers the requests read first (F_0373)
+        end of input: answers the requests read first (F_0373), a last line with no newline too (F_0389)
     }
     class "ToScala" <<utility>> [[mcp.html]] {
         __ Decision D: Scala source for a result __

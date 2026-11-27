@@ -115,6 +115,38 @@ class LimitJumpTest extends AnyFlatSpec:
     assert(exactValue("limit(floor(x^3), x, 3^(1/3) + 1/10^25)") == _Rational(3))
   }
 
+  "a one-sided exact limit at a jump" should "carry the side through quotients, products, functions and mod (F_0390)" in {
+    def exactValue(src: String): _Value = eval(src, exactEnv, exact = true) match
+      case Right(r) if _Surd.isExact(r) => r
+      case other                       => fail(s"$src: not exact: $other")
+    // 1/x -> 2 from below as x -> 1/2 from the right
+    assert(exactValue("limit(floor(1/x), x, 1/2, +)") == _Rational(1))
+    assert(exactValue("limit(floor(1/x), x, 1/2, -)") == _Rational(2))
+    assert(exactValue("limit(ceil(2/x), x, 1, +)") == _Rational(2))
+    // x*x -> 4 from below as x -> -2 from the right, as x^2 does
+    assert(exactValue("limit(floor(x*x), x, -2, +)") == _Rational(3))
+    assert(exactValue("limit(floor(x*x), x, -2, -)") == _Rational(4))
+    assert(exactValue("limit(floor(x*(x + 1)), x, 1, -)") == _Rational(1))
+    // through an increasing function, and a decreasing one
+    assert(exactValue("limit(floor(exp(x)), x, ln(3), -)") == _Rational(2))
+    assert(exactValue("limit(floor(exp(x)), x, ln(3), +)") == _Rational(3))
+    assert(exactValue("limit(floor(exp(-x)), x, -ln(3), +)") == _Rational(2))
+    // mod by its definition, a - b*floor(a/b)
+    assert(exactValue("limit(mod(x, 1), x, 2, -)") == _Rational(1))
+    assert(exactValue("limit(mod(x, 1), x, 2, +)") == _Rational(0))
+    assert(exactValue("limit(mod(1/x, 1), x, 1/2, +)") == _Rational(1))
+    // the Double tier answers the same values (mod by the epsilon tier's samples, to its usual accuracy)
+    assert(number(eval("limit(floor(1/x), x, 0.5, +)")) == 1.0)
+    assert(number(eval("limit(floor(x*x), x, -2, +)")) == 3.0)
+    assert(math.abs(number(eval("limit(mod(x, 1), x, 2, -)")) - 1.0) < 1e-5)
+    // where the two contributions cancel, the first non-vanishing derivative decides: x*(2 - x) has its maximum 1 at
+    // x = 1 and tends to it from below on both sides; a sample at 1e-10 read 1.0 exactly and the Double tier answered 1.0
+    assert(number(eval("limit(floor(x*(2 - x)), x, 1, +)")) == 0.0)
+    assert(number(eval("limit(floor(x*(2 - x)), x, 1, -)")) == 0.0)
+    assert(number(eval("limit(floor(x*(2 - x)), x, 1)")) == 0.0)
+    assert(exactValue("limit(floor(x*(2 - x)), x, 1, +)") == _Rational(0))
+  }
+
   "a limit at a tiny point" should "sample at the point's scale when that scale is written as an expression (F_0386)" in {
     // 10^20 contributed the scales 10 and 20, so the samples sat 1e-8 away from a point at 1e-20
     assert(number(eval("limit(floor(10^20*x), x, 1/10^20, -)")) == 0.0)
