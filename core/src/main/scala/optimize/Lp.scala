@@ -119,6 +119,14 @@ def lpSolve(f: Vector[_Value],
 def lpSolve(f: Vector[_Value],
             a: Option[(Vector[Vector[_Value]], Vector[_Value])], eq: Option[(Vector[Vector[_Value]], Vector[_Value])],
             lb: Vector[_Value], ub: Vector[_Value], limits: Limits): Either[LpFailure, LpResult] =
+  lpSolveObserved(f, a, eq, lb, ub, limits, _ => ())
+
+/** [[lpSolve]] reporting the work units its arithmetic did to `work` once it stops (F_0393): what a test of
+ *  [[MaxLpWork]] asserts instead of a wall-clock time, the units being the same on every platform.  Called with
+ *  nothing when the problem is refused before any arithmetic. */
+private[optimize] def lpSolveObserved(f: Vector[_Value],
+            a: Option[(Vector[Vector[_Value]], Vector[_Value])], eq: Option[(Vector[Vector[_Value]], Vector[_Value])],
+            lb: Vector[_Value], ub: Vector[_Value], limits: Limits, work: Long => Unit): Either[LpFailure, LpResult] =
   val n = f.size
   val (maxVars, maxRows) = (limits.count(Limit.MaxLpVariables), limits.count(Limit.MaxLpConstraints))
   def bad(d: String): Either[LpFailure, LpResult] = Left(LpFailure.InvalidInput(d))
@@ -139,7 +147,7 @@ def lpSolve(f: Vector[_Value],
         def q(v: _Value): Q = rational(v, allowInfinite = false).flatten.getOrElse(Q.zero)
         def bound(v: _Value): Option[Q] = rational(v, allowInfinite = true).flatten
         LpProblem(f.map(q), a.map((r, b) => (r.map(_.map(q)), b.map(q))), eq.map((r, b) => (r.map(_.map(q)), b.map(q))),
-                  lb.map(bound), ub.map(bound)).solve(limits).map(_.result(exact))
+                  lb.map(bound), ub.map(bound)).solve(limits, work).map(_.result(exact))
 
 /** A value as a rational: `Some(Some(q))` for a finite number, `Some(None)` for an infinite
  *  bound when `allowInfinite`, `None` for anything else. */
@@ -164,7 +172,7 @@ private final case class LpProblem(f: Vector[Q], a: Option[(Vector[Vector[Q]], V
   /** `xᵢ = offsetᵢ + Σ coefficient·yⱼ`, one or two standard variables per original one. */
   private final case class Map1(offset: Q, terms: List[(Int, Q)])
 
-  def solve(limits: Limits): Either[LpFailure, Solved] =
+  def solve(limits: Limits, work: Long => Unit = _ => ()): Either[LpFailure, Solved] =
     if (0 until n).exists(i => (lb(i), ub(i)) match { case (Some(l), Some(u)) => l > u; case _ => false }) then
       Left(LpFailure.Infeasible)
     else
@@ -196,7 +204,7 @@ private final case class LpProblem(f: Vector[Q], a: Option[(Vector[Vector[Q]], V
         (c, bs(k) - shift)
       })
       val (cy, cShift) = inY(f)
-      Tableau.solve(cy, ineq.map((c, b, _) => (c, b)), eqs, limits).map { (y, pivots) =>
+      Tableau.solve(cy, ineq.map((c, b, _) => (c, b)), eqs, limits, work).map { (y, pivots) =>
         val x = maps.map(m => m.terms.foldLeft(m.offset)((acc, t) => acc + t._2 * y(t._1)))
         val slackZero = ineq.indices.map { k =>
           val (c, b, _) = ineq(k)
@@ -250,7 +258,7 @@ private object Tableau:
 
   /** Minimises `cᵀy` on `ineq` (`≤`) and `eqs` (`=`), `y ≥ 0`: the optimal `y` and the pivots. */
   def solve(c: Vector[Q], ineq: List[(Vector[Q], Q)], eqs: List[(Vector[Q], Q)],
-            limits: Limits): Either[LpFailure, (Vector[Q], Int)] =
+            limits: Limits, observe: Long => Unit = _ => ()): Either[LpFailure, (Vector[Q], Int)] =
     val (maxPivots, maxBits) = (limits.count(Limit.MaxLpPivots), limits.count(Limit.MaxLpBits))
     val maxWork = limits(Limit.MaxLpWork)
     val ny = c.size
@@ -361,7 +369,7 @@ private object Tableau:
 
     val live = Array.fill(m)(true)
     // Phase 1: minimise the sum of the artificials.
-    run(j => if j >= ny + ns then Z.ONE else Z.ZERO, _ => true, live).flatMap { _ =>
+    val out = run(j => if j >= ny + ns then Z.ONE else Z.ZERO, _ => true, live).flatMap { _ =>
       val infeasibility = (0 until m).filter(i => basis(i) >= ny + ns).map(rhs(_)).foldLeft(Z.ZERO)(_.add(_))
       if infeasibility.signum > 0 then Left(LpFailure.Infeasible)
       else
@@ -379,3 +387,5 @@ private object Tableau:
           (y.toVector, pivots)
         }
     }
+    observe(work)
+    out

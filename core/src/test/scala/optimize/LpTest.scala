@@ -156,15 +156,20 @@ class LpTest extends AnyFlatSpec:
       case Left(why) => fail(s"$why")
   }
 
-  it should "decline the worst dense 40 x 80 problem promptly at the default budget (F_0115)" in {
-    // 352 pivots; in spire rationals it took 139 s on Node, in the integer tableau 7.7 s, and the
-    // budget stops it at ~2 s on Node (0.55 s on the JVM). The bound is generous for loaded runs.
+  it should "decline the worst dense 40 x 80 problem at the default budget, its work stopped by it (F_0115, F_0393)" in {
+    // 352 pivots; in spire rationals it took 139 s on Node, in the integer tableau 7.7 s, and the budget stops it at
+    // ~2 s on Node (0.55 s on the JVM).  What the case pins is that the budget stops the work: the units the
+    // arithmetic did, the same on every platform, past the budget by less than one row's rewrite.  It asserted a
+    // wall-clock bound of 10 s until F_0393, which took 42.3 s on Node under the full suite's load: a bound on
+    // the machine as much as on the budget.  The time is reported, for a run of this suite alone.
     val (f, a, lb, ub) = dense(mixed = true, seed = 4, n = 40, m = 80)
+    var spent = -1L
     val t0 = System.nanoTime()
-    val res = lpSolve(f, a, None, lb, ub)
-    val s = (System.nanoTime() - t0) / 1e9
+    val res = lpSolveObserved(f, a, None, lb, ub, Limits.Default, w => spent = w)
+    info(f"${(System.nanoTime() - t0) / 1e9}%.2f s, $spent units against a budget of $MaxLpWork")
     assert(res == Left(LpFailure.MaxWork(MaxLpWork)), res)
-    assert(s < 10, s"$s s")
+    // measured on both platforms alike: 125 016 229 units, 16 229 past the budget, the end of one row's rewrite
+    assert(spent > MaxLpWork && spent - MaxLpWork < MaxLpWork / 1000, s"$spent units")
   }
 
   it should "find a box past 2^63 feasible on every platform (F_0374)" in {
