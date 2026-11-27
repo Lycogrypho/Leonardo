@@ -4318,7 +4318,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</y:M
           <data key="d1">https://lycogrypho.github.io/Leonardo/optimization.html</data>
           <data key="d0">
             <y:UMLClassNode>
-              <y:Geometry height="268.0" width="556.0" x="0.0" y="0.0"/>
+              <y:Geometry height="284.0" width="748.0" x="0.0" y="0.0"/>
               <y:Fill color="#E1ECFB" transparent="false"/>
               <y:BorderStyle color="#5B7FBF" type="line" width="1.0"/>
               <y:NodeLabel modelName="internal" modelPosition="c">QP</y:NodeLabel>
@@ -4329,6 +4329,7 @@ KKT-certified at 0.5*10^-precision, relative</y:AttributeLabel>
                 <y:MethodLabel>qpSolve(H, f, ineq, eq, lb, ub, warm, env)
 = qpPrepare(...).solve(...) (F_0357, QpPrepared)
 solve(..., start): semidefinite path from a feasible point (F_0359)
+each variable in its own length (Jacobi, powers of two), re-certified in z (F_0377, F_0378)
 semidefinite H: primal active set from an lpSolve vertex (F_0074)
 every term at its own variable's size (F_0361)
 a row at its variables' own data, bounds excluded (F_0362)

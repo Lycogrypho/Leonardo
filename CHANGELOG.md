@@ -345,6 +345,12 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   `Double`, fifteen digits), and are exact when the logarithm is rational: `log(100)` is `2`, `log(8, 4)` is `3/2`.
 - A limit at a tiny point is sampled at its own scale when that scale is written as an expression:
   `limit(floor(10^20*x), x, 1/10^20, -)` is `0` (it was `1`).
+- `qp` answers a problem whatever the units of its variables: with variables in units of `1e-4`, `1` and `1e4` it
+  certified points away from the optimum (about a third of random problems) and called some strictly convex ones
+  `Unbounded`; it now solves each variable in its own length.  A constraint with a very large right-hand side, an
+  equality or a large cost entry no longer hides the violation of another constraint: `min |z - (10, 10)|^2` under
+  `z1 + z2 <= 1e12` and `z1 + z2 <= 1` answered `(10, 10)`, and an MPC whose late output rows have tiny
+  coefficients could answer a move that violates an input-rate row.  Answers that were right move by rounding.
 - `qpSolve` no longer answers `Infeasible` for a problem with a feasible point when a nearly singular `H` passes
   the definite method's test: the exact LP decides.  A semidefinite problem's start is not taken from a point far
   beyond the data, the caller's included (a target layer's `from` 10¹² away gave a wrong target), and a far

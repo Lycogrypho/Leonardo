@@ -264,6 +264,12 @@ that the linear program did. Like `minimize`, an answer is **certified**: the KK
 relative to the problem's scale, against the tolerance `=` uses, and a point that fails is not
 returned.
 
+**The variables' units do not matter.** The problem is solved with each variable in its own length — from
+`H`'s diagonal for a variable with curvature, from its rows for one without — and the certificate reads each
+variable at the size its own cost and curvature give it, so a variable written in units of `10⁻⁴` beside one in
+units of `10⁴` is answered as if both were written alike. A constraint with a very large right-hand side (an
+output bound written as "no bound") does not loosen the test of the others.
+
 ```scala mdoc:passthrough
 lesson.show("qp(eye(2), [[0], [0]], [[1, 0], [-1, 0]], [[-1], [-1]], -inf, inf)",
             "qp([[1, 0], [0, 0]], [[-2], [-1]], [[1, 1]], [[3]], 0, inf)",

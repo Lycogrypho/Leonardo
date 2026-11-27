@@ -163,7 +163,8 @@ private[leonardo] def qpPrepare(h: _MatrixValue, a: Option[_MatrixValue], aeq: O
  *  @param upperFinite which upper bounds are finite
  */
 private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue], aeq: Option[_MatrixValue],
-                                         lowerFinite: Vector[Boolean], upperFinite: Vector[Boolean]):
+                                         lowerFinite: Vector[Boolean], upperFinite: Vector[Boolean],
+                                         jacobi: Boolean = true):
   private val n = h.rows
   private lazy val maxH: Double = h.toVector.map(math.abs).maxOption.getOrElse(0.0)
   private lazy val hFinite: Boolean = h.isFinite
@@ -183,6 +184,61 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
       (0 until n).filter(upperFinite).map(i => QpRow(unit(i, -1.0), 0.0, Some(QpConstraint.Upper(i))))
 
   private lazy val inverse: Either[QpFailure, Array[Array[Double]]] = qpInverseHessian(h)
+
+  /** Each variable's length `dⱼ` (F_0377, F_0378, the owner's decision: Jacobi, a flat variable's from its rows),
+   *  or `None` when every length is 1.  The problem is solved in `y = D⁻¹z`, where `H` becomes `DHD`, so a
+   *  variable in small units no longer reads as flat beside one in large units: the Cholesky test, the null-curvature
+   *  threshold and the iterations' tolerances are relative to the largest entry of `H`, and with the variables in
+   *  units `10⁻⁴`, `1`, `10⁴` they certified non-optimal points.
+   *
+   *  A curved variable's length is `√(H_max/Hⱼⱼ)`, `H_max` the largest diagonal entry: Jacobi up to one common
+   *  factor, which leaves the largest-curvature variable's unit alone.  A flat variable (`Hⱼⱼ = 0`) takes the
+   *  smallest length its rows give it beside the curved variables in them, `minᵣ maxₖ |nᵣₖ|·dₖ / |nᵣⱼ|`, and 1 when no
+   *  row joins it to one (the `nlp` reading, F_0120).  When every variable is flat (an LP, `H = 0`), each takes its
+   *  length from its own column of the rows, each row read relative to its own largest entry, so that the columns'
+   *  largest entries agree: in mixed units an LP was certified 10 % from its optimum.  **Every length is a power of two**, so scaling and mapping
+   *  back are exact, a bound coordinate stays exactly on its bound, and a problem whose diagonal spans less than
+   *  about a factor 2 is solved exactly as before. */
+  private lazy val lengths: Option[Array[Double]] =
+    if !jacobi || n == 0 || !hFinite then None
+    else
+      def pow2(x: Double): Double =
+        val e = math.getExponent(x)
+        math.scalb(1.0, if x / math.scalb(1.0, e) > math.sqrt(2.0) then e + 1 else e)
+      val diag = Array.tabulate(n)(j => h(j, j))
+      val top  = diag.max
+      val general = templates.filter(r => r.id.forall { case QpConstraint.Row(_) => true; case _ => false })
+      if !(top > 0.0) then
+        // Every variable flat (an LP): each length from its own column of the rows, each row read relative to its
+        // largest entry so that a row's units do not choose the lengths, the columns' largest entries made to agree;
+        // a variable in no row keeps its unit.
+        val col = Array.tabulate(n)(j => general.map(r => math.abs(r.normal(j)) / normInfA(r.normal)).filter(_.isFinite).maxOption.getOrElse(0.0))
+        val ref = col.max
+        val d = Array.tabulate(n)(j => if col(j) > 0.0 && ref > 0.0 then pow2(ref / col(j)) else 1.0)
+        Option.when(d.exists(_ != 1.0))(d)
+      else
+        val d = Array.tabulate(n)(j => if diag(j) > 0.0 then pow2(math.sqrt(top / diag(j))) else 0.0)
+        for j <- 0 until n if d(j) == 0.0 do
+          val candidates = general.flatMap { r =>
+            val nj = math.abs(r.normal(j))
+            val beside = (0 until n).filter(k => diag(k) > 0.0 && r.normal(k) != 0.0).map(k => math.abs(r.normal(k)) * d(k))
+            Option.when(nj > 0.0 && beside.nonEmpty)(beside.max / nj)
+          }
+          d(j) = candidates.minOption.filter(c => c > 0.0 && c.isFinite).map(pow2).getOrElse(1.0)
+        Option.when(d.exists(_ != 1.0))(d)
+
+  /** Each constraint's row in [[templates]]' order, which every solve's rows keep. */
+  private lazy val rowOf: Map[QpConstraint, Int] = templates.indices.flatMap(k => templates(k).id.map(_ -> k)).toMap
+
+  /** The equalities' rows, always active. */
+  private lazy val equalityRows: Vector[Int] = templates.indices.filter(templates(_).isEquality).toVector
+
+  /** The problem in `y = D⁻¹z`, prepared once with its own lengths switched off. */
+  private lazy val scaled: Option[(Array[Double], QpPrepared)] = lengths.map { d =>
+    def cols(m: _MatrixValue) = _MatrixValue(m.rows, m.cols, Array.tabulate(m.rows * m.cols)(k => m(k / m.cols, k % m.cols) * d(k % m.cols)))
+    val hy = _MatrixValue(n, n, Array.tabulate(n * n)(k => d(k / n) * h(k / n, k % n) * d(k % n)))
+    (d, QpPrepared(hy, a.map(cols), aeq.map(cols), lowerFinite, upperFinite, jacobi = false))
+  }
 
   /** `H⁻¹·nⱼ` for every row. */
   private lazy val directions: Vector[Array[Double]] =
@@ -245,6 +301,41 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
         else if templates.size > maxRows then bad(s"at most $maxRows constraints are accepted, not ${templates.size}")
         else
           val prob = QpProblem(n, h, f.toArray, filled(b, beq, lb, ub), maxH, 0.5 * math.pow(10.0, -env.precision))
+          scaled.flatMap((d, inner) => inOwnLengths(d, inner, prob, f, b, beq, lb, ub, warm, env, start))
+            .getOrElse(unscaled(prob, b, beq, lb, ub, warm, env, start))
+
+  /** The prepared problem solved in each variable's own length ([[lengths]]), mapped back and **certified again in
+   *  `z`** (the `nlp` arrangement, F_0120): the answer is `z = D·y`; the general rows' multipliers are unchanged,
+   *  since their normals in `y` are `nᵣ·D`, and a bound's is divided by `dⱼ`, its normal in `y` being the unit
+   *  vector.  `None` when the scaled data leave the finite numbers, which the unscaled path then answers.  A
+   *  decline in `y` is the answer. */
+  private def inOwnLengths(d: Array[Double], inner: QpPrepared, prob: QpProblem, f: Vector[Double],
+                           b: Option[Vector[Double]], beq: Option[Vector[Double]], lb: Vector[Double], ub: Vector[Double],
+                           warm: Set[QpConstraint], env: Environment,
+                           start: Option[Array[Double]]): Option[Either[QpFailure, QpResult]] =
+    val fy  = Vector.tabulate(n)(i => f(i) * d(i))
+    val lby = Vector.tabulate(n)(i => lb(i) / d(i))
+    val uby = Vector.tabulate(n)(i => ub(i) / d(i))
+    val sameBounds = (0 until n).forall(i => (lby(i) > Double.NegativeInfinity) == lowerFinite(i) &&
+                                             (uby(i) < Double.PositiveInfinity) == upperFinite(i))
+    Option.when(fy.forall(_.isFinite) && sameBounds) {
+      inner.solve(fy, b, beq, lby, uby, warm, env, start.map(z => Array.tabulate(z.length)(i => z(i) / d(i)))).flatMap { r =>
+        val x = Array.tabulate(n)(i => r.z(i) * d(i))
+        val act = equalityRows ++ r.active.flatMap(rowOf.get)
+        val m = r.multipliers
+        val u = act.map(k => prob.rows(k).id match
+          case None                        => -m.equality(k)
+          case Some(QpConstraint.Row(j))   => m.inequality(j)
+          case Some(QpConstraint.Lower(i)) => m.lower(i) / d(i)
+          case Some(QpConstraint.Upper(i)) => m.upper(i) / d(i)).toArray
+        qpCertificate(prob, x, act, u, r.iterations, prob.certTol)
+      }
+    }
+
+  /** The prepared problem solved as it is written. */
+  private def unscaled(prob: QpProblem, b: Option[Vector[Double]], beq: Option[Vector[Double]],
+                       lb: Vector[Double], ub: Vector[Double], warm: Set[QpConstraint], env: Environment,
+                       start: Option[Array[Double]]): Either[QpFailure, QpResult] =
           // The primal active-set method (F_0074), from a feasible start: the caller's when it is feasible and not
           // far beyond the data (F_0380: a previous target 1e12 away was taken as it was), else the exact LP's
           // vertex, else the smallest feasible point when that vertex is far (F_0362).  **Past the smallest-point
@@ -257,7 +348,7 @@ private[leonardo] final class QpPrepared(h: _MatrixValue, a: Option[_MatrixValue
             start.filter(z => primal.feasible(z) && !primal.far(z)) match
               case Some(z) => primal.solve(z.clone(), warm)
               case None    =>
-                val weights = prob.ownScale.map(s => if s > 0.0 then 1.0 / s else 1.0).toVector
+                val weights = prob.dataScale.map(s => if s > 0.0 then 1.0 / s else 1.0).toVector
                 val rows    = a.fold(0)(_.rows) + aeq.fold(0)(_.rows)
                 val smallestFits = 2 * n <= env.limits.count(Limit.MaxLpVariables) &&
                                    rows + 2 * n <= env.limits.count(Limit.MaxLpConstraints)
@@ -448,23 +539,122 @@ private final case class QpProblem(n: Int, h: _MatrixValue, f: Array[Double], ro
     if hj > 0.0 then math.max(s, math.abs(f(j)) / hj) else s
   }
 
-  /** The largest of the variables' own sizes: the data's scale, which the primal method's step test reads. */
-  lazy val ownScaleMax: Double = ownScale.maxOption.getOrElse(0.0)
+  /** Each variable's size as the starts and the step test read it (F_0377): its own [[floorSize]], and [[ownScale]]
+   *  only for a variable with no cost or curvature of its own (an LP's), whose rows are all that says how large it
+   *  is.  With the rows read for every variable, rows `≤ 10¹²` made a corner `10¹²` away "near" the data, the
+   *  zero-cost LP vertex there started the primal method, and a semidefinite problem was certified at objective `0`
+   *  for `−1`, its gradient's terms `2·10¹³` cancelling. */
+  lazy val dataScale: Array[Double] = Array.tabulate(n)(j => if floorSize(j) > 0.0 then floorSize(j) else ownScale(j))
+
+  /** The largest of the variables' [[dataScale]]s: the data's scale, which the primal method's step test reads. */
+  lazy val ownScaleMax: Double = dataScale.maxOption.getOrElse(0.0)
 
   /** The rounding of a quantity whose terms add up to `scale`: `16·n·ε` of it.  What a multiplier must exceed
    *  to have a sign at all (F_0362). */
   def roundingOf(scale: Double): Double = 16.0 * n * math.ulp(1.0) * scale
 
-  /** The least floor any variable takes: the rounding of the data's own scale over the certificate's
-   *  tolerance, `16·n·ε·max sₖ/certTol`, which makes a residual at that rounding (a component whose optimum is
-   *  0, F_0358) read as at most `certTol`.  **The data's scale, not the point's** (F_0362): a share of `‖z‖∞`
-   *  beside a variable at `10¹⁶` reopened F_0361's leak (a non-stationary point passing at `10⁻⁷`), and near an
-   *  SQP iterate's convergence both a variable's own size (`4·10⁻¹⁶`, from a right-hand side that is itself
-   *  rounding) and the point (`~10⁻¹⁶`) are rounding, which read `z₃ ≥ 0` at `5.6·10⁻¹⁷` as `0.125`. */
-  lazy val roundingFloor: Double = roundingOf(ownScaleMax) / certTol
+  /** Each variable's size as the certificate's floors read it (F_0377): `|fⱼ|/maxₖ|Hⱼₖ|`, from its own cost and
+   *  curvature, and `0` for a flat variable.  **A row's right-hand side is not a variable's size**: `|rhs|/‖n‖∞` is
+   *  how large a variable would have to be to reach the row alone, and an MPC's late output rows, whose normals are
+   *  `10⁻⁹` beside a right-hand side near 2, gave every variable a size of `5·10⁸`, under which a violation of `0.1`
+   *  read as `10⁻¹⁰`.  The row's right-hand side still enters that row's own scale ([[rowScale]]) and the rounding
+   *  a variable carries ([[roundingFloors]]); [[ownScale]], which keeps the rows, remains the data's scale the
+   *  starts and the step test read. */
+  lazy val floorSize: Array[Double] = Array.tabulate(n) { j =>
+    var hj = 0.0
+    var k = 0
+    while k < n do
+      hj = math.max(hj, math.abs(h(j, k)))
+      k += 1
+    if hj > 0.0 then math.abs(f(j)) / hj else 0.0
+  }
 
-  /** Variable `j`'s floor: its own data's size, or [[roundingFloor]] when that is larger. */
-  def floorOf(j: Int, zMax: Double): Double = math.max(ownScale(j), roundingFloor)
+  /** Each variable's rounding floor (F_0377): the rounding of the largest [[floorSize]] among the variables it is
+   *  **coupled** to, over the certificate's tolerance, so that a residual at that rounding (a component whose optimum is
+   *  0, F_0358) reads as at most `certTol`.  The rows' rounding enters at the point, through the rows that bind
+   *  there ([[floorsAt]]): read from the data, an inactive row `≤ 10¹²` gave variables of size `0.1` a floor of
+   *  `7·10³`.  Two variables are coupled when an entry of `H` or a general row or
+   *  equality joins them, transitively: a computed value carries the rounding of the equations it is solved in, and
+   *  near an SQP iterate's convergence a variable whose own data are rounding read `z₃ ≥ 0` at `5.6·10⁻¹⁷` as `0.125`
+   *  without the floor its neighbours give it (F_0362).  **One problem-wide floor** (F_0362 until F_0377) gave a
+   *  variable the rounding of an unrelated one: with `f₁ = −10¹⁰` the uncoupled `z₂` had a floor of 14 and its bound
+   *  `z₂ ≥ 10⁻⁹` could not be seen.  The bounds couple nothing. */
+  lazy val roundingFloors: Array[Double] =
+    val parent = Array.tabulate(n)(identity)
+    def root(i: Int): Int =
+      var r = i
+      while parent(r) != r do r = parent(r)
+      r
+    def join(i: Int, j: Int): Unit =
+      val (a, b) = (root(i), root(j))
+      if a != b then parent(math.max(a, b)) = math.min(a, b)
+    for i <- 0 until n; j <- 0 until i if h(i, j) != 0.0 || h(j, i) != 0.0 do join(i, j)
+    for r <- rows if r.id.forall { case QpConstraint.Row(_) => true; case _ => false } do
+      var first = -1
+      var k = 0
+      while k < n do
+        if r.normal(k) != 0.0 then
+          if first < 0 then first = k else join(first, k)
+        k += 1
+    val top = new Array[Double](n)
+    for j <- 0 until n do top(root(j)) = math.max(top(root(j)), floorSize(j))
+    Array.tabulate(n)(j => roundingOf(top(root(j))) / certTol)
+
+  /** Each active row's pull on the gradient, `|uₐ|·‖nₐ‖∞`: what the certificate weighs a multiplier by. */
+  def multiplierWeights(act: Vector[Int], u: Array[Double]): Array[Double] =
+    tabD(act.size)(a => math.abs(u(a)) * normInfA(rows(act(a)).normal))
+
+  /** The active inequalities whose multiplier has the wrong sign as the certificate reads it: negative by more than
+   *  the rounding of the gradient's terms (F_0362).  The primal method drops these at its last step
+   *  ([[PrimalActiveSet]]), since its own drop test reads `iterTol` and would otherwise leave one for the
+   *  certificate to refuse.
+   *  @return the positions in `act`, lowest row first */
+  def wrongSigns(x: Array[Double], act: Vector[Int], u: Array[Double]): Vector[Int] =
+    val weight = multiplierWeights(act, u)
+    val rounding = roundingOf(gradientScale(x) + sumA(weight))
+    act.indices.filter(a => !rows(act(a)).isEquality && u(a) < 0.0 && weight(a) > rounding).sortBy(act(_)).toVector
+
+  /** The primal method's iteration tolerance, which [[near]] reads; `PrimalActiveSet` holds the same formula. */
+  private def iterTol: Double = math.max(1e-14, math.min(1e-10, certTol / 10))
+
+  /** Whether a size, in a variable's units, lies where the step test can still see a step of the data's own size
+   *  (F_0362): a tenth of `(certTol/iterTol)·max sⱼ`.  What `far` refuses as a start, and where a row's rounding at
+   *  the point is accounted ([[floorsAt]]). */
+  def near(size: Double): Boolean = size <= 0.1 * (certTol / iterTol) * math.max(ownScaleMax, Double.MinPositiveValue)
+
+  /** Every variable's floor at `z`: its own size ([[floorSize]]), its group's rounding ([[roundingFloors]]), and the
+   *  rounding of each general row it is in that **binds at this point** (its slack within `certTol` of its terms),
+   *  `16·n·ε·(|rhs| + Σₖ|nₖzₖ|)/(|nⱼ|·certTol)`: the primal method moves in the binding rows' null space, so every
+   *  variable of such a row carries its rounding, divided by its coefficient (a slack at `5.7·10⁻¹⁴` beside variables
+   *  near `95`; an input of size `10⁻²⁰⁰` in a row held at `2`), and a row that does not bind moves nothing.  **Only
+   *  while the row's terms are [[near]] the data**: at a point beyond what the step test can see the rounding cannot be
+   *  accounted, and an `x` sharing an equality with two free variables at `10¹⁶` would have had a floor of `6·10⁷`,
+   *  its bound's violation of `1.25` passing (F_0361's case, through the rows).  The data's scale alone
+   *  undercounted it where the point is larger than the data: a target layer's slack at `5.7·10⁻¹⁴`, its row's terms
+   *  at `186` from variables near `95`, was declined `Uncertified(7·10⁻⁶)` once the rows left the variables' sizes
+   *  (F_0377).  The point is near the data, since a far start is never used (F_0380).  Computed once per point:
+   *  the rows and the certificate read it for every row, and no method writes into a point it has made. */
+  def floorsAt(z: Array[Double]): Array[Double] = lastFloors match
+    case Some((at, fl)) if at eq z => fl
+    case _ =>
+      val fl = Array.tabulate(n)(j => math.max(floorSize(j), roundingFloors(j)))
+      for r <- rows if r.id.forall { case QpConstraint.Row(_) => true; case _ => false } do
+        var terms = math.abs(r.rhs)
+        var k = 0
+        while k < n do
+          terms += math.abs(r.normal(k) * z(k))
+          k += 1
+        if math.abs(r.slack(z)) <= certTol * terms && near(terms / normInfA(r.normal)) then
+          val rounding = roundingOf(terms) / certTol
+          k = 0
+          while k < n do
+            if r.normal(k) != 0.0 then fl(k) = math.max(fl(k), rounding / math.abs(r.normal(k)))
+            k += 1
+      lastFloors = Some((z, fl))
+      fl
+
+  /** The last point [[floorsAt]] was read at, with its floors. */
+  private var lastFloors: Option[(Array[Double], Array[Double])] = None
 
   /** The size a slack of `r` is measured against at `z`, by the iterations and the certificate alike: the
    *  constraint's terms, `|rhs| + Σⱼ|nⱼ|·max(|zⱼ|, floorⱼ)` — scale-free, with no `1 +` floor (F_0102).  **Each
@@ -473,11 +663,11 @@ private final case class QpProblem(n: Int, h: _MatrixValue, f: Array[Double], ro
    *  violated by `0.34` was certified at `5·10⁻¹⁷`.  **One function for both** (F_0362): the iterations held
    *  slacks to a looser scale until then, which a far bound inflated too. */
   def rowScale(r: QpRow, z: Array[Double]): Double =
-    val zMax = normInfA(z)
+    val fl = floorsAt(z)
     var s = math.abs(r.rhs)
     var j = 0
     while j < n do
-      if r.normal(j) != 0.0 then s += math.abs(r.normal(j)) * math.max(math.abs(z(j)), floorOf(j, zMax))
+      if r.normal(j) != 0.0 then s += math.abs(r.normal(j)) * math.max(math.abs(z(j)), fl(j))
       j += 1
     s
 
@@ -493,14 +683,14 @@ private final case class QpProblem(n: Int, h: _MatrixValue, f: Array[Double], ro
    *  variable's size** (F_0361), floored per variable ([[floorOf]], F_0362), so neither a large variable `H`
    *  does not touch nor a far bound raises the test of the others. */
   def gradientScale(z: Array[Double]): Double =
-    val zMax = normInfA(z)
+    val fl = floorsAt(z)
     var m = 0.0
     var i = 0
     while i < n do
       var s = 0.0
       var j = 0
       while j < n do
-        s += math.abs(h(i, j)) * math.max(math.abs(z(j)), floorOf(j, zMax))
+        s += math.abs(h(i, j)) * math.max(math.abs(z(j)), fl(j))
         j += 1
       m = math.max(m, s)
       i += 1
@@ -711,7 +901,7 @@ private def qpCertificate(prob: QpProblem, x: Array[Double], act: Vector[Int], u
       a += 1
     acc
   }
-  val weight = tabD(act.size)(a => math.abs(u(a)) * normInfA(rows(act(a)).normal))
+  val weight = prob.multiplierWeights(act, u)
   val gScale = prob.gradientScale(x) + sumA(weight)
   val stationarity = qpRelative(normInfA(tabD(n)(i => grad(i) - pull(i))), gScale)
   // The largest relative violation, in `Double`'s total order (a NaN wins), 0 for no rows.
@@ -785,8 +975,7 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int, limits: Lim
 
   /** Whether a start lies farther than the step test can see past (F_0362): a step of the data's own size
    *  `max sⱼ` is negligible beside `iterTol·‖x‖∞` once `‖x‖∞` passes `(certTol/iterTol)·max sⱼ`; a tenth of it. */
-  def far(z: Array[Double]): Boolean =
-    normInfA(z) > 0.1 * (certTol / iterTol) * math.max(prob.ownScaleMax, Double.MinPositiveValue)
+  def far(z: Array[Double]): Boolean = !prob.near(normInfA(z))
 
   /** Whether `z` may start the iteration (F_0359): finite, and every row met to this method's own
    *  tolerance of its terms — an equality within it either side, an inequality short by at most it. */
@@ -912,7 +1101,11 @@ private final class PrimalActiveSet(prob: QpProblem, precision: Int, limits: Lim
               // at rounding the primal method dropped multipliers negative only by their own rounding, 3x slower
               // on an 8-state target layer for no changed answer, the smallest start having fixed the far vertex.
               val drop  = w.indices.filter(a => !rows(w(a)).isEquality && u(a) * normInfA(rows(w(a)).normal) < -iterTol * scale)
-              drop.minByOption(w(_)) match
+              // A multiplier negative by less than `iterTol` but more than the certificate's rounding is dropped
+              // here, at the last step, so the two tests cannot leave a point neither drops nor certifies: a
+              // weakly active constraint's multiplier at `-3e-11` was declined `Uncertified(4e-4)`, and which side of
+              // zero such a multiplier lands on moved with the variables' units (F_0378).
+              drop.minByOption(w(_)).orElse(prob.wrongSigns(x, w, u).headOption) match
                 case None    => qpCertificate(prob, x, w, u, it, certTol)
                 case Some(a) => loop(x, w.patch(a, Nil, 1), it + 1)
         case Some(Move.Step(p)) =>
