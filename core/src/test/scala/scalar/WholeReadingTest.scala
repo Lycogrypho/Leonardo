@@ -62,6 +62,30 @@ class WholeReadingTest extends AnyFlatSpec:
     assert(exact("log(2, 1)").isLeft)
   }
 
+  "an argument that must be whole" should "be an integer or a reading of one, and stay unevaluated otherwise (F_0394)" in {
+    // a reading of an integer is the integer (F_0384's decision)
+    assert(exact("binom(4, (2^(1/3))^3)") == Right(_Rational(6)))
+    assert(exact("at([[1, 2, 3]], 1, (3^(1/3))^3)") == Right(_Rational(3)))
+    assert(exact("det(eye((2^(1/3))^3))") == Right(_Rational(1)))
+    // a true exact non-integer is no index, dimension or lower index: it was read through Double as whole
+    assert(exact("binom(4, 2 + 1/10^20)").isLeft)
+    assert(exact("at([[1, 2, 3]], 1, 3 - 1/10^20)").isLeft)
+    assert(exact("eye(2 + 1/10^20)").isLeft)
+    assert(exact("zeros(2 + 1/10^20, 2)").isLeft)
+    assert(exact("repmat([[1]], 2 + 1/10^20, 1)").isLeft)
+    assert(exact("ones(2, 2 + 1/10^20)").isLeft)
+    assert(exact("size([[1, 2]], 2 + 1/10^20)").isLeft)
+    // an exact matrix stays on the symbolic carrier: the reading of 2 repeats it twice
+    exact("repmat([[1]], (2^(1/3))^3, 1)") match
+      case Left(m: matrix._Matrix) => assert(m.rows == 2 && m.cols == 1, m)
+      case other                   => fail(s"$other")
+    // the upper index of binom may be real, as before
+    assert(exact("binom(5/2, 2)").isRight)
+    // and a plain integer is as before
+    assert(exact("binom(4, 2)") == Right(_Rational(6)))
+    assert(exact("at([[1, 2, 3]], 1, 3)") == Right(_Rational(3)))
+  }
+
   "the Double tier" should "be unchanged" in {
     assert(plain("floor((3^(1/3))^3)") == Right(_Number(2.0)))
     assert(plain("floor(2.5)") == Right(_Number(2.0)))

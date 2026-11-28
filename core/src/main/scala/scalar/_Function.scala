@@ -998,14 +998,15 @@ case class Binom(n: _Expression, k: _Expression) extends _Function with NamedFun
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (n.eval(env).map(_Based.unwrapExact), k.eval(env).map(_Based.unwrapExact)) match   // F_0336
+      // the lower index must be whole: an integer or the reading of one (F_0394), never a true exact non-integer,
+      // which a Double read as whole (`binom(4, 2 + 1/10^20)` was 6); the upper index may be real
       case (Right(a: _Rational), Right(b: _Rational)) =>
-        val exact =
-          for
-            an <- a.toBigIntExact
-            bn <- b.toBigIntExact
-            v  <- binomExactWithin(an, bn, env.limits(Limit.MaxExactSequenceIndex))
-          yield Right(_Rational(v))
-        exact.getOrElse(viaDouble(List(_Number(a.toDouble), _Number(b.toDouble)), env))
+        def whole(e: _Expression, q: _Rational) = q.toBigIntExact.orElse(gridPointRead(e, q, _Rational.Zero, env).flatMap(_.toBigIntExact))
+        whole(k, b) match
+          case None     => Left(this)
+          case Some(bn) =>
+            whole(n, a).flatMap(an => binomExactWithin(an, bn, env.limits(Limit.MaxExactSequenceIndex))).map(v => Right(_Rational(v)))
+              .getOrElse(viaDouble(List(_Number(a.toDouble), _Number(bn.toDouble)), env))
       case (Right(_Number(a)), Right(_Number(b))) =>
         binomOfWithin(a, b, env.limits(Limit.MaxExactSequenceIndex)).map(v => _Number(v)).toRight(this)
       case _ => Left(this)

@@ -104,15 +104,6 @@ private[leonardo] def pointsMatrix(points: List[SolutionPoint], vars: Vector[_Va
   _Matrix(points.size, vars.size,
           for p <- points.toVector; v <- vars yield _Equation(v, p.getOrElse(v.variable, v)))
 
-/** Reads a points matrix back into numeric points, for the REPL's classification note. */
-private[leonardo] def numericPoints(m: _Expression): List[Map[String, Double]] = m match
-  case _Matrix(rows, cols, cells) =>
-    cells.grouped(cols).toList.take(rows).flatMap { row =>
-      val coords = row.collect { case _Equation(v: _Variable, _Number(d)) => v.variable -> d }
-      Option.when(coords.size == row.size)(coords.toMap)
-    }
-  case _ => Nil
-
 /** The variables' coordinates only, deduplicated: several multiplier values can share one point. */
 private[optimize] def projected(points: List[SolutionPoint], vars: Vector[_Variable],
                       env: Environment): List[SolutionPoint] =

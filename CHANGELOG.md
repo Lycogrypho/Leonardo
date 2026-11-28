@@ -347,6 +347,9 @@ The library and the REPL do not depend on it.  Additive: `Session.lastResult`.
   `2.9999999999999996`), so `floor(log(1000))` is `3.0`, and likewise `log(8, 2)`, on the JVM and in the browser alike.
 - A limit at a tiny point is sampled at its own scale when that scale is written as an expression:
   `limit(floor(10^20*x), x, 1/10^20, -)` is `0` (it was `1`).
+- In exact mode an index, a dimension or `binom`'s lower index that is a true exact non-integer is no longer read as
+  whole through a decimal: `binom(4, 2 + 1/10^20)`, `at([[1, 2, 3]], 1, 3 - 1/10^20)` and `eye(2 + 1/10^20)` stay as
+  written (they answered `6`, `3` and the identity); the reading of an integer is still that integer.
 - A limit of an integer part at a jump reads the side its argument comes from through quotients, products, `exp`,
   `ln` and the other monotone functions, and `mod`: in exact mode `limit(floor(1/x), x, 1/2, +)` is `1` and
   `limit(floor(exp(x)), x, ln(3), -)` is `2`, exactly (they were decimals).  At a maximum or minimum of the argument

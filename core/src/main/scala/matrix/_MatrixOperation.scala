@@ -525,10 +525,12 @@ case class IdentityMatrix(n: _Expression) extends _MatrixOperation:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     n.eval(env) match
-      case Right(v @ _Number(d)) if validDenseDim(d, env) =>
-        constructed(d.toInt, d.toInt, v.isInstanceOf[_Rational], env)((i, j) => if i == j then 1 else 0)
+      // a dimension is whole, or the reading of a whole one (F_0394: `eye(2 + 1/10^20)` was the identity)
+      case Right(v @ _Number(_)) => wholeValue(n, v, env).filter(validDenseDim(_, env)) match
+        case Some(d) => constructed(d.toInt, d.toInt, v.isInstanceOf[_Rational], env)((i, j) => if i == j then 1 else 0)
+        case None    => Left(this)    // non-integer, non-positive, or over MaxDenseDim
       case Left(expr) => Left(IdentityMatrix(expr))
-      case _          => Left(this)   // non-integer, non-positive, or over MaxDenseDim
+      case _          => Left(this)
 
 
 /** Zero matrix: `zeros(rows, cols)` -- a `rows x cols` matrix of zeros.
@@ -547,7 +549,9 @@ case class ZeroMatrix(nRows: _Expression, nCols: _Expression) extends _MatrixOpe
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (nRows.eval(env), nCols.eval(env)) match
-      case (Right(a @ _Number(r)), Right(b @ _Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
+      case (Right(a @ _Number(_)), Right(b @ _Number(_)))
+        if wholeValue(nRows, a, env).exists(validDenseDim(_, env)) && wholeValue(nCols, b, env).exists(validDenseDim(_, env)) =>
+        val (r, c) = (wholeValue(nRows, a, env).getOrElse(0.0), wholeValue(nCols, b, env).getOrElse(0.0))
         constructed(r.toInt, c.toInt, a.isInstanceOf[_Rational] || b.isInstanceOf[_Rational], env)((_, _) => 0)
       case (rr, rc) => Left(ZeroMatrix(rr.toExpression, rc.toExpression))
 
@@ -567,7 +571,9 @@ case class _Ones(nRows: _Expression, nCols: _Expression) extends _MatrixOperatio
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     (nRows.eval(env), nCols.eval(env)) match
-      case (Right(a @ _Number(r)), Right(b @ _Number(c))) if validDenseDim(r, env) && validDenseDim(c, env) =>
+      case (Right(a @ _Number(_)), Right(b @ _Number(_)))
+        if wholeValue(nRows, a, env).exists(validDenseDim(_, env)) && wholeValue(nCols, b, env).exists(validDenseDim(_, env)) =>
+        val (r, c) = (wholeValue(nRows, a, env).getOrElse(0.0), wholeValue(nCols, b, env).getOrElse(0.0))
         constructed(r.toInt, c.toInt, a.isInstanceOf[_Rational] || b.isInstanceOf[_Rational], env)((_, _) => 1)
       case (rr, rc) => Left(_Ones(rr.toExpression, rc.toExpression))
 
@@ -841,10 +847,12 @@ case class _MatrixIndex(matrix: _Expression, row: _Expression, col: _Expression)
     val rr = row.eval(env)
     val rc = col.eval(env)
     (rr, rc) match
-      // A non-whole index is refused, not rounded (F_0205: `at(A, 1.6, 1)` read row 2).
-      case (Right(_Number(r)), Right(_Number(c))) if Whole.isWhole(r) && Whole.isWhole(c) =>
-        val i = Whole.asInt(r).getOrElse(0) - 1   // 1-based -> 0-based; out of range stays symbolic
-        val j = Whole.asInt(c).getOrElse(0) - 1
+      // A non-whole index is refused, not rounded (F_0205: `at(A, 1.6, 1)` read row 2), and an exact index is whole
+      // when it is an integer or the reading of one (F_0394: `3 - 1/10^20` read column 3 through Double).
+      case (Right(vr @ _Number(_)), Right(vc @ _Number(_)))
+        if wholeValue(row, vr, env).isDefined && wholeValue(col, vc, env).isDefined =>
+        val i = wholeValue(row, vr, env).flatMap(Whole.asInt).getOrElse(0) - 1   // 1-based -> 0-based; out of range stays symbolic
+        val j = wholeValue(col, vc, env).flatMap(Whole.asInt).getOrElse(0) - 1
         rm match
           case Right(mv: _MatrixValue) if i >= 0 && i < mv.rows && j >= 0 && j < mv.cols =>
             Right(_Number(mv(i, j)))

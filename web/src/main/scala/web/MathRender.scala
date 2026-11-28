@@ -19,6 +19,7 @@ import scala.util.control.NonFatal
  *  keyboard sounds are still not shipped, but now by decision (`soundsDirectory = null` in
  *  `index.html`) rather than by the SSR build's absence of a keyboard.
  */
+   *  loads as a classic script, so the global is defined before `main.js` runs and a render can
 object MathRender:
 
   /** Whether the vendored renderer is present.
@@ -27,7 +28,6 @@ object MathRender:
    *  raises `ReferenceError` before any comparison can run.
    *
    *  The ordering caveat this used to carry is **gone since F_0017**: the full build is UMD and
-   *  loads as a classic script, so the global is defined before `main.js` runs and a render can
    *  no longer arrive too early.  The check stays because a *missing* vendor directory is still
    *  possible, and it degrades the same way — the transcript keeps its plain-text answer.
    */

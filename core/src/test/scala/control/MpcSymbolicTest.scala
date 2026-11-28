@@ -12,6 +12,8 @@ class MpcSymbolicTest extends AnyFlatSpec:
   private val env = new Environment()
 
   "mpcMatrices with a symbolic A" should "decline a long horizon promptly (F_0183)" in {
+    // The time is the property (F_0395): the decline must come before the symbolic powers of A are built,
+    // whose expression swell ran for minutes; no count of that work is reported, and 10 s is far from both.
     val start = System.nanoTime()
     val r     = Parser.parse("mpcMatrices([[a, 1], [1, a]], [[0], [1]], [[1, 0]], 40, 1)").get.eval(env)
     val secs  = (System.nanoTime() - start) / 1e9
