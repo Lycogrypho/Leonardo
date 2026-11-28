@@ -537,6 +537,8 @@ class SeriesTest extends AnyFlatSpec:
 
   it should "reach order 20 on every family the budget cut, quickly" in
   {
+    // The time is the property (F_0395): the power-series engine (F_0085) answers these where the
+    // derivative path ran into its node budget, and 8 s on Node is the budget's measured setting (F_0078).
     val started = System.nanoTime
     for (src, f) <- families do
       val s = taylorSeries(parse(src), x, _Number(0), 20).getOrElse(fail(s"$src declined at order 20"))

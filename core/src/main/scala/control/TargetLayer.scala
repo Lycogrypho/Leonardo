@@ -169,8 +169,11 @@ def steadyStateTargetsPrepared(model: SteadyStateModel, spec: TargetSpec, uBound
 /** What a prepared target layer fixes ([[steadyStateTargetsPrepared]]): the model's matrices, each goal's
  *  kind, output, weight and finite sides, the resting weight, and the input bounds' finite entries. */
 private final case class TargetShape(matrices: Vector[_MatrixValue], gain: Boolean,
-                                     goals: Vector[Vector[(Int, Int, Double, Boolean, Boolean)]],
+                                     goals: Vector[Vector[GoalShape]],
                                      rest: Option[_MatrixValue], bounds: Option[(Vector[Boolean], Vector[Boolean])])
+
+/** What a prepared layer fixes of one goal: its kind, output and weight, and which of its sides are finite. */
+private final case class GoalShape(bound: Boolean, output: Int, weight: Double, lowerFinite: Boolean, upperFinite: Boolean)
 
 private object TargetShape:
   def of(model: SteadyStateModel, spec: TargetSpec, uBounds: Option[(Vector[Double], Vector[Double])]): TargetShape =
@@ -179,8 +182,8 @@ private object TargetShape:
       case GainSteadyState(g, _, _)                 => (Vector(g), true)
       case StateSpaceSteadyState(a, b, c, bd, cd, _) => (Vector(a, b, c, bd, cd), false)
     val goals = spec.levels.map(_.map {
-      case Setpoint(i, _, w)          => (0, i, w, true, true)
-      case OutputBound(i, lo, hi, w)  => (1, i, w, lo.isFinite, hi.isFinite)
+      case Setpoint(i, _, w)          => GoalShape(bound = false, i, w, lowerFinite = true, upperFinite = true)
+      case OutputBound(i, lo, hi, w)  => GoalShape(bound = true, i, w, lo.isFinite, hi.isFinite)
     })
     TargetShape(matrices, gain, goals, spec.rest.map(_.weight),
                 uBounds.map((lo, hi) => (lo.map(_.isFinite), hi.map(_.isFinite))))

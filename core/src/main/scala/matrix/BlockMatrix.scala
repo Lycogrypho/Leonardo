@@ -49,10 +49,12 @@ private[leonardo] def cellGrid(r: Either[_Expression, _Value], scalars: Boolean)
   case Right(v @ _Number(_)) if scalars       => Some(_Matrix(1, 1, Vector(v)))
   case _                                      => None
 
-/** A positive whole count or index, read from an evaluated operand. */
-private[leonardo] def wholeCount(r: Either[_Expression, _Value]): Option[Int] = r match
-  case Right(_Number(d)) => Whole.asInt(d).filter(_ >= 1)
-  case _                 => None
+/** A positive whole count or index, read from an evaluated operand `r` of the expression `e`: an exact one is whole when
+ *  it is an integer or the reading of one ([[core.wholeValue]], F_0394), never a true exact non-integer that a
+ *  `Double` reading took as whole (`repmat(A, 2 + 1/10^20, 1)` repeated twice). */
+private[leonardo] def wholeCount(e: _Expression, r: Either[_Expression, _Value], env: Environment): Option[Int] = r match
+  case Right(v @ _Number(_)) => wholeValue(e, v, env).flatMap(Whole.asInt).filter(_ >= 1)
+  case _                     => None
 
 /** The zero of the tier the given cells are in: exact beside exact cells, so a zero block
  *  cannot demote an exact matrix (the numeric tier rule). */
@@ -155,8 +157,8 @@ case class _RepMat(m: _Expression, down: _Expression, across: _Expression) exten
     val reduced = children.map(_.eval(env))
     val built = for
       g <- cellGrid(reduced.head, scalars = false)
-      r <- wholeCount(reduced(1))
-      c <- wholeCount(reduced(2))
+      r <- wholeCount(down, reduced(1), env)
+      c <- wholeCount(across, reduced(2), env)
       if g.rows.toLong * r * g.cols * c <= env.limits(Limit.MaxMatrixCells)
       out <- assembleBlocks(Vector.fill(r)(Vector.fill(c)(g)), env.limits(Limit.MaxMatrixCells))
     yield out
@@ -207,10 +209,10 @@ case class _SubMatrix(m: _Expression, r0: _Expression, r1: _Expression, c0: _Exp
     val reduced = children.map(_.eval(env))
     val built = for
       g    <- cellGrid(reduced.head, scalars = false)
-      top  <- wholeCount(reduced(1))
-      bot  <- wholeCount(reduced(2))
-      left <- wholeCount(reduced(3))
-      rgt  <- wholeCount(reduced(4))
+      top  <- wholeCount(children(1), reduced(1), env)
+      bot  <- wholeCount(children(2), reduced(2), env)
+      left <- wholeCount(children(3), reduced(3), env)
+      rgt  <- wholeCount(children(4), reduced(4), env)
       if top <= bot && bot <= g.rows && left <= rgt && rgt <= g.cols
     yield _Matrix(bot - top + 1, rgt - left + 1,
                   for i <- (top - 1 until bot).toVector; j <- left - 1 until rgt yield g(i, j))

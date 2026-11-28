@@ -35,6 +35,19 @@ private[leonardo] def gridPointRead(e: _Expression, v: _Value, offset: _Rational
       yield g
     case _ => None
 
+/** The integer an argument that must be whole stands for (F_0394): a `Double` that is whole; an exact integer; an exact
+ *  working-precision reading of one ([[gridPointRead]], F_0384's decision); and `None` for a true exact non-integer,
+ *  which a `Double` reading took as whole, so `binom(4, 2 + 1/10^20)` was `6` and `eye(2 + 1/10^20)` the identity.
+ *  @param e   the argument's expression, read again finely to tell a reading
+ *  @param v   its value
+ *  @param env the bindings and the working precision
+ *  @return the integer as a `Double`, or `None` when `v` is not whole */
+private[leonardo] def wholeValue(e: _Expression, v: _Value, env: Environment): Option[Double] = v match
+  case q: _Rational => q.toBigIntExact.map(_.toDouble).orElse(gridPointRead(e, q, _Rational.Zero, env).map(_.toDouble))
+  case s if _Surd.isExact(s) => gridPointRead(e, s, _Rational.Zero, env).map(_.toDouble)
+  case _Number(d) => Option.when(Whole.isWhole(d))(d)
+  case _ => None
+
 /** [[gridPointRead]] of `e`'s value at `env`, when that value is exact.
  *
  *  The value is [[evalNumeric]]'s, so a named constant is read at the working precision: in exact mode `pi` stays a

@@ -2636,6 +2636,7 @@ MaxMinimizeIterations = 2000, MaxMinimizeVariables = 100 (measured, F_0216)</dat
 solve(..., start): semidefinite path from a feasible point (F_0359)
 each variable in its own length (Jacobi, powers of two), re-certified in z (F_0377, F_0378)
 semidefinite start: the smallest feasible point, a definite QP; the exact LP proves Infeasible (F_0388)
+QpPrimal.scala: PrimalActiveSet and feasiblePoint, the semidefinite path (F_0391)
 min 1/2 z'Hz + f'z, A z &lt;= b, Aeq z = beq, bounds
 Goldfarb-Idnani dual active set when H positive DEFINITE;
 semidefinite H: primal active set from an lpSolve vertex (F_0074)

@@ -101,8 +101,8 @@ case class _MpcMatrices(a: _Expression, b: _Expression, c: _Expression, np: _Exp
   override def eval(env: Environment): Either[_Expression, _Value] =
     val reduced = children.map(_.eval(env))
     val built = for
-      p <- wholeCount(reduced(3))
-      k <- wholeCount(reduced(4))
+      p <- wholeCount(np, reduced(3), env)
+      k <- wholeCount(nc, reduced(4), env)
       (phi, gamma) <- mpcMatrices(reduced.head.toExpression, reduced(1).toExpression, reduced(2).toExpression, p, k, env)
     yield _Matrix(1, 2, Vector(phi, gamma))
     built.map(Left(_)).getOrElse(Left(rebuild(reduced.map(_.toExpression))))

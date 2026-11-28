@@ -170,8 +170,9 @@ class SemidefiniteQPTest extends AnyFlatSpec:
     assert(qpCertificate(prob, Array(1.0, 1e16), Vector.empty, Array.emptyDoubleArray, 1, 0.5e-5).isRight)
   }
 
-  it should "answer under a far bound, which inflates zScale but not the gradient's floor (F_0361)" in {
-    // min (x - 1)^2 on x + y = 3, |x|, |y| <= 1e6: zScale is 1e6, the answer (1, 2)
+  it should "answer under a far bound, which sets no variable's size (F_0361, F_0362)" in {
+    // min (x - 1)^2 on x + y = 3, |x|, |y| <= 1e6: a bound says how large a variable may be, not how large it is
+    // (the problem-wide zScale that read it as one was removed by F_0362), and the answer is (1, 2)
     val r = solved("qp([[2, 0], [0, 0]], [[-2], [0]], 0, 0, [[1, 1]], [[3]], -1e6, 1e6)")
     assert(math.abs(r.z(0) - 1.0) < 1e-9 && math.abs(r.z(1) - 2.0) < 1e-9, s"${r.z}")
   }

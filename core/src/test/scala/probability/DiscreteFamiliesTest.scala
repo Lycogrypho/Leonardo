@@ -121,7 +121,16 @@ class DiscreteFamiliesTest extends AnyFlatSpec:
 
   it should "build its table once per parameter set, not once per evaluation (F_0146)" in {
     // Each evaluation of the call builds a fresh _Distribution, and the table was a lazy val per
-    // instance: 40 masses of a cap-sized distribution built 40 tables of a million entries.
+    // instance: 40 masses of a cap-sized distribution built 40 tables of a million entries.  What is
+    // pinned is a cost RATIO, measured back to back (F_0395): one mass of a fresh parameter set builds
+    // one table, and 40 masses of another fresh set must cost about the same, not 40 times it.  The
+    // full suite's load slows both sides alike, where an absolute bound (2 s) measured the machine too.
+    def timed(src: String): Double =
+      val start = System.nanoTime()
+      ev(src) match
+        case Left(_) | Right(_) => ()
+      (System.nanoTime() - start) / 1e9
+    val one   = timed("pdf(hypergeometric(2000002, 999999, 999999), 500000)")
     val start = System.nanoTime()
     ev("tabulate(pdf(hypergeometric(2000000, 999998, 999998), k), k, 499980, 500019)") match
       case Left(_) | Right(_) => ()
@@ -129,8 +138,9 @@ class DiscreteFamiliesTest extends AnyFlatSpec:
     assert(close(num("sum(pdf(hypergeometric(2000000, 999998, 999998), k), k, 499980, 500019)"),
                  num("cdf(hypergeometric(2000000, 999998, 999998), 500019)") -
                  num("cdf(hypergeometric(2000000, 999998, 999998), 499979)"), 1e-9))
-    info(f"40 masses at the support cap: $seconds%.2f s")
-    assert(seconds < 2.0, s"took $seconds s")
+    info(f"40 masses at the support cap: $seconds%.2f s; one mass of a fresh table: $one%.2f s")
+    // one table each: a ratio near 1; one table per term: near 40
+    assert(seconds < 8 * math.max(one, 0.01), f"40 masses took $seconds%.2f s against $one%.2f s for one")
   }
 
   it should "read a support positioned past Int.MaxValue (F_0142)" in {

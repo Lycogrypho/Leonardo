@@ -179,6 +179,6 @@ case class _SizeAlong(m: _Expression, dim: _Expression) extends _Expression:
 
   override def eval(env: Environment): Either[_Expression, _Value] =
     val (r, rd) = (m.eval(env), dim.eval(env))
-    (shapeOf(r), wholeCount(rd).filter(_ <= 2)) match
+    (shapeOf(r), wholeCount(dim, rd, env).filter(_ <= 2)) match
       case (Some((rows, cols)), Some(k)) => Right(_Rational.literalLike(if k == 1 then rows else cols, r.toExpression))
       case _                             => Left(_SizeAlong(r.toExpression, rd.toExpression))
